@@ -1,0 +1,16 @@
+[
+  {
+    "id": "76ffefb7-8175-4c69-87e8-445e28073541",
+    "tier": "COMERCIAL",
+    "dur": 3,
+    "type": "FIXO",
+    "bLen": 13
+  },
+  {
+    "id": "f9904dd9-fc96-484e-b052-c5b52b423381",
+    "tier": "AUDIENCIA",
+    "dur": 6,
+    "type": "FLEX",
+    "bLen": 1
+  }
+]

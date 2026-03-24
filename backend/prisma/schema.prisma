@@ -1,0 +1,215 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ──────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  CLIENTE
+}
+
+enum ContractType {
+  FIXO
+  FLEX
+  SERVICO
+}
+
+enum Tier {
+  COMERCIAL
+  AUDIENCIA
+  SABADO
+}
+
+enum BookingStatus {
+  RESERVED
+  CONFIRMED
+  COMPLETED
+  FALTA
+  NAO_REALIZADO
+  CANCELLED
+}
+
+enum ContractStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  PENDING_CANCELLATION
+}
+
+enum PaymentProvider {
+  STRIPE
+  CORA
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CARTAO
+  PIX
+  BOLETO
+}
+
+// ─── Models ─────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(uuid())
+  email        String?  @unique
+  passwordHash String?  @map("password_hash")
+  name         String
+  phone        String?  @unique
+  googleId     String?  @unique @map("google_id")
+  role         Role     @default(CLIENTE)
+  photoUrl     String?  @map("photo_url")
+  notes        String?  @db.Text // admin internal observations
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  bookings     Booking[]
+  contracts    Contract[]
+  payments     Payment[]
+  blockedSlots BlockedSlot[]
+
+  @@map("users")
+}
+
+model Contract {
+  id             String         @id @default(uuid())
+  name           String // e.g "Podcast Verão", "Avulso"
+  userId         String         @map("user_id")
+  type           ContractType
+  tier           Tier
+  durationMonths Int            @map("duration_months") // 3 or 6
+  discountPct    Int            @map("discount_pct") // 30 or 40
+  startDate      DateTime       @map("start_date")
+  endDate        DateTime       @map("end_date")
+  status         ContractStatus @default(ACTIVE)
+
+  // Fixo-specific
+  fixedDayOfWeek Int?    @map("fixed_day_of_week") // 1=Mon, 6=Sat
+  fixedTime      String? @map("fixed_time") // "14:00"
+
+  // External contract link
+  contractUrl String? @map("contract_url") // link to digital contract
+
+  // Flex-specific (episode-based credits: 12 for 3mo, 24 for 6mo)
+  flexCreditsTotal     Int?      @map("flex_credits_total") // 12 or 24 episodes
+  flexCreditsRemaining Int?      @map("flex_credits_remaining")
+  flexCycleStart       DateTime? @map("flex_cycle_start")
+  flexWeeksCompensated Int?      @default(0) @map("flex_weeks_compensated") // advance offset
+
+  // Add-ons selected at contract creation
+  addOns               String[]  @map("add_ons")
+
+  // Payment method chosen at contract creation
+  paymentMethod PaymentMethod? @map("payment_method")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user     User      @relation(fields: [userId], references: [id])
+  bookings Booking[]
+  payments Payment[]
+
+  @@map("contracts")
+}
+
+model Booking {
+  id            String        @id @default(uuid())
+  userId        String        @map("user_id")
+  contractId    String        @map("contract_id")
+  date          DateTime      @db.Date
+  startTime     String        @map("start_time") // "14:00"
+  endTime       String        @map("end_time") // "16:00"
+  status        BookingStatus @default(RESERVED)
+  tierApplied   Tier          @map("tier_applied")
+  price         Int // in cents (R$ 300,00 = 30000)
+  adminNotes    String?       @map("admin_notes") @db.Text // admin-only observations
+  clientNotes   String?       @map("client_notes") @db.Text // visible to client
+  originalDate  DateTime?     @map("original_date") @db.Date // anchor date for 7-day reschedule window
+  platforms     String?       @map("platforms") // JSON array: ["YOUTUBE","TIKTOK",...]
+  platformLinks String?       @map("platform_links") @db.Text // JSON object: {"YOUTUBE":"url",...}
+  addOns        String[]      @map("add_ons")
+
+  // Phase 2 Analytical Metrics
+  durationMinutes Int?    @map("duration_minutes")
+  peakViewers     Int?    @map("peak_viewers")
+  chatMessages    Int?    @map("chat_messages")
+  audienceOrigin  String? @map("audience_origin")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user     User      @relation(fields: [userId], references: [id])
+  contract Contract  @relation(fields: [contractId], references: [id])
+  payments Payment[]
+
+  // Prevent double booking: unique on date + start_time for non-cancelled
+  @@unique([date, startTime, status], name: "unique_active_booking")
+  @@map("bookings")
+}
+
+model Payment {
+  id          String          @id @default(uuid())
+  userId      String          @map("user_id")
+  contractId  String?         @map("contract_id")
+  bookingId   String?         @map("booking_id")
+  provider    PaymentProvider
+  providerRef String?         @map("provider_ref")
+  amount      Int // in cents
+  status      PaymentStatus   @default(PENDING)
+  dueDate     DateTime?       @map("due_date")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  user     User      @relation(fields: [userId], references: [id])
+  contract Contract? @relation(fields: [contractId], references: [id])
+  booking  Booking?  @relation(fields: [bookingId], references: [id])
+
+  @@map("payments")
+}
+
+model BlockedSlot {
+  id        String   @id @default(uuid())
+  date      DateTime @db.Date
+  startTime String   @map("start_time")
+  endTime   String   @map("end_time")
+  reason    String?
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  creator User @relation(fields: [createdBy], references: [id])
+
+  @@map("blocked_slots")
+}
+
+model PricingConfig {
+  id          String   @id @default(uuid())
+  tier        Tier     @unique
+  price       Int // in cents (R$ 300,00 = 30000)
+  label       String // "Comercial", "Audiência", "Sábado"
+  description String?  @db.Text // plan description
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("pricing_config")
+}
+
+model AddOnConfig {
+  key         String   @id // e.g. "CORTES_IA", "YOUTUBE_SEO", "PAUTAS"
+  name        String
+  price       Int      // Base price in cents
+  description String?  @db.Text
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("addon_config")
+}

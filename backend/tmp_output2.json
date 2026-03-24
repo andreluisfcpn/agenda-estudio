@@ -1,0 +1,194 @@
+{
+  "bookings": [
+    {
+      "id": "5033a203-5ba2-4cec-88ba-09403bf25f36",
+      "date": "2026-03-24T00:00:00.000Z",
+      "startTime": "15:00",
+      "endTime": "17:00",
+      "status": "CONFIRMED",
+      "tierApplied": "AUDIENCIA",
+      "price": 24000,
+      "contractId": "e6fc455a-3c68-4886-8b77-53b98b1caaf9",
+      "adminNotes": null,
+      "clientNotes": null,
+      "platforms": null,
+      "platformLinks": null,
+      "contract": {
+        "id": "e6fc455a-3c68-4886-8b77-53b98b1caaf9",
+        "type": "FIXO",
+        "tier": "AUDIENCIA"
+      }
+    },
+    {
+      "id": "c444f2c5-6ed7-4fbc-a524-9594215f0f83",
+      "date": "2026-03-17T00:00:00.000Z",
+      "startTime": "15:00",
+      "endTime": "17:00",
+      "status": "CONFIRMED",
+      "tierApplied": "AUDIENCIA",
+      "price": 24000,
+      "contractId": "e6fc455a-3c68-4886-8b77-53b98b1caaf9",
+      "adminNotes": null,
+      "clientNotes": null,
+      "platforms": null,
+      "platformLinks": null,
+      "contract": {
+        "id": "e6fc455a-3c68-4886-8b77-53b98b1caaf9",
+        "type": "FIXO",
+        "tier": "AUDIENCIA"
+      }
+    },
+    {
+      "id": "51def4cd-09fe-4826-a5df-ae6e90ba73a9",
+      "date": "2026-03-10T00:00:00.000Z",
+      "startTime": "10:00",
+      "endTime": "12:00",
+      "status": "RESERVED",
+      "tierApplied": "COMERCIAL",
+      "price": 30000,
+      "contractId": "e710c2b4-bd45-42c7-86db-43fa44555212",
+      "adminNotes": null,
+      "clientNotes": null,
+      "platforms": null,
+      "platformLinks": null,
+      "contract": {
+        "id": "e710c2b4-bd45-42c7-86db-43fa44555212",
+        "type": "FLEX",
+        "tier": "COMERCIAL"
+      }
+    },
+    {
+      "id": "9633dfa2-1b9c-41ea-959c-973bd49a7535",
+      "date": "2026-03-10T00:00:00.000Z",
+      "startTime": "15:00",
+      "endTime": "17:00",
+      "status": "CONFIRMED",
+      "tierApplied": "AUDIENCIA",
+      "price": 24000,
+      "contractId": "e6fc455a-3c68-4886-8b77-53b98b1caaf9",
+      "adminNotes": null,
+      "clientNotes": null,
+      "platforms": null,
+      "platformLinks": null,
+      "contract": {
+        "id": "e6fc455a-3c68-4886-8b77-53b98b1caaf9",
+        "type": "FIXO",
+        "tier": "AUDIENCIA"
+      }
+    },
+    {
+      "id": "379d7b97-bd58-4d8f-9c97-ab09c9306fda",
+      "date": "2026-03-09T00:00:00.000Z",
+      "startTime": "09:00",
+      "endTime": "11:00",
+      "status": "CONFIRMED",
+      "tierApplied": "COMERCIAL",
+      "price": 21000,
+      "contractId": "c90cfba3-b5be-4dcd-b1a1-8c92201ec3d9",
+      "adminNotes": null,
+      "clientNotes": null,
+      "platforms": null,
+      "platformLinks": null,
+      "contract": {
+        "id": "c90cfba3-b5be-4dcd-b1a1-8c92201ec3d9",
+        "type": "FLEX",
+        "tier": "COMERCIAL"
+      }
+    },
+    {
+      "id": "ed618f8f-2931-4882-9a9a-9c6e345c0b26",
+      "date": "2026-03-04T00:00:00.000Z",
+      "startTime": "18:00",
+      "endTime": "20:00",
+      "status": "RESERVED",
+      "tierApplied": "AUDIENCIA",
+      "price": 40000,
+      "contractId": "c3a9b5d2-e2e8-442b-95b0-87de99ae8e28",
+      "adminNotes": null,
+      "clientNotes": null,
+      "platforms": null,
+      "platformLinks": null,
+      "contract": {
+        "id": "c3a9b5d2-e2e8-442b-95b0-87de99ae8e28",
+        "type": "FLEX",
+        "tier": "AUDIENCIA"
+      }
+    },
+    {
+      "id": "54f66f2b-97f3-430c-b1b8-7f88f6519a8a",
+      "date": "2026-03-03T00:00:00.000Z",
+      "startTime": "15:00",
+      "endTime": "17:00",
+      "status": "COMPLETED",
+      "tierApplied": "AUDIENCIA",
+      "price": 24000,
+      "contractId": "e6fc455a-3c68-4886-8b77-53b98b1caaf9",
+      "adminNotes": null,
+      "clientNotes": null,
+      "platforms": null,
+      "platformLinks": null,
+      "contract": {
+        "id": "e6fc455a-3c68-4886-8b77-53b98b1caaf9",
+        "type": "FIXO",
+        "tier": "AUDIENCIA"
+      }
+    },
+    {
+      "id": "7fdb3d58-0cf0-4f48-a0a6-023a1ca01f14",
+      "date": "2026-02-24T00:00:00.000Z",
+      "startTime": "15:00",
+      "endTime": "17:00",
+      "status": "NAO_REALIZADO",
+      "tierApplied": "AUDIENCIA",
+      "price": 24000,
+      "contractId": "e6fc455a-3c68-4886-8b77-53b98b1caaf9",
+      "adminNotes": null,
+      "clientNotes": null,
+      "platforms": null,
+      "platformLinks": null,
+      "contract": {
+        "id": "e6fc455a-3c68-4886-8b77-53b98b1caaf9",
+        "type": "FIXO",
+        "tier": "AUDIENCIA"
+      }
+    },
+    {
+      "id": "cbe6e316-85b8-4221-9e01-5a98fb983760",
+      "date": "2026-02-17T00:00:00.000Z",
+      "startTime": "15:00",
+      "endTime": "17:00",
+      "status": "FALTA",
+      "tierApplied": "AUDIENCIA",
+      "price": 24000,
+      "contractId": "e6fc455a-3c68-4886-8b77-53b98b1caaf9",
+      "adminNotes": "Cliente não compareceu.",
+      "clientNotes": null,
+      "platforms": null,
+      "platformLinks": null,
+      "contract": {
+        "id": "e6fc455a-3c68-4886-8b77-53b98b1caaf9",
+        "type": "FIXO",
+        "tier": "AUDIENCIA"
+      }
+    },
+    {
+      "id": "1a2351ac-12c5-4de4-a98c-434b600a63b9",
+      "date": "2026-02-10T00:00:00.000Z",
+      "startTime": "15:00",
+      "endTime": "17:00",
+      "status": "COMPLETED",
+      "tierApplied": "AUDIENCIA",
+      "price": 24000,
+      "contractId": "e6fc455a-3c68-4886-8b77-53b98b1caaf9",
+      "adminNotes": null,
+      "clientNotes": null,
+      "platforms": null,
+      "platformLinks": null,
+      "contract": {
+        "id": "e6fc455a-3c68-4886-8b77-53b98b1caaf9",
+        "type": "FIXO",
+        "tier": "AUDIENCIA"
+      }
+    }
+  ]
+}

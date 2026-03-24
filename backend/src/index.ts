@@ -1,0 +1,93 @@
+import express from 'express';
+import cors from 'cors';
+import cookieParser from 'cookie-parser';
+import path from 'path';
+import { config } from './config';
+import { errorHandler } from './middleware/errorHandler';
+
+// Route modules
+import authRoutes from './modules/auth/routes';
+import bookingRoutes from './modules/bookings/routes';
+import contractRoutes from './modules/contracts/routes';
+import userRoutes from './modules/users/routes';
+import blockedSlotRoutes from './modules/blocked-slots/routes';
+import pricingRoutes from './modules/pricing/routes';
+
+import { PrismaClient } from '@prisma/client';
+const prisma = new PrismaClient();
+
+const app = express();
+
+// ─── Middleware ──────────────────────────────────────────
+
+app.use(cors({
+    origin: config.frontendUrl,
+    credentials: true,
+}));
+app.use(express.json());
+app.use(cookieParser());
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
+// ─── Health Check ───────────────────────────────────────
+
+app.get('/api/health', (_req, res) => {
+    res.json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        env: config.nodeEnv,
+    });
+});
+
+// ─── Routes ─────────────────────────────────────────────
+
+app.use('/api/auth', authRoutes);
+app.use('/api/bookings', bookingRoutes);
+app.use('/api/contracts', contractRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/blocked-slots', blockedSlotRoutes);
+app.use('/api/pricing', pricingRoutes);
+
+// ─── Error Handler ──────────────────────────────────────
+
+app.use(errorHandler);
+
+// ─── Start Server ───────────────────────────────────────
+
+app.listen(config.port, () => {
+    console.log(`🎙️  Studio Scheduler API running on http://localhost:${config.port}`);
+    console.log(`   Environment: ${config.nodeEnv}`);
+
+    // Phase 2 Auto-Completion Cronjob
+    // This runs on startup and every 5 minutes, flagging past-due events as COMPLETED.
+    const runCron = async () => {
+        try {
+            console.log(`[Cron] Checking for finished bookings to auto-complete...`);
+            const now = new Date();
+            const bookings = await prisma.booking.findMany({
+                where: { status: { in: ['CONFIRMED', 'RESERVED'] } }
+            });
+
+            const toComplete = bookings.filter(b => {
+                const [h, m] = b.endTime.split(':').map(Number);
+                const endDateTime = new Date(b.date);
+                endDateTime.setUTCHours(h, m, 0, 0); // Event timezone
+                return endDateTime.getTime() < now.getTime();
+            });
+
+            if (toComplete.length > 0) {
+                const updated = await prisma.booking.updateMany({
+                    where: { id: { in: toComplete.map(x => x.id) } },
+                    data: { status: 'COMPLETED' }
+                });
+                console.log(`[Cron] Auto-completed ${updated.count} bookings.`);
+            }
+        } catch (err) {
+            console.error(`[Cron Error] Failed to process auto-completions:`, err);
+        }
+    };
+
+    runCron(); // Run immediately on startup
+    setInterval(runCron, 5 * 60 * 1000);
+});
+
+export default app;
