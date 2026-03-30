@@ -1,8 +1,13 @@
 import { useState, useEffect } from 'react';
 import { contractsApi, bookingsApi, ContractWithStats, ContractBooking, pricingApi, PricingConfig } from '../api/client';
 import ContractWizard from '../components/ContractWizard';
+import CustomContractWizard from '../components/CustomContractWizard';
 import BulkBookingModal from '../components/BulkBookingModal';
+import ModalOverlay from '../components/ModalOverlay';
 import { useLocation } from 'react-router-dom';
+import { useBusinessConfig } from '../hooks/useBusinessConfig';
+import { useUI } from '../context/UIContext';
+import { getPaymentMethods, type PaymentMethodKey } from '../constants/paymentMethods';
 
 const DAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const PLATFORMS = [
@@ -23,14 +28,15 @@ export default function MyContractsPage() {
     const [loading, setLoading] = useState(true);
     const [tab, setTab] = useState<'active' | 'archived' | 'cancelled'>('active');
     const [expandedId, setExpandedId] = useState<string | null>(location.state?.expandContractId || null);
-    const [toast, setToast] = useState('');
+    
+    const { showAlert, showToast } = useUI();
 
     // Service Addons
     interface Addon { key: string; name: string; price: number; description?: string | null; monthly?: boolean; }
     const [allAddons, setAllAddons] = useState<Addon[]>([]);
     const [socialAddon, setSocialAddon] = useState<Addon | null>(null);
     const [showSocialModal, setShowSocialModal] = useState(false);
-    const [socialPayment, setSocialPayment] = useState<'CARTAO' | 'PIX' | null>(null);
+    const [socialPayment, setSocialPayment] = useState<PaymentMethodKey | null>(null);
     const [socialDuration, setSocialDuration] = useState<3 | 6>(3);
     const [subscribingSocial, setSubscribingSocial] = useState(false);
 
@@ -52,6 +58,7 @@ export default function MyContractsPage() {
 
     // Contract Wizard
     const [showWizard, setShowWizard] = useState(false);
+    const [showCustomWizard, setShowCustomWizard] = useState(false);
 
     // Bulk Booking
     const [showBulkModalFor, setShowBulkModalFor] = useState<ContractWithStats | null>(null);
@@ -59,6 +66,8 @@ export default function MyContractsPage() {
     // Cancel Modal
     const [showCancelModalFor, setShowCancelModalFor] = useState<{ id: string, feeNote: string } | null>(null);
     const [cancellingContract, setCancellingContract] = useState(false);
+
+    const { get: getRule } = useBusinessConfig();
 
     useEffect(() => { loadData(); }, []);
 
@@ -80,7 +89,7 @@ export default function MyContractsPage() {
 
     const activeContracts = contracts.filter(c => {
         if (c.status === 'CANCELLED' || c.status === 'EXPIRED') return false;
-        if (c.status !== 'ACTIVE' && c.status !== 'PENDING_CANCELLATION') return false;
+        if (c.status !== 'ACTIVE' && c.status !== 'PENDING_CANCELLATION' && c.status !== 'PAUSED') return false;
 
         const bookings = c.bookings || [];
         const totalBookings = c.type === 'FIXO' ? c.durationMonths * 4 : c.totalBookings;
@@ -168,7 +177,7 @@ export default function MyContractsPage() {
             showToast('Gravação atualizada!');
             setDetailBooking(null);
             loadData();
-        } catch (err: any) { alert(err.message); }
+        } catch (err: any) { showAlert({ message: err.message, type: 'error' }); }
         finally { setSaving(false); }
     };
 
@@ -185,7 +194,7 @@ export default function MyContractsPage() {
             loadData();
             setShowCancelModalFor(null);
         } catch (err: any) {
-            alert('Erro ao solicitar cancelamento: ' + err.message);
+            showAlert({ message: 'Erro ao solicitar cancelamento: ' + err.message, type: 'error' });
         } finally {
             setCancellingContract(false);
         }
@@ -200,7 +209,7 @@ export default function MyContractsPage() {
             await loadData();
             // Optimistically update detailBooking state
             setDetailBooking(prev => prev && prev.id === bookingId ? { ...prev, addOns: [...(prev.addOns || []), addonKey] } : prev);
-        } catch (err: any) { alert(err.message); }
+        } catch (err: any) { showAlert({ message: err.message, type: 'error' }); }
         finally { setSaving(false); }
     };
 
@@ -228,16 +237,13 @@ export default function MyContractsPage() {
                 setTimeout(() => loadData(), 1000);
             }
         } catch (err: any) {
-            alert(err.message || 'Erro ao contratar serviço.');
+            showAlert({ message: err.message || 'Erro ao contratar serviço.', type: 'error' });
         } finally {
             setSubscribingSocial(false);
         }
     };
 
-    const showToast = (msg: string) => {
-        setToast(msg);
-        setTimeout(() => setToast(''), 3000);
-    };
+
 
     const statusLabel = (s: string) => {
         switch (s) {
@@ -246,6 +252,7 @@ export default function MyContractsPage() {
             case 'RESERVED': return '⏳ Reservado';
             case 'FALTA': return '❌ Falta';
             case 'NAO_REALIZADO': return '🔄 Não Realizado';
+            case 'PAUSED': return '⏸️ Pausado';
             default: return '❌ Cancelado';
         }
     };
@@ -259,20 +266,18 @@ export default function MyContractsPage() {
                     <h1 className="page-title">📋 Meus Contratos & Serviços</h1>
                     <p className="page-subtitle">Acompanhe seus contratos, consumo e regras dos planos</p>
                 </div>
-                <button className="btn btn-primary" onClick={() => setShowWizard(true)}>
-                    ✨ Novo Contrato
-                </button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                    <button className="btn btn-primary" onClick={() => setShowWizard(true)}>
+                        ✨ Novo Contrato
+                    </button>
+                    <button className="btn" onClick={() => setShowCustomWizard(true)}
+                        style={{ background: 'linear-gradient(135deg, var(--accent-primary), #22c55e)', color: '#fff', border: 'none', fontWeight: 700, padding: '10px 16px' }}>
+                        🎨 Monte Seu Plano
+                    </button>
+                </div>
             </div>
 
-            {toast && (
-                <div style={{
-                    position: 'fixed', top: 24, right: 24, zIndex: 9999,
-                    padding: '12px 20px', borderRadius: 'var(--radius-md)',
-                    background: 'var(--tier-comercial)', color: '#fff',
-                    fontWeight: 600, fontSize: '0.875rem',
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-                }}>✅ {toast}</div>
-            )}
+
 
             {/* Gestao de Rede Social Banner */}
             {socialAddon && !contracts.some(c => c.type === 'SERVICO' && c.status === 'ACTIVE' && c.addOns?.includes('GESTAO_SOCIAL')) && (
@@ -339,7 +344,7 @@ export default function MyContractsPage() {
 
             {/* Booking Detail Modal */}
             {detailBooking && (
-                <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setDetailBooking(null)}>
+                <ModalOverlay onClose={() => setDetailBooking(null)}>
                     <div className="modal" style={{ maxWidth: 540 }}>
                         <h2 className="modal-title">📌 Detalhes do Agendamento</h2>
 
@@ -541,7 +546,7 @@ export default function MyContractsPage() {
                         {showReschedule && (
                             <div style={{ padding: '14px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', marginBottom: '16px' }}>
                                 <h4 style={{ fontSize: '0.875rem', fontWeight: 700, marginBottom: '10px' }}>🔄 Reagendar</h4>
-                                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '10px' }}>Máx. 7 dias · Mesma faixa ({detailBooking.tierApplied})</p>
+                                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '12px' }}>Máx. {getRule('reschedule_max_days')} dias · Mesma faixa ({detailBooking.tierApplied})</p>
                                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                                     <input type="date" className="form-input" value={rescheduleDate}
                                         onChange={e => setRescheduleDate(e.target.value)}
@@ -576,7 +581,7 @@ export default function MyContractsPage() {
                             </div>
                         </div>
                     </div>
-                </div>
+                </ModalOverlay>
             )}
 
             {/* Contract Wizard Modal */}
@@ -585,6 +590,10 @@ export default function MyContractsPage() {
                     pricing={pricing}
                     onClose={() => setShowWizard(false)}
                     onComplete={() => { loadData(); setShowWizard(false); showToast('Novo contrato criado!'); }}
+                    onOpenCustom={() => {
+                        setShowWizard(false);
+                        setShowCustomWizard(true);
+                    }}
                 />
             )}
 
@@ -608,7 +617,7 @@ export default function MyContractsPage() {
 
             {/* Cancel Contract Modal */}
             {showCancelModalFor && (
-                <div className="modal-overlay" onClick={e => !cancellingContract && e.target === e.currentTarget && setShowCancelModalFor(null)}>
+                <ModalOverlay onClose={() => setShowCancelModalFor(null)} preventClose={cancellingContract}>
                     <div className="modal" style={{ maxWidth: 400 }}>
                         <div style={{ textAlign: 'center', marginBottom: '20px' }}>
                             <div style={{ fontSize: '3rem', marginBottom: '10px' }}>⚠️</div>
@@ -629,12 +638,12 @@ export default function MyContractsPage() {
                             </button>
                         </div>
                     </div>
-                </div>
+                </ModalOverlay>
             )}
 
             {/* Social Service Checkout Modal */}
             {showSocialModal && socialAddon && (
-                <div className="modal-overlay" onClick={e => !subscribingSocial && e.target === e.currentTarget && setShowSocialModal(false)}>
+                <ModalOverlay onClose={() => setShowSocialModal(false)} preventClose={subscribingSocial}>
                     <div className="modal" style={{ maxWidth: 460 }}>
                         <div style={{ textAlign: 'center', marginBottom: '20px' }}>
                             <div style={{ fontSize: '3rem', marginBottom: '10px' }}>🚀</div>
@@ -648,7 +657,7 @@ export default function MyContractsPage() {
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '24px' }}>
                             {[3, 6].map((dur) => {
                                 const isSel = socialDuration === dur;
-                                const discountPct = dur === 6 ? 40 : 30;
+                                const discountPct = dur === 6 ? getRule('service_discount_6months') : getRule('service_discount_3months');
                                 return (
                                     <div key={dur} onClick={() => setSocialDuration(dur as 3 | 6)} style={{
                                         border: `2px solid ${isSel ? 'var(--accent-primary)' : 'var(--border-subtle)'}`,
@@ -670,12 +679,15 @@ export default function MyContractsPage() {
                         
                         {(() => {
                             const monthlyBase = socialAddon.price;
-                            const discountPct = socialDuration === 6 ? 40 : 30;
+                            const discountPct = socialDuration === 6 ? getRule('service_discount_6months') : getRule('service_discount_3months');
                             const monthlyDiscounted = Math.round(monthlyBase * (1 - discountPct / 100));
                             const subtotal = monthlyDiscounted * socialDuration;
                             
-                            const pixTotal = Math.round(subtotal * 0.9);
-                            const cardRate = socialDuration === 3 ? 1.15 : 1.20;
+                            const pixExtra = getRule('pix_extra_discount_pct');
+                            const card3xFee = getRule('card_fee_3x_pct');
+                            const card6xFee = getRule('card_fee_6x_pct');
+                            const pixTotal = Math.round(subtotal * (1 - pixExtra / 100));
+                            const cardRate = socialDuration === 3 ? (1 + card3xFee / 100) : (1 + card6xFee / 100);
                             const cardTotal = Math.round(subtotal * cardRate);
 
                             return (
@@ -697,45 +709,35 @@ export default function MyContractsPage() {
                                         2. Forma de Pagamento Única
                                     </div>
 
-                                    {/* PIX */}
-                                    <div onClick={() => setSocialPayment('PIX')}
-                                        style={{
-                                            padding: '12px 14px', borderRadius: 'var(--radius-sm)', marginBottom: '10px', cursor: 'pointer',
-                                            background: socialPayment === 'PIX' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(34, 197, 94, 0.04)',
-                                            border: `2px solid ${socialPayment === 'PIX' ? '#22c55e' : 'rgba(34, 197, 94, 0.2)'}`,
-                                            transition: 'all 0.2s ease',
-                                        }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <div>
-                                                <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>🟢 PIX (-10% Extra)</div>
-                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Pagamento à vista</div>
-                                            </div>
-                                            <div style={{ textAlign: 'right' }}>
-                                                <div style={{ fontSize: '1.125rem', fontWeight: 800, color: '#22c55e' }}>{formatBRL(pixTotal)}</div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Cartão/Débito */}
-                                    <div onClick={() => setSocialPayment('CARTAO')}
-                                        style={{
-                                            padding: '12px 14px', borderRadius: 'var(--radius-sm)', marginBottom: '24px', cursor: 'pointer',
-                                            background: socialPayment === 'CARTAO' ? 'rgba(139, 92, 246, 0.08)' : 'var(--bg-secondary)',
-                                            border: `2px solid ${socialPayment === 'CARTAO' ? 'var(--accent-primary)' : 'var(--border-subtle)'}`,
-                                            transition: 'all 0.2s ease',
-                                        }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <div>
-                                                <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>💳 Cartão em até {socialDuration}x</div>
-                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>+ {Math.round((cardRate - 1) * 100)}% Tx. de Parcelamento</div>
-                                            </div>
-                                            <div style={{ textAlign: 'right' }}>
-                                                <div style={{ fontSize: '1.125rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                                                    {socialDuration}x de {formatBRL(Math.round(cardTotal / socialDuration))}<span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>/mês</span>
+                                    {/* Payment Method Cards */}
+                                    {getPaymentMethods().map(pm => {
+                                        const isSelected = socialPayment === pm.key;
+                                        return (
+                                            <div key={pm.key} onClick={() => setSocialPayment(pm.key as 'PIX' | 'CARTAO' | 'BOLETO')}
+                                                style={{
+                                                    padding: '12px 14px', borderRadius: 'var(--radius-sm)', marginBottom: '10px', cursor: 'pointer',
+                                                    background: isSelected ? pm.bgActive : pm.bgInactive,
+                                                    border: `2px solid ${isSelected ? pm.borderActive : pm.borderInactive}`,
+                                                    transition: 'all 0.2s ease',
+                                                }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <div>
+                                                        <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>{pm.emoji} {pm.key === 'PIX' ? `${pm.label} (-${pixExtra}% Extra)` : `${pm.label} em até ${socialDuration}x`}</div>
+                                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{pm.key === 'PIX' ? 'Pagamento à vista' : `+ ${Math.round((cardRate - 1) * 100)}% Tx. de Parcelamento`}</div>
+                                                    </div>
+                                                    <div style={{ textAlign: 'right' }}>
+                                                        {pm.key === 'PIX' ? (
+                                                            <div style={{ fontSize: '1.125rem', fontWeight: 800, color: pm.color }}>{formatBRL(pixTotal)}</div>
+                                                        ) : (
+                                                            <div style={{ fontSize: '1.125rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                                                                {socialDuration}x de {formatBRL(Math.round(cardTotal / socialDuration))}<span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>/mês</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    </div>
+                                        );
+                                    })}
                                 </>
                             );
                         })()}
@@ -749,7 +751,15 @@ export default function MyContractsPage() {
                             </button>
                         </div>
                     </div>
-                </div>
+                </ModalOverlay>
+            )}
+            {/* Custom Contract Wizard Modal */}
+            {showCustomWizard && (
+                <CustomContractWizard
+                    pricing={pricing}
+                    onClose={() => setShowCustomWizard(false)}
+                    onComplete={loadData}
+                />
             )}
         </div>
     );
@@ -783,6 +793,9 @@ function ContractCard({ contract: c, planConfig, allAddons, expanded, onToggle, 
 
     const isAvulso = c.type === 'FLEX' && c.durationMonths === 1;
 
+    const daysLeft = Math.ceil((new Date(c.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    const isExpiring = c.status === 'ACTIVE' && !isAvulso && daysLeft >= 0 && daysLeft <= 15;
+
     return (
         <div className="card" style={{ position: 'relative', overflow: 'hidden', padding: 0 }}>
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: c.type === 'FIXO' ? 'var(--tier-sabado)' : isAvulso ? 'var(--tier-comercial)' : 'var(--tier-audiencia)' }} />
@@ -799,8 +812,8 @@ function ContractCard({ contract: c, planConfig, allAddons, expanded, onToggle, 
                             {isAvulso ? (
                                 <span className="badge badge-active">🎫 AVULSO</span>
                             ) : (
-                                <span className={`badge ${c.type === 'FIXO' ? 'badge-confirmed' : 'badge-reserved'}`}>
-                                    {c.type === 'FIXO' ? '📌 Plano Fixo' : '🔄 Plano Flex'}
+                                <span className={`badge ${c.type === 'FIXO' ? 'badge-confirmed' : c.type === 'CUSTOM' ? 'badge-reserved' : 'badge-reserved'}`}>
+                                    {c.type === 'FIXO' ? '📌 Plano Fixo' : c.type === 'CUSTOM' ? '🎨 Personalizado' : '🔄 Plano Flex'}
                                 </span>
                             )}
                             <span className={`badge badge-${c.tier.toLowerCase()}`}>{c.tier}</span>
@@ -808,10 +821,15 @@ function ContractCard({ contract: c, planConfig, allAddons, expanded, onToggle, 
                                 isArchived ? (
                                     <span className="badge" style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border-default)' }}>FINALIZADO</span>
                                 ) : (
-                                    <span className="badge badge-active">ATIVO</span>
+                                    <>
+                                        <span className="badge badge-active">ATIVO</span>
+                                        {isExpiring && <span className="badge" style={{ background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A' }}>⚠️ VENCE EM {daysLeft} DIAS</span>}
+                                    </>
                                 )
                             ) : c.status === 'PENDING_CANCELLATION' ? (
                                 <span className="badge" style={{ background: '#FFF8E1', color: '#F57F17', border: '1px solid #FFE082' }}>AGUARDANDO CANCELAMENTO</span>
+                            ) : c.status === 'PAUSED' ? (
+                                <span className="badge badge-paused">⏸️ PAUSADO</span>
                             ) : (
                                 <span className="badge badge-cancelled">{c.status === 'EXPIRED' ? 'EXPIRADO' : 'CANCELADO'}</span>
                             )}
@@ -850,6 +868,25 @@ function ContractCard({ contract: c, planConfig, allAddons, expanded, onToggle, 
                     </div>
                 </div>
 
+                {/* Paused Banner */}
+                {c.status === 'PAUSED' && (
+                    <div style={{ background: 'rgba(217, 119, 6, 0.1)', border: '1px solid rgba(217, 119, 6, 0.2)', borderLeft: '3px solid #d97706', padding: '12px 16px', margin: '0 24px 16px 24px', borderRadius: 'var(--radius-sm)' }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                            <span style={{ fontSize: '1.25rem' }}>⏸️</span>
+                            <div>
+                                <h4 style={{ fontSize: '0.875rem', fontWeight: 700, color: '#d97706', marginBottom: '4px' }}>Contrato Pausado</h4>
+                                <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+                                    <strong>Motivo:</strong> {c.pauseReason || 'Não informado'}<br/>
+                                    <strong>Retorno Previsto:</strong> {c.resumeDate ? new Date(c.resumeDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'Indefinido'}
+                                </p>
+                                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '8px', fontStyle: 'italic' }}>
+                                    Durante a pausa, novos agendamentos estão bloqueados. Retornaremos sua vigência acrescida dos dias parados.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Consumption bar or Cancelled Stats */}
                 {isCancelled ? (
                     <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '12px', marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -882,8 +919,29 @@ function ContractCard({ contract: c, planConfig, allAddons, expanded, onToggle, 
                             {totalBookings - usedBookingsCount} restantes · {usedPct}% utilizado
                         </div>
                         
-                        {/* Independent Addon Progress Bars */}
-                        {c.addOns?.filter(key => key !== 'GESTAO_SOCIAL').map(addonKey => {
+                        {/* Custom Contract Addon Progress Bars */}
+                        {c.addonUsage && Object.entries(c.addonUsage).map(([addonKey, usage]) => {
+                            const addonName = allAddons.find(a => a.key === addonKey)?.name || addonKey;
+                            const usedAddonPct = usage.limit > 0 ? Math.round((usage.used / usage.limit) * 100) : 0;
+                            return (
+                                <div key={addonKey} style={{ marginTop: '14px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>✨ {addonName}</span>
+                                        <span style={{ fontSize: '0.75rem', fontWeight: 700 }}>{usage.used} / {usage.limit} entregues (Ciclo Atual)</span>
+                                    </div>
+                                    <div style={{ height: 6, borderRadius: 3, background: 'var(--bg-elevated)', overflow: 'hidden' }}>
+                                        <div style={{
+                                            height: '100%', borderRadius: 3,
+                                            background: usedAddonPct >= 100 ? 'var(--tier-audiencia)' : 'var(--accent-primary)',
+                                            width: `${Math.min(usedAddonPct, 100)}%`, transition: 'width 0.5s ease',
+                                        }} />
+                                    </div>
+                                </div>
+                            );
+                        })}
+
+                        {/* Legacy Fixed/Flex Addons */}
+                        {!c.addonUsage && c.addOns?.filter(key => key !== 'GESTAO_SOCIAL').map(addonKey => {
                             const addonName = allAddons.find(a => a.key === addonKey)?.name || addonKey;
                             const usedAddonCount = bookings.filter(b => b.status !== 'NAO_REALIZADO' && b.status !== 'CANCELLED' && b.addOns?.includes(addonKey)).length;
                             const usedAddonPct = totalBookings > 0 ? Math.round((usedAddonCount / totalBookings) * 100) : 0;
@@ -952,7 +1010,7 @@ function ContractCard({ contract: c, planConfig, allAddons, expanded, onToggle, 
                                                 <span style={{ color: 'var(--text-secondary)' }}>{b.startTime} — {b.endTime}</span>
                                             </div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                {canModify(b) && <span style={{ fontSize: '0.65rem', color: 'var(--tier-audiencia)' }}>✏️ Gerenciar</span>}
+                                                {canModify(b) && c.status !== 'PAUSED' && <span style={{ fontSize: '0.65rem', color: 'var(--tier-audiencia)' }}>✏️ Gerenciar</span>}
                                                 <span style={{ fontSize: '0.75rem' }}>{statusLabel(b.status)}</span>
                                             </div>
                                         </div>
@@ -996,8 +1054,14 @@ function ContractCard({ contract: c, planConfig, allAddons, expanded, onToggle, 
                         )}
                     </div>
 
-                    {c.status === 'ACTIVE' && (onRequestCancel || onBulkBooking) && (
+                    {c.status === 'ACTIVE' && (
                         <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap' }}>
+                            {isExpiring && (
+                                <button className="btn btn-primary" style={{ fontSize: '0.75rem', padding: '6px 12px', background: 'var(--tier-comercial)', borderColor: 'var(--tier-comercial)', boxShadow: '0 4px 12px rgba(109, 40, 217, 0.3)' }}
+                                    onClick={(e) => { e.stopPropagation(); window.open(`https://wa.me/5521999999999?text=${encodeURIComponent(`Olá, meu contrato de ${c.durationMonths} meses (Plano ${c.tier}) está vencendo e quero renovar!`)}`, '_blank'); }}>
+                                    🔄 Renovar Contrato
+                                </button>
+                            )}
                             {c.type === 'FLEX' && (c.flexCreditsRemaining || 0) > 0 && onBulkBooking && (
                                 <button className="btn btn-primary" style={{ fontSize: '0.75rem', padding: '6px 12px' }}
                                     onClick={(e) => { e.stopPropagation(); onBulkBooking(); }}>

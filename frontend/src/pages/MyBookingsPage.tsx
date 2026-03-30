@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { bookingsApi, Booking } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { useUI } from '../context/UIContext';
 
 const PLATFORMS = [
     { key: 'YOUTUBE', label: '▶️ YouTube', color: '#FF0000' },
@@ -20,7 +21,8 @@ export default function MyBookingsPage() {
     const [loading, setLoading] = useState(true);
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
-    const [toast, setToast] = useState('');
+    
+    const { showAlert, showToast } = useUI();
 
     // Detail state
     const [clientNotes, setClientNotes] = useState('');
@@ -72,10 +74,9 @@ export default function MyBookingsPage() {
                 platforms: JSON.stringify(platforms),
                 platformLinks: JSON.stringify(platformLinks),
             });
-            setToast('Gravação atualizada com sucesso!');
-            setTimeout(() => setToast(''), 3000);
+            showToast('Gravação atualizada com sucesso!');
             await loadBookings();
-        } catch (err: any) { alert(err.message); }
+        } catch (err: any) { showAlert({ message: err.message, type: 'error' }); }
         finally { setSaving(false); }
     };
 
@@ -92,9 +93,8 @@ export default function MyBookingsPage() {
         setRescheduling(true); setRescheduleError('');
         try {
             await bookingsApi.reschedule(bookingId, { date: rescheduleDate, startTime: rescheduleTime });
-            setToast('Reagendado com sucesso!');
+            showToast('Reagendado com sucesso!');
             setRescheduleId(null);
-            setTimeout(() => setToast(''), 3000);
             await loadBookings();
         } catch (err: any) { setRescheduleError(err.message); }
         finally { setRescheduling(false); }
@@ -131,18 +131,7 @@ export default function MyBookingsPage() {
                 <p className="page-subtitle">Histórico de sessões finalizadas — gerencie plataformas e links</p>
             </div>
 
-            {toast && (
-                <div style={{
-                    position: 'fixed', top: 24, right: 24, zIndex: 9999,
-                    padding: '12px 20px', borderRadius: 'var(--radius-md)',
-                    background: 'var(--tier-comercial)', color: '#fff',
-                    fontWeight: 600, fontSize: '0.875rem',
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-                    animation: 'slideIn 0.3s ease-out',
-                }}>
-                    ✅ {toast}
-                </div>
-            )}
+
 
             {(() => {
                 const now = Date.now();

@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
+import ModalOverlay from './ModalOverlay';
 import { PricingConfig, AddOnConfig, bookingsApi, contractsApi, Slot, pricingApi } from '../api/client';
+import { useBusinessConfig } from '../hooks/useBusinessConfig';
+import { getPaymentMethods, type PaymentMethodKey } from '../constants/paymentMethods';
 
 export interface ContractWizardProps {
     pricing: PricingConfig[];
     onClose: () => void;
     onComplete: () => void;
+    onOpenCustom?: () => void;
 }
 
 type WizardStep = 1 | 2 | 3 | 4 | 5 | 6 | 7; // 5=loading, 6=success, 7=conflicts
@@ -21,7 +25,7 @@ function formatBRL(cents: number): string {
     return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
 }
 
-export default function ContractWizard({ pricing, onClose, onComplete }: ContractWizardProps) {
+export default function ContractWizard({ pricing, onClose, onComplete, onOpenCustom }: ContractWizardProps) {
     const [step, setStep] = useState<WizardStep>(1);
 
     // Step 1: Tier + Plan selection
@@ -54,20 +58,24 @@ export default function ContractWizard({ pricing, onClose, onComplete }: Contrac
     const [conflicts, setConflicts] = useState<{ date: string, originalTime: string, suggestedReplacement?: { date: string, time: string } }[]>([]);
     const [resolvedConflicts, setResolvedConflicts] = useState<{ originalDate: string, originalTime: string, newDate: string, newTime: string }[]>([]);
 
+    // Business rules from admin config
+    const { get: getRule } = useBusinessConfig();
+
     // Derived
     const tierConfig = pricing.find(p => p.tier === selectedTier);
     const basePrice = tierConfig?.price || 0;
     const duration = selectedPlan === '6MESES' ? 6 : 3;
-    const discountPct = selectedPlan === '6MESES' ? 40 : 30;
+    const discountPct = selectedPlan === '6MESES' ? getRule('discount_6months') : getRule('discount_3months');
+    const sessionsPerMonth = getRule('sessions_per_month');
     const discountedPrice = Math.round(basePrice * (1 - discountPct / 100));
-    const totalGravacoes = duration * 4;
+    const totalGravacoes = duration * sessionsPerMonth;
 
     const baseAddonsTotal = selectedAddons.reduce((acc, key) => {
         const addon = addons.find(a => a.key === key);
         return acc + (addon ? addon.price : 0);
     }, 0);
     const discountedAddonsTotal = Math.round(baseAddonsTotal * (1 - discountPct / 100));
-    const monthlyTotal = (4 * discountedPrice) + discountedAddonsTotal;
+    const monthlyTotal = (sessionsPerMonth * discountedPrice) + discountedAddonsTotal;
 
     // Generate 14 days ahead
     const now = new Date();
@@ -174,7 +182,7 @@ export default function ContractWizard({ pricing, onClose, onComplete }: Contrac
     const progressSteps = step >= 5 && step !== 7 ? 4 : step;
 
     return (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+        <ModalOverlay onClose={onClose}>
             <div className="modal" style={{ maxWidth: 720, width: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
                 {/* Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
@@ -314,6 +322,31 @@ export default function ContractWizard({ pricing, onClose, onComplete }: Contrac
                                 </button>
                             </div>
                         </div>
+
+                        {/* Custom Plan Shortcut */}
+                        {onOpenCustom && (
+                            <div onClick={() => { onClose(); onOpenCustom(); }}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: '14px',
+                                    padding: '14px 16px', borderRadius: 'var(--radius-md)', cursor: 'pointer',
+                                    background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.06) 0%, rgba(34, 197, 94, 0.06) 100%)',
+                                    border: '1px dashed rgba(139, 92, 246, 0.35)',
+                                    marginBottom: '20px', transition: 'all 0.2s ease',
+                                }}
+                                onMouseOver={e => { e.currentTarget.style.borderColor = 'var(--accent-primary)'; e.currentTarget.style.background = 'linear-gradient(135deg, rgba(139, 92, 246, 0.12) 0%, rgba(34, 197, 94, 0.1) 100%)'; }}
+                                onMouseOut={e => { e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.35)'; e.currentTarget.style.background = 'linear-gradient(135deg, rgba(139, 92, 246, 0.06) 0%, rgba(34, 197, 94, 0.06) 100%)'; }}>
+                                <div style={{ fontSize: '1.5rem', lineHeight: 1 }}>🎨</div>
+                                <div style={{ flex: 1 }}>
+                                    <div style={{ fontWeight: 700, fontSize: '0.8125rem', color: 'var(--accent-primary)', marginBottom: '2px' }}>
+                                        Precisa de mais flexibilidade?
+                                    </div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                        Monte um plano personalizado com múltiplos dias, serviços sob demanda e descontos progressivos.
+                                    </div>
+                                </div>
+                                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent-primary)', whiteSpace: 'nowrap' }}>Configurar ➔</div>
+                            </div>
+                        )}
 
                         <div className="modal-actions">
                             <button className="btn btn-primary" style={{ width: '100%' }}
@@ -548,7 +581,7 @@ export default function ContractWizard({ pricing, onClose, onComplete }: Contrac
                                     {selectedAddons.map(key => {
                                         const addon = addons.find(a => a.key === key);
                                         if(!addon) return null;
-                                        const discountedMonthly = Math.round((addon.price * 4) * (1 - discountPct / 100));
+                                        const discountedMonthly = Math.round((addon.price * sessionsPerMonth) * (1 - discountPct / 100));
                                         return (
                                             <div key={key} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', paddingLeft: '8px' }}>
                                                 <span style={{ color: 'var(--text-primary)', fontSize: '0.8125rem' }}>• {addon.name}</span>
@@ -578,65 +611,51 @@ export default function ContractWizard({ pricing, onClose, onComplete }: Contrac
                         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '20px', marginBottom: '20px' }}>
                             <div style={{ fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '14px' }}>Opções de Pagamento (Formato Final)</div>
 
-                            {/* PIX */}
-                            <div onClick={() => setPaymentMethod('PIX')}
-                                style={{
-                                    padding: '12px 14px', borderRadius: 'var(--radius-sm)', marginBottom: '10px', cursor: 'pointer',
-                                    background: paymentMethod === 'PIX' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(34, 197, 94, 0.04)',
-                                    border: `2px solid ${paymentMethod === 'PIX' ? '#22c55e' : 'rgba(34, 197, 94, 0.2)'}`,
-                                    transition: 'all 0.2s ease',
-                                }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <div>
-                                        <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>🟢 PIX à vista <span style={{ background: '#22c55e', color: '#fff', fontSize: '0.5625rem', padding: '2px 6px', borderRadius: '6px', marginLeft: '6px', fontWeight: 700 }}>-10%</span></div>
-                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Desconto aplicado no valor do contrato completo</div>
-                                    </div>
-                                    <div style={{ textAlign: 'right' }}>
-                                        <div style={{ fontWeight: 800, fontSize: '1rem', color: '#22c55e' }}>{formatBRL(Math.round(monthlyTotal * duration * 0.9))}</div>
-                                        <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', textDecoration: 'line-through' }}>{formatBRL(monthlyTotal * duration)}</div>
-                                    </div>
-                                </div>
-                            </div>
+                            {/* Payment Method Cards */}
+                            {getPaymentMethods().map(pm => {
+                                const isSelected = paymentMethod === pm.key;
+                                let displayPrice = '';
+                                let subPrice = '';
+                                let badge: React.ReactNode = null;
+                                let desc = '';
 
-                            {/* Cartão de Crédito */}
-                            <div onClick={() => setPaymentMethod('CARTAO')}
-                                style={{
-                                    padding: '12px 14px', borderRadius: 'var(--radius-sm)', marginBottom: '10px', cursor: 'pointer',
-                                    background: paymentMethod === 'CARTAO' ? 'rgba(139, 92, 246, 0.08)' : 'var(--bg-secondary)',
-                                    border: `2px solid ${paymentMethod === 'CARTAO' ? 'var(--accent-primary)' : 'var(--border-subtle)'}`,
-                                    transition: 'all 0.2s ease',
-                                }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <div>
-                                        <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>💳 Cartão em {duration}x <span style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)', fontSize: '0.5625rem', padding: '2px 6px', borderRadius: '6px', marginLeft: '6px', fontWeight: 700 }}>+15% TAXA</span></div>
-                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Valor total com acréscimo da operadora</div>
-                                    </div>
-                                    <div style={{ textAlign: 'right' }}>
-                                        <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--accent-primary)' }}>{duration}x {formatBRL(Math.round(monthlyTotal * 1.15))}</div>
-                                        <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>Total: {formatBRL(Math.round(monthlyTotal * duration * 1.15))}</div>
-                                    </div>
-                                </div>
-                            </div>
+                                if (pm.key === 'PIX') {
+                                    displayPrice = formatBRL(Math.round(monthlyTotal * duration * 0.9));
+                                    subPrice = formatBRL(monthlyTotal * duration);
+                                    badge = <span style={{ background: '#22c55e', color: '#fff', fontSize: '0.5625rem', padding: '2px 6px', borderRadius: '6px', marginLeft: '6px', fontWeight: 700 }}>-10%</span>;
+                                    desc = 'Desconto aplicado no valor do contrato completo';
+                                } else if (pm.key === 'CARTAO') {
+                                    displayPrice = `${duration}x ${formatBRL(Math.round(monthlyTotal * 1.15))}`;
+                                    subPrice = `Total: ${formatBRL(Math.round(monthlyTotal * duration * 1.15))}`;
+                                    badge = <span style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)', fontSize: '0.5625rem', padding: '2px 6px', borderRadius: '6px', marginLeft: '6px', fontWeight: 700 }}>+15% TAXA</span>;
+                                    desc = 'Valor total com acréscimo da operadora';
+                                } else {
+                                    displayPrice = `${duration}x ${formatBRL(monthlyTotal)}`;
+                                    subPrice = `Total: ${formatBRL(monthlyTotal * duration)}`;
+                                    desc = 'Sem juros mensais. 1º vencimento no envio do contrato';
+                                }
 
-                            {/* Boleto */}
-                            <div onClick={() => setPaymentMethod('BOLETO')}
-                                style={{
-                                    padding: '12px 14px', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
-                                    background: paymentMethod === 'BOLETO' ? 'rgba(139, 92, 246, 0.08)' : 'var(--bg-secondary)',
-                                    border: `2px solid ${paymentMethod === 'BOLETO' ? 'var(--accent-primary)' : 'var(--border-subtle)'}`,
-                                    transition: 'all 0.2s ease',
-                                }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <div>
-                                        <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>📄 Boleto Mensal</div>
-                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Sem juros mensais. 1º vencimento no envio do contrato</div>
+                                return (
+                                    <div key={pm.key} onClick={() => setPaymentMethod(pm.key as 'CARTAO' | 'PIX' | 'BOLETO')}
+                                        style={{
+                                            padding: '12px 14px', borderRadius: 'var(--radius-sm)', marginBottom: '10px', cursor: 'pointer',
+                                            background: isSelected ? pm.bgActive : pm.bgInactive,
+                                            border: `2px solid ${isSelected ? pm.borderActive : pm.borderInactive}`,
+                                            transition: 'all 0.2s ease',
+                                        }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <div>
+                                                <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>{pm.emoji} {pm.accessMode === 'FULL' && pm.key === 'PIX' ? `${pm.label} à vista` : pm.accessMode === 'FULL' ? `${pm.shortLabel} em ${duration}x` : `${pm.label} Mensal`} {badge}</div>
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{desc}</div>
+                                            </div>
+                                            <div style={{ textAlign: 'right' }}>
+                                                <div style={{ fontWeight: 800, fontSize: '1rem', color: pm.color }}>{displayPrice}</div>
+                                                <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', textDecoration: pm.key === 'PIX' ? 'line-through' : 'none' }}>{subPrice}</div>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div style={{ textAlign: 'right' }}>
-                                        <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-primary)' }}>{duration}x {formatBRL(monthlyTotal)}</div>
-                                        <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>Total: {formatBRL(monthlyTotal * duration)}</div>
-                                    </div>
-                                </div>
-                            </div>
+                                );
+                            })}
                         </div>
 
                         {/* Terms */}
@@ -722,6 +741,6 @@ export default function ContractWizard({ pricing, onClose, onComplete }: Contrac
                 )}
 
             </div>
-        </div>
+        </ModalOverlay>
     );
 }

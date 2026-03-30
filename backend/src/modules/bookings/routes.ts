@@ -13,8 +13,11 @@ import {
     getPackageSlots,
     calculateEndTime,
     fitsInOperatingHours,
+    isOperatingDay,
+    getSlotDuration,
 } from '../../utils/pricing';
 import { BookingStatus, Tier } from '@prisma/client';
+import { getConfig } from '../../lib/businessConfig';
 
 const router = Router();
 
@@ -26,7 +29,7 @@ const availabilitySchema = z.object({
 
 const createBookingSchema = z.object({
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de data inválido'),
-    startTime: z.string().regex(/^\d{2}:\d{2}$/, 'Formato de hora inválido (HH:MM)').refine(val => generateTimeSlots().includes(val), 'Horário deve ser um dos blocos oficiais (10:00, 13:00, 15:30, 18:00, 20:30).'),
+    startTime: z.string().regex(/^\d{2}:\d{2}$/, 'Formato de hora inválido (HH:MM)'),
     contractId: z.string().uuid().optional(),
     addOns: z.array(z.string()).optional(),
 });
@@ -35,7 +38,7 @@ const bulkBookingSchema = z.object({
     contractId: z.string().uuid(),
     slots: z.array(z.object({
         date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de data inválido'),
-        startTime: z.string().regex(/^\d{2}:\d{2}$/, 'Formato de hora inválido (HH:MM)').refine(val => generateTimeSlots().includes(val), 'Horário deve ser um dos blocos oficiais.'),
+        startTime: z.string().regex(/^\d{2}:\d{2}$/, 'Formato de hora inválido (HH:MM)'),
     })).min(1, 'Pelo menos um horário deve ser selecionado').max(24, 'Máximo de 24 marcações por vez'),
 });
 
@@ -58,7 +61,7 @@ router.get('/public-availability', async (req: Request, res: Response) => {
             const dateStr = dateObj.toISOString().split('T')[0];
             const dayOfWeek = dateObj.getUTCDay();
 
-            if (dayOfWeek === 0) {
+            if (!(await isOperatingDay(dayOfWeek))) {
                 result.push({ date: dateStr, dayOfWeek, closed: true, slots: [] });
                 continue;
             }
@@ -91,13 +94,14 @@ router.get('/public-availability', async (req: Request, res: Response) => {
                 }
             }
 
-            const allSlots = generateTimeSlots();
-            const availability = allSlots.map(slot => {
-                const tier = getSlotTier(dayOfWeek, slot);
-                const packageSlots = getPackageSlots(slot, 2);
+            const allSlots = await generateTimeSlots();
+            const slotDuration = await getSlotDuration();
+            const availability = await Promise.all(allSlots.map(async slot => {
+                const tier = await getSlotTier(dayOfWeek, slot);
+                const packageSlots = getPackageSlots(slot, slotDuration);
                 const isBlocked = packageSlots.some(s => occupiedSlots.has(s));
                 return { time: slot, available: !isBlocked && tier !== null, tier };
-            });
+            }));
 
             result.push({ date: dateStr, dayOfWeek, closed: false, slots: availability });
         }
@@ -120,8 +124,8 @@ router.get('/availability', authenticate, async (req: Request, res: Response) =>
         const dateObj = new Date(date + 'T00:00:00');
         const dayOfWeek = dateObj.getUTCDay(); // 0=Sun, 6=Sat
 
-        // Sunday = closed
-        if (dayOfWeek === 0) {
+        // Check operating day
+        if (!(await isOperatingDay(dayOfWeek))) {
             res.json({ date, closed: true, slots: [] });
             return;
         }
@@ -166,9 +170,9 @@ router.get('/availability', authenticate, async (req: Request, res: Response) =>
         }
 
         // Generate all slots for the day
-        const allSlots = generateTimeSlots();
+        const allSlots = await generateTimeSlots();
         const availability = await Promise.all(allSlots.map(async slot => {
-            const tier = getSlotTier(dayOfWeek, slot);
+            const tier = await getSlotTier(dayOfWeek, slot);
             const packageSlots = getPackageSlots(slot, 2);
             const isBlocked = packageSlots.some(s => occupiedSlots.has(s));
             const available = !isBlocked && tier !== null;
@@ -216,26 +220,34 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
 
         // Validate: Past Time Booking Check
         const slotDateTime = new Date(`${data.date}T${data.startTime}:00`);
+        const minAdvanceMinutes = await getConfig('booking_min_advance_minutes');
         const diffMinutes = (slotDateTime.getTime() - Date.now()) / (1000 * 60);
-        if (diffMinutes < 30) {
-            res.status(400).json({ error: 'Não é possível agendar um horário no passado ou com menos de 30 minutos de antecedência.' });
+        if (diffMinutes < minAdvanceMinutes) {
+            res.status(400).json({ error: `Não é possível agendar um horário no passado ou com menos de ${minAdvanceMinutes} minutos de antecedência.` });
             return;
         }
 
-        // Validate: not Sunday
-        if (dayOfWeek === 0) {
-            res.status(400).json({ error: 'O estúdio não funciona aos domingos.' });
+        // Validate: operating day
+        if (!(await isOperatingDay(dayOfWeek))) {
+            res.status(400).json({ error: 'O estúdio não funciona neste dia da semana.' });
             return;
         }
 
-        // Validate: fits in operating hours (2h package)
-        if (!fitsInOperatingHours(data.startTime)) {
-            res.status(400).json({ error: 'O pacote de 2h não cabe dentro do horário de funcionamento.' });
+        // Validate: valid slot
+        const validSlots = await generateTimeSlots();
+        if (!validSlots.includes(data.startTime)) {
+            res.status(400).json({ error: `Horário deve ser um dos blocos oficiais: ${validSlots.join(', ')}.` });
+            return;
+        }
+
+        // Validate: fits in operating hours
+        if (!(await fitsInOperatingHours(data.startTime))) {
+            res.status(400).json({ error: 'O pacote não cabe dentro do horário de funcionamento.' });
             return;
         }
 
         // Determine tier of the entry slot
-        const slotTier = getSlotTier(dayOfWeek, data.startTime);
+        const slotTier = await getSlotTier(dayOfWeek, data.startTime);
         if (!slotTier) {
             res.status(400).json({ error: 'Horário fora da grade de operação.' });
             return;
@@ -280,7 +292,8 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                 const usedBookings = contract.bookings.filter((b: any) =>
                     b.status === 'COMPLETED' || b.status === 'CONFIRMED' || b.status === 'FALTA' || b.status === 'RESERVED'
                 ).length;
-                if (usedBookings >= (contract.durationMonths * 4)) {
+                const sessionsPerMonthBooking = await getConfig('sessions_per_month');
+                if (usedBookings >= (contract.durationMonths * sessionsPerMonthBooking)) {
                     res.status(400).json({ error: 'Limite de agendamentos do plano fixo atingido.' });
                     return;
                 }
@@ -362,12 +375,17 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                 finalContractId = newContract.id;
                 isAvulsoCreated = true;
             } else {
-                // If Flex contract, decrement credits
+                // Decrement credits based on contract type
                 const contract = await prisma.contract.findUnique({ where: { id: finalContractId } });
                 if (contract?.type === 'FLEX' && (contract.flexCreditsRemaining || 0) > 0) {
                     await prisma.contract.update({
                         where: { id: finalContractId },
                         data: { flexCreditsRemaining: contract.flexCreditsRemaining! - 1 },
+                    });
+                } else if (contract?.type === 'CUSTOM' && (contract.customCreditsRemaining || 0) > 0) {
+                    await prisma.contract.update({
+                        where: { id: finalContractId },
+                        data: { customCreditsRemaining: contract.customCreditsRemaining! - 1 },
                     });
                 }
             }
@@ -452,12 +470,13 @@ router.post('/bulk', authenticate, async (req: Request, res: Response) => {
 
                 // Validate: Past Time Booking Check
                 const slotDateTime = new Date(`${slot.date}T${slot.startTime}:00`);
+                const bulkMinAdvance = await getConfig('booking_min_advance_minutes');
                 const diffMinutes = (slotDateTime.getTime() - Date.now()) / (1000 * 60);
-                if (diffMinutes < 30) {
-                    throw new Error(`Não é possível agendar o horário ${slot.startTime} no dia ${slot.date} (antecedência mínima de 30 minutos não respeitada).`);
+                if (diffMinutes < bulkMinAdvance) {
+                    throw new Error(`Não é possível agendar o horário ${slot.startTime} no dia ${slot.date} (antecedência mínima de ${bulkMinAdvance} minutos não respeitada).`);
                 }
 
-                const slotTier = getSlotTier(dayOfWeek, slot.startTime);
+                const slotTier = await getSlotTier(dayOfWeek, slot.startTime);
                 if (!slotTier) throw new Error(`Horário inválido: ${slot.startTime} em ${slot.date}`);
 
                 if (!canAccessTier(contract.tier, slotTier)) {
@@ -556,6 +575,107 @@ router.patch('/:id/confirm', authenticate, async (req: Request, res: Response) =
     });
 });
 
+// ─── PUT /api/bookings/:id/client-cancel ────────────────
+
+router.put('/:id/client-cancel', authenticate, async (req: Request, res: Response) => {
+    const id = req.params.id as string;
+    const userId = req.user!.userId;
+
+    const booking = await prisma.booking.findFirst({
+        where: { id, userId, status: BookingStatus.CONFIRMED },
+    });
+
+    if (!booking) {
+        res.status(404).json({ error: 'Reserva não encontrada ou já cancelada/concluída.' });
+        return;
+    }
+
+    const now = new Date();
+    // Use proper calculation for 24h before (assume UTC-3 for timezone consistency with fixed slots)
+    const bookingDateTime = new Date(`${booking.date.toISOString().split('T')[0]}T${booking.startTime}:00-03:00`);
+    const diffMs = bookingDateTime.getTime() - now.getTime();
+    const diffHours = diffMs / (1000 * 60 * 60);
+
+    if (diffHours >= 24) {
+        // Cancel with refund
+        await prisma.booking.update({
+            where: { id },
+            data: { status: BookingStatus.CANCELLED },
+        });
+
+        if (booking.contractId) {
+            const contract = await prisma.contract.findUnique({ where: { id: booking.contractId } });
+            if (contract?.type === 'FLEX') {
+                await prisma.contract.update({
+                    where: { id: booking.contractId },
+                    data: { flexCreditsRemaining: (contract.flexCreditsRemaining || 0) + 1 },
+                });
+            } else if (contract?.type === 'CUSTOM') {
+                await prisma.contract.update({
+                    where: { id: booking.contractId },
+                    data: { customCreditsRemaining: { increment: 1 } },
+                });
+            }
+        }
+        res.json({ message: 'Agendamento cancelado com sucesso. O crédito retornou ao seu plano.' });
+    } else {
+        // Cancel without refund (Late cancellation)
+        await prisma.booking.update({
+            where: { id },
+            data: { status: BookingStatus.FALTA },
+        });
+        res.json({ message: 'Agendamento desmarcado. Por causa do aviso prévio menor que 24h, o crédito desta sessão foi consumido.' });
+    }
+});
+
+// ─── PUT /api/bookings/:id/check-in (Admin) ─────────────
+
+router.put('/:id/check-in', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
+    const id = req.params.id as string;
+    const booking = await prisma.booking.findUnique({ where: { id } });
+    if (!booking) { res.status(404).json({ error: 'Agendamento não encontrado.' }); return; }
+    if (booking.status !== 'RESERVED' && booking.status !== 'CONFIRMED') {
+        res.status(400).json({ error: `Não é possível fazer check-in de um agendamento com status ${booking.status}.` }); return;
+    }
+    const updated = await prisma.booking.update({ where: { id }, data: { status: BookingStatus.CONFIRMED } });
+    res.json({ booking: updated, message: '✅ Check-in realizado! Cliente presente.' });
+});
+
+// ─── PUT /api/bookings/:id/complete (Admin) ──────────────
+
+router.put('/:id/complete', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
+    const id = req.params.id as string;
+    const { durationMinutes, peakViewers, chatMessages } = req.body || {};
+    const booking = await prisma.booking.findUnique({ where: { id } });
+    if (!booking) { res.status(404).json({ error: 'Agendamento não encontrado.' }); return; }
+    if (booking.status !== 'CONFIRMED' && booking.status !== 'RESERVED') {
+        res.status(400).json({ error: `Não é possível finalizar um agendamento com status ${booking.status}.` }); return;
+    }
+    const updated = await prisma.booking.update({
+        where: { id },
+        data: {
+            status: BookingStatus.COMPLETED,
+            ...(durationMinutes !== undefined && { durationMinutes }),
+            ...(peakViewers !== undefined && { peakViewers }),
+            ...(chatMessages !== undefined && { chatMessages }),
+        },
+    });
+    res.json({ booking: updated, message: '🏁 Sessão finalizada com sucesso!' });
+});
+
+// ─── PUT /api/bookings/:id/mark-falta (Admin) ───────────
+
+router.put('/:id/mark-falta', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
+    const id = req.params.id as string;
+    const booking = await prisma.booking.findUnique({ where: { id } });
+    if (!booking) { res.status(404).json({ error: 'Agendamento não encontrado.' }); return; }
+    if (booking.status === 'COMPLETED' || booking.status === 'CANCELLED') {
+        res.status(400).json({ error: `Não é possível marcar falta em um agendamento ${booking.status}.` }); return;
+    }
+    const updated = await prisma.booking.update({ where: { id }, data: { status: BookingStatus.FALTA } });
+    res.json({ booking: updated, message: '❌ Sessão marcada como falta (no-show).' });
+});
+
 // ─── DELETE /api/bookings/:id ───────────────────────────
 
 router.delete('/:id', authenticate, async (req: Request, res: Response) => {
@@ -600,6 +720,63 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
     }
 
     res.json({ message: 'Reserva cancelada com sucesso.' });
+});
+
+// ─── DELETE /api/bookings/:id/hard-delete (ADMIN - permanent removal) ─────
+
+router.delete('/:id/hard-delete', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
+    try {
+        const id = req.params.id as string;
+
+        const booking = await prisma.booking.findUnique({
+            where: { id },
+            include: { contract: true },
+        });
+
+        if (!booking) {
+            res.status(404).json({ error: 'Agendamento não encontrado.' });
+            return;
+        }
+
+        // Release Redis locks if applicable
+        if (booking.status === BookingStatus.RESERVED) {
+            const dateStr = booking.date.toISOString().split('T')[0];
+            const packageSlots = getPackageSlots(booking.startTime);
+            await releaseMultiSlotLock(dateStr, packageSlots, booking.userId);
+        }
+
+        // Restore credits if from FLEX or CUSTOM contract (and booking was NOT already cancelled)
+        let creditRestored = false;
+        if (booking.contractId && booking.status !== BookingStatus.CANCELLED) {
+            const contract = booking.contract;
+            if (contract?.type === 'FLEX' && contract.flexCreditsRemaining != null) {
+                await prisma.contract.update({
+                    where: { id: booking.contractId },
+                    data: { flexCreditsRemaining: contract.flexCreditsRemaining + 1 },
+                });
+                creditRestored = true;
+            } else if (contract?.type === 'CUSTOM' && contract.customCreditsRemaining != null) {
+                await prisma.contract.update({
+                    where: { id: booking.contractId },
+                    data: { customCreditsRemaining: contract.customCreditsRemaining + 1 },
+                });
+                creditRestored = true;
+            }
+        }
+
+        // Hard delete from database
+        await prisma.booking.delete({ where: { id } });
+
+        res.json({
+            message: creditRestored
+                ? 'Agendamento removido permanentemente. Crédito devolvido ao contrato.'
+                : 'Agendamento removido permanentemente.',
+            creditRestored,
+        });
+    } catch (err) {
+        console.error('Hard delete booking error:', err);
+        res.status(500).json({ error: 'Erro ao remover agendamento.' });
+    }
 });
 
 // ─── GET /api/bookings/my ───────────────────────────────
@@ -696,6 +873,8 @@ const adminCreateBookingSchema = z.object({
     startTime: z.string().regex(/^\d{2}:\d{2}$/, 'Formato de hora inválido (HH:MM)'),
     status: z.enum(['RESERVED', 'CONFIRMED']).optional().default('CONFIRMED'),
     addOns: z.array(z.string()).optional(),
+    adminNotes: z.string().optional(),
+    customPrice: z.number().int().min(0).optional(),
 });
 
 router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
@@ -704,24 +883,41 @@ router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res
         const dateObj = new Date(data.date + 'T00:00:00');
         const dayOfWeek = dateObj.getUTCDay();
 
-        if (dayOfWeek === 0) {
-            res.status(400).json({ error: 'O estúdio não funciona aos domingos.' });
+        if (!(await isOperatingDay(dayOfWeek))) {
+            res.status(400).json({ error: 'O estúdio não funciona neste dia da semana.' });
             return;
         }
 
-        if (!fitsInOperatingHours(data.startTime)) {
-            res.status(400).json({ error: 'O pacote de 2h não cabe dentro do horário de funcionamento.' });
+        if (!(await fitsInOperatingHours(data.startTime))) {
+            res.status(400).json({ error: 'O pacote não cabe dentro do horário de funcionamento.' });
             return;
         }
 
-        const slotTier = getSlotTier(dayOfWeek, data.startTime);
+        const slotTier = await getSlotTier(dayOfWeek, data.startTime);
         if (!slotTier) {
             res.status(400).json({ error: 'Horário fora da grade de operação.' });
             return;
         }
 
         const endTime = calculateEndTime(data.startTime);
-        let price = await getBasePriceDynamic(slotTier);
+        const basePrice = await getBasePriceDynamic(slotTier);
+        let price: number;
+
+        if (data.customPrice != null) {
+            // Admin explicitly set a custom price
+            price = data.customPrice;
+        } else if (data.contractId) {
+            // Contract-based: per-episode price = basePrice * (100 - discount%) / 100
+            const linkedContract = await prisma.contract.findUnique({ where: { id: data.contractId } });
+            if (linkedContract) {
+                price = Math.round(basePrice * (100 - (linkedContract.discountPct || 0)) / 100);
+            } else {
+                price = basePrice;
+            }
+        } else {
+            // Avulso: full tier price
+            price = basePrice;
+        }
         
         let addonsTotal = 0;
         if (data.addOns && data.addOns.length > 0) {
@@ -790,6 +986,7 @@ router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res
                 tierApplied: slotTier,
                 price,
                 addOns: contract ? Array.from(new Set([...(contract.addOns || []).filter(a => a !== 'GESTAO_SOCIAL'), ...(data.addOns || [])])) : (data.addOns || []),
+                ...(data.adminNotes ? { adminNotes: data.adminNotes } : {}),
             },
         });
 
@@ -896,7 +1093,7 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
         if (data.startTime) {
             const newDate = data.date ? new Date(data.date + 'T00:00:00') : booking.date;
             const dayOfWeek = newDate.getUTCDay();
-            const slotTier = getSlotTier(dayOfWeek, data.startTime);
+            const slotTier = await getSlotTier(dayOfWeek, data.startTime);
             if (!slotTier) {
                 res.status(400).json({ error: 'Horário fora da grade de operação.' });
                 return;
@@ -998,7 +1195,7 @@ router.patch('/:id/client-update', authenticate, async (req: Request, res: Respo
 
 const rescheduleSchema = z.object({
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de data inválido'),
-    startTime: z.string().regex(/^\d{2}:\d{2}$/, 'Formato de hora inválido').refine(val => generateTimeSlots().includes(val), 'Horário deve ser um dos blocos oficiais.'),
+    startTime: z.string().regex(/^\d{2}:\d{2}$/, 'Formato de hora inválido'),
 });
 
 router.patch('/:id/reschedule', authenticate, async (req: Request, res: Response) => {
@@ -1015,40 +1212,42 @@ router.patch('/:id/reschedule', authenticate, async (req: Request, res: Response
             return;
         }
 
-        // Rule 1: Must be at least 24h before the original booking
+        // Rule 1: Must be at least configured hours before the original booking
         const originalDateTime = new Date(booking.date);
         const [origH, origM] = booking.startTime.split(':').map(Number);
         originalDateTime.setUTCHours(origH, origM, 0, 0);
         const now = new Date();
+        const rescheduleMinHours = await getConfig('reschedule_min_hours');
         const hoursUntilOriginal = (originalDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
 
-        if (hoursUntilOriginal < 24) {
-            res.status(400).json({ error: 'O reagendamento deve ser feito com pelo menos 24 horas de antecedência.' });
+        if (hoursUntilOriginal < rescheduleMinHours) {
+            res.status(400).json({ error: `O reagendamento deve ser feito com pelo menos ${rescheduleMinHours} horas de antecedência.` });
             return;
         }
 
-        // Rule 2: New date must be within 7 days from the ORIGINAL booking date (anchor)
+        // Rule 2: New date must be within configured days from the ORIGINAL booking date (anchor)
+        const rescheduleMaxDays = await getConfig('reschedule_max_days');
         const anchorDate = booking.originalDate || booking.date;
         const anchorMs = new Date(anchorDate).setUTCHours(0, 0, 0, 0);
         const newDate = new Date(data.date + 'T00:00:00');
         const newDateMs = newDate.setUTCHours(0, 0, 0, 0);
         const daysFromAnchor = (newDateMs - anchorMs) / (1000 * 60 * 60 * 24);
 
-        if (daysFromAnchor > 7 || daysFromAnchor < 0) {
+        if (daysFromAnchor > rescheduleMaxDays || daysFromAnchor < 0) {
             const anchorStr = new Date(anchorDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
-            res.status(400).json({ error: `A nova data deve estar dentro de 7 dias da data original (${anchorStr}).` });
+            res.status(400).json({ error: `A nova data deve estar dentro de ${rescheduleMaxDays} dias da data original (${anchorStr}).` });
             return;
         }
 
-        // Rule 3: Sunday check
+        // Rule 3: Operating day check
         const dayOfWeek = newDate.getUTCDay();
-        if (dayOfWeek === 0) {
-            res.status(400).json({ error: 'O estúdio não funciona aos domingos.' });
+        if (!(await isOperatingDay(dayOfWeek))) {
+            res.status(400).json({ error: 'O estúdio não funciona neste dia da semana.' });
             return;
         }
 
         // Rule 4: Tier must match original
-        const newTier = getSlotTier(dayOfWeek, data.startTime);
+        const newTier = await getSlotTier(dayOfWeek, data.startTime);
         if (!newTier) {
             res.status(400).json({ error: 'Horário fora da grade de operação.' });
             return;

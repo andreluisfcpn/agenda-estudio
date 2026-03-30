@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import ModalOverlay from './ModalOverlay';
 import { bookingsApi, Slot } from '../api/client';
 
 const DAY_NAMES_FULL = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -107,7 +108,7 @@ export default function BulkBookingModal({ contract, onClose, onComplete }: Bulk
     };
 
     return (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+        <ModalOverlay onClose={onClose}>
             <div className="modal" style={{ maxWidth: 640 }}>
                 {/* Header always visible */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
@@ -286,6 +287,6 @@ export default function BulkBookingModal({ contract, onClose, onComplete }: Bulk
                     </>
                 )}
             </div>
-        </div>
+        </ModalOverlay>
     );
 }

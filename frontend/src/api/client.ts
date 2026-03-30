@@ -12,12 +12,51 @@ export class ApiError extends Error {
     }
 }
 
+let isRefreshing = false;
+let refreshPromise: Promise<boolean> | null = null;
+
+async function tryRefresh(): Promise<boolean> {
+    if (refreshPromise) return refreshPromise;
+    isRefreshing = true;
+    refreshPromise = fetch(`${API_BASE}/auth/refresh`, {
+        method: 'POST', credentials: 'include',
+    }).then(r => {
+        isRefreshing = false;
+        refreshPromise = null;
+        return r.ok;
+    }).catch(() => {
+        isRefreshing = false;
+        refreshPromise = null;
+        return false;
+    });
+    return refreshPromise;
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const res = await fetch(`${API_BASE}${path}`, {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json', ...options.headers },
         ...options,
     });
+
+    // Auto-refresh on 401 (except auth endpoints that should not retry)
+    if (res.status === 401 && !path.includes('/auth/refresh') && !path.includes('/auth/login')) {
+        const refreshed = await tryRefresh();
+        if (refreshed) {
+            // Retry the original request with new tokens
+            const retryRes = await fetch(`${API_BASE}${path}`, {
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json', ...options.headers },
+                ...options,
+            });
+            if (!retryRes.ok) {
+                const body = await retryRes.json().catch(() => ({ error: 'Erro desconhecido' }));
+                throw new ApiError(body.error || `HTTP ${retryRes.status}`, retryRes.status, body.details);
+            }
+            return retryRes.json();
+        }
+    }
+
     if (!res.ok) {
         const body = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
         throw new ApiError(body.error || `HTTP ${res.status}`, res.status, body.details);
@@ -38,7 +77,7 @@ export const authApi = {
 
     refresh: () => request<{ message: string }>('/auth/refresh', { method: 'POST' }),
     logout: () => request<{ message: string }>('/auth/logout', { method: 'POST' }),
-    updateProfile: (data: { name?: string; phone?: string; password?: string }) => request<{ user: User; message: string }>('/auth/profile', { method: 'PATCH', body: JSON.stringify(data) }),
+    updateProfile: (data: { name?: string; phone?: string; password?: string; cpfCnpj?: string; address?: string; city?: string; state?: string; socialLinks?: any }) => request<{ user: User; message: string }>('/auth/profile', { method: 'PATCH', body: JSON.stringify(data) }),
     uploadPhoto: async (file: File): Promise<{ user: User; message: string }> => {
         const formData = new FormData();
         formData.append('photo', file);
@@ -55,10 +94,15 @@ export const bookingsApi = {
     getAvailability: (date: string) => request<{ date: string; dayOfWeek: number; closed: boolean; slots: Slot[]; myBookings: MyBookingSlot[] }>(`/bookings/availability?date=${date}`),
     create: (data: { date: string; startTime: string; contractId?: string; addOns?: string[] }) => request<{ booking: Booking; lockExpiresIn: number; message: string }>('/bookings', { method: 'POST', body: JSON.stringify(data) }),
     createBulk: (data: { contractId: string; slots: { date: string; startTime: string }[] }) => request<{ message: string }>('/bookings/bulk', { method: 'POST', body: JSON.stringify(data) }),
-    adminCreate: (data: { userId: string; date: string; startTime: string; status?: string; addOns?: string[] }) => request<{ booking: Booking; message: string }>('/bookings/admin', { method: 'POST', body: JSON.stringify(data) }),
+    adminCreate: (data: { userId: string; date: string; startTime: string; status?: string; addOns?: string[]; adminNotes?: string; customPrice?: number }) => request<{ booking: Booking; message: string }>('/bookings/admin', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: { date?: string; startTime?: string; status?: string; adminNotes?: string; clientNotes?: string; platforms?: string; platformLinks?: string, durationMinutes?: number | null, peakViewers?: number | null, chatMessages?: number | null, audienceOrigin?: string | null }) => request<{ booking: BookingWithUser; message: string }>(`/bookings/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     confirm: (id: string) => request<{ booking: Booking; message: string }>(`/bookings/${id}/confirm`, { method: 'PATCH' }),
     cancel: (id: string) => request<{ message: string }>(`/bookings/${id}`, { method: 'DELETE' }),
+    hardDelete: (id: string) => request<{ message: string; creditRestored: boolean }>(`/bookings/${id}/hard-delete`, { method: 'DELETE' }),
+    clientCancel: (id: string) => request<{ message: string }>(`/bookings/${id}/client-cancel`, { method: 'PUT' }),
+    checkIn: (id: string) => request<{ booking: Booking; message: string }>(`/bookings/${id}/check-in`, { method: 'PUT' }),
+    complete: (id: string, metrics?: { durationMinutes?: number; peakViewers?: number; chatMessages?: number }) => request<{ booking: Booking; message: string }>(`/bookings/${id}/complete`, { method: 'PUT', body: JSON.stringify(metrics || {}) }),
+    markFalta: (id: string) => request<{ booking: Booking; message: string }>(`/bookings/${id}/mark-falta`, { method: 'PUT' }),
     getMy: () => request<{ bookings: Booking[] }>('/bookings/my'),
     getAll: (date?: string, status?: string) => {
         const params = new URLSearchParams();
@@ -82,6 +126,9 @@ export const contractsApi = {
     create: (data: CreateContractData) => request<{ contract: Contract; payments: PaymentSummary[]; message: string }>('/contracts', { method: 'POST', body: JSON.stringify(data) }),
     createSelf: (data: SelfContractData) => request<{ contract: Contract; message: string }>('/contracts/self', { method: 'POST', body: JSON.stringify(data) }),    // Standalone services (e.g. Social Media Management)
     createService: (opts: { serviceKey: string, paymentMethod: 'CARTAO' | 'PIX' | 'BOLETO', durationMonths?: number }) => request<{ contract: Contract; checkoutUrl?: string; message: string }>('/contracts/service', { method: 'POST', body: JSON.stringify(opts) }),
+    createCustom: (data: CustomContractData) => request<{ contract: Contract; payments: PaymentSummary[]; summary: CustomContractSummary; message: string }>('/contracts/custom', { method: 'POST', body: JSON.stringify(data) }),
+    checkCustom: (data: { tier: string; durationMonths: number; schedule: { day: number; time: string }[]; startDate: string }) =>
+        request<{ available: boolean; conflicts: CustomConflict[]; totalConflicts: number; totalSessions: number }>('/contracts/custom/check', { method: 'POST', body: JSON.stringify(data) }),
     getAll: () => request<{ contracts: Contract[] }>('/contracts'),
     getMy: () => request<{ contracts: ContractWithStats[] }>('/contracts/my'),
     getById: (id: string) => request<{ contract: ContractDetail }>(`/contracts/${id}`),
@@ -89,14 +136,17 @@ export const contractsApi = {
     cancel: (id: string) => request<{ message: string }>(`/contracts/${id}`, { method: 'DELETE' }),
     requestCancellation: (id: string) => request<{ contract: Contract; message: string }>(`/contracts/${id}/request-cancellation`, { method: 'POST' }),
     resolveCancellation: (id: string, action: 'CHARGE_FEE' | 'WAIVE_FEE') => request<{ contract: Contract; message: string }>(`/contracts/${id}/resolve-cancellation`, { method: 'POST', body: JSON.stringify({ action }) }),
+    renew: (id: string, data?: { durationMonths?: number; tier?: string; type?: string; startDate?: string }) => request<{ contract: Contract; message: string }>(`/contracts/${id}/renew`, { method: 'POST', body: JSON.stringify(data || {}) }),
+    pause: (id: string, data?: { reason?: string; resumeDate?: string }) => request<{ contract: Contract; message: string }>(`/contracts/${id}/pause`, { method: 'PATCH', body: JSON.stringify(data || {}) }),
+    resume: (id: string) => request<{ contract: Contract; message: string }>(`/contracts/${id}/resume`, { method: 'PATCH' }),
 };
 
 // ─── Users ──────────────────────────────────────────────
 export const usersApi = {
     getAll: (role?: string) => request<{ users: UserSummary[] }>(`/users${role ? `?role=${role}` : ''}`),
     getById: (id: string) => request<{ user: UserDetail }>(`/users/${id}`),
-    create: (data: { email: string; password: string; name: string; phone?: string; role?: string }) => request<{ user: UserSummary; message: string }>('/users', { method: 'POST', body: JSON.stringify(data) }),
-    update: (id: string, data: { name?: string; email?: string; phone?: string; role?: string; password?: string; notes?: string }) => request<{ user: UserSummary; message: string }>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    create: (data: { email: string; password: string; name: string; phone?: string; role?: string; notes?: string; cpfCnpj?: string | null; tags?: string[]; socialLinks?: string | null; clientStatus?: string }) => request<{ user: UserSummary; message: string }>('/users', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: { name?: string; email?: string; phone?: string; role?: string; password?: string; notes?: string; cpfCnpj?: string | null; address?: string | null; city?: string | null; state?: string | null; tags?: string[]; socialLinks?: string | null; clientStatus?: string }) => request<{ user: UserSummary; message: string }>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     remove: (id: string) => request<{ message: string }>(`/users/${id}`, { method: 'DELETE' }),
 };
 
@@ -113,6 +163,12 @@ export const pricingApi = {
     update: (pricing: PricingConfig[]) => request<{ pricing: PricingConfig[]; message: string }>('/pricing', { method: 'PUT', body: JSON.stringify({ pricing }) }),
     getAddons: () => request<{ addons: AddOnConfig[] }>('/pricing/addons'),
     updateAddons: (addons: AddOnConfig[]) => request<{ addons: AddOnConfig[]; message: string }>('/pricing/addons', { method: 'PUT', body: JSON.stringify({ addons }) }),
+    getBusinessConfig: () => request<{ configs: BusinessConfigItem[]; grouped: Record<string, BusinessConfigItem[]> }>('/pricing/business-config'),
+    updateBusinessConfig: (configs: { key: string; value: string }[]) => request<{ message: string }>('/pricing/business-config', { method: 'PUT', body: JSON.stringify({ configs }) }),
+    getBusinessConfigPublic: () => request<{ config: Record<string, string | number> }>('/pricing/business-config/public'),
+    getPaymentMethods: () => request<{ methods: PaymentMethodConfigItem[] }>('/pricing/payment-methods'),
+    getPaymentMethodsAll: () => request<{ methods: PaymentMethodConfigItem[] }>('/pricing/payment-methods/all'),
+    updatePaymentMethods: (methods: PaymentMethodConfigItem[]) => request<{ methods: PaymentMethodConfigItem[]; message: string }>('/pricing/payment-methods', { method: 'PUT', body: JSON.stringify({ methods }) }),
 };
 
 // ─── Public (No Auth) ───────────────────────────────────
@@ -124,6 +180,7 @@ export const publicApi = {
 // ─── Types ──────────────────────────────────────────────
 export interface User {
     id: string; email: string; name: string; role: 'ADMIN' | 'CLIENTE'; phone?: string | null; photoUrl?: string | null;
+    cpfCnpj?: string | null; address?: string | null; city?: string | null; state?: string | null; socialLinks?: string | null;
 }
 export interface Slot {
     time: string; available: boolean; tier: 'COMERCIAL' | 'AUDIENCIA' | 'SABADO' | null; price: number | null;
@@ -165,15 +222,32 @@ export interface BookingWithUser extends Booking {
     user: { id: string; name: string; email: string; role: string };
 }
 export interface Contract {
-    id: string; name: string; type: 'FIXO' | 'FLEX' | 'SERVICO'; tier: 'COMERCIAL' | 'AUDIENCIA' | 'SABADO';
+    id: string; name: string; type: 'FIXO' | 'FLEX' | 'SERVICO' | 'CUSTOM'; tier: 'COMERCIAL' | 'AUDIENCIA' | 'SABADO';
     durationMonths: number; discountPct: number; startDate: string; endDate: string;
-    status: 'ACTIVE' | 'EXPIRED' | 'CANCELLED' | 'PENDING_CANCELLATION';
+    status: 'ACTIVE' | 'EXPIRED' | 'CANCELLED' | 'PENDING_CANCELLATION' | 'PAUSED';
     fixedDayOfWeek?: number | null; fixedTime?: string | null;
     contractUrl?: string | null;
     flexCreditsTotal?: number | null; flexCreditsRemaining?: number | null;
     paymentMethod?: 'CARTAO' | 'PIX' | 'BOLETO' | null;
     addOns?: string[];
     user?: { id: string; name: string; email: string };
+    pausedAt?: string | null;
+    pauseReason?: string | null;
+    resumeDate?: string | null;
+    // Custom-specific
+    customSchedule?: { day: number; time: string }[] | string | null;
+    sessionsPerWeek?: number | null;
+    sessionsPerCycle?: number | null;
+    totalSessions?: number | null;
+    addonCredits?: string | null;
+    accessMode?: 'FULL' | 'PROGRESSIVE' | null;
+    customCreditsRemaining?: number | null;
+    addonUsage?: Record<string, { limit: number, used: number }>;
+}
+export interface PaymentSummary {
+    id: string; amount: number; status: 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED';
+    dueDate: string; paidAt?: string; provider?: string;
+    pixString?: string | null; boletoUrl?: string | null; paymentUrl?: string | null;
 }
 export interface ContractWithStats extends Contract {
     completedBookings: number;
@@ -209,22 +283,211 @@ export interface SelfContractData {
     addOns?: string[];
     resolvedConflicts?: { originalDate: string; originalTime: string; newDate: string; newTime: string }[];
 }
+export interface CustomContractData {
+    name: string;
+    tier: 'COMERCIAL' | 'AUDIENCIA' | 'SABADO';
+    durationMonths: number;
+    schedule: { day: number; time: string }[];
+    paymentMethod: 'CARTAO' | 'PIX' | 'BOLETO';
+    addOns?: string[];
+    addonConfig?: Record<string, { mode: 'all' | 'credits'; perCycle?: number }>;
+    resolvedConflicts?: { originalDate: string; originalTime: string; newDate: string; newTime: string }[];
+    startDate?: string;
+    userId?: string; // Admin-only: create on behalf of a client
+    frequency?: 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' | 'CUSTOM';
+    weekPattern?: number[];
+    customDates?: { date: string; time: string }[];
+}
+export interface CustomContractSummary {
+    sessionsPerWeek: number; sessionsPerCycle: number; totalSessions: number;
+    discountPct: number; accessMode: string; cycleAmount: number; totalBookingsGenerated: number;
+}
+export interface CustomConflict {
+    date: string; originalTime: string; day: number;
+    suggestedReplacement?: { date: string; time: string };
+}
 export interface PaymentSummary { id: string; amount: number; dueDate: string; status: 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED'; }
 export interface UserSummary {
     id: string; email: string; name: string; phone: string | null; role: string;
+    clientStatus: string; tags: string[];
     createdAt: string; _count: { bookings: number; contracts: number };
-    contracts?: { type: 'FIXO' | 'FLEX' | 'SERVICO' }[];
+    contracts?: { type: 'FIXO' | 'FLEX' | 'SERVICO'; status: string; addOns: string[] }[];
+    totalPaid: number; totalPending: number;
 }
 export interface UserDetail {
     id: string; email: string; name: string; phone: string | null; role: string;
-    notes: string | null; createdAt: string;
+    notes: string | null; photoUrl: string | null;
+    cpfCnpj: string | null; address: string | null; city: string | null; state: string | null;
+    tags: string[]; socialLinks: string | null; clientStatus: string;
+    createdAt: string;
     contracts: Contract[]; bookings: Booking[];
+    payments?: { id: string; amount: number; status: string; dueDate: string | null; createdAt: string }[];
 }
 export interface BlockedSlot { id: string; date: string; startTime: string; endTime: string; reason: string | null; creator?: { name: string }; }
 export interface PricingConfig { tier: 'COMERCIAL' | 'AUDIENCIA' | 'SABADO'; price: number; label: string; description?: string | null; }
-export interface AddOnConfig { key: string; name: string; price: number; description?: string | null; }
+export interface AddOnConfig { key: string; name: string; price: number; description?: string | null; monthly?: boolean; }
+export interface BusinessConfigItem { key: string; value: string; type: string; label: string; group: string; }
+export interface PaymentMethodConfigItem {
+    key: string; label: string; shortLabel: string; emoji: string;
+    description: string; color: string; active: boolean;
+    sortOrder: number; accessMode: string;
+}
 
 // Public types (no auth)
 export interface PublicSlot { time: string; available: boolean; tier: string | null; }
 export interface PublicDayAvailability { date: string; dayOfWeek: number; closed: boolean; slots: PublicSlot[]; }
 export interface PublicWeekResponse { days: PublicDayAvailability[]; }
+
+// ─── Payments (Financial) ───────────────────────────────
+export interface PaymentFull {
+    id: string;
+    userId: string;
+    contractId: string | null;
+    bookingId: string | null;
+    provider: string;
+    providerRef: string | null;
+    amount: number;
+    status: 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED';
+    dueDate: string | null;
+    createdAt: string;
+    updatedAt: string;
+    user: { id: string; name: string; email: string };
+    contract: { id: string; name: string; type: string; tier: string; durationMonths: number } | null;
+    booking: { id: string; date: string; startTime: string } | null;
+}
+export interface FinancialSummary {
+    totalRevenue: number; paidRevenue: number; pendingRevenue: number;
+    overdueCount: number; overdueAmount: number;
+    failedCount: number; refundedAmount: number;
+    totalCount: number; paidCount: number; pendingCount: number;
+}
+export interface MonthlyBreakdown {
+    month: string; label: string; total: number; paid: number; pending: number;
+}
+export const paymentsApi = {
+    getAll: (params?: { status?: string; userId?: string; from?: string; to?: string; search?: string }) => {
+        const qs = params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v) as [string, string][]).toString() : '';
+        return request<{ payments: PaymentFull[] }>(`/payments${qs}`);
+    },
+    getSummary: (params?: { from?: string; to?: string }) => {
+        const qs = params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => v) as [string, string][]).toString() : '';
+        return request<{ summary: FinancialSummary; monthlyBreakdown: MonthlyBreakdown[] }>(`/payments/summary${qs}`);
+    },
+    update: (id: string, data: { status?: string; providerRef?: string }) =>
+        request<{ payment: PaymentFull; message: string }>(`/payments/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+};
+
+// ─── Notifications ──────────────────────────────────────
+export interface NotificationItem {
+    id: string;
+    type: string;
+    severity: 'critical' | 'warning' | 'info';
+    title: string;
+    message: string;
+    entityType: string;
+    entityId: string;
+    actionUrl?: string;
+    createdAt: string;
+}
+export interface NotificationSummary {
+    total: number; critical: number; warning: number; info: number;
+}
+export const notificationsApi = {
+    getAll: () => request<{ notifications: NotificationItem[]; summary: NotificationSummary }>('/notifications'),
+};
+
+// ─── Reports ────────────────────────────────────────────
+export interface ReportSummary {
+    totalBookings: number; completedBookings: number; faltaBookings: number;
+    cancelledBookings: number; totalRevenue: number;
+    attendanceRate: number; cancellationRate: number;
+}
+export interface SlotOccupancy { slot: string; label: string; count: number; total: number; pct: number; }
+export interface DayOccupancy { day: string; count: number; total: number; pct: number; }
+export interface TierBreakdownItem { tier: string; count: number; revenue: number; pct: number; }
+export interface AudienceMetrics { totalCompleted: number; avgViewers: number; maxViewers: number; avgChat: number; avgDuration: number; }
+export interface ClientRankItem { name: string; id: string; sessions: number; revenue: number; completed: number; falta: number; avgViewers: number; }
+
+export const reportsApi = {
+    getSummary: (params?: { from?: string; to?: string }) => {
+        const qs = buildQS(params);
+        return request<{ summary: ReportSummary }>(`/reports/summary${qs}`);
+    },
+    getOccupancy: (params?: { from?: string; to?: string }) => {
+        const qs = buildQS(params);
+        return request<{ slotOccupancy: SlotOccupancy[]; dayOccupancy: DayOccupancy[] }>(`/reports/occupancy${qs}`);
+    },
+    getTiers: (params?: { from?: string; to?: string }) => {
+        const qs = buildQS(params);
+        return request<{ tierBreakdown: TierBreakdownItem[] }>(`/reports/tiers${qs}`);
+    },
+    getAudience: (params?: { from?: string; to?: string }) => {
+        const qs = buildQS(params);
+        return request<{ audience: AudienceMetrics }>(`/reports/audience${qs}`);
+    },
+    getRanking: (params?: { from?: string; to?: string; limit?: number }) => {
+        const qs = buildQS(params as Record<string, string | number | undefined>);
+        return request<{ ranking: ClientRankItem[] }>(`/reports/ranking${qs}`);
+    },
+};
+
+export interface FinanceMetrics {
+    grossRevenue: number;
+    netRevenue: number;
+    totalFees: number;
+    pendingRevenue: number;
+    paidCount: number;
+    unpaidCount: number;
+    breakdown: { stripe: number; cora: number; };
+}
+
+export interface EnrichedPayment extends PaymentSummary {
+    methodLabel: string;
+    methodEmoji: string;
+    feeDeduced: number;
+    netAmount: number;
+    user?: { id: string; name: string; email: string; };
+    contract?: { id: string; name: string; type: string; tier: string; paymentMethod: string; };
+}
+
+export interface FinanceClosingResponse {
+    period: { year: number; month: number; };
+    metrics: FinanceMetrics;
+    payments: EnrichedPayment[];
+}
+
+export const financeApi = {
+    getMonthlyClosing: (year: number, month: number) => request<FinanceClosingResponse>(`/finance/closing/${year}/${month}`),
+};
+
+// ─── Integrations API ────────────────────────────────────
+
+export interface IntegrationSummary {
+    provider: string;
+    enabled: boolean;
+    environment: string;
+    config: Record<string, any>;
+    configured: boolean;
+    webhookUrl: string | null;
+    lastTestedAt: string | null;
+    testStatus: 'success' | 'error' | null;
+    testMessage: string | null;
+}
+
+export const integrationsApi = {
+    list: () => request<{ integrations: IntegrationSummary[] }>('/integrations'),
+    get: (provider: string) => request<{ integration: IntegrationSummary }>(`/integrations/${provider}`),
+    save: (provider: string, data: { environment: string; enabled?: boolean; config: Record<string, any> }) =>
+        request<{ integration: IntegrationSummary; message: string }>(`/integrations/${provider}`, { method: 'PUT', body: JSON.stringify(data) }),
+    test: (provider: string) =>
+        request<{ success: boolean; message: string }>(`/integrations/${provider}/test`, { method: 'POST' }),
+    toggle: (provider: string, enabled: boolean) =>
+        request<{ message: string }>(`/integrations/${provider}/toggle`, { method: 'POST', body: JSON.stringify({ enabled }) }),
+};
+
+function buildQS(params?: Record<string, string | number | undefined>): string {
+    if (!params) return '';
+    const entries = Object.entries(params).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]);
+    return entries.length > 0 ? '?' + new URLSearchParams(entries as [string, string][]).toString() : '';
+}
+

@@ -1,30 +1,29 @@
 import { Tier } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { getConfig, getConfigString } from '../lib/businessConfig';
 
 // ─── Tier Detection ─────────────────────────────────────
 
 /**
  * Determines the pricing tier based on day of week and start time.
+ * Now reads tier mapping from business config (dynamic).
  * @param dayOfWeek 0=Sunday, 1=Monday, ..., 6=Saturday (JS Date convention)
  * @param startTime "HH:MM" format
  */
-export function getSlotTier(dayOfWeek: number, startTime: string): Tier | null {
-    // Sunday = closed
-    if (dayOfWeek === 0) return null;
+export async function getSlotTier(dayOfWeek: number, startTime: string): Promise<Tier | null> {
+    const operatingDays = (await getConfigString('operating_days')).split(',').map(Number);
+    if (!operatingDays.includes(dayOfWeek)) return null;
 
-    if (!['10:00', '13:00', '15:30', '18:00', '20:30'].includes(startTime)) {
-        return null;
-    }
+    const allSlots = (await getConfigString('time_slots')).split(',').map(s => s.trim());
+    if (!allSlots.includes(startTime)) return null;
 
     if (dayOfWeek === 6) return Tier.SABADO;
 
-    if (['10:00', '13:00', '15:30'].includes(startTime)) {
-        return Tier.COMERCIAL;
-    }
+    const comercialSlots = (await getConfigString('comercial_slots')).split(',').map(s => s.trim());
+    if (comercialSlots.includes(startTime)) return Tier.COMERCIAL;
 
-    if (['18:00', '20:30'].includes(startTime)) {
-        return Tier.AUDIENCIA;
-    }
+    const audienciaSlots = (await getConfigString('audiencia_slots')).split(',').map(s => s.trim());
+    if (audienciaSlots.includes(startTime)) return Tier.AUDIENCIA;
 
     return null;
 }
@@ -84,10 +83,34 @@ export function canAccessTier(contractTier: Tier, slotTier: Tier): boolean {
 // ─── Time Slot Utilities ────────────────────────────────
 
 /**
- * Generate the 5 official start times for the block slots.
+ * Generate the official start times for the block slots (dynamic from config).
  */
-export function generateTimeSlots(): string[] {
-    return ['10:00', '13:00', '15:30', '18:00', '20:30'];
+export async function generateTimeSlots(): Promise<string[]> {
+    const csv = await getConfigString('time_slots');
+    return csv.split(',').map(s => s.trim()).filter(Boolean);
+}
+
+/**
+ * Get the operating days as an array of JS day-of-week numbers.
+ */
+export async function getOperatingDays(): Promise<number[]> {
+    const csv = await getConfigString('operating_days');
+    return csv.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+}
+
+/**
+ * Check if a given JS dayOfWeek (0=Sun..6=Sat) is an operating day.
+ */
+export async function isOperatingDay(dayOfWeek: number): Promise<boolean> {
+    const days = await getOperatingDays();
+    return days.includes(dayOfWeek);
+}
+
+/**
+ * Get the slot duration in hours (dynamic from config).
+ */
+export async function getSlotDuration(): Promise<number> {
+    return getConfig('slot_duration_hours');
 }
 
 /**
@@ -121,14 +144,15 @@ export function calculateEndTime(startTime: string, durationHours: number = 2): 
 }
 
 /**
- * Check if a 2h package starting at startTime fits within operating hours.
+ * Check if a package fits within operating hours.
  */
-export function fitsInOperatingHours(
+export async function fitsInOperatingHours(
     startTime: string,
-    durationHours: number = 2,
-    closeTime: string = '23:00'
-): boolean {
-    const endTime = calculateEndTime(startTime, durationHours);
+    durationHours?: number,
+): Promise<boolean> {
+    const dur = durationHours ?? await getSlotDuration();
+    const closeTime = await getConfigString('close_time');
+    const endTime = calculateEndTime(startTime, dur);
     const [endH, endM] = endTime.split(':').map(Number);
     const [closeH, closeM] = closeTime.split(':').map(Number);
     return endH * 60 + endM <= closeH * 60 + closeM;

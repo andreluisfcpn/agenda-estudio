@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { bookingsApi, blockedSlotsApi, pricingApi, Slot, BookingWithUser, MyBookingSlot, PricingConfig } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { useUI } from '../context/UIContext';
 import { useNavigate, useLocation } from 'react-router-dom';
+import ModalOverlay from '../components/ModalOverlay';
 import BookingModal from '../components/BookingModal';
 import ContractWizard from '../components/ContractWizard';
+import CustomContractWizard from '../components/CustomContractWizard';
 
 const DAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const PLATFORMS = [
@@ -12,6 +15,12 @@ const PLATFORMS = [
     { key: 'INSTAGRAM', label: '📸 Instagram', color: '#E1306C' },
     { key: 'FACEBOOK', label: '📘 Facebook', color: '#1877F2' },
 ];
+
+const TIER_COLORS: Record<string, { color: string; bg: string; label: string; emoji: string }> = {
+    comercial: { color: '#10b981', bg: 'rgba(16,185,129,0.10)', label: 'Comercial', emoji: '🏢' },
+    audiencia: { color: '#a78bfa', bg: 'rgba(139,92,246,0.10)', label: 'Audiência', emoji: '🎤' },
+    sabado:    { color: '#fbbf24', bg: 'rgba(245,158,11,0.10)', label: 'Sábado', emoji: '🌟' },
+};
 
 function getWeekDates(baseDate: Date): Date[] {
     const dates: Date[] = [];
@@ -34,7 +43,6 @@ function formatDate(d: Date): string {
 }
 function formatDateShort(d: Date): string { return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}`; }
 
-// Fixed Slot grid definitions
 const GRID_ROWS = [
     { id: 'S1', type: 'SLOT', time: '10:00', timeEnd: '12:00', label: '10:00 - 12:00', height: 80 },
     { id: 'T1', type: 'TRANSITION', time: '12:00', timeEnd: '13:00', label: 'Intervalo para Almoço', height: 40 },
@@ -60,20 +68,17 @@ export default function CalendarPage() {
     const [loading, setLoading] = useState(true);
     const [selectedSlot, setSelectedSlot] = useState<{ date: string; time: string; tier: string; price: number } | null>(null);
 
-    // Wizard
     const [showWizard, setShowWizard] = useState(false);
+    const [showCustomWizard, setShowCustomWizard] = useState(false);
     const [pricing, setPricing] = useState<PricingConfig[]>([]);
 
-    // Detail modal
     const [detailBooking, setDetailBooking] = useState<{ booking: MyBookingSlot; date: string } | null>(null);
     const [clientNotes, setClientNotes] = useState('');
     const [platforms, setPlatforms] = useState<string[]>([]);
     const [platformLinks, setPlatformLinks] = useState<Record<string, string>>({});
     const [saving, setSaving] = useState(false);
+    const { showAlert, showToast } = useUI();
 
-    const [toast, setToast] = useState('');
-
-    // Reschedule
     const [showReschedule, setShowReschedule] = useState(false);
     const [rescheduleDate, setRescheduleDate] = useState('');
     const [rescheduleTime, setRescheduleTime] = useState('');
@@ -120,19 +125,11 @@ export default function CalendarPage() {
         if (location.state?.preSelectedDate && location.state?.preSelectedTime && Object.keys(slotsMap).length > 0) {
             const preDate = location.state.preSelectedDate;
             const preTime = location.state.preSelectedTime;
-
             const daySlots = slotsMap[preDate];
             if (daySlots) {
                 const targetSlot = daySlots.find(s => s.time === preTime && s.available);
                 if (targetSlot && targetSlot.tier && targetSlot.price) {
-                    setSelectedSlot({
-                        date: preDate,
-                        time: preTime,
-                        tier: targetSlot.tier,
-                        price: targetSlot.price
-                    });
-
-                    // Clear state so it doesn't trigger again on refresh
+                    setSelectedSlot({ date: preDate, time: preTime, tier: targetSlot.tier, price: targetSlot.price });
                     window.history.replaceState({}, document.title);
                 }
             }
@@ -152,7 +149,6 @@ export default function CalendarPage() {
 
     const today = formatDate(new Date());
 
-    // Build lookup: time -> booking info for a given date
     const buildBookingLookup = (date: string): Record<string, { label: string; tier: string; isMine: boolean; myBooking?: MyBookingSlot }> => {
         const map: Record<string, { label: string; tier: string; isMine: boolean; myBooking?: MyBookingSlot }> = {};
         const myBookings = myBookingsMap[date] || [];
@@ -193,11 +189,10 @@ export default function CalendarPage() {
             await bookingsApi.clientUpdate(detailBooking.booking.id, {
                 clientNotes, platforms: JSON.stringify(platforms), platformLinks: JSON.stringify(platformLinks),
             });
-            setToast('Gravação atualizada!');
+            showToast('Gravação atualizada!');
             setDetailBooking(null);
-            setTimeout(() => setToast(''), 3000);
             loadWeekData(weekDates);
-        } catch (err: any) { alert(err.message); }
+        } catch (err: any) { showAlert({ message: err.message, type: 'error' }); }
         finally { setSaving(false); }
     };
 
@@ -212,9 +207,8 @@ export default function CalendarPage() {
         setRescheduling(true); setRescheduleError('');
         try {
             await bookingsApi.reschedule(detailBooking.booking.id, { date: rescheduleDate, startTime: rescheduleTime });
-            setToast('Reagendado com sucesso!');
+            showToast('Reagendado com sucesso!');
             setDetailBooking(null);
-            setTimeout(() => setToast(''), 3000);
             loadWeekData(weekDates);
         } catch (err: any) { setRescheduleError(err.message); }
         finally { setRescheduling(false); }
@@ -231,33 +225,108 @@ export default function CalendarPage() {
         }
     };
 
+    // Compute weekly summary
+    const weekSummary = (() => {
+        let booked = 0, available = 0, total = 0;
+        const now = new Date();
+        const cutoff = new Date(now.getTime() + 30 * 60 * 1000); // 30 min from now
+        weekDates.forEach(d => {
+            const dateStr = formatDate(d);
+            const slots = slotsMap[dateStr] || [];
+            const dayBookings = buildBookingLookup(dateStr);
+            slots.forEach(s => {
+                if (s.tier) {
+                    total++;
+                    if (dayBookings[s.time]) {
+                        booked++;
+                    } else if (s.available) {
+                        // Only count as available if slot starts >= 30min from now
+                        const slotStart = new Date(`${dateStr}T${s.time}:00`);
+                        if (slotStart >= cutoff) available++;
+                    }
+                }
+            });
+        });
+        return { booked, available, total, pct: total > 0 ? Math.round((booked / total) * 100) : 0 };
+    })();
+
+    // Current month/year for display
+    const displayMonth = weekDates.length > 0
+        ? weekDates[Math.floor(weekDates.length / 2)].toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+        : '';
+
     return (
         <div>
-            <div className="page-header">
-                <h1 className="page-title">📅 Agenda</h1>
-                <p className="page-subtitle">{isAdmin ? 'Visão completa da agenda do estúdio' : 'Visualize e agende suas sessões'}</p>
+            {/* ─── HEADER ─── */}
+            <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                <div>
+                    <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ fontSize: '1.75rem' }}>📅</span> Agenda
+                    </h1>
+                    <p className="page-subtitle" style={{ marginTop: '4px' }}>
+                        {isAdmin ? 'Visão completa da agenda do estúdio' : 'Visualize e agende suas sessões'}
+                    </p>
+                </div>
+                {/* mini KPIs */}
+                {isAdmin && (
+                <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                    <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#10b981' }}>{weekSummary.booked}</div>
+                        <div style={{ fontSize: '0.5625rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Agendados</div>
+                    </div>
+                    <div style={{ width: 1, height: 28, background: 'var(--border-color)' }} />
+                    <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#3b82f6' }}>{weekSummary.available}</div>
+                        <div style={{ fontSize: '0.5625rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Disponíveis</div>
+                    </div>
+                    <div style={{ width: 1, height: 28, background: 'var(--border-color)' }} />
+                    <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.25rem', fontWeight: 800, color: weekSummary.pct >= 70 ? '#10b981' : weekSummary.pct >= 30 ? '#f59e0b' : 'var(--text-muted)' }}>{weekSummary.pct}%</div>
+                        <div style={{ fontSize: '0.5625rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Ocupação</div>
+                    </div>
+                </div>
+                )}
             </div>
 
-            {toast && (
-                <div style={{
-                    position: 'fixed', top: 24, right: 24, zIndex: 9999,
-                    padding: '12px 20px', borderRadius: 'var(--radius-md)',
-                    background: 'var(--tier-comercial)', color: '#fff',
-                    fontWeight: 600, fontSize: '0.875rem',
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-                }}>✅ {toast}</div>
-            )}
+            {/* ─── CALENDAR CONTAINER ─── */}
+            <div className="calendar-container" style={{ borderRadius: '16px', overflow: 'hidden' }}>
+                {/* Navigation Bar */}
+                <div className="calendar-header" style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '12px 20px', background: 'var(--bg-secondary)',
+                    borderBottom: '1px solid var(--border-color)',
+                }}>
+                    <button className="btn btn-ghost" onClick={goToday}
+                        style={{
+                            fontSize: '0.6875rem', fontWeight: 700, padding: '5px 12px', borderRadius: '8px',
+                            background: 'var(--bg-elevated)', border: '1px solid var(--border-color)',
+                        }}>
+                        Hoje
+                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                        <button onClick={() => navigateWeek(-1)} style={{
+                            width: 30, height: 30, border: '1px solid var(--border-color)', borderRadius: '8px',
+                            background: 'var(--bg-elevated)', color: 'var(--text-secondary)',
+                            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '0.75rem', transition: 'all 0.2s',
+                        }}>◀</button>
 
-            <div className="calendar-container">
-                <div className="calendar-header">
-                    <button className="btn btn-ghost" onClick={goToday}>Hoje</button>
-                    <div className="calendar-header-title">
-                        {weekDates.length > 0 && `${formatDateShort(weekDates[0])} — ${formatDateShort(weekDates[5])}`}
+                        <div style={{ textAlign: 'center', minWidth: 180 }}>
+                            <div style={{ fontSize: '0.9375rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                {weekDates.length > 0 && `${formatDateShort(weekDates[0])} — ${formatDateShort(weekDates[5])}`}
+                            </div>
+                            <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>{displayMonth}</div>
+                        </div>
+
+                        <button onClick={() => navigateWeek(1)} style={{
+                            width: 30, height: 30, border: '1px solid var(--border-color)', borderRadius: '8px',
+                            background: 'var(--bg-elevated)', color: 'var(--text-secondary)',
+                            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '0.75rem', transition: 'all 0.2s',
+                        }}>▶</button>
                     </div>
-                    <div className="calendar-nav">
-                        <button className="btn btn-ghost btn-sm" onClick={() => navigateWeek(-1)}>◀</button>
-                        <button className="btn btn-ghost btn-sm" onClick={() => navigateWeek(1)}>▶</button>
-                    </div>
+                    {/* Spacer to balance */}
+                    <div style={{ width: 60 }} />
                 </div>
 
                 {loading ? (
@@ -268,7 +337,11 @@ export default function CalendarPage() {
                         {weekDates.map((d, i) => (
                             <div key={i} className={`calendar-day-header ${formatDate(d) === today ? 'today' : ''}`}
                                 style={{ position: 'sticky', top: 0, zIndex: 2 }}>
-                                {DAYS[i]}<br /><span style={{ fontSize: '0.9em', fontWeight: 800 }}>{d.getDate()}</span>
+                                <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', fontWeight: 600 }}>{DAYS[i]}</span>
+                                <br />
+                                <span style={{ fontSize: '1rem', fontWeight: 800, color: formatDate(d) === today ? '#10b981' : 'var(--text-primary)' }}>
+                                    {d.getDate()}
+                                </span>
                             </div>
                         ))}
 
@@ -292,7 +365,6 @@ export default function CalendarPage() {
                                 {weekDates.map((d) => {
                                     const dateStr = formatDate(d);
 
-                                    // 1) Handle Transition Block Rendering
                                     if (row.type === 'TRANSITION') {
                                         return (
                                             <div key={`${dateStr}-${row.id}`} style={{
@@ -308,7 +380,6 @@ export default function CalendarPage() {
                                         );
                                     }
 
-                                    // 2) Handle Official Slot Cell Rendering
                                     const slots = slotsMap[dateStr] || [];
                                     const slot = slots.find(s => s.time === row.time);
                                     const isAvailable = slot?.available && slot?.tier;
@@ -339,10 +410,12 @@ export default function CalendarPage() {
                                         );
                                     }
 
-                                    // Non-booked slot
                                     const slotNotAvailable = slot && !slot.available;
                                     const slotDateTime = new Date(`${dateStr}T${row.time}:00`);
                                     const isPast = (slotDateTime.getTime() - Date.now()) / (1000 * 60) < 30;
+
+                                    const tierKey = slot?.tier?.toLowerCase() || '';
+                                    const tierMeta = TIER_COLORS[tierKey];
 
                                     return (
                                         <div
@@ -350,17 +423,23 @@ export default function CalendarPage() {
                                             className={`calendar-cell ${(slotNotAvailable || isPast) ? 'occupied' : ''}`}
                                             onClick={() => {
                                                 if (isPast) {
-                                                    alert('Não é possível agendar um horário no passado (antecedência mínima de 30 minutos).');
+                                                    showAlert({ message: 'Não é possível agendar um horário no passado (antecedência mínima de 30 minutos).', type: 'warning' });
                                                     return;
                                                 }
                                                 if (slot && isAvailable) handleSlotClick(dateStr, row.time, slot);
                                             }}
-                                            title={!slot?.tier ? 'Fora da Grade' : isPast ? 'Indisponível' : row.label}
+                                            title={!slot?.tier ? 'Fora da Grade' : isPast ? 'Indisponível' : `${tierMeta?.label || ''} — ${row.label}`}
                                             style={{
                                                 height: row.height, padding: '4px',
-                                                background: (isAvailable && !isPast) ? `var(--tier-${slot.tier?.toLowerCase()}-bg)` : undefined,
+                                                background: (isAvailable && !isPast && tierMeta)
+                                                    ? tierMeta.bg
+                                                    : undefined,
+                                                borderLeft: (isAvailable && !isPast && tierMeta)
+                                                    ? `3px solid ${tierMeta.color}`
+                                                    : undefined,
                                                 opacity: !slot?.tier ? 0.3 : isPast ? 0.5 : 1,
                                                 cursor: (isAvailable && !isPast) ? 'pointer' : isPast ? 'not-allowed' : 'default',
+                                                transition: 'background 0.2s',
                                             }}
                                         >
                                             {(slotNotAvailable || isPast) && !info ? (
@@ -372,9 +451,16 @@ export default function CalendarPage() {
                                                 (isAvailable && !isPast && !info) && (
                                                     <div style={{
                                                         height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                                                        color: 'var(--text-primary)', opacity: 0.9, fontWeight: 700, fontSize: '0.85rem'
+                                                        gap: '2px',
                                                     }}>
-                                                        <span>Disponível</span>
+                                                        <span style={{ fontWeight: 700, fontSize: '0.8125rem', color: tierMeta?.color || 'var(--text-primary)' }}>
+                                                            Disponível
+                                                        </span>
+                                                        {tierMeta && (
+                                                            <span style={{ fontSize: '0.625rem', color: tierMeta.color, opacity: 0.8, fontWeight: 600 }}>
+                                                                {tierMeta.emoji} {tierMeta.label}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 )
                                             )}
@@ -387,22 +473,27 @@ export default function CalendarPage() {
                 )}
             </div>
 
-            {/* Legend */}
-            <div style={{ display: 'flex', gap: '16px', marginTop: '16px', flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem' }}>
-                    <span style={{ width: 10, height: 10, borderRadius: 2, background: 'var(--tier-comercial)', display: 'inline-block' }} /> Comercial
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem' }}>
-                    <span style={{ width: 10, height: 10, borderRadius: 2, background: 'var(--tier-audiencia)', display: 'inline-block' }} /> Audiência
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem' }}>
-                    <span style={{ width: 10, height: 10, borderRadius: 2, background: 'var(--tier-sabado)', display: 'inline-block' }} /> Sábado
-                </div>
-                {!isAdmin && <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem' }}>
-                    <span style={{ width: 10, height: 10, borderRadius: 2, border: '2px solid var(--tier-comercial)', background: 'rgba(52,211,153,0.2)', display: 'inline-block' }} /> Meu Agendamento
-                </div>}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem' }}>
-                    <span style={{ width: 10, height: 10, borderRadius: 2, background: 'var(--status-blocked)', display: 'inline-block' }} /> Bloqueado / Ocupado
+            {/* ─── LEGEND ─── */}
+            <div style={{
+                display: 'flex', gap: '16px', marginTop: '16px', flexWrap: 'wrap',
+                padding: '12px 16px', borderRadius: '12px',
+                background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
+            }}>
+                {Object.entries(TIER_COLORS).map(([key, meta]) => (
+                    <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.6875rem', fontWeight: 600 }}>
+                        <span style={{ width: 10, height: 10, borderRadius: 3, background: meta.color, display: 'inline-block' }} />
+                        <span style={{ color: meta.color }}>{meta.emoji} {meta.label}</span>
+                    </div>
+                ))}
+                {!isAdmin && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.6875rem', fontWeight: 600 }}>
+                        <span style={{ width: 10, height: 10, borderRadius: 3, border: '2px solid #10b981', background: 'rgba(52,211,153,0.2)', display: 'inline-block' }} />
+                        <span style={{ color: '#10b981' }}>📌 Meu Agendamento</span>
+                    </div>
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.6875rem', fontWeight: 600 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 3, background: 'var(--status-blocked)', display: 'inline-block' }} />
+                    <span style={{ color: 'var(--text-muted)' }}>Bloqueado / Ocupado</span>
                 </div>
             </div>
 
@@ -418,31 +509,57 @@ export default function CalendarPage() {
                     pricing={pricing}
                     onClose={() => setShowWizard(false)}
                     onComplete={() => navigate('/my-contracts')}
+                    onOpenCustom={() => {
+                        setShowWizard(false);
+                        setShowCustomWizard(true);
+                    }}
                 />
             )}
 
-            {/* Detail modal */}
-            {detailBooking && (
-                <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setDetailBooking(null)}>
-                    <div className="modal" style={{ maxWidth: 540 }}>
-                        <h2 className="modal-title">📌 Meu Agendamento</h2>
+            {showCustomWizard && (
+                <CustomContractWizard
+                    pricing={pricing}
+                    onClose={() => setShowCustomWizard(false)}
+                    onComplete={() => navigate('/my-contracts')}
+                />
+            )}
 
-                        <div style={{ display: 'grid', gap: '10px', marginBottom: '16px' }}>
+            {/* ─── DETAIL MODAL ─── */}
+            {detailBooking && (
+                <ModalOverlay onClose={() => setDetailBooking(null)}>
+                    <div className="modal" style={{ maxWidth: 540, borderRadius: '16px' }}>
+                        <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '1.25rem' }}>📌</span> Meu Agendamento
+                        </h2>
+
+                        <div style={{ display: 'grid', gap: '8px', marginBottom: '20px' }}>
                             {[
                                 ['📅 Data', detailBooking.date.split('-').reverse().join('/')],
                                 ['🕐 Horário', `${detailBooking.booking.startTime} — ${detailBooking.booking.endTime}`],
                             ].map(([label, val]) => (
-                                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
-                                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem' }}>{label}</span>
+                                <div key={label} style={{
+                                    display: 'flex', justifyContent: 'space-between', padding: '10px 14px',
+                                    background: 'var(--bg-secondary)', borderRadius: '10px',
+                                    border: '1px solid var(--border-color)',
+                                }}>
+                                    <span style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>{label}</span>
                                     <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>{val}</span>
                                 </div>
                             ))}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
-                                <span style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem' }}>🏷️ Faixa</span>
+                            <div style={{
+                                display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px',
+                                background: 'var(--bg-secondary)', borderRadius: '10px',
+                                border: '1px solid var(--border-color)',
+                            }}>
+                                <span style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>🏷️ Faixa</span>
                                 <span className={`badge badge-${detailBooking.booking.tierApplied.toLowerCase()}`}>{detailBooking.booking.tierApplied}</span>
                             </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
-                                <span style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem' }}>📊 Status</span>
+                            <div style={{
+                                display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px',
+                                background: 'var(--bg-secondary)', borderRadius: '10px',
+                                border: '1px solid var(--border-color)',
+                            }}>
+                                <span style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>📊 Status</span>
                                 <span style={{ fontWeight: 600, fontSize: '0.8125rem' }}>{statusLabel(detailBooking.booking.status)}</span>
                             </div>
                         </div>
@@ -457,7 +574,11 @@ export default function CalendarPage() {
                         {detailBooking.booking.adminNotes && (
                             <div className="form-group">
                                 <label className="form-label">🔒 Observação do Admin</label>
-                                <div style={{ padding: '10px 14px', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)', fontSize: '0.875rem', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap' }}>
+                                <div style={{
+                                    padding: '10px 14px', background: 'var(--bg-secondary)', borderRadius: '10px',
+                                    border: '1px solid var(--border-color)', fontSize: '0.875rem',
+                                    color: 'var(--text-secondary)', whiteSpace: 'pre-wrap',
+                                }}>
                                     {detailBooking.booking.adminNotes}
                                 </div>
                             </div>
@@ -469,10 +590,11 @@ export default function CalendarPage() {
                                 {PLATFORMS.map(p => (
                                     <label key={p.key} style={{
                                         display: 'flex', alignItems: 'center', gap: '6px',
-                                        padding: '6px 12px', borderRadius: 'var(--radius-md)',
-                                        border: `1px solid ${platforms.includes(p.key) ? p.color : 'var(--border-default)'}`,
-                                        background: platforms.includes(p.key) ? `${p.color}15` : 'var(--bg-card)',
+                                        padding: '6px 12px', borderRadius: '10px',
+                                        border: `1px solid ${platforms.includes(p.key) ? p.color : 'var(--border-color)'}`,
+                                        background: platforms.includes(p.key) ? `${p.color}15` : 'var(--bg-secondary)',
                                         cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600,
+                                        transition: 'all 0.2s',
                                     }}>
                                         <input type="checkbox" checked={platforms.includes(p.key)}
                                             onChange={() => togglePlatform(p.key)} style={{ accentColor: p.color }} />
@@ -499,8 +621,11 @@ export default function CalendarPage() {
                         )}
 
                         {showReschedule && (
-                            <div style={{ padding: '14px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', marginBottom: '16px' }}>
-                                <h4 style={{ fontSize: '0.875rem', fontWeight: 700, marginBottom: '10px' }}>🔄 Reagendar</h4>
+                            <div style={{
+                                padding: '14px', background: 'var(--bg-secondary)', borderRadius: '12px',
+                                border: '1px solid var(--border-color)', marginBottom: '16px',
+                            }}>
+                                <h4 style={{ fontSize: '0.875rem', fontWeight: 700, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>🔄 Reagendar</h4>
                                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '10px' }}>Máx. 7 dias · Mesma faixa ({detailBooking.booking.tierApplied})</p>
                                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                                     <input type="date" className="form-input" value={rescheduleDate}
@@ -511,7 +636,8 @@ export default function CalendarPage() {
                                     <input type="time" className="form-input" value={rescheduleTime}
                                         onChange={e => setRescheduleTime(e.target.value)} step={3600} style={{ width: 120 }} />
                                     <button className="btn btn-primary btn-sm" onClick={handleReschedule}
-                                        disabled={rescheduling || !rescheduleDate || !rescheduleTime}>
+                                        disabled={rescheduling || !rescheduleDate || !rescheduleTime}
+                                        style={{ borderRadius: '10px' }}>
                                         {rescheduling ? '⏳' : '✅'} Confirmar
                                     </button>
                                 </div>
@@ -522,20 +648,22 @@ export default function CalendarPage() {
                         <div className="modal-actions" style={{ justifyContent: 'space-between' }}>
                             <div style={{ display: 'flex', gap: '8px' }}>
                                 {canModifyBooking(detailBooking.booking, detailBooking.date) && (
-                                    <button className="btn btn-secondary btn-sm" onClick={() => setShowReschedule(!showReschedule)}>
+                                    <button className="btn btn-secondary btn-sm" onClick={() => setShowReschedule(!showReschedule)}
+                                        style={{ borderRadius: '10px' }}>
                                         🔄 Reagendar
                                     </button>
                                 )}
                             </div>
                             <div style={{ display: 'flex', gap: '8px' }}>
-                                <button className="btn btn-secondary" onClick={() => setDetailBooking(null)}>Fechar</button>
-                                <button className="btn btn-primary" onClick={handleSaveDetail} disabled={saving}>
+                                <button className="btn btn-secondary" onClick={() => setDetailBooking(null)} style={{ borderRadius: '10px' }}>Fechar</button>
+                                <button className="btn btn-primary" onClick={handleSaveDetail} disabled={saving}
+                                    style={{ borderRadius: '10px' }}>
                                     {saving ? '⏳ Salvando...' : '💾 Salvar'}
                                 </button>
                             </div>
                         </div>
                     </div>
-                </div>
+                </ModalOverlay>
             )}
         </div>
     );

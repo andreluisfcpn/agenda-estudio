@@ -86,13 +86,13 @@ function setTokenCookies(res: Response, accessToken: string, refreshToken: strin
         httpOnly: true,
         secure: config.nodeEnv === 'production',
         sameSite: 'lax',
-        maxAge: 15 * 60 * 1000, // 15 minutes
+        maxAge: 60 * 60 * 1000, // 1 hour
     });
     res.cookie('refreshToken', refreshToken, {
         httpOnly: true,
         secure: config.nodeEnv === 'production',
         sameSite: 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        maxAge: 365 * 24 * 60 * 60 * 1000, // 1 year
         path: '/api/auth/refresh',
     });
 }
@@ -472,7 +472,7 @@ router.post('/logout', (_req: Request, res: Response) => {
 router.get('/me', authenticate, async (req: Request, res: Response) => {
     const user = await prisma.user.findUnique({
         where: { id: req.user!.userId },
-        select: { id: true, email: true, name: true, phone: true, photoUrl: true, role: true },
+        select: { id: true, email: true, name: true, phone: true, photoUrl: true, role: true, cpfCnpj: true, address: true, city: true, state: true, socialLinks: true },
     });
 
     if (!user) {
@@ -489,6 +489,11 @@ const profileUpdateSchema = z.object({
     name: z.string().min(2).optional(),
     phone: z.string().optional(),
     password: z.string().min(6).optional(),
+    cpfCnpj: z.string().optional(),
+    address: z.string().optional(),
+    city: z.string().optional(),
+    state: z.string().optional(),
+    socialLinks: z.any().optional(), // Allow JSON
 });
 
 router.patch('/profile', authenticate, async (req: Request, res: Response) => {
@@ -498,11 +503,16 @@ router.patch('/profile', authenticate, async (req: Request, res: Response) => {
         if (data.name) updateData.name = data.name;
         if (data.phone !== undefined) updateData.phone = data.phone;
         if (data.password) updateData.passwordHash = await bcrypt.hash(data.password, 12);
+        if (data.cpfCnpj !== undefined) updateData.cpfCnpj = data.cpfCnpj;
+        if (data.address !== undefined) updateData.address = data.address;
+        if (data.city !== undefined) updateData.city = data.city;
+        if (data.state !== undefined) updateData.state = data.state;
+        if (data.socialLinks !== undefined) updateData.socialLinks = data.socialLinks;
 
         const user = await prisma.user.update({
             where: { id: req.user!.userId },
             data: updateData,
-            select: { id: true, email: true, name: true, phone: true, photoUrl: true, role: true },
+            select: { id: true, email: true, name: true, phone: true, photoUrl: true, role: true, cpfCnpj: true, address: true, city: true, state: true, socialLinks: true },
         });
 
         res.json({ user, message: 'Perfil atualizado com sucesso.' });

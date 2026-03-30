@@ -16,7 +16,7 @@ router.get('/', authenticate, authorize('ADMIN'), async (req: Request, res: Resp
         where.role = role;
     }
 
-    const users = await prisma.user.findMany({
+    const rawUsers = await prisma.user.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         select: {
@@ -25,16 +25,30 @@ router.get('/', authenticate, authorize('ADMIN'), async (req: Request, res: Resp
             name: true,
             phone: true,
             role: true,
+            clientStatus: true,
+            tags: true,
             createdAt: true,
             _count: {
                 select: { bookings: true, contracts: true },
             },
             contracts: {
-                where: { status: 'ACTIVE' },
-                select: { type: true },
-                take: 1,
+                select: { type: true, status: true, addOns: true },
+            },
+            payments: {
+                select: { amount: true, status: true },
             },
         },
+    });
+
+    const users = rawUsers.map(u => {
+        const totalPaid = u.payments
+            .filter(p => p.status === 'PAID')
+            .reduce((sum, p) => sum + p.amount, 0);
+        const totalPending = u.payments
+            .filter(p => p.status === 'PENDING')
+            .reduce((sum, p) => sum + p.amount, 0);
+        const { payments, ...rest } = u;
+        return { ...rest, totalPaid, totalPending };
     });
 
     res.json({ users });
@@ -54,6 +68,14 @@ router.get('/:id', authenticate, authorize('ADMIN'), async (req: Request, res: R
             phone: true,
             role: true,
             notes: true,
+            photoUrl: true,
+            cpfCnpj: true,
+            address: true,
+            city: true,
+            state: true,
+            tags: true,
+            socialLinks: true,
+            clientStatus: true,
             createdAt: true,
             contracts: {
                 orderBy: { createdAt: 'desc' },
@@ -90,6 +112,16 @@ router.get('/:id', authenticate, authorize('ADMIN'), async (req: Request, res: R
                     audienceOrigin: true,
                 },
             },
+            payments: {
+                orderBy: { createdAt: 'desc' },
+                select: {
+                    id: true,
+                    amount: true,
+                    status: true,
+                    dueDate: true,
+                    createdAt: true,
+                },
+            },
         },
     });
 
@@ -109,6 +141,11 @@ const createUserSchema = z.object({
     name: z.string().min(2),
     phone: z.string().optional(),
     role: z.enum(['ADMIN', 'CLIENTE']).optional().default('CLIENTE'),
+    notes: z.string().optional(),
+    cpfCnpj: z.string().optional().nullable(),
+    tags: z.array(z.string()).optional(),
+    socialLinks: z.string().optional().nullable(),
+    clientStatus: z.enum(['ACTIVE', 'INACTIVE', 'BLOCKED']).optional(),
 });
 
 router.post('/', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
@@ -130,6 +167,11 @@ router.post('/', authenticate, authorize('ADMIN'), async (req: Request, res: Res
                 name: data.name,
                 phone: data.phone,
                 role: data.role as any,
+                ...(data.notes ? { notes: data.notes } : {}),
+                ...(data.cpfCnpj !== undefined ? { cpfCnpj: data.cpfCnpj } : {}),
+                ...(data.tags ? { tags: data.tags } : {}),
+                ...(data.socialLinks !== undefined ? { socialLinks: data.socialLinks } : {}),
+                ...(data.clientStatus ? { clientStatus: data.clientStatus as any } : {}),
             },
             select: { id: true, email: true, name: true, phone: true, role: true, createdAt: true },
         });
@@ -153,6 +195,13 @@ const updateUserSchema = z.object({
     role: z.enum(['ADMIN', 'CLIENTE']).optional(),
     password: z.string().min(6).optional(),
     notes: z.string().optional(),
+    cpfCnpj: z.string().optional().nullable(),
+    address: z.string().optional().nullable(),
+    city: z.string().optional().nullable(),
+    state: z.string().optional().nullable(),
+    tags: z.array(z.string()).optional(),
+    socialLinks: z.string().optional().nullable(),
+    clientStatus: z.enum(['ACTIVE', 'INACTIVE', 'BLOCKED']).optional(),
 });
 
 router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
@@ -181,6 +230,13 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
         if (data.phone !== undefined) updateData.phone = data.phone;
         if (data.role) updateData.role = data.role;
         if (data.notes !== undefined) updateData.notes = data.notes;
+        if (data.cpfCnpj !== undefined) updateData.cpfCnpj = data.cpfCnpj;
+        if (data.address !== undefined) updateData.address = data.address;
+        if (data.city !== undefined) updateData.city = data.city;
+        if (data.state !== undefined) updateData.state = data.state;
+        if (data.tags !== undefined) updateData.tags = data.tags;
+        if (data.socialLinks !== undefined) updateData.socialLinks = data.socialLinks;
+        if (data.clientStatus) updateData.clientStatus = data.clientStatus;
         if (data.password) {
             updateData.passwordHash = await bcrypt.hash(data.password, 10);
         }

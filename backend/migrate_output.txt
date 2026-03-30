@@ -1,0 +1,81 @@
+﻿node.exe : Environment 
+variables loaded from .env
+No linha:1 caractere:1
++ & "C:\Program 
+Files\nodejs/node.exe" 
+"C:\Program 
+Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~
+    + CategoryInfo         
+     : NotSpecified: (Env  
+  ironment variables loa   
+ ded from .env:String)     
+[], RemoteException
+    + FullyQualifiedErrorI 
+   d : NativeCommandError
+ 
+Prisma schema loaded from prisma\schema.prisma
+Datasource "db": PostgreSQL database "studio_scheduler", schema "public" at "localhost:5432"
+
+Drift detected: Your database schema is not in sync with your migration history.
+
+The following is a summary of the differences between the expected database schema given your migrations files, and the actual schema of the database.
+
+It should be understood as the set of changes to get from the expected schema to the actual schema.
+
+If you are running this the first time on an existing database, please make sure to read this documentation page:
+https://www.prisma.io/docs/guides/database/developing-with-prisma-migrate/troubleshooting-development
+
+[+] Added enums
+  - BookingStatus
+  - ContractStatus
+  - ContractType
+  - PaymentMethod
+  - PaymentProvider
+  - PaymentStatus
+  - Role
+  - Tier
+
+[+] Added tables
+  - addon_config
+  - audit_logs
+  - blocked_slots
+  - bookings
+  - business_config
+  - contracts
+  - payments
+  - pricing_config
+  - users
+
+[*] Changed the `blocked_slots` table
+  [+] Added foreign key on columns (created_by)
+
+[*] Changed the `bookings` table
+  [+] Added unique index on columns (date, start_time, status)
+  [+] Added foreign key on columns (contract_id)
+  [+] Added foreign key on columns (user_id)
+
+[*] Changed the `contracts` table
+  [+] Added foreign key on columns (renewed_from_id)
+  [+] Added foreign key on columns (user_id)
+
+[*] Changed the `payments` table
+  [+] Added foreign key on columns (booking_id)
+  [+] Added foreign key on columns (contract_id)
+  [+] Added foreign key on columns (user_id)
+
+[*] Changed the `pricing_config` table
+  [+] Added unique index on columns (tier)
+
+[*] Changed the `users` table
+  [+] Added unique index on columns (cpf_cnpj)
+  [+] Added unique index on columns (email)
+  [+] Added unique index on columns (google_id)
+  [+] Added unique index on columns (phone)
+
+We need to reset the "public" schema at "localhost:5432"
+
+You may use prisma migrate reset to drop the development database.
+All data will be lost.

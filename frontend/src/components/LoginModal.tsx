@@ -1,4 +1,5 @@
 import React, { useState, FormEvent } from 'react';
+import ModalOverlay from './ModalOverlay';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -173,9 +174,8 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
     if (!isOpen) return null;
 
     return (
-        <div
-            className="modal-overlay"
-            onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+        <ModalOverlay
+            onClose={onClose}
             style={{
                 position: 'fixed',
                 inset: 0,
@@ -410,7 +410,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                 </motion.div>
             </AnimatePresence>
             <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        </div>
+        </ModalOverlay>
     );
 }
 

@@ -18,6 +18,7 @@ enum ContractType {
   FIXO
   FLEX
   SERVICO
+  CUSTOM
 }
 
 enum Tier {
@@ -40,6 +41,7 @@ enum ContractStatus {
   EXPIRED
   CANCELLED
   PENDING_CANCELLATION
+  PAUSED
 }
 
 enum PaymentProvider {
@@ -72,6 +74,13 @@ model User {
   role         Role     @default(CLIENTE)
   photoUrl     String?  @map("photo_url")
   notes        String?  @db.Text // admin internal observations
+  cpfCnpj      String?  @unique @map("cpf_cnpj")
+  address      String?  @db.Text
+  city         String?
+  state        String?
+  tags         String[] @default([])
+  socialLinks  String?  @map("social_links") @db.Text // JSON: {"youtube":"url","instagram":"url",...}
+  clientStatus String   @default("ACTIVE") @map("client_status") // ACTIVE, INACTIVE, BLOCKED
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
@@ -99,7 +108,10 @@ model Contract {
   fixedDayOfWeek Int?    @map("fixed_day_of_week") // 1=Mon, 6=Sat
   fixedTime      String? @map("fixed_time") // "14:00"
 
-  // External contract link
+  // Store credits refunded due to early cancellations (only used for CUSTOM)
+  customCreditsRemaining Int @default(0) @map("custom_credits_remaining")
+
+  // For FIXO contracts link
   contractUrl String? @map("contract_url") // link to digital contract
 
   // Flex-specific (episode-based credits: 12 for 3mo, 24 for 6mo)
@@ -108,18 +120,34 @@ model Contract {
   flexCycleStart       DateTime? @map("flex_cycle_start")
   flexWeeksCompensated Int?      @default(0) @map("flex_weeks_compensated") // advance offset
 
+  // Custom-specific ("Monte Seu Plano")
+  customSchedule    String?  @map("custom_schedule") @db.Text // JSON: [{"day":1,"time":"10:00"},{"day":3,"time":"19:30"}]
+  sessionsPerWeek   Int?     @map("sessions_per_week")
+  sessionsPerCycle   Int?     @map("sessions_per_cycle")  // sessionsPerWeek × 4
+  totalSessions     Int?     @map("total_sessions")
+  addonCredits      String?  @map("addon_credits") @db.Text // JSON: {"CORTES_REELS":{"mode":"all"},"GUEST_VIP":{"mode":"credits","perCycle":4}}
+  accessMode        String?  @map("access_mode") // FULL (cartão/pix) or PROGRESSIVE (boleto)
+
   // Add-ons selected at contract creation
   addOns               String[]  @map("add_ons")
 
   // Payment method chosen at contract creation
   paymentMethod PaymentMethod? @map("payment_method")
 
+  // Pause / Renewal
+  pausedAt       DateTime? @map("paused_at")
+  pauseReason    String?   @map("pause_reason")
+  resumeDate     DateTime? @map("resume_date")
+  renewedFromId  String?   @map("renewed_from_id")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  user     User      @relation(fields: [userId], references: [id])
-  bookings Booking[]
-  payments Payment[]
+  user        User      @relation(fields: [userId], references: [id])
+  bookings    Booking[]
+  payments    Payment[]
+  renewedFrom Contract? @relation("ContractRenewal", fields: [renewedFromId], references: [id])
+  renewals    Contract[] @relation("ContractRenewal")
 
   @@map("contracts")
 }
@@ -169,6 +197,9 @@ model Payment {
   amount      Int // in cents
   status      PaymentStatus   @default(PENDING)
   dueDate     DateTime?       @map("due_date")
+  pixString   String?         @map("pix_string") @db.Text
+  boletoUrl   String?         @map("boleto_url") @db.Text
+  paymentUrl  String?         @map("payment_url") @db.Text // Checkout Link
   createdAt   DateTime        @default(now()) @map("created_at")
   updatedAt   DateTime        @updatedAt @map("updated_at")
 
@@ -209,7 +240,63 @@ model AddOnConfig {
   name        String
   price       Int      // Base price in cents
   description String?  @db.Text
+  monthly     Boolean  @default(false) // true = monthly service (e.g. GESTAO_SOCIAL)
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@map("addon_config")
 }
+
+model BusinessConfig {
+  key       String   @id  // e.g. "discount_3months", "sessions_per_month"
+  value     String        // serialized value (number, percent, string)
+  type      String        // "number" | "percent" | "string"
+  label     String        // human-readable label shown in Admin UI
+  group     String        // "plans" | "policies" | "payments"
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+
+  @@map("business_config")
+}
+
+model PaymentMethodConfig {
+  key         String   @id              // "PIX", "CARTAO", "BOLETO"
+  label       String                    // "PIX", "Cartão de Crédito"
+  shortLabel  String   @map("short_label")  // "PIX", "Cartão"
+  emoji       String                    // "⚡", "💳", "📄"
+  description String                    // "Pagamento instantâneo"
+  color       String                    // "#22c55e"
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)      @map("sort_order")
+  accessMode  String   @default("FULL") @map("access_mode") // "FULL" | "PROGRESSIVE"
+  updatedAt   DateTime @updatedAt       @map("updated_at")
+
+  @@map("payment_method_config")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  entityType  String   @map("entity_type") // CONTRACT, USER, BOOKING
+  entityId    String   @map("entity_id")
+  action      String   // CREATED, UPDATED, CANCELLED, PAUSED, RESUMED, RENEWED
+  changes     String?  @db.Text // JSON diff
+  performedBy String   @map("performed_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("audit_logs")
+}
+
+model IntegrationConfig {
+  id           String    @id @default(uuid())
+  provider     String    @unique           // "CORA" | "STRIPE"
+  enabled      Boolean   @default(false)
+  environment  String    @default("sandbox") // "sandbox" | "production"
+  config       String    @db.Text          // JSON with credentials
+  webhookUrl   String?   @map("webhook_url") @db.Text
+  lastTestedAt DateTime? @map("last_tested_at")
+  testStatus   String?   @map("test_status") // "success" | "error" | null
+  testMessage  String?   @map("test_message") @db.Text
+  updatedAt    DateTime  @updatedAt        @map("updated_at")
+
+  @@map("integration_configs")
+}
+

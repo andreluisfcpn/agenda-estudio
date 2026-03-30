@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import ModalOverlay from './components/ModalOverlay';
 import { BrowserRouter, Routes, Route, Navigate, NavLink } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { UIProvider, useUI } from './context/UIContext';
 import { authApi } from './api/client';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
@@ -11,9 +13,14 @@ import AdminClientsPage from './pages/AdminClientsPage';
 import AdminBookingsPage from './pages/AdminBookingsPage';
 import AdminContractsPage from './pages/AdminContractsPage';
 import AdminPricingPage from './pages/AdminPricingPage';
+import AdminTodayPage from './pages/AdminTodayPage';
+import AdminFinancePage from './pages/AdminFinancePage';
+import AdminReportsPage from './pages/AdminReportsPage';
+import NotificationBell from './components/NotificationBell';
 import ClientProfilePage from './pages/ClientProfilePage';
 import LandingPage from './pages/LandingPage';
 import { GoogleOAuthProvider } from '@react-oauth/google';
+import { loadPaymentMethods } from './constants/paymentMethods';
 
 // ─── Image Cropper ──────────────────────────────────────
 
@@ -204,6 +211,23 @@ function ProfileModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
     const [name, setName] = useState(user?.name || '');
     const [phone, setPhone] = useState(user?.phone || '');
     const [password, setPassword] = useState('');
+    const [cpfCnpj, setCpfCnpj] = useState(user?.cpfCnpj || '');
+    const [address, setAddress] = useState(user?.address || '');
+    const [city, setCity] = useState(user?.city || '');
+    const [state, setState] = useState(user?.state || '');
+
+    let initialInsta = '';
+    let initialLink = '';
+    try {
+        if (user?.socialLinks) {
+            const parsed = typeof user.socialLinks === 'string' ? JSON.parse(user.socialLinks) : user.socialLinks;
+            initialInsta = parsed.instagram || '';
+            initialLink = parsed.linkedin || '';
+        }
+    } catch (e) {}
+
+    const [instagram, setInstagram] = useState(initialInsta);
+    const [linkedin, setLinkedin] = useState(initialLink);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -219,6 +243,14 @@ function ProfileModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
             if (name && name !== user?.name) data.name = name;
             if (phone !== (user?.phone || '')) data.phone = phone;
             if (password) data.password = password;
+            if (cpfCnpj !== (user?.cpfCnpj || '')) data.cpfCnpj = cpfCnpj;
+            if (address !== (user?.address || '')) data.address = address;
+            if (city !== (user?.city || '')) data.city = city;
+            if (state !== (user?.state || '')) data.state = state;
+
+            if (instagram !== initialInsta || linkedin !== initialLink) {
+                data.socialLinks = JSON.stringify({ instagram, linkedin });
+            }
 
             if (Object.keys(data).length > 0) {
                 const res = await authApi.updateProfile(data);
@@ -261,8 +293,8 @@ function ProfileModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
         .toUpperCase();
 
     return (
-        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget && !cropImageSrc) onClose(); }}>
-            <div className="modal" style={{ maxWidth: cropImageSrc ? 380 : 440 }}>
+        <ModalOverlay onClose={onClose} preventClose={!!cropImageSrc}>
+            <div className="modal" style={{ maxWidth: cropImageSrc ? 380 : 540, maxHeight: '90vh', overflowY: 'auto' }}>
                 <h2 className="modal-title" style={{ textAlign: 'center', marginBottom: '20px' }}>
                     {cropImageSrc ? '✂️ Ajustar Foto' : 'Meu Perfil'}
                 </h2>
@@ -339,6 +371,40 @@ function ProfileModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
                             <input className="form-input" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" />
                         </div>
 
+                        <div className="form-group">
+                            <label className="form-label">CPF / CNPJ</label>
+                            <input className="form-input" value={cpfCnpj} onChange={e => setCpfCnpj(e.target.value)} placeholder="000.000.000-00" />
+                        </div>
+
+                        <div className="form-group">
+                            <label className="form-label">Endereço</label>
+                            <input className="form-input" value={address} onChange={e => setAddress(e.target.value)} placeholder="Rua, Número, Complemento" />
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                            <div className="form-group" style={{ marginBottom: 0 }}>
+                                <label className="form-label">Cidade</label>
+                                <input className="form-input" value={city} onChange={e => setCity(e.target.value)} placeholder="Cidade" />
+                            </div>
+                            <div className="form-group" style={{ marginBottom: 0 }}>
+                                <label className="form-label">UF</label>
+                                <input className="form-input" value={state} onChange={e => setState(e.target.value)} placeholder="UF" maxLength={2} />
+                            </div>
+                        </div>
+
+                        <div className="form-group">
+                            <label className="form-label">Instagram</label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-secondary)', padding: '0 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+                                <span style={{ color: 'var(--text-muted)' }}>@</span>
+                                <input className="form-input" style={{ border: 'none', padding: '10px 0', background: 'transparent' }} value={instagram} onChange={e => setInstagram(e.target.value)} placeholder="usuario" />
+                            </div>
+                        </div>
+
+                        <div className="form-group">
+                            <label className="form-label">LinkedIn (URL)</label>
+                            <input className="form-input" value={linkedin} onChange={e => setLinkedin(e.target.value)} placeholder="https://linkedin.com/in/..." />
+                        </div>
+
                         <div className="modal-actions" style={{ marginTop: '16px' }}>
                             <button className="btn btn-secondary" onClick={onClose}>Fechar</button>
                             <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
@@ -348,7 +414,7 @@ function ProfileModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
                     </>
                 )}
             </div>
-        </div>
+        </ModalOverlay>
     );
 }
 
@@ -370,13 +436,13 @@ function Layout({ children }: { children: React.ReactNode }) {
     return (
         <div className="app-layout">
             <aside className="sidebar">
-                <div className="sidebar-logo" style={{ padding: '0 24px 40px', background: 'none' }}>
+                <div className="sidebar-logo" style={{ padding: '0 20px 20px', background: 'none', borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: '16px' }}>
                     <img
                         src="https://buzios.digital/wp-content/uploads/2025/01/logo-site-branca.svg"
                         alt="Búzios Digital"
-                        style={{ height: '32px', marginBottom: '8px' }}
+                        style={{ height: '30px', marginBottom: '6px' }}
                     />
-                    <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600 }}>Estúdio de Podcast</span>
+                    <span style={{ fontSize: '0.5625rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 700 }}>Estúdio de Podcast</span>
                 </div>
 
                 <nav className="sidebar-nav">
@@ -406,9 +472,16 @@ function Layout({ children }: { children: React.ReactNode }) {
 
                     {isAdmin && (
                         <>
-                            <div style={{ padding: '12px 16px 4px', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-muted)' }}>
-                                Administração
+                            <div style={{ padding: '14px 12px 6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <div style={{ height: 1, flex: 1, background: 'rgba(255,255,255,0.06)' }} />
+                                <span style={{ fontSize: '0.5625rem', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--text-muted)', fontWeight: 700, whiteSpace: 'nowrap' }}>Administração</span>
+                                <div style={{ height: 1, flex: 1, background: 'rgba(255,255,255,0.06)' }} />
                             </div>
+
+                            <NavLink to="/admin/today" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+                                <span className="icon">📍</span>
+                                <span>Hoje</span>
+                            </NavLink>
 
                             <NavLink to="/admin/bookings" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
                                 <span className="icon">📋</span>
@@ -429,11 +502,24 @@ function Layout({ children }: { children: React.ReactNode }) {
                                 <span className="icon">💰</span>
                                 <span>Planos & Valores</span>
                             </NavLink>
+
+                            <NavLink to="/admin/finance" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+                                <span className="icon">💳</span>
+                                <span>Financeiro</span>
+                            </NavLink>
+
+                            <NavLink to="/admin/reports" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+                                <span className="icon">📈</span>
+                                <span>Relatórios</span>
+                            </NavLink>
                         </>
                     )}
                 </nav>
 
                 <div className="sidebar-footer">
+                    <div style={{ padding: '0 12px 8px' }}>
+                        <NotificationBell />
+                    </div>
                     <div className="sidebar-user" style={{ cursor: 'pointer' }} onClick={() => setShowProfile(true)} title="Clique para editar perfil">
                         <div
                             className="sidebar-user-avatar"
@@ -454,9 +540,14 @@ function Layout({ children }: { children: React.ReactNode }) {
                         </div>
                     </div>
                     <button
-                        className="btn btn-ghost btn-sm"
                         onClick={logout}
-                        style={{ width: '100%', marginTop: '8px', color: 'var(--status-blocked)' }}
+                        style={{
+                            width: '100%', marginTop: '8px', padding: '7px 12px', borderRadius: '8px',
+                            background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.15)',
+                            color: '#ef4444', fontSize: '0.75rem', fontWeight: 600,
+                            cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center',
+                            justifyContent: 'center', gap: '6px', fontFamily: 'inherit',
+                        }}
                     >
                         🚪 Sair
                     </button>
@@ -504,6 +595,11 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 function AppRoutes() {
     const { user, loading } = useAuth();
 
+    // Load payment methods from API on app init
+    useEffect(() => {
+        if (user) { loadPaymentMethods(); }
+    }, [user]);
+
     if (loading) {
         return (
             <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -522,11 +618,14 @@ function AppRoutes() {
             <Route path="/my-contracts" element={<ProtectedRoute><MyContractsPage /></ProtectedRoute>} />
 
             {/* Admin routes */}
+            <Route path="/admin/today" element={<ProtectedRoute><AdminRoute><AdminTodayPage /></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/bookings" element={<ProtectedRoute><AdminRoute><AdminBookingsPage /></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/clients" element={<ProtectedRoute><AdminRoute><AdminClientsPage /></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/clients/:id" element={<ProtectedRoute><AdminRoute><ClientProfilePage /></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/contracts" element={<ProtectedRoute><AdminRoute><AdminContractsPage /></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/pricing" element={<ProtectedRoute><AdminRoute><AdminPricingPage /></AdminRoute></ProtectedRoute>} />
+            <Route path="/admin/finance" element={<ProtectedRoute><AdminRoute><AdminFinancePage /></AdminRoute></ProtectedRoute>} />
+            <Route path="/admin/reports" element={<ProtectedRoute><AdminRoute><AdminReportsPage /></AdminRoute></ProtectedRoute>} />
 
             {/* Legacy redirects */}
             <Route path="/clients" element={<Navigate to="/admin/clients" replace />} />
@@ -540,11 +639,13 @@ export default function App() {
     const clientId = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || "mock-client-id";
     return (
         <GoogleOAuthProvider clientId={clientId}>
-            <BrowserRouter>
-                <AuthProvider>
-                    <AppRoutes />
-                </AuthProvider>
-            </BrowserRouter>
+            <UIProvider>
+                <BrowserRouter>
+                    <AuthProvider>
+                        <AppRoutes />
+                    </AuthProvider>
+                </BrowserRouter>
+            </UIProvider>
         </GoogleOAuthProvider>
     );
 }

@@ -1,0 +1,32 @@
+﻿node.exe : Environment 
+variables loaded from .env
+No linha:1 caractere:1
++ & "C:\Program 
+Files\nodejs/node.exe" 
+"C:\Program 
+Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~
+    + CategoryInfo         
+     : NotSpecified: (Env  
+  ironment variables loa   
+ ded from .env:String)     
+[], RemoteException
+    + FullyQualifiedErrorI 
+   d : NativeCommandError
+ 
+Prisma schema loaded from prisma\schema.prisma
+Error: 
+EPERM: operation not 
+permitted, rename 
+'C:\Users\Buzios Digital\an
+tigravity\node_modules\.pri
+sma\client\query_engine-win
+dows.dll.node.tmp29380' -> 
+'C:\Users\Buzios Digital\an
+tigravity\node_modules\.pri
+sma\client\query_engine-win
+dows.dll.node'
+
+

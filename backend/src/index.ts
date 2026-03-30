@@ -12,6 +12,8 @@ import contractRoutes from './modules/contracts/routes';
 import userRoutes from './modules/users/routes';
 import blockedSlotRoutes from './modules/blocked-slots/routes';
 import pricingRoutes from './modules/pricing/routes';
+import paymentRoutes from './modules/payments/routes';
+import { financeRouter } from './modules/finance/routes';
 
 import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
@@ -46,6 +48,20 @@ app.use('/api/contracts', contractRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/blocked-slots', blockedSlotRoutes);
 app.use('/api/pricing', pricingRoutes);
+app.use('/api/payments', paymentRoutes);
+app.use('/api/finance', financeRouter);
+
+import notificationRoutes from './modules/notifications/routes';
+app.use('/api/notifications', notificationRoutes);
+
+import reportRoutes from './modules/reports/routes';
+app.use('/api/reports', reportRoutes);
+
+import integrationRoutes from './modules/integrations/routes';
+app.use('/api/integrations', integrationRoutes);
+
+import webhookRoutes from './modules/webhooks/routes';
+app.use('/api/webhooks', webhookRoutes);
 
 // ─── Error Handler ──────────────────────────────────────
 
@@ -86,7 +102,7 @@ app.listen(config.port, () => {
         }
     };
 
-    runCron(); // Run immediately on startup
+    // runCron(); // Temporarily disabled on startup to prevent sync block on typescript compilation errors during dev
     setInterval(runCron, 5 * 60 * 1000);
 });
 

@@ -9,7 +9,7 @@ import ServicesCarousel from '../components/ServicesCarousel';
 import LoginModal from '../components/LoginModal';
 import VideoModal from '../components/VideoModal';
 import { useAuth } from '../context/AuthContext';
-import { PublicSlot } from '../api/client';
+import { PublicSlot, pricingApi } from '../api/client';
 
 import {
     Calendar,
@@ -41,7 +41,7 @@ const COLORS = {
     white: '#FFFFFF'
 };
 
-const ASSETS = {
+const DEFAULT_ASSETS = {
     logo: 'https://buzios.digital/wp-content/uploads/2025/01/logo-site-branca.svg',
     heroImage: 'https://buzios.digital/wp-content/uploads/elementor/thumbs/bd-estudio-enhanced-sr-r9lm9twze86yo0wxu68fp1e0yf8baho28zrniyf1o0.jpg'
 };
@@ -56,15 +56,33 @@ export default function LandingPage() {
     const agendaRef = useRef<HTMLDivElement>(null);
     const [activeTab, setActiveTab] = useState(0);
 
+    // Dynamic branding from config
+    const [studioName, setStudioName] = useState('Estúdio Búzios Digital');
+    const [studioLogo, setStudioLogo] = useState(DEFAULT_ASSETS.logo);
+    const [studioHero, setStudioHero] = useState(DEFAULT_ASSETS.heroImage);
+    const [studioEmail, setStudioEmail] = useState('contato@buzios.digital');
+    const [studioLocation, setStudioLocation] = useState('Búzios, RJ');
+
     const scrollToCalendar = () => {
         agendaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     };
 
     useEffect(() => {
-        document.title = "Estúdio Búzios Digital — O Melhor Estúdio de Podcast e Vídeo em Búzios, RJ";
+        // Load branding from config API
+        pricingApi.getBusinessConfigPublic().then(({ config: cfg }) => {
+            if (cfg.studio_name) setStudioName(String(cfg.studio_name));
+            if (cfg.studio_logo_url) setStudioLogo(String(cfg.studio_logo_url));
+            if (cfg.studio_hero_image) setStudioHero(String(cfg.studio_hero_image));
+            if (cfg.studio_email) setStudioEmail(String(cfg.studio_email));
+            if (cfg.studio_location) setStudioLocation(String(cfg.studio_location));
+        }).catch(() => {});
+    }, []);
+
+    useEffect(() => {
+        document.title = `${studioName} — O Melhor Estúdio de Podcast e Vídeo`;
         const metaDesc = document.querySelector('meta[name="description"]');
         if (metaDesc) {
-            metaDesc.setAttribute("content", "Produza seu podcast ou vídeo no Estúdio Búzios Digital. Tecnologia 4K, automação com IA e ambiente climatizado no coração de Búzios. Reserve agora.");
+            metaDesc.setAttribute("content", `Produza seu podcast ou vídeo no ${studioName}. Tecnologia 4K, automação com IA e ambiente climatizado. Reserve agora.`);
         }
 
         const ctx = gsap.context(() => {
@@ -122,7 +140,7 @@ export default function LandingPage() {
         }, heroRef);
 
         return () => ctx.revert();
-    }, []);
+    }, [studioName]);
 
     return (
         <div className="landing-root" style={{
@@ -153,8 +171,8 @@ export default function LandingPage() {
                 <nav style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div style={{ display: 'flex', alignItems: 'center' }}>
                         <img
-                            src={ASSETS.logo}
-                            alt="Búzios Digital"
+                            src={studioLogo}
+                            alt={studioName}
                             style={{ height: '32px', cursor: 'pointer' }}
                             onClick={() => window.open('https://buzios.digital', '_blank')}
                         />
@@ -240,15 +258,15 @@ export default function LandingPage() {
                         border: '1px solid rgba(255,255,255,0.08)'
                     }}>
                         <img
-                            src={ASSETS.heroImage}
+                            src={studioHero}
                             className="hero-photo"
-                            alt="Real Estúdio Búzios Digital"
+                            alt={studioName}
                             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                         />
                         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,26,31,0.5), transparent)' }} />
                         <div style={{ position: 'absolute', bottom: '30px', left: '30px', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)', padding: '12px 20px', borderRadius: '15px', border: '1px solid rgba(255,255,255,0.1)' }}>
                             <div style={{ fontSize: '0.8rem', opacity: 0.6 }}>LOCALIZAÇÃO</div>
-                            <div style={{ fontWeight: 700 }}>Búzios, RJ</div>
+                            <div style={{ fontWeight: 700 }}>{studioLocation}</div>
                         </div>
                     </div>
                 </section>
@@ -322,14 +340,14 @@ export default function LandingPage() {
             {/* Footer */}
             <footer style={{ padding: '80px 8% 60px', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '60px', position: 'relative', zIndex: 1 }}>
                 <div>
-                    <img src={ASSETS.logo} alt="Búzios Digital" style={{ height: '28px', marginBottom: '24px' }} />
-                    <p style={{ maxWidth: '300px', color: 'rgba(255,255,255,0.4)', lineHeight: 1.6 }}>Excelência e inovação em produção audiovisual e estratégica digital da Búzios Digital.</p>
+                    <img src={studioLogo} alt={studioName} style={{ height: '28px', marginBottom: '24px' }} />
+                    <p style={{ maxWidth: '300px', color: 'rgba(255,255,255,0.4)', lineHeight: 1.6 }}>Excelência e inovação em produção audiovisual e estratégica digital.</p>
                 </div>
                 <div style={{ display: 'flex', gap: '80px' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                         <span style={{ fontWeight: 700 }}>CONTATO</span>
                         <span style={{ opacity: 0.5 }}>(22) 3301-5850</span>
-                        <span style={{ opacity: 0.5 }}>contato@buzios.digital</span>
+                        <span style={{ opacity: 0.5 }}>{studioEmail}</span>
                     </div>
                 </div>
             </footer>

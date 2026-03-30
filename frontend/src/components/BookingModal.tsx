@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import ModalOverlay from './ModalOverlay';
 import { bookingsApi, contractsApi, pricingApi, ContractWithStats } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { getPaymentMethods, PaymentMethodKey } from '../constants/paymentMethods';
 
 interface BookingModalProps {
     date: string;
@@ -30,7 +32,7 @@ export default function BookingModal({ date, time, tier, price, onClose, onBooke
     const [contracts, setContracts] = useState<ContractWithStats[]>([]);
     const [loadingContracts, setLoadingContracts] = useState(true);
     const [selectedContractId, setSelectedContractId] = useState<string | null>(null);
-    const [avulsoPayment, setAvulsoPayment] = useState<'CARTAO' | 'PIX' | null>(null);
+    const [avulsoPayment, setAvulsoPayment] = useState<PaymentMethodKey | null>(null);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     
@@ -60,6 +62,12 @@ export default function BookingModal({ date, time, tier, price, onClose, onBooke
     // Check if a contract is compatible with the selected slot
     const isCompatible = (c: ContractWithStats): boolean => {
         if (c.status !== 'ACTIVE') return false;
+        
+        // Custom contracts normally are scheduled upfront. They only allow ad-hoc booking if they have custom credits refunded.
+        if (c.type === 'CUSTOM' && (c.customCreditsRemaining || 0) <= 0) {
+            return false; 
+        }
+
         const cTier = c.tier.toUpperCase();
         const slotTier = tierUp;
 
@@ -71,6 +79,7 @@ export default function BookingModal({ date, time, tier, price, onClose, onBooke
     };
 
     const hasCredits = (c: ContractWithStats): boolean => {
+        if (c.type === 'CUSTOM') return (c.customCreditsRemaining || 0) > 0;
         return c.completedBookings < c.totalBookings;
     };
 
@@ -128,7 +137,7 @@ export default function BookingModal({ date, time, tier, price, onClose, onBooke
     };
 
     return (
-        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+        <ModalOverlay onClose={onClose}>
             <div className="modal" style={{ maxWidth: 560 }}>
 
                 {/* Step 1: Choose action */}
@@ -175,10 +184,13 @@ export default function BookingModal({ date, time, tier, price, onClose, onBooke
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                             <div>
                                                 <div style={{ fontWeight: 700, fontSize: '0.875rem', color: '#22c55e' }}>
-                                                    ✅ {c.type === 'FIXO' ? '📌 Fixo' : '🔄 Flex'} — {c.tier} ({c.durationMonths}m)
+                                                    ✅ {c.type === 'CUSTOM' ? '🎨 Personalizado' : c.type === 'FIXO' ? '📌 Fixo' : '🔄 Flex'} — {c.tier} ({c.durationMonths}m)
                                                 </div>
                                                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                                                    Saldo: {c.totalBookings - c.completedBookings} gravações disponíveis de {c.totalBookings}
+                                                    {c.type === 'CUSTOM'
+                                                        ? `Saldo: ${c.customCreditsRemaining} reagendamento(s) livre(s) de cancelamentos`
+                                                        : `Saldo: ${c.totalBookings - c.completedBookings} gravações disponíveis de ${c.totalBookings}`
+                                                    }
                                                 </div>
                                             </div>
                                             <div style={{
@@ -204,11 +216,11 @@ export default function BookingModal({ date, time, tier, price, onClose, onBooke
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                             <div>
                                                 <div style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-                                                    {c.type === 'FIXO' ? '📌 Fixo' : '🔄 Flex'} — {c.tier} ({c.durationMonths}m)
+                                                    {c.type === 'CUSTOM' ? '🎨 Personalizado' : c.type === 'FIXO' ? '📌 Fixo' : '🔄 Flex'} — {c.tier} ({c.durationMonths}m)
                                                 </div>
                                                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
                                                     {!hasCredits(c)
-                                                        ? '⚠️ Sem créditos restantes'
+                                                        ? (c.type === 'CUSTOM' ? 'ℹ️ Todas as sessões deste plano já estão agendadas na grade' : '⚠️ Sem créditos restantes')
                                                         : `⚠️ Incompatível com o horário selecionado (${TIER_LABELS[tierUp] || tier})`
                                                     }
                                                 </div>
@@ -352,39 +364,27 @@ export default function BookingModal({ date, time, tier, price, onClose, onBooke
                             Forma de Pagamento
                         </div>
 
-                        {/* Cartão/Débito */}
-                        <div onClick={() => setAvulsoPayment('CARTAO')}
-                            style={{
-                                padding: '12px 14px', borderRadius: 'var(--radius-sm)', marginBottom: '10px', cursor: 'pointer',
-                                background: avulsoPayment === 'CARTAO' ? 'rgba(139, 92, 246, 0.08)' : 'var(--bg-secondary)',
-                                border: `2px solid ${avulsoPayment === 'CARTAO' ? 'var(--accent-primary)' : 'var(--border-subtle)'}`,
-                                transition: 'all 0.2s ease',
-                            }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div>
-                                    <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>💳 Cartão de Crédito/Débito</div>
-                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Pagamento no ato da gravação</div>
+                        {/* Payment Method Cards */}
+                        {getPaymentMethods().map(pm => {
+                            const isSelected = avulsoPayment === pm.key;
+                            return (
+                                <div key={pm.key} onClick={() => setAvulsoPayment(pm.key as 'CARTAO' | 'PIX' | 'BOLETO')}
+                                    style={{
+                                        padding: '12px 14px', borderRadius: 'var(--radius-sm)', marginBottom: '10px', cursor: 'pointer',
+                                        background: isSelected ? pm.bgActive : pm.bgInactive,
+                                        border: `2px solid ${isSelected ? pm.borderActive : pm.borderInactive}`,
+                                        transition: 'all 0.2s ease',
+                                    }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div>
+                                            <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>{pm.emoji} {pm.label}</div>
+                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{pm.description}</div>
+                                        </div>
+                                        <div style={{ fontWeight: 800, fontSize: '1rem', color: pm.color }}>{formatBRL(price + addonsCost)}</div>
+                                    </div>
                                 </div>
-                                <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--accent-primary)' }}>{formatBRL(price + addonsCost)}</div>
-                            </div>
-                        </div>
-
-                        {/* PIX */}
-                        <div onClick={() => setAvulsoPayment('PIX')}
-                            style={{
-                                padding: '12px 14px', borderRadius: 'var(--radius-sm)', marginBottom: '16px', cursor: 'pointer',
-                                background: avulsoPayment === 'PIX' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(34, 197, 94, 0.04)',
-                                border: `2px solid ${avulsoPayment === 'PIX' ? '#22c55e' : 'rgba(34, 197, 94, 0.2)'}`,
-                                transition: 'all 0.2s ease',
-                            }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div>
-                                    <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>🟢 PIX</div>
-                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Pagamento instantâneo</div>
-                                </div>
-                                <div style={{ fontWeight: 800, fontSize: '1rem', color: '#22c55e' }}>{formatBRL(price + addonsCost)}</div>
-                            </div>
-                        </div>
+                            );
+                        })}
 
                         <div className="modal-actions">
                             <button className="btn btn-secondary" onClick={() => { setStep('choose'); setAvulsoPayment(null); }}>⬅ Voltar</button>
@@ -434,6 +434,6 @@ export default function BookingModal({ date, time, tier, price, onClose, onBooke
                     </>
                 )}
             </div>
-        </div>
+        </ModalOverlay>
     );
 }

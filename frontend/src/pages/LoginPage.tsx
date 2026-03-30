@@ -1,5 +1,6 @@
-import React, { useState, FormEvent } from 'react';
+import React, { useState, useEffect, FormEvent } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { pricingApi } from '../api/client';
 
 export default function LoginPage() {
     const { login, register } = useAuth();
@@ -10,6 +11,15 @@ export default function LoginPage() {
     const [phone, setPhone] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [studioName, setStudioName] = useState('Estúdio Búzios Digital');
+    const [studioLogo, setStudioLogo] = useState('https://buzios.digital/wp-content/uploads/2025/01/logo-site-branca.svg');
+
+    useEffect(() => {
+        pricingApi.getBusinessConfigPublic().then(({ config }) => {
+            if (config.studio_name) setStudioName(String(config.studio_name));
+            if (config.studio_logo_url) setStudioLogo(String(config.studio_logo_url));
+        }).catch(() => {});
+    }, []);
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
@@ -32,11 +42,11 @@ export default function LoginPage() {
         <div className="login-page">
             <div className="login-card" style={{ textAlign: 'center' }}>
                 <img
-                    src="https://buzios.digital/wp-content/uploads/2025/01/logo-site-branca.svg"
-                    alt="Búzios Digital"
+                    src={studioLogo}
+                    alt={studioName}
                     style={{ height: '40px', marginBottom: '20px' }}
                 />
-                <h1 style={{ fontSize: '1.75rem', marginBottom: '8px' }}>Estúdio Búzios Digital</h1>
+                <h1 style={{ fontSize: '1.75rem', marginBottom: '8px' }}>{studioName}</h1>
                 <p>{isRegister ? 'Crie sua conta para agendar' : 'Entre para gerenciar seus agendamentos'}</p>
 
                 {error && <div className="error-message">{error}</div>}
