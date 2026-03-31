@@ -23,7 +23,8 @@ FROM deps AS frontend-build
 
 WORKDIR /app
 
-# Copy frontend source
+# Copy frontend source (CACHEBUST invalidates cache when content changes)
+ARG CACHEBUST=1
 COPY frontend/ ./frontend/
 
 # Build frontend → frontend/dist/
