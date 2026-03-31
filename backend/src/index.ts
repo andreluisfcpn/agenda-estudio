@@ -63,6 +63,18 @@ app.use('/api/integrations', integrationRoutes);
 import webhookRoutes from './modules/webhooks/routes';
 app.use('/api/webhooks', webhookRoutes);
 
+// ─── Serve Frontend (Production) ────────────────────────
+
+if (config.nodeEnv === 'production') {
+    const frontendPath = path.join(__dirname, '../../frontend/dist');
+    app.use(express.static(frontendPath));
+
+    // Catch-all: send index.html for any non-API route (React Router)
+    app.get('*', (_req, res) => {
+        res.sendFile(path.join(frontendPath, 'index.html'));
+    });
+}
+
 // ─── Error Handler ──────────────────────────────────────
 
 app.use(errorHandler);

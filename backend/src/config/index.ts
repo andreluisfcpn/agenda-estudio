@@ -1,5 +1,11 @@
 import dotenv from 'dotenv';
-dotenv.config({ path: '../.env' });
+import path from 'path';
+
+// In production (Docker/Railway), env vars are injected directly.
+// In development, load from ../.env
+if (process.env.NODE_ENV !== 'production') {
+    dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+}
 
 export const config = {
     port: parseInt(process.env.PORT || '3001', 10),

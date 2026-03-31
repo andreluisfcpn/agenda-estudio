@@ -306,7 +306,7 @@ export interface CustomConflict {
     date: string; originalTime: string; day: number;
     suggestedReplacement?: { date: string; time: string };
 }
-export interface PaymentSummary { id: string; amount: number; dueDate: string; status: 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED'; }
+// PaymentSummary is defined above (line ~247) — removed duplicate here
 export interface UserSummary {
     id: string; email: string; name: string; phone: string | null; role: string;
     clientStatus: string; tags: string[];
@@ -442,6 +442,7 @@ export interface FinanceMetrics {
 }
 
 export interface EnrichedPayment extends PaymentSummary {
+    createdAt: string;
     methodLabel: string;
     methodEmoji: string;
     feeDeduced: number;

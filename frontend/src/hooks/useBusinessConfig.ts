@@ -29,7 +29,15 @@ async function fetchConfig(): Promise<Record<string, number>> {
     if (cachedConfig) return cachedConfig;
     if (!fetchPromise) {
         fetchPromise = pricingApi.getBusinessConfigPublic()
-            .then(res => { cachedConfig = res.config; return res.config; })
+            .then(res => {
+                // Coerce all values to numbers for type safety
+                const parsed: Record<string, number> = {};
+                for (const [k, v] of Object.entries(res.config)) {
+                    parsed[k] = typeof v === 'number' ? v : Number(v) || 0;
+                }
+                cachedConfig = parsed;
+                return parsed;
+            })
             .catch(() => { fetchPromise = null; return DEFAULTS; });
     }
     return fetchPromise;
