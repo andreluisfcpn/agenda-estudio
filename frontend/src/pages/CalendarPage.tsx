@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import { bookingsApi, blockedSlotsApi, pricingApi, Slot, BookingWithUser, MyBookingSlot, PricingConfig } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
@@ -18,7 +18,7 @@ const PLATFORMS = [
 
 const TIER_COLORS: Record<string, { color: string; bg: string; label: string; emoji: string }> = {
     comercial: { color: '#10b981', bg: 'rgba(16,185,129,0.10)', label: 'Comercial', emoji: '🏢' },
-    audiencia: { color: '#a78bfa', bg: 'rgba(139,92,246,0.10)', label: 'Audiência', emoji: '🎤' },
+    audiencia: { color: '#2dd4bf', bg: 'rgba(45,212,191,0.10)', label: 'Audiência', emoji: '🎤' },
     sabado:    { color: '#fbbf24', bg: 'rgba(245,158,11,0.10)', label: 'Sábado', emoji: '🌟' },
 };
 

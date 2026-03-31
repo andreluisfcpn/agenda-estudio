@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { contractsApi, usersApi, pricingApi, Contract, UserSummary, CreateContractData, PricingConfig, AddOnConfig, CustomContractData } from '../api/client';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
@@ -17,7 +17,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
     EXPIRED:              { label: 'Expirado',    color: '#6b7280', bg: 'rgba(107,114,128,0.12)', icon: '○' },
     CANCELLED:            { label: 'Cancelado',   color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   icon: '✕' },
     PENDING_CANCELLATION: { label: 'Pend. Cancel', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', icon: '⏳' },
-    PAUSED:               { label: 'Pausado',     color: '#8b5cf6', bg: 'rgba(139,92,246,0.12)',  icon: '⏸' },
+    PAUSED:               { label: 'Pausado',     color: '#14b8a6', bg: 'rgba(45,212,191,0.12)',  icon: '⏸' },
 };
 
 export default function AdminContractsPage() {
@@ -247,8 +247,8 @@ export default function AdminContractsPage() {
                     }}
                         style={{
                             display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 24px', borderRadius: '12px', fontWeight: 700,
-                            background: 'linear-gradient(135deg, rgba(139,92,246,0.15), rgba(59,130,246,0.1))',
-                            border: '1px solid rgba(139,92,246,0.3)', color: '#a78bfa', cursor: 'pointer',
+                            background: 'linear-gradient(135deg, rgba(45,212,191,0.15), rgba(59,130,246,0.1))',
+                            border: '1px solid rgba(45,212,191,0.3)', color: '#2dd4bf', cursor: 'pointer',
                             fontSize: '0.875rem', transition: 'all 0.2s',
                         }}>
                         <span style={{ fontSize: '1.1rem' }}>🎨</span> Contrato Personalizado
@@ -405,7 +405,7 @@ export default function AdminContractsPage() {
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                                     <div style={{
                                                         width: '36px', height: '36px', borderRadius: '10px',
-                                                        background: c.tier === 'AUDIENCIA' ? 'rgba(139,92,246,0.15)' : c.tier === 'SABADO' ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.15)',
+                                                        background: c.tier === 'AUDIENCIA' ? 'rgba(45,212,191,0.15)' : c.tier === 'SABADO' ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.15)',
                                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                         fontSize: '0.9375rem', flexShrink: 0
                                                     }}>
@@ -438,8 +438,8 @@ export default function AdminContractsPage() {
                                                     </span>
                                                     <span style={{
                                                         padding: '2px 8px', borderRadius: '6px', fontSize: '0.625rem', fontWeight: 700,
-                                                        background: c.tier === 'AUDIENCIA' ? 'rgba(139,92,246,0.15)' : c.tier === 'SABADO' ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.15)',
-                                                        color: c.tier === 'AUDIENCIA' ? '#a78bfa' : c.tier === 'SABADO' ? '#fbbf24' : '#34d399',
+                                                        background: c.tier === 'AUDIENCIA' ? 'rgba(45,212,191,0.15)' : c.tier === 'SABADO' ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.15)',
+                                                        color: c.tier === 'AUDIENCIA' ? '#2dd4bf' : c.tier === 'SABADO' ? '#fbbf24' : '#34d399',
                                                         width: 'fit-content'
                                                     }}>
                                                         {c.tier}
@@ -703,7 +703,7 @@ export default function AdminContractsPage() {
                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }}>
                                             {[
                                                 { key: 'COMERCIAL', icon: '🏢', label: 'Comercial', color: '#10b981' },
-                                                { key: 'AUDIENCIA', icon: '🎤', label: 'Audiência', color: '#a78bfa' },
+                                                { key: 'AUDIENCIA', icon: '🎤', label: 'Audiência', color: '#2dd4bf' },
                                                 { key: 'SABADO', icon: '🌟', label: 'Sábado', color: '#fbbf24' },
                                             ].map(t => (
                                                 <button key={t.key} onClick={() => setCreateForm({ ...createForm, tier: t.key as any })}
@@ -1184,7 +1184,7 @@ export default function AdminContractsPage() {
                             {/* Header */}
                             <div style={{ padding: '28px 32px 0', borderBottom: 'none' }}>
                                 <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    <span style={{ width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #a78bfa, #3b82f6)', fontSize: '1rem' }}>🎨</span>
+                                    <span style={{ width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #2dd4bf, #3b82f6)', fontSize: '1rem' }}>🎨</span>
                                     Contrato Personalizado
                                 </h2>
                                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px', marginBottom: 0 }}>
@@ -1195,9 +1195,9 @@ export default function AdminContractsPage() {
                                     {[{ n: 1, label: 'Plano' }, { n: 2, label: 'Agenda' }, { n: 3, label: 'Serviços' }, { n: 4, label: 'Resumo' }].map(s => (
                                         <div key={s.n} style={{
                                             flex: 1, padding: '8px', borderRadius: '8px', textAlign: 'center', fontSize: '0.625rem', fontWeight: 700,
-                                            background: customStep === s.n ? 'rgba(139,92,246,0.12)' : customStep > s.n ? 'rgba(16,185,129,0.08)' : 'var(--bg-elevated)',
-                                            border: `1px solid ${customStep === s.n ? 'rgba(139,92,246,0.3)' : customStep > s.n ? 'rgba(16,185,129,0.2)' : 'var(--border-default)'}`,
-                                            color: customStep === s.n ? '#a78bfa' : customStep > s.n ? '#10b981' : 'var(--text-muted)',
+                                            background: customStep === s.n ? 'rgba(45,212,191,0.12)' : customStep > s.n ? 'rgba(16,185,129,0.08)' : 'var(--bg-elevated)',
+                                            border: `1px solid ${customStep === s.n ? 'rgba(45,212,191,0.3)' : customStep > s.n ? 'rgba(16,185,129,0.2)' : 'var(--border-default)'}`,
+                                            color: customStep === s.n ? '#2dd4bf' : customStep > s.n ? '#10b981' : 'var(--text-muted)',
                                             transition: 'all 0.2s',
                                         }}>
                                             {customStep > s.n ? '✓' : s.n}. {s.label}
@@ -1241,7 +1241,7 @@ export default function AdminContractsPage() {
                                                 <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>📋</span>
                                                 <input value={customForm.name} onChange={e => setCustomForm(f => ({ ...f, name: e.target.value }))}
                                                     placeholder='Ex: Podcast Verão 2x/semana' style={cusInputStyle()}
-                                                    onFocus={e => e.currentTarget.style.borderColor = '#a78bfa'}
+                                                    onFocus={e => e.currentTarget.style.borderColor = '#2dd4bf'}
                                                     onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
                                                 />
                                             </div>
@@ -1256,12 +1256,12 @@ export default function AdminContractsPage() {
                                                         style={{
                                                             flex: 1, padding: '10px 8px', borderRadius: '10px', cursor: 'pointer',
                                                             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px',
-                                                            background: customForm.tier === t.key ? 'rgba(139,92,246,0.1)' : 'var(--bg-elevated)',
-                                                            border: `1px solid ${customForm.tier === t.key ? 'rgba(139,92,246,0.3)' : 'var(--border-default)'}`,
+                                                            background: customForm.tier === t.key ? 'rgba(45,212,191,0.1)' : 'var(--bg-elevated)',
+                                                            border: `1px solid ${customForm.tier === t.key ? 'rgba(45,212,191,0.3)' : 'var(--border-default)'}`,
                                                             transition: 'all 0.15s',
                                                         }}>
                                                         <span style={{ fontSize: '1.25rem' }}>{t.emoji}</span>
-                                                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: customForm.tier === t.key ? '#a78bfa' : 'var(--text-primary)' }}>{t.label}</span>
+                                                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: customForm.tier === t.key ? '#2dd4bf' : 'var(--text-primary)' }}>{t.label}</span>
                                                         <span style={{ fontSize: '0.5625rem', color: 'var(--text-muted)' }}>{t.desc} — {formatBRL(pricing.find(p => p.tier === t.key)?.price || 0)}</span>
                                                     </button>
                                                 ))}
@@ -1286,7 +1286,7 @@ export default function AdminContractsPage() {
                                                     <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🗓️</span>
                                                     <input type="date" value={customForm.startDate} onChange={e => setCustomForm(f => ({ ...f, startDate: e.target.value }))}
                                                         style={cusInputStyle()}
-                                                        onFocus={e => e.currentTarget.style.borderColor = '#a78bfa'}
+                                                        onFocus={e => e.currentTarget.style.borderColor = '#2dd4bf'}
                                                         onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
                                                     />
                                                 </div>
@@ -1298,7 +1298,7 @@ export default function AdminContractsPage() {
                                             <button onClick={() => { if (canStep1) setCustomStep(2); }} disabled={!canStep1}
                                                 style={{
                                                     padding: '10px 28px', borderRadius: '10px', border: 'none', fontSize: '0.875rem', fontWeight: 700, cursor: 'pointer',
-                                                    background: canStep1 ? 'linear-gradient(135deg, #a78bfa, #3b82f6)' : 'var(--bg-elevated)',
+                                                    background: canStep1 ? 'linear-gradient(135deg, #2dd4bf, #3b82f6)' : 'var(--bg-elevated)',
                                                     color: canStep1 ? '#fff' : 'var(--text-muted)', opacity: canStep1 ? 1 : 0.5,
                                                     display: 'flex', alignItems: 'center', gap: '8px',
                                                 }}>
@@ -1395,11 +1395,11 @@ export default function AdminContractsPage() {
                                                                         style={{
                                                                             flex: 1, padding: '10px 4px', borderRadius: '10px', cursor: 'pointer',
                                                                             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px',
-                                                                            background: sel ? 'rgba(139,92,246,0.1)' : 'var(--bg-elevated)',
-                                                                            border: `1px solid ${sel ? 'rgba(139,92,246,0.3)' : 'var(--border-default)'}`,
+                                                                            background: sel ? 'rgba(45,212,191,0.1)' : 'var(--bg-elevated)',
+                                                                            border: `1px solid ${sel ? 'rgba(45,212,191,0.3)' : 'var(--border-default)'}`,
                                                                             transition: 'all 0.15s',
                                                                         }}>
-                                                                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: sel ? '#a78bfa' : 'var(--text-primary)' }}>{wk}ª</span>
+                                                                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: sel ? '#2dd4bf' : 'var(--text-primary)' }}>{wk}ª</span>
                                                                         <span style={{ fontSize: '0.5rem', color: 'var(--text-muted)' }}>semana</span>
                                                                     </button>
                                                                 );
@@ -1457,9 +1457,9 @@ export default function AdminContractsPage() {
                                                                 style={{
                                                                     padding: '6px 2px', borderRadius: '8px', cursor: inRange ? 'pointer' : 'default',
                                                                     fontSize: '0.75rem', fontWeight: selected ? 800 : isToday ? 700 : 500,
-                                                                    background: selected ? 'rgba(139,92,246,0.2)' : 'transparent',
-                                                                    border: `1.5px solid ${selected ? '#a78bfa' : isToday ? 'rgba(59,130,246,0.3)' : 'transparent'}`,
-                                                                    color: !inRange ? 'var(--text-muted)' : selected ? '#a78bfa' : 'var(--text-primary)',
+                                                                    background: selected ? 'rgba(45,212,191,0.2)' : 'transparent',
+                                                                    border: `1.5px solid ${selected ? '#2dd4bf' : isToday ? 'rgba(59,130,246,0.3)' : 'transparent'}`,
+                                                                    color: !inRange ? 'var(--text-muted)' : selected ? '#2dd4bf' : 'var(--text-primary)',
                                                                     opacity: inRange ? 1 : 0.3, transition: 'all 0.1s',
                                                                 }}>
                                                                 {day}
@@ -1475,8 +1475,8 @@ export default function AdminContractsPage() {
                                                                 const d = new Date(cd.date + 'T12:00:00');
                                                                 const dn = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
                                                                 return (
-                                                                    <div key={cd.date} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', borderRadius: '8px', background: 'rgba(139,92,246,0.04)', border: '1px solid rgba(139,92,246,0.1)' }}>
-                                                                        <span style={{ fontSize: '0.625rem', fontWeight: 700, color: '#a78bfa', width: '24px' }}>{dn[d.getDay()]}</span>
+                                                                    <div key={cd.date} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', borderRadius: '8px', background: 'rgba(45,212,191,0.04)', border: '1px solid rgba(45,212,191,0.1)' }}>
+                                                                        <span style={{ fontSize: '0.625rem', fontWeight: 700, color: '#2dd4bf', width: '24px' }}>{dn[d.getDay()]}</span>
                                                                         <span style={{ fontSize: '0.75rem', color: 'var(--text-primary)', flex: 1 }}>{String(d.getDate()).padStart(2, '0')}/{String(d.getMonth() + 1).padStart(2, '0')}/{d.getFullYear()}</span>
                                                                         <select value={cd.time} onChange={e => updateCalTime(cd.date, e.target.value)}
                                                                             style={{ padding: '3px 6px', borderRadius: '6px', fontSize: '0.6875rem', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-primary)', outline: 'none', cursor: 'pointer' }}>
@@ -1520,7 +1520,7 @@ export default function AdminContractsPage() {
                                                     <div style={{ fontSize: '0.5625rem', color: 'var(--text-muted)' }}>por ciclo</div>
                                                 </div>
                                                 <div style={{ textAlign: 'center' }}>
-                                                    <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#a78bfa' }}>{formatBRL(discountedSessionPrice)}</div>
+                                                    <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#2dd4bf' }}>{formatBRL(discountedSessionPrice)}</div>
                                                     <div style={{ fontSize: '0.5625rem', color: 'var(--text-muted)' }}>por sessão</div>
                                                 </div>
                                             </div>
@@ -1535,7 +1535,7 @@ export default function AdminContractsPage() {
                                             <button onClick={() => { if (canStep2) setCustomStep(3); }} disabled={!canStep2}
                                                 style={{
                                                     padding: '10px 28px', borderRadius: '10px', border: 'none', fontSize: '0.875rem', fontWeight: 700, cursor: 'pointer',
-                                                    background: canStep2 ? 'linear-gradient(135deg, #a78bfa, #3b82f6)' : 'var(--bg-elevated)',
+                                                    background: canStep2 ? 'linear-gradient(135deg, #2dd4bf, #3b82f6)' : 'var(--bg-elevated)',
                                                     color: canStep2 ? '#fff' : 'var(--text-muted)', opacity: canStep2 ? 1 : 0.5,
                                                     display: 'flex', alignItems: 'center', gap: '8px',
                                                 }}>
@@ -1550,7 +1550,7 @@ export default function AdminContractsPage() {
                                 {customStep === 3 && (
                                     <div>
                                         <div style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                            <span style={{ width: 18, height: 18, borderRadius: '50%', background: '#a78bfa', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.5rem', fontWeight: 800 }}>3</span>
+                                            <span style={{ width: 18, height: 18, borderRadius: '50%', background: '#2dd4bf', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.5rem', fontWeight: 800 }}>3</span>
                                             Serviços Adicionais
                                         </div>
 
@@ -1601,15 +1601,15 @@ export default function AdminContractsPage() {
                                                         return (
                                                             <div key={addon.key} style={{
                                                                 padding: '10px 12px', borderRadius: '10px',
-                                                                background: cfg.mode !== 'none' ? 'rgba(139,92,246,0.04)' : 'var(--bg-elevated)',
-                                                                border: `1px solid ${cfg.mode !== 'none' ? 'rgba(139,92,246,0.15)' : 'var(--border-default)'}`,
+                                                                background: cfg.mode !== 'none' ? 'rgba(45,212,191,0.04)' : 'var(--bg-elevated)',
+                                                                border: `1px solid ${cfg.mode !== 'none' ? 'rgba(45,212,191,0.15)' : 'var(--border-default)'}`,
                                                             }}>
                                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                                     <div>
                                                                         <div style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--text-primary)' }}>{addon.name}</div>
                                                                         <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                                             {discountPct > 0 && <span style={{ textDecoration: 'line-through', opacity: 0.5 }}>{formatBRL(addon.price)}</span>}
-                                                                            <span style={{ fontWeight: discountPct > 0 ? 700 : 400, color: discountPct > 0 ? '#a78bfa' : 'var(--text-muted)' }}>
+                                                                            <span style={{ fontWeight: discountPct > 0 ? 700 : 400, color: discountPct > 0 ? '#2dd4bf' : 'var(--text-muted)' }}>
                                                                                 {formatBRL(addonDiscountedPrice)}/un
                                                                             </span>
                                                                             {discountPct > 0 && <span style={{ fontSize: '0.5rem', color: '#10b981', fontWeight: 700 }}>-{discountPct}%</span>}
@@ -1620,9 +1620,9 @@ export default function AdminContractsPage() {
                                                                             <button key={mode} onClick={() => setCustomAddonConfig(prev => ({ ...prev, [addon.key]: { ...cfg, mode: mode as any } }))}
                                                                                 style={{
                                                                                     padding: '4px 8px', borderRadius: '6px', fontSize: '0.5625rem', fontWeight: 700, cursor: 'pointer',
-                                                                                    background: cfg.mode === mode ? (mode === 'none' ? 'rgba(107,114,128,0.15)' : 'rgba(139,92,246,0.12)') : 'transparent',
-                                                                                    border: `1px solid ${cfg.mode === mode ? (mode === 'none' ? 'rgba(107,114,128,0.3)' : 'rgba(139,92,246,0.3)') : 'transparent'}`,
-                                                                                    color: cfg.mode === mode ? (mode === 'none' ? '#6b7280' : '#a78bfa') : 'var(--text-muted)',
+                                                                                    background: cfg.mode === mode ? (mode === 'none' ? 'rgba(107,114,128,0.15)' : 'rgba(45,212,191,0.12)') : 'transparent',
+                                                                                    border: `1px solid ${cfg.mode === mode ? (mode === 'none' ? 'rgba(107,114,128,0.3)' : 'rgba(45,212,191,0.3)') : 'transparent'}`,
+                                                                                    color: cfg.mode === mode ? (mode === 'none' ? '#6b7280' : '#2dd4bf') : 'var(--text-muted)',
                                                                                 }}>
                                                                                 {mode === 'none' ? 'Não' : mode === 'all' ? 'Todas' : 'Créditos'}
                                                                             </button>
@@ -1647,12 +1647,12 @@ export default function AdminContractsPage() {
 
                                         {/* Quick cost preview */}
                                         {addonsCostPerCycle > 0 && (
-                                            <div style={{ padding: '10px 12px', borderRadius: '10px', background: 'rgba(167,139,250,0.04)', border: '1px solid rgba(167,139,250,0.1)', marginBottom: '14px' }}>
+                                            <div style={{ padding: '10px 12px', borderRadius: '10px', background: 'rgba(45,212,191,0.04)', border: '1px solid rgba(45,212,191,0.1)', marginBottom: '14px' }}>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
                                                     <span style={{ color: 'var(--text-muted)' }}>Add-ons/ciclo</span>
-                                                    <span style={{ color: '#a78bfa', fontWeight: 700 }}>+ {formatBRL(addonsCostPerCycle)}</span>
+                                                    <span style={{ color: '#2dd4bf', fontWeight: 700 }}>+ {formatBRL(addonsCostPerCycle)}</span>
                                                 </div>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem', marginTop: '4px', borderTop: '1px solid rgba(167,139,250,0.1)', paddingTop: '6px' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem', marginTop: '4px', borderTop: '1px solid rgba(45,212,191,0.1)', paddingTop: '6px' }}>
                                                     <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>Total/ciclo (gravações + add-ons)</span>
                                                     <span style={{ color: '#10b981', fontWeight: 800 }}>{formatBRL(cycleAmount)}</span>
                                                 </div>
@@ -1668,7 +1668,7 @@ export default function AdminContractsPage() {
                                             <button onClick={() => setCustomStep(4)}
                                                 style={{
                                                     padding: '10px 28px', borderRadius: '10px', border: 'none', fontSize: '0.875rem', fontWeight: 700, cursor: 'pointer',
-                                                    background: 'linear-gradient(135deg, #a78bfa, #3b82f6)',
+                                                    background: 'linear-gradient(135deg, #2dd4bf, #3b82f6)',
                                                     color: '#fff',
                                                     display: 'flex', alignItems: 'center', gap: '8px',
                                                 }}>
@@ -1723,7 +1723,7 @@ export default function AdminContractsPage() {
                                                 {addonsCostPerCycle > 0 && (
                                                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                                         <span style={{ color: 'var(--text-muted)' }}>Add-ons/ciclo</span>
-                                                        <span style={{ color: '#a78bfa', fontWeight: 600 }}>+ {formatBRL(addonsCostPerCycle)}</span>
+                                                        <span style={{ color: '#2dd4bf', fontWeight: 600 }}>+ {formatBRL(addonsCostPerCycle)}</span>
                                                     </div>
                                                 )}
                                                 {discountPct > 0 && (

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+﻿import React, { useState, useEffect, useMemo } from 'react';
 import { financeApi, FinanceClosingResponse, EnrichedPayment } from '../api/client';
 import { useUI } from '../context/UIContext';
 
@@ -15,7 +15,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
     PAID:     { label: 'Pago',       color: '#10b981', bg: 'rgba(16,185,129,0.12)',  icon: '✓' },
     PENDING:  { label: 'Pendente',   color: '#f59e0b', bg: 'rgba(245,158,11,0.12)',  icon: '⏳' },
     FAILED:   { label: 'Falhou',     color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   icon: '✗' },
-    REFUNDED: { label: 'Estornado',  color: '#8b5cf6', bg: 'rgba(139,92,246,0.12)',  icon: '↩' },
+    REFUNDED: { label: 'Estornado',  color: '#14b8a6', bg: 'rgba(45,212,191,0.12)',  icon: '↩' },
 };
 
 export default function AdminFinancePage() {
@@ -398,8 +398,8 @@ export default function AdminFinancePage() {
                                                                     <span style={{
                                                                         display: 'inline-block', marginTop: '3px',
                                                                         padding: '1px 6px', borderRadius: '4px', fontSize: '0.625rem', fontWeight: 700,
-                                                                        background: p.contract.tier === 'AUDIENCIA' ? 'rgba(139,92,246,0.15)' : p.contract.tier === 'SABADO' ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.15)',
-                                                                        color: p.contract.tier === 'AUDIENCIA' ? '#a78bfa' : p.contract.tier === 'SABADO' ? '#fbbf24' : '#34d399'
+                                                                        background: p.contract.tier === 'AUDIENCIA' ? 'rgba(45,212,191,0.15)' : p.contract.tier === 'SABADO' ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.15)',
+                                                                        color: p.contract.tier === 'AUDIENCIA' ? '#2dd4bf' : p.contract.tier === 'SABADO' ? '#fbbf24' : '#34d399'
                                                                     }}>
                                                                         {p.contract.tier}
                                                                     </span>

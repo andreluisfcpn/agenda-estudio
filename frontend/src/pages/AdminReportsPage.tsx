@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import {
     reportsApi, ReportSummary, SlotOccupancy, DayOccupancy,
     TierBreakdownItem, AudienceMetrics, ClientRankItem,
@@ -17,7 +17,7 @@ function formatBRLCompact(cents: number): string {
 
 const TIER_META: Record<string, { emoji: string; color: string; bg: string; label: string }> = {
     COMERCIAL: { emoji: '🏢', color: '#10b981', bg: 'rgba(16,185,129,0.10)', label: 'Comercial' },
-    AUDIENCIA: { emoji: '🎤', color: '#a78bfa', bg: 'rgba(139,92,246,0.10)', label: 'Audiência' },
+    AUDIENCIA: { emoji: '🎤', color: '#2dd4bf', bg: 'rgba(45,212,191,0.10)', label: 'Audiência' },
     SABADO:    { emoji: '🌟', color: '#fbbf24', bg: 'rgba(245,158,11,0.10)', label: 'Sábado' },
 };
 
@@ -91,7 +91,7 @@ export default function AdminReportsPage() {
     if (loading || !summary) return <div className="loading-spinner"><div className="spinner" /></div>;
 
     return (
-        <div>
+        <div aria-label="Relatórios administrativos">
             {/* ─── HEADER ─── */}
             <div style={{ marginBottom: '28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
                 <div>
@@ -276,7 +276,7 @@ export default function AdminReportsPage() {
                 {/* Audience Metrics */}
                 <div style={{ padding: '24px', borderRadius: '16px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
                     <h3 style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ width: 16, height: 2, background: '#a78bfa', borderRadius: 1 }} />
+                        <span style={{ width: 16, height: 2, background: '#2dd4bf', borderRadius: 1 }} />
                         Métricas de Audiência
                     </h3>
                     {!audienceMetrics || audienceMetrics.totalCompleted === 0 ? (
@@ -288,7 +288,7 @@ export default function AdminReportsPage() {
                     ) : (
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                             {[
-                                { icon: '👁️', label: 'Média de Viewers', value: audienceMetrics.avgViewers.toLocaleString('pt-BR'), color: '#a78bfa' },
+                                { icon: '👁️', label: 'Média de Viewers', value: audienceMetrics.avgViewers.toLocaleString('pt-BR'), color: '#2dd4bf' },
                                 { icon: '🏆', label: 'Pico Máximo', value: audienceMetrics.maxViewers.toLocaleString('pt-BR'), color: '#fbbf24' },
                                 { icon: '💬', label: 'Média de Chat', value: audienceMetrics.avgChat.toLocaleString('pt-BR'), color: '#10b981' },
                                 { icon: '⏱️', label: 'Duração Média', value: audienceMetrics.avgDuration > 0 ? `${audienceMetrics.avgDuration}min` : '—', color: '#3b82f6' },
@@ -376,7 +376,7 @@ export default function AdminReportsPage() {
                                         <td style={{ textAlign: 'center' }}><span style={{ color: '#10b981', fontWeight: 700, fontSize: '0.875rem' }}>{c.completed}</span></td>
                                         <td style={{ textAlign: 'center' }}><span style={{ color: c.falta > 0 ? '#ef4444' : 'var(--text-muted)', fontWeight: 700, fontSize: '0.875rem' }}>{c.falta}</span></td>
                                         <td style={{ textAlign: 'right', fontWeight: 800, fontSize: '0.9375rem', fontVariantNumeric: 'tabular-nums' }}>{formatBRL(c.revenue)}</td>
-                                        <td style={{ textAlign: 'center', color: c.avgViewers > 0 ? '#a78bfa' : 'var(--text-muted)', fontSize: '0.875rem', fontWeight: 600 }}>
+                                        <td style={{ textAlign: 'center', color: c.avgViewers > 0 ? '#2dd4bf' : 'var(--text-muted)', fontSize: '0.875rem', fontWeight: 600 }}>
                                             {c.avgViewers > 0 ? c.avgViewers.toLocaleString('pt-BR') : '—'}
                                         </td>
                                     </tr>

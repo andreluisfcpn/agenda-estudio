@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { bookingsApi, contractsApi, usersApi, Booking, BookingWithUser, Contract, UserSummary, PaymentSummary } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
@@ -163,7 +163,7 @@ function AdminDashboard() {
     });
 
     return (
-        <div>
+        <div aria-label="Painel principal">
             {/* ─── HEADER ─── */}
             <div style={{ marginBottom: '28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
                 <div>
@@ -289,7 +289,7 @@ function AdminDashboard() {
                     { label: 'RECEITA DO MÊS', value: formatBRL(monthRevenue), sub: `${monthBookings.length} agendamentos`, color: '#10b981', bg: 'rgba(16,185,129,0.08)', border: 'rgba(16,185,129,0.2)' },
                     { label: 'OCUPAÇÃO HOJE', value: isSunday ? '—' : `${todaysBookings.length}/5`, sub: isSunday ? 'Fechado' : `${Math.round((todaysBookings.length / 5) * 100)}% dos slots`, color: todaysBookings.length >= 4 ? '#10b981' : todaysBookings.length >= 2 ? '#f59e0b' : 'var(--text-muted)', bg: 'rgba(59,130,246,0.08)', border: 'rgba(59,130,246,0.2)' },
                     { label: 'TAXA DE PRESENÇA', value: `${attendanceRate}%`, sub: `${completedThisMonth} concluídas, ${noShowsThisMonth} faltas`, color: attendanceRate >= 80 ? '#10b981' : attendanceRate >= 60 ? '#f59e0b' : '#ef4444', bg: attendanceRate >= 80 ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)', border: attendanceRate >= 80 ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)' },
-                    { label: 'CONTRATOS ATIVOS', value: `${activeContracts.length}`, sub: `${allUsers.filter(u => u.role !== 'ADMIN').length} clientes cadastrados`, color: '#a78bfa', bg: 'rgba(139,92,246,0.08)', border: 'rgba(139,92,246,0.2)' },
+                    { label: 'CONTRATOS ATIVOS', value: `${activeContracts.length}`, sub: `${allUsers.filter(u => u.role !== 'ADMIN').length} clientes cadastrados`, color: '#2dd4bf', bg: 'rgba(45,212,191,0.08)', border: 'rgba(45,212,191,0.2)' },
                 ].map((kpi, i) => (
                     <div key={i} style={{ padding: '20px', borderRadius: '14px', background: kpi.bg, border: `1px solid ${kpi.border}`, textAlign: 'center' }}>
                         <div style={{ fontSize: '0.5625rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: kpi.color, marginBottom: '8px' }}>{kpi.label}</div>
@@ -572,7 +572,7 @@ function ClientDashboard() {
     return (
         <div>
             <div className="page-header">
-                <h1 className="page-title">👋 Olá, {user?.name}</h1>
+                <h2 className="page-title">👋 Olá, {user?.name}</h2>
                 <p className="page-subtitle">Seus agendamentos e gravações</p>
             </div>
 
@@ -633,7 +633,7 @@ function ClientDashboard() {
                                     <div style={{ height: 8, borderRadius: 4, background: 'var(--bg-elevated)', overflow: 'hidden' }}>
                                         <div style={{
                                             height: '100%', borderRadius: 4,
-                                            background: usedPct >= 100 ? 'var(--tier-audiencia)' : 'linear-gradient(90deg, var(--accent-primary), #a78bfa)',
+                                            background: usedPct >= 100 ? 'var(--tier-audiencia)' : 'linear-gradient(90deg, var(--accent-primary), #2dd4bf)',
                                             width: `${Math.min(usedPct, 100)}%`, transition: 'width 0.5s ease',
                                         }} />
                                     </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { pricingApi, PricingConfig, AddOnConfig, BusinessConfigItem, PaymentMethodConfigItem, integrationsApi, IntegrationSummary } from '../api/client';
 import { setPaymentMethods as setCachedPaymentMethods } from '../constants/paymentMethods';
 
@@ -8,12 +8,12 @@ function formatBRL(cents: number): string {
 
 const TIER_INFO: Record<string, { emoji: string; desc: string; color: string; bg: string }> = {
     COMERCIAL: { emoji: '🏢', desc: 'Segunda a Sexta, 10h–15:30h', color: '#10b981', bg: 'rgba(16,185,129,0.10)' },
-    AUDIENCIA: { emoji: '🎤', desc: 'Segunda a Sexta, 18h–20:30h', color: '#a78bfa', bg: 'rgba(139,92,246,0.10)' },
+    AUDIENCIA: { emoji: '🎤', desc: 'Segunda a Sexta, 18h–20:30h', color: '#2dd4bf', bg: 'rgba(45,212,191,0.10)' },
     SABADO:    { emoji: '🌟', desc: 'Sábado, qualquer horário',     color: '#fbbf24', bg: 'rgba(245,158,11,0.10)' },
 };
 
 const GROUP_LABELS: Record<string, { label: string; emoji: string; desc: string; color: string }> = {
-    plans:    { label: 'Planos & Episódios',    emoji: '📦', desc: 'Descontos por fidelidade e contagem de episódios', color: '#a78bfa' },
+    plans:    { label: 'Planos & Episódios',    emoji: '📦', desc: 'Descontos por fidelidade e contagem de episódios', color: '#2dd4bf' },
     policies: { label: 'Políticas Operacionais', emoji: '📋', desc: 'Janelas de tempo, multas e restrições de agendamento', color: '#f59e0b' },
     payments: { label: 'Taxas & Descontos',      emoji: '💳', desc: 'Descontos PIX, taxas cartão e serviços mensais', color: '#10b981' },
     schedule: { label: 'Horários & Grade',       emoji: '🕐', desc: 'Slots de atendimento, dias de funcionamento e duração dos blocos', color: '#3b82f6' },
@@ -309,7 +309,7 @@ export default function AdminPricingPage() {
                                 {addon.monthly && (
                                     <span style={{
                                         fontSize: '0.625rem', fontWeight: 700, letterSpacing: '0.05em',
-                                        background: 'rgba(139,92,246,0.12)', color: '#a78bfa',
+                                        background: 'rgba(45,212,191,0.12)', color: '#2dd4bf',
                                         padding: '3px 10px', borderRadius: '20px', textTransform: 'uppercase',
                                     }}>Mensal</span>
                                 )}
@@ -434,7 +434,7 @@ export default function AdminPricingPage() {
                     {/* Info banner */}
                     <div style={{
                         padding: '14px 18px', borderRadius: '12px', fontSize: '0.8125rem', marginBottom: '20px',
-                        background: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.15)',
+                        background: 'rgba(45,212,191,0.06)', border: '1px solid rgba(45,212,191,0.15)',
                         color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '8px',
                     }}>
                         <span style={{ fontSize: '1rem' }}>💳</span>
@@ -527,7 +527,7 @@ export default function AdminPricingPage() {
                                     <div className="form-group" style={{ marginBottom: 0 }}>
                                         <label className="form-label">Cor</label>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <input type="color" value={pm.color.startsWith('#') ? pm.color : '#8b5cf6'}
+                                            <input type="color" value={pm.color.startsWith('#') ? pm.color : '#14b8a6'}
                                                 onChange={e => handlePmChange(pm.key, 'color', e.target.value)}
                                                 style={{ width: 36, height: 36, border: 'none', borderRadius: '8px', cursor: 'pointer', padding: 0 }} />
                                             <input className="form-input" value={pm.color}
@@ -775,8 +775,8 @@ export default function AdminPricingPage() {
                                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
                                         <input type="checkbox" checked={stripe?.enabled || false}
                                             onChange={e => handleToggle('STRIPE', e.target.checked)}
-                                            style={{ width: '16px', height: '16px', accentColor: '#8b5cf6' }} />
-                                        <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: stripe?.enabled ? '#8b5cf6' : 'var(--text-muted)' }}>
+                                            style={{ width: '16px', height: '16px', accentColor: '#14b8a6' }} />
+                                        <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: stripe?.enabled ? '#14b8a6' : 'var(--text-muted)' }}>
                                             {stripe?.enabled ? 'Ativo' : 'Inativo'}
                                         </span>
                                     </label>
@@ -807,8 +807,8 @@ export default function AdminPricingPage() {
                                     <label style={labelStyle}>Webhook URL (cole no dashboard Stripe)</label>
                                     <div style={{
                                         padding: '8px 12px', borderRadius: '8px', fontSize: '0.75rem',
-                                        background: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.15)',
-                                        color: '#8b5cf6', fontFamily: 'monospace', wordBreak: 'break-all',
+                                        background: 'rgba(45,212,191,0.06)', border: '1px solid rgba(45,212,191,0.15)',
+                                        color: '#14b8a6', fontFamily: 'monospace', wordBreak: 'break-all',
                                     }}>
                                         {stripe.webhookUrl}
                                     </div>

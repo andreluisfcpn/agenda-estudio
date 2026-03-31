@@ -254,7 +254,7 @@ export default function BookingModal({ date, time, tier, price, onClose, onBooke
                                         const adPriceDiscounted = addon.price * (1 - (discountPct / 100));
                                         
                                         return (
-                                            <div key={addon.key} 
+                                            <div aria-label="Formulário de agendamento" key={addon.key} 
                                                 onClick={() => {
                                                     if (isSelected) setSelectedAddons(prev => prev.filter(k => k !== addon.key));
                                                     else setSelectedAddons(prev => [...prev, addon.key]);

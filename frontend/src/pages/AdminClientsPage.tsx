@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+﻿import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usersApi, UserSummary, ApiError } from '../api/client';
 import { useUI } from '../context/UIContext';
@@ -241,7 +241,7 @@ export default function AdminClientsPage() {
                     { key: 'ACTIVE' as const, label: 'Ativos', count: activeCount, desc: 'com contrato ativo', icon: '✅', color: '#10b981', gradient: 'rgba(16,185,129,0.08)' },
                     { key: 'EX_CLIENT' as const, label: 'Ex-clientes', count: exClientCount, desc: 'contrato expirado', icon: '🔄', color: '#f59e0b', gradient: 'rgba(245,158,11,0.08)' },
                     { key: 'NO_CONTRACT' as const, label: 'Sem Contrato', count: noContractCount, desc: 'nunca contrataram', icon: '🆕', color: '#94a3b8', gradient: 'rgba(148,163,184,0.08)' },
-                    { key: 'NO_ADDON' as const, label: 'Sem Add-on', count: noAddonCount, desc: 'sem serviço extra', icon: '🚀', color: '#a78bfa', gradient: 'rgba(167,139,250,0.08)' },
+                    { key: 'NO_ADDON' as const, label: 'Sem Add-on', count: noAddonCount, desc: 'sem serviço extra', icon: '🚀', color: '#2dd4bf', gradient: 'rgba(45,212,191,0.08)' },
                 ] as const).map(card => {
                     const isActive = typeFilter === card.key;
                     return (
@@ -621,7 +621,7 @@ export default function AdminClientsPage() {
                                             transition: 'all 0.2s',
                                         }}>
                                         <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <span style={{ width: 18, height: 18, borderRadius: '50%', background: 'rgba(139,92,246,0.15)', color: '#a78bfa', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.5rem', fontWeight: 800 }}>2</span>
+                                            <span style={{ width: 18, height: 18, borderRadius: '50%', background: 'rgba(45,212,191,0.15)', color: '#2dd4bf', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.5rem', fontWeight: 800 }}>2</span>
                                             <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Dados Adicionais</span>
                                             <span style={{ fontSize: '0.5625rem', color: 'var(--text-muted)', fontWeight: 500, textTransform: 'none', letterSpacing: '0' }}>(opcional)</span>
                                         </span>
@@ -629,7 +629,7 @@ export default function AdminClientsPage() {
                                     </button>
 
                                     {showAdvanced && (
-                                        <div style={{ marginTop: '12px', padding: '16px', borderRadius: '10px', background: 'rgba(139,92,246,0.03)', border: '1px solid rgba(139,92,246,0.08)' }}>
+                                        <div style={{ marginTop: '12px', padding: '16px', borderRadius: '10px', background: 'rgba(45,212,191,0.03)', border: '1px solid rgba(45,212,191,0.08)' }}>
                                             {/* CPF/CNPJ + Status */}
                                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
                                                 <div>
@@ -641,7 +641,7 @@ export default function AdminClientsPage() {
                                                             onChange={e => setCreateForm({ ...createForm, cpfCnpj: maskCpfCnpj(e.target.value) })}
                                                             placeholder="000.000.000-00"
                                                             style={inputStyle(false)}
-                                                            onFocus={e => (e.currentTarget.style.borderColor = '#a78bfa')}
+                                                            onFocus={e => (e.currentTarget.style.borderColor = '#2dd4bf')}
                                                             onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-default)')}
                                                         />
                                                     </div>
@@ -675,7 +675,7 @@ export default function AdminClientsPage() {
                                                         onChange={e => setCreateForm({ ...createForm, socialLinks: e.target.value })}
                                                         placeholder="Instagram, YouTube, TikTok..."
                                                         style={inputStyle(false)}
-                                                        onFocus={e => (e.currentTarget.style.borderColor = '#a78bfa')}
+                                                        onFocus={e => (e.currentTarget.style.borderColor = '#2dd4bf')}
                                                         onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-default)')}
                                                     />
                                                 </div>
@@ -956,12 +956,12 @@ export default function AdminClientsPage() {
                             {/* ─── SECTION 3: Segurança & Notas ─── */}
                             <div style={{ marginBottom: '18px' }}>
                                 <div style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <span style={{ width: 18, height: 18, borderRadius: '50%', background: 'rgba(139,92,246,0.15)', color: '#a78bfa', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.5rem', fontWeight: 800 }}>3</span>
+                                    <span style={{ width: 18, height: 18, borderRadius: '50%', background: 'rgba(45,212,191,0.15)', color: '#2dd4bf', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.5rem', fontWeight: 800 }}>3</span>
                                     <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Segurança & Notas</span>
                                     <span style={{ fontSize: '0.5625rem', color: 'var(--text-muted)', fontWeight: 500, textTransform: 'none', letterSpacing: '0' }}>(opcional)</span>
                                 </div>
 
-                                <div style={{ padding: '16px', borderRadius: '10px', background: 'rgba(139,92,246,0.03)', border: '1px solid rgba(139,92,246,0.08)' }}>
+                                <div style={{ padding: '16px', borderRadius: '10px', background: 'rgba(45,212,191,0.03)', border: '1px solid rgba(45,212,191,0.08)' }}>
                                     {/* Password */}
                                     <div style={{ marginBottom: '12px' }}>
                                         <label style={editLabelStyle}>Nova Senha <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0, color: 'var(--text-muted)' }}>(vazio = manter atual)</span></label>
@@ -972,7 +972,7 @@ export default function AdminClientsPage() {
                                                 onChange={e => setEditForm({ ...editForm, password: e.target.value })}
                                                 placeholder="Mínimo 6 caracteres"
                                                 style={editInputStyle(!!editFieldErrors.password)}
-                                                onFocus={e => (e.currentTarget.style.borderColor = '#a78bfa')}
+                                                onFocus={e => (e.currentTarget.style.borderColor = '#2dd4bf')}
                                                 onBlur={e => (e.currentTarget.style.borderColor = editFieldErrors.password ? 'rgba(239,68,68,0.5)' : 'var(--border-default)')}
                                             />
                                         </div>

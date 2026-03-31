@@ -55,7 +55,7 @@ export default function ServicesCarousel() {
     const activeService = addons[activeIndex];
 
     return (
-        <section style={{ padding: '120px 8%', background: 'var(--bg-card)', position: 'relative', overflow: 'hidden' }}
+        <section aria-label="Carrossel de serviços" style={{ padding: '120px 8%', background: 'var(--bg-card)', position: 'relative', overflow: 'hidden' }}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >

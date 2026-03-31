@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+﻿import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { bookingsApi, usersApi, contractsApi, BookingWithUser, UserSummary, Contract, Slot } from '../api/client';
 import { useNavigate } from 'react-router-dom';
 import { useUI } from '../context/UIContext';
@@ -11,7 +11,7 @@ function formatBRL(cents: number): string {
 const TIER_EMOJI: Record<string, string> = { COMERCIAL: '🏢', AUDIENCIA: '🎤', SABADO: '🌟' };
 const TIER_COLORS: Record<string, { color: string; bg: string }> = {
     COMERCIAL: { color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
-    AUDIENCIA: { color: '#a78bfa', bg: 'rgba(139,92,246,0.12)' },
+    AUDIENCIA: { color: '#2dd4bf', bg: 'rgba(45,212,191,0.12)' },
     SABADO: { color: '#fbbf24', bg: 'rgba(245,158,11,0.12)' },
 };
 
@@ -21,7 +21,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
     RESERVED:      { label: 'Reservado',      color: '#f59e0b', bg: 'rgba(245,158,11,0.12)',  icon: '⏳' },
     CANCELLED:     { label: 'Cancelado',      color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   icon: '✕' },
     FALTA:         { label: 'Falta',          color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   icon: '✕' },
-    NAO_REALIZADO: { label: 'Não Realizado',  color: '#8b5cf6', bg: 'rgba(139,92,246,0.12)',  icon: '↩' },
+    NAO_REALIZADO: { label: 'Não Realizado',  color: '#14b8a6', bg: 'rgba(45,212,191,0.12)',  icon: '↩' },
 };
 
 export default function AdminBookingsPage() {

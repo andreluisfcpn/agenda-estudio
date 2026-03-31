@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+﻿import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { bookingsApi, BookingWithUser } from '../api/client';
 import { useUI } from '../context/UIContext';
 import { useNavigate } from 'react-router-dom';
@@ -9,7 +9,7 @@ function formatBRL(cents: number): string {
 
 const TIER_META: Record<string, { emoji: string; color: string; bg: string; label: string }> = {
     COMERCIAL: { emoji: '🏢', color: '#10b981', bg: 'rgba(16,185,129,0.10)', label: 'Comercial' },
-    AUDIENCIA: { emoji: '🎤', color: '#a78bfa', bg: 'rgba(139,92,246,0.10)', label: 'Audiência' },
+    AUDIENCIA: { emoji: '🎤', color: '#2dd4bf', bg: 'rgba(45,212,191,0.10)', label: 'Audiência' },
     SABADO:    { emoji: '🌟', color: '#fbbf24', bg: 'rgba(245,158,11,0.10)', label: 'Sábado' },
 };
 
@@ -18,7 +18,7 @@ const STATUS_META: Record<string, { icon: string; label: string; color: string; 
     CONFIRMED:     { icon: '✓',  label: 'Confirmado',    color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
     COMPLETED:     { icon: '✓',  label: 'Concluído',     color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
     FALTA:         { icon: '✕',  label: 'Falta',         color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
-    NAO_REALIZADO: { icon: '↩',  label: 'Não Realizado', color: '#8b5cf6', bg: 'rgba(139,92,246,0.12)' },
+    NAO_REALIZADO: { icon: '↩',  label: 'Não Realizado', color: '#14b8a6', bg: 'rgba(45,212,191,0.12)' },
     CANCELLED:     { icon: '✕',  label: 'Cancelado',     color: '#6b7280', bg: 'rgba(107,114,128,0.12)' },
 };
 
@@ -549,7 +549,7 @@ export default function AdminTodayPage() {
                                                         ❌ Falta
                                                     </button>
                                                     <button className="today-action-btn"
-                                                        style={{ background: 'rgba(139,92,246,0.08)', color: '#8b5cf6' }}
+                                                        style={{ background: 'rgba(45,212,191,0.08)', color: '#14b8a6' }}
                                                         onClick={() => handleStatusChange(booking.id, 'NAO_REALIZADO', '🔄 Não Realizado')}>
                                                         🔄 Não Realizado
                                                     </button>
@@ -594,8 +594,8 @@ export default function AdminTodayPage() {
                                             {/* Notes */}
                                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
                                                 <div>
-                                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.6875rem', fontWeight: 700, color: '#a78bfa', marginBottom: '8px' }}>
-                                                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#a78bfa' }} />
+                                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.6875rem', fontWeight: 700, color: '#2dd4bf', marginBottom: '8px' }}>
+                                                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#2dd4bf' }} />
                                                         Observação Interna (Admin)
                                                     </label>
                                                     <textarea className="form-input"

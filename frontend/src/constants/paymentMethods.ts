@@ -1,4 +1,4 @@
-// ─── Payment Methods — Single Source of Truth ────────────────────────
+﻿// ─── Payment Methods — Single Source of Truth ────────────────────────
 // All UI components that display payment method options MUST consume from
 // this file to ensure consistent labels, icons, colors, and descriptions.
 // Backend source of truth: Prisma enum PaymentMethod { CARTAO, PIX, BOLETO }
@@ -87,7 +87,7 @@ let _loaded = false;
 
 /** Convert API response item to full PaymentMethodConfig with computed style props */
 function apiToConfig(item: PaymentMethodConfigItem): PaymentMethodConfig {
-  const color = item.color || '#8b5cf6';
+  const color = item.color || '#14b8a6';
   // Parse hex color to rgba for backgrounds
   const rgb = hexToRgb(color);
   const isVar = color.startsWith('var(');

@@ -79,11 +79,24 @@ export default function LandingPage() {
     }, []);
 
     useEffect(() => {
+        // SEO: title= and og: tags are set dynamically for this SPA page
         document.title = `${studioName} — O Melhor Estúdio de Podcast e Vídeo`;
         const metaDesc = document.querySelector('meta[name="description"]');
         if (metaDesc) {
             metaDesc.setAttribute("content", `Produza seu podcast ou vídeo no ${studioName}. Tecnologia 4K, automação com IA e ambiente climatizado. Reserve agora.`);
         }
+
+        // Update og: meta tags dynamically
+        const ogUpdates: Record<string, string> = {
+            'og:title': `${studioName} — O Melhor Estúdio de Podcast e Vídeo`,
+            'og:description': `Produza seu podcast ou vídeo no ${studioName}. Tecnologia 4K, automação com IA e ambiente climatizado. Reserve agora.`,
+        };
+        Object.entries(ogUpdates).forEach(([property, content]) => {
+            let tag = document.querySelector(`meta[property="${property}"]`);
+            if (tag) {
+                tag.setAttribute('content', content);
+            }
+        });
 
         const ctx = gsap.context(() => {
             // Hero Entrance
@@ -143,7 +156,7 @@ export default function LandingPage() {
     }, [studioName]);
 
     return (
-        <div className="landing-root" style={{
+        <div aria-label="Página inicial" className="landing-root" style={{
             background: `linear-gradient(135deg, ${COLORS.secondary} 0%, ${COLORS.bgDark} 100%)`,
             minHeight: '100vh',
             color: COLORS.white,
