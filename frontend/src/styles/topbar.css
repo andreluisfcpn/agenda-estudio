@@ -1,0 +1,102 @@
+/* ─── Topbar — Full-Width Header ────────────────────────── */
+
+.topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  z-index: 110;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  background: rgba(0, 30, 38, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+/* ─── Left: Hamburger + Logo ─── */
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.topbar-hamburger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.topbar-hamburger:hover {
+  background: rgba(17,129,155,0.1);
+  color: var(--accent-primary);
+}
+
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.topbar-brand-logo {
+  height: 28px;
+  transition: opacity 0.2s ease;
+}
+
+.topbar-brand-logo:hover {
+  opacity: 0.85;
+}
+
+/* ─── Right: Actions ─── */
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ─── Notification area in topbar ─── */
+.topbar-notif {
+  position: relative;
+}
+
+.topbar-notif button {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: 10px !important;
+  padding: 6px 10px !important;
+  width: auto !important;
+}
+
+.topbar-notif button:hover {
+  background: rgba(17,129,155,0.08) !important;
+  border-color: rgba(17,129,155,0.12) !important;
+}
+
+/* Hide text label in topbar notification */
+.topbar-notif .sidebar-link-label {
+  display: none;
+}
+
+/* ─── Responsive ─── */
+@media (max-width: 768px) {
+  .topbar {
+    padding: 0 12px;
+  }
+
+  .topbar-brand-logo {
+    height: 22px;
+  }
+}
+

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import ModalOverlay from './components/ModalOverlay';
-import { BrowserRouter, Routes, Route, Navigate, NavLink } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { UIProvider, useUI } from './context/UIContext';
 import { authApi } from './api/client';
@@ -16,8 +16,9 @@ import AdminPricingPage from './pages/AdminPricingPage';
 import AdminTodayPage from './pages/AdminTodayPage';
 import AdminFinancePage from './pages/AdminFinancePage';
 import AdminReportsPage from './pages/AdminReportsPage';
-import NotificationBell from './components/NotificationBell';
-import AdminNav from './components/AdminNav';
+import AmbientBackground from './components/AmbientBackground';
+import Sidebar from './components/Sidebar';
+import Topbar from './components/Topbar';
 import ClientProfilePage from './pages/ClientProfilePage';
 import LandingPage from './pages/LandingPage';
 import { GoogleOAuthProvider } from '@react-oauth/google';
@@ -422,95 +423,42 @@ function ProfileModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
 // ─── Layout ─────────────────────────────────────────────
 
 function Layout({ children }: { children: React.ReactNode }) {
-    const { user, logout } = useAuth();
     const [showProfile, setShowProfile] = useState(false);
     const [toast, setToast] = useState('');
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+        try { return localStorage.getItem('sidebar-collapsed') === 'true'; } catch { return false; }
+    });
 
-    const isAdmin = user?.role === 'ADMIN';
-    const initials = user?.name
-        .split(' ')
-        .map(w => w[0])
-        .join('')
-        .slice(0, 2)
-        .toUpperCase();
+    const toggleSidebar = useCallback(() => {
+        setSidebarCollapsed(prev => {
+            const next = !prev;
+            try { localStorage.setItem('sidebar-collapsed', String(next)); } catch {}
+            return next;
+        });
+    }, []);
+
+    // Ctrl+B shortcut
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+                e.preventDefault();
+                toggleSidebar();
+            }
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, [toggleSidebar]);
 
     return (
-        <div className="app-layout">
-            <aside className="sidebar">
-                <div className="sidebar-logo" style={{ padding: '0 20px 20px', background: 'none', borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: '16px' }}>
-                    <img
-                        src="https://buzios.digital/wp-content/uploads/2025/01/logo-site-branca.svg"
-                        alt="Búzios Digital"
-                        style={{ height: '30px', marginBottom: '6px' }}
-                    />
-                    <span style={{ fontSize: '0.5625rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 700 }}>Estúdio de Podcast</span>
-                </div>
-
-                <nav className="sidebar-nav">
-                    <NavLink to="/dashboard" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
-                        <span className="icon">📊</span>
-                        <span>Dashboard</span>
-                    </NavLink>
-
-                    <NavLink to="/calendar" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
-                        <span className="icon">📅</span>
-                        <span>Agenda</span>
-                    </NavLink>
-
-                    {!isAdmin && (
-                        <>
-                            <NavLink to="/my-bookings" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
-                                <span className="icon">🎬</span>
-                                <span>Minhas Gravações</span>
-                            </NavLink>
-
-                            <NavLink to="/my-contracts" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
-                                <span className="icon">📋</span>
-                                <span>Meus Contratos</span>
-                            </NavLink>
-                        </>
-                    )}
-
-                    {isAdmin && <AdminNav />}
-                </nav>
-
-                <div className="sidebar-footer">
-                    <div style={{ padding: '0 12px 8px' }}>
-                        <NotificationBell />
-                    </div>
-                    <div className="sidebar-user" style={{ cursor: 'pointer' }} onClick={() => setShowProfile(true)} title="Clique para editar perfil">
-                        <div
-                            className="sidebar-user-avatar"
-                            style={user?.photoUrl ? {
-                                backgroundImage: `url(${user.photoUrl})`,
-                                backgroundSize: 'cover',
-                                backgroundPosition: 'center',
-                                fontSize: 0,
-                            } : {}}
-                        >
-                            {!user?.photoUrl && initials}
-                        </div>
-                        <div className="sidebar-user-info">
-                            <div className="sidebar-user-name">{user?.name}</div>
-                            <div className="sidebar-user-role">
-                                {user?.role === 'ADMIN' ? 'Administrador' : 'Cliente'}
-                            </div>
-                        </div>
-                    </div>
-                    <button
-                        onClick={logout}
-                        style={{
-                            width: '100%', marginTop: '8px', padding: '7px 12px', borderRadius: '8px',
-                            background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.15)',
-                            color: '#ef4444', fontSize: '0.75rem', fontWeight: 600,
-                            cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center',
-                            justifyContent: 'center', gap: '6px', fontFamily: 'inherit',
-                        }}
-                    >
-                        🚪 Sair
-                    </button>
-                </div>
-            </aside>
+        <div className={`app-layout ${sidebarCollapsed ? 'app-layout--sidebar-collapsed' : ''}`}>
+            <AmbientBackground />
+            <Topbar
+                onToggleSidebar={toggleSidebar}
+            />
+            <Sidebar 
+                collapsed={sidebarCollapsed} 
+                onProfileClick={() => setShowProfile(true)}
+            />
 
             <main className="main-content">
                 {children}

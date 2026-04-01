@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { notificationsApi, NotificationItem, NotificationSummary } from '../api/client';
 import { useNavigate } from 'react-router-dom';
+import { Bell } from 'lucide-react';
 
 const SEVERITY_META: Record<string, { color: string; bg: string; icon: string }> = {
     critical: { color: '#dc2626', bg: 'rgba(220,38,38,0.08)', icon: '🔴' },
@@ -126,8 +127,8 @@ export default function NotificationBell() {
                 }}
                 title={`${activeCount} notificação${activeCount !== 1 ? 'ões' : ''}`}
             >
-                <span>🔔</span>
-                <span style={{ fontSize: '0.8125rem', fontWeight: 600, flex: 1, textAlign: 'left' }}>
+                <span className="sidebar-link-icon"><Bell size={20} strokeWidth={1.8} /></span>
+                <span className="sidebar-link-label" style={{ fontSize: '0.8125rem', fontWeight: 600, flex: 1, textAlign: 'left' }}>
                     Notificações
                 </span>
                 {activeCount > 0 && (
@@ -147,8 +148,8 @@ export default function NotificationBell() {
             {/* Notification Panel */}
             {open && (
                 <div ref={panelRef} className="notif-panel" style={{
-                    position: 'absolute', bottom: '100%', left: 0,
-                    width: 360, maxHeight: 480, marginBottom: '8px',
+                    position: 'absolute', top: '100%', right: 0,
+                    width: 360, maxHeight: 480, marginTop: '8px',
                     background: 'var(--bg-elevated)', borderRadius: 'var(--radius-lg)',
                     border: '1px solid var(--border-default)',
                     boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
