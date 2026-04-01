@@ -161,19 +161,35 @@ router.put('/:provider', authenticate, authorize('ADMIN'), async (req: Request, 
         const baseUrl = process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3001}`;
         const webhookUrl = `${baseUrl}/api/webhooks/${provider.toLowerCase()}`;
 
+        // Merge with existing config to preserve omitted sensitive fields
+        const existing = await prisma.integrationConfig.findUnique({ where: { provider } });
+        let mergedConfig = data.config;
+        if (existing) {
+            try {
+                const existingConfig = JSON.parse(existing.config);
+                // For each key in existing config, if new config doesn't have it or it's empty, keep existing
+                mergedConfig = { ...existingConfig };
+                for (const [key, value] of Object.entries(data.config)) {
+                    if (value !== undefined && value !== null && value !== '') {
+                        mergedConfig[key] = value;
+                    }
+                }
+            } catch { /* existing config parse failed, use new config */ }
+        }
+
         const result = await prisma.integrationConfig.upsert({
             where: { provider },
             create: {
                 provider,
                 enabled: data.enabled ?? false,
                 environment: data.environment,
-                config: JSON.stringify(data.config),
+                config: JSON.stringify(mergedConfig),
                 webhookUrl,
             },
             update: {
                 enabled: data.enabled ?? undefined,
                 environment: data.environment,
-                config: JSON.stringify(data.config),
+                config: JSON.stringify(mergedConfig),
                 webhookUrl,
                 // Reset test status when config changes
                 testStatus: null,

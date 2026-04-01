@@ -26,7 +26,16 @@ app.use(cors({
     origin: config.frontendUrl,
     credentials: true,
 }));
-app.use(express.json());
+
+// Stripe webhooks need the raw body for signature verification.
+// Use express.raw() for the webhook path, express.json() for everything else.
+app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
+app.use(express.json({
+    verify: (req: any, _res, buf) => {
+        // Store raw body for any other webhook that might need it
+        req.rawBody = buf;
+    },
+}));
 app.use(cookieParser());
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 

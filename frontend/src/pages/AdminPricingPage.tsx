@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { pricingApi, PricingConfig, AddOnConfig, BusinessConfigItem, PaymentMethodConfigItem, integrationsApi, IntegrationSummary } from '../api/client';
 import { setPaymentMethods as setCachedPaymentMethods } from '../constants/paymentMethods';
 
@@ -72,6 +72,26 @@ export default function AdminPricingPage() {
         try {
             const res = await integrationsApi.list();
             setIntegrations(res.integrations);
+            // Populate form fields from saved config (masked values serve as placeholders)
+            const cora = res.integrations.find((i: IntegrationSummary) => i.provider === 'CORA');
+            if (cora?.configured) {
+                setCoraForm({
+                    clientId: cora.config.clientId || '',
+                    certificatePem: cora.config.certificatePem === '***CERTIFICATE_CONFIGURED***' ? '' : (cora.config.certificatePem || ''),
+                    privateKeyPem: cora.config.privateKeyPem === '***PRIVATE_KEY_CONFIGURED***' ? '' : (cora.config.privateKeyPem || ''),
+                    pixKey: cora.config.pixKey || '',
+                    environment: cora.environment || 'sandbox',
+                });
+            }
+            const stripe = res.integrations.find((i: IntegrationSummary) => i.provider === 'STRIPE');
+            if (stripe?.configured) {
+                setStripeForm({
+                    secretKey: stripe.config.secretKey || '',
+                    publishableKey: stripe.config.publishableKey || '',
+                    webhookSecret: stripe.config.webhookSecret || '',
+                    environment: stripe.environment || 'sandbox',
+                });
+            }
         } catch (err) {
             console.error(err);
         }
@@ -618,16 +638,18 @@ export default function AdminPricingPage() {
                 const cora = integrations.find(i => i.provider === 'CORA');
                 const stripe = integrations.find(i => i.provider === 'STRIPE');
 
-                const statusBadge = (status: string | null) => {
-                    if (status === 'success') return <span style={{ color: '#10b981', fontWeight: 700, fontSize: '0.75rem' }}>🟢 Conectado</span>;
-                    if (status === 'error') return <span style={{ color: '#ef4444', fontWeight: 700, fontSize: '0.75rem' }}>🔴 Erro</span>;
-                    return <span style={{ color: '#f59e0b', fontWeight: 700, fontSize: '0.75rem' }}>🟡 Não testado</span>;
+                const statusBadge = (provider: IntegrationSummary | undefined) => {
+                    if (!provider?.configured) return <span style={{ color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.6875rem' }}>⚪ Não configurado</span>;
+                    if (provider.testStatus === 'success') return <span style={{ color: '#10b981', fontWeight: 700, fontSize: '0.6875rem' }}>🟢 Conectado</span>;
+                    if (provider.testStatus === 'error') return <span style={{ color: '#ef4444', fontWeight: 700, fontSize: '0.6875rem' }}>🔴 Erro</span>;
+                    return <span style={{ color: '#f59e0b', fontWeight: 700, fontSize: '0.6875rem' }}>🟡 Não testado</span>;
                 };
 
                 const inputStyle: React.CSSProperties = {
                     width: '100%', padding: '10px 14px', borderRadius: '10px',
-                    background: 'var(--bg-secondary)', border: '1px solid var(--border-default)',
-                    color: 'var(--text-primary)', fontSize: '0.8125rem', fontFamily: 'monospace',
+                    background: 'var(--bg-primary)', border: '1px solid var(--border-color)',
+                    color: 'var(--text-primary)', fontSize: '0.8125rem', fontFamily: "'JetBrains Mono', monospace",
+                    outline: 'none', transition: 'border-color 0.2s',
                 };
 
                 const labelStyle: React.CSSProperties = {
@@ -639,12 +661,27 @@ export default function AdminPricingPage() {
                 const handleSaveIntegration = async (provider: string) => {
                     setSaving(true); setError(''); setSuccess('');
                     try {
-                        const data = provider === 'CORA'
-                            ? { environment: coraForm.environment, config: { clientId: coraForm.clientId, certificatePem: coraForm.certificatePem, privateKeyPem: coraForm.privateKeyPem, pixKey: coraForm.pixKey } }
-                            : { environment: stripeForm.environment, config: { secretKey: stripeForm.secretKey, publishableKey: stripeForm.publishableKey, webhookSecret: stripeForm.webhookSecret } };
+                        let data;
+                        if (provider === 'CORA') {
+                            const config: Record<string, string> = {
+                                clientId: coraForm.clientId,
+                                pixKey: coraForm.pixKey,
+                            };
+                            // Only send cert/key if user typed new values (not empty = keep existing)
+                            if (coraForm.certificatePem) config.certificatePem = coraForm.certificatePem;
+                            if (coraForm.privateKeyPem) config.privateKeyPem = coraForm.privateKeyPem;
+                            data = { environment: coraForm.environment, config };
+                        } else {
+                            const config: Record<string, string> = {
+                                publishableKey: stripeForm.publishableKey,
+                            };
+                            // Only send secrets if user typed new values
+                            if (stripeForm.secretKey && !stripeForm.secretKey.includes('...')) config.secretKey = stripeForm.secretKey;
+                            if (stripeForm.webhookSecret && !stripeForm.webhookSecret.includes('...')) config.webhookSecret = stripeForm.webhookSecret;
+                            data = { environment: stripeForm.environment, config };
+                        }
                         const res = await integrationsApi.save(provider, data);
                         setSuccess(res.message);
-                        // Reload integrations
                         const listRes = await integrationsApi.list();
                         setIntegrations(listRes.integrations);
                     } catch (e: any) { setError(e.message || 'Erro ao salvar'); } finally { setSaving(false); }
@@ -654,8 +691,8 @@ export default function AdminPricingPage() {
                     setTestingProvider(provider); setError(''); setSuccess('');
                     try {
                         const res = await integrationsApi.test(provider);
-                        if (res.success) setSuccess(res.message);
-                        else setError(res.message);
+                        if (res.success) setSuccess(`✅ ${provider}: ${res.message}`);
+                        else setError(`❌ ${provider}: ${res.message}`);
                         const listRes = await integrationsApi.list();
                         setIntegrations(listRes.integrations);
                     } catch (e: any) { setError(e.message || 'Erro ao testar'); } finally { setTestingProvider(null); }
@@ -670,167 +707,284 @@ export default function AdminPricingPage() {
                     } catch (e: any) { setError(e.message); }
                 };
 
-                return (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '20px' }}>
-                        {/* ─── CORA Card ─── */}
-                        <div style={{
-                            padding: '24px', borderRadius: '16px',
-                            background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
-                        }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    <span style={{ fontSize: '1.75rem' }}>🏦</span>
-                                    <div>
-                                        <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-primary)' }}>Cora</div>
-                                        <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>PIX e Boleto Bancário</div>
-                                    </div>
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    {statusBadge(cora?.testStatus || null)}
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                                        <input type="checkbox" checked={cora?.enabled || false}
-                                            onChange={e => handleToggle('CORA', e.target.checked)}
-                                            style={{ width: '16px', height: '16px', accentColor: '#10b981' }} />
-                                        <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: cora?.enabled ? '#10b981' : 'var(--text-muted)' }}>
-                                            {cora?.enabled ? 'Ativo' : 'Inativo'}
-                                        </span>
-                                    </label>
-                                </div>
-                            </div>
+                const copyToClipboard = (text: string) => {
+                    navigator.clipboard.writeText(text);
+                    setSuccess('📋 URL copiada!');
+                    setTimeout(() => setSuccess(''), 2000);
+                };
 
-                            <label style={labelStyle}>Client ID</label>
-                            <input style={inputStyle} type="text" placeholder="Seu Client ID da Cora"
-                                value={coraForm.clientId} onChange={e => setCoraForm(f => ({ ...f, clientId: e.target.value }))} />
-
-                            <label style={labelStyle}>Chave PIX</label>
-                            <input style={inputStyle} type="text" placeholder="email@empresa.com ou CPF/CNPJ"
-                                value={coraForm.pixKey} onChange={e => setCoraForm(f => ({ ...f, pixKey: e.target.value }))} />
-
-                            <label style={labelStyle}>Certificado (.pem)</label>
-                            <textarea style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' as const }}
-                                placeholder="Cole o conteúdo do certificado .pem aqui..."
-                                value={coraForm.certificatePem}
-                                onChange={e => setCoraForm(f => ({ ...f, certificatePem: e.target.value }))} />
-
-                            <label style={labelStyle}>Chave Privada (.key)</label>
-                            <textarea style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' as const }}
-                                placeholder="Cole o conteúdo da chave privada .key aqui..."
-                                value={coraForm.privateKeyPem}
-                                onChange={e => setCoraForm(f => ({ ...f, privateKeyPem: e.target.value }))} />
-
-                            <label style={labelStyle}>Ambiente</label>
-                            <select style={inputStyle} value={coraForm.environment}
-                                onChange={e => setCoraForm(f => ({ ...f, environment: e.target.value }))}>
-                                <option value="sandbox">🧪 Sandbox (Testes)</option>
-                                <option value="production">🚀 Produção</option>
-                            </select>
-
-                            {cora?.webhookUrl && (
-                                <div style={{ marginTop: '14px' }}>
-                                    <label style={labelStyle}>Webhook URL (cole no painel Cora)</label>
-                                    <div style={{
-                                        padding: '8px 12px', borderRadius: '8px', fontSize: '0.75rem',
-                                        background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)',
-                                        color: '#10b981', fontFamily: 'monospace', wordBreak: 'break-all',
-                                    }}>
-                                        {cora.webhookUrl}
-                                    </div>
-                                </div>
-                            )}
-
-                            {cora?.lastTestedAt && (
-                                <div style={{ marginTop: '8px', fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
-                                    Último teste: {new Date(cora.lastTestedAt).toLocaleString('pt-BR')}
-                                    {cora.testMessage && <span> — {cora.testMessage}</span>}
-                                </div>
-                            )}
-
-                            <div style={{ display: 'flex', gap: '8px', marginTop: '18px' }}>
-                                <button className="btn btn-primary" style={{ flex: 1, borderRadius: '10px', fontWeight: 700 }}
-                                    onClick={() => handleSaveIntegration('CORA')} disabled={saving}>
-                                    {saving ? '⏳...' : '💾 Salvar Cora'}
-                                </button>
-                                <button className="btn btn-secondary" style={{ borderRadius: '10px', fontWeight: 700 }}
-                                    onClick={() => handleTest('CORA')} disabled={testingProvider === 'CORA'}>
-                                    {testingProvider === 'CORA' ? '⏳ Testando...' : '🧪 Testar'}
+                const WebhookUrlBox = ({ url, label }: { url: string | null; label: string }) => {
+                    if (!url) return null;
+                    return (
+                        <div style={{ marginTop: '14px' }}>
+                            <label style={labelStyle}>{label}</label>
+                            <div style={{
+                                display: 'flex', alignItems: 'center', gap: '8px',
+                                padding: '8px 12px', borderRadius: '8px', fontSize: '0.75rem',
+                                background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)',
+                                color: '#10b981', fontFamily: "'JetBrains Mono', monospace",
+                            }}>
+                                <span style={{ flex: 1, wordBreak: 'break-all' }}>{url}</span>
+                                <button
+                                    onClick={() => copyToClipboard(url)}
+                                    style={{
+                                        background: 'rgba(16,185,129,0.15)', border: 'none',
+                                        borderRadius: '6px', padding: '4px 10px', cursor: 'pointer',
+                                        color: '#10b981', fontWeight: 700, fontSize: '0.6875rem',
+                                        transition: 'all 0.2s', whiteSpace: 'nowrap',
+                                    }}
+                                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(16,185,129,0.25)')}
+                                    onMouseLeave={e => (e.currentTarget.style.background = 'rgba(16,185,129,0.15)')}
+                                >
+                                    📋 Copiar
                                 </button>
                             </div>
                         </div>
+                    );
+                };
 
-                        {/* ─── STRIPE Card ─── */}
+                const TestInfo = ({ provider }: { provider: IntegrationSummary | undefined }) => {
+                    if (!provider?.lastTestedAt) return null;
+                    return (
                         <div style={{
-                            padding: '24px', borderRadius: '16px',
-                            background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
+                            marginTop: '10px', padding: '8px 12px', borderRadius: '8px',
+                            background: provider.testStatus === 'success' ? 'rgba(16,185,129,0.05)' : provider.testStatus === 'error' ? 'rgba(239,68,68,0.05)' : 'var(--bg-primary)',
+                            border: `1px solid ${provider.testStatus === 'success' ? 'rgba(16,185,129,0.12)' : provider.testStatus === 'error' ? 'rgba(239,68,68,0.12)' : 'var(--border-color)'}`,
                         }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    <span style={{ fontSize: '1.75rem' }}>💳</span>
-                                    <div>
-                                        <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-primary)' }}>Stripe</div>
-                                        <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>Cartão de Crédito e Débito</div>
+                            <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                                Último teste: {new Date(provider.lastTestedAt).toLocaleString('pt-BR')}
+                            </div>
+                            {provider.testMessage && (
+                                <div style={{
+                                    fontSize: '0.75rem', fontWeight: 600,
+                                    color: provider.testStatus === 'success' ? '#10b981' : provider.testStatus === 'error' ? '#ef4444' : 'var(--text-secondary)',
+                                }}>
+                                    {provider.testMessage}
+                                </div>
+                            )}
+                        </div>
+                    );
+                };
+
+                return (
+                    <div>
+                        {/* Info banner */}
+                        <div style={{
+                            padding: '14px 18px', borderRadius: '12px', fontSize: '0.8125rem', marginBottom: '20px',
+                            background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.15)',
+                            color: 'var(--text-secondary)', display: 'flex', alignItems: 'flex-start', gap: '8px',
+                        }}>
+                            <span style={{ fontSize: '1rem' }}>ℹ️</span>
+                            <div>
+                                Configure as credenciais dos provedores de pagamento. O <strong>Stripe</strong> é usado para pagamentos com cartão de crédito/débito.
+                                O <strong>Cora</strong> é usado para PIX e Boleto Bancário (requer certificado mTLS).
+                                <div style={{ marginTop: '6px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                    ⚠️ Campos sensíveis (chaves, certificados) são mascarados após salvar. Deixe em branco para manter os valores atuais.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '20px' }}>
+                            {/* ─── CORA Card ─── */}
+                            <div style={{
+                                padding: '24px', borderRadius: '16px',
+                                background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
+                                borderTop: `3px solid ${cora?.enabled ? '#f59e0b' : 'var(--border-color)'}`,
+                            }}>
+                                {/* Header */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                        <div style={{
+                                            width: 48, height: 48, borderRadius: '12px',
+                                            background: 'rgba(245,158,11,0.10)', display: 'flex',
+                                            alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem',
+                                            border: '1px solid rgba(245,158,11,0.2)',
+                                        }}>🏦</div>
+                                        <div>
+                                            <div style={{ fontSize: '1.0625rem', fontWeight: 800, color: 'var(--text-primary)' }}>Cora</div>
+                                            <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>PIX e Boleto Bancário (mTLS)</div>
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                        {statusBadge(cora)}
+                                        <div
+                                            onClick={() => cora?.configured && handleToggle('CORA', !cora?.enabled)}
+                                            style={{
+                                                width: 44, height: 24, borderRadius: '12px',
+                                                cursor: cora?.configured ? 'pointer' : 'not-allowed',
+                                                background: cora?.enabled ? '#10b981' : 'var(--bg-elevated)',
+                                                border: `1px solid ${cora?.enabled ? '#10b981' : 'var(--border-color)'}`,
+                                                position: 'relative', transition: 'all 0.2s ease',
+                                                opacity: cora?.configured ? 1 : 0.5,
+                                            }}
+                                        >
+                                            <div style={{
+                                                width: 18, height: 18, borderRadius: '50%', background: '#fff',
+                                                position: 'absolute', top: 2,
+                                                left: cora?.enabled ? 22 : 2,
+                                                transition: 'left 0.2s ease',
+                                                boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                                            }} />
+                                        </div>
                                     </div>
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    {statusBadge(stripe?.testStatus || null)}
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                                        <input type="checkbox" checked={stripe?.enabled || false}
-                                            onChange={e => handleToggle('STRIPE', e.target.checked)}
-                                            style={{ width: '16px', height: '16px', accentColor: '#14b8a6' }} />
-                                        <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: stripe?.enabled ? '#14b8a6' : 'var(--text-muted)' }}>
-                                            {stripe?.enabled ? 'Ativo' : 'Inativo'}
-                                        </span>
-                                    </label>
+
+                                {/* Fields */}
+                                <label style={labelStyle}>Client ID</label>
+                                <input style={inputStyle} type="text"
+                                    placeholder={cora?.config?.clientId ? 'Já configurado (masked)' : 'Seu Client ID da Cora'}
+                                    value={coraForm.clientId}
+                                    onChange={e => setCoraForm(f => ({ ...f, clientId: e.target.value }))}
+                                    onFocus={e => (e.currentTarget.style.borderColor = '#f59e0b')}
+                                    onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
+                                />
+
+                                <label style={labelStyle}>Chave PIX</label>
+                                <input style={inputStyle} type="text" placeholder="email@empresa.com ou CPF/CNPJ"
+                                    value={coraForm.pixKey}
+                                    onChange={e => setCoraForm(f => ({ ...f, pixKey: e.target.value }))}
+                                    onFocus={e => (e.currentTarget.style.borderColor = '#f59e0b')}
+                                    onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
+                                />
+
+                                <label style={labelStyle}>Certificado mTLS (.pem)</label>
+                                <textarea style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' as const }}
+                                    placeholder={cora?.config?.certificatePem === '***CERTIFICATE_CONFIGURED***'
+                                        ? '✅ Certificado já configurado. Deixe em branco para manter, ou cole um novo.'
+                                        : 'Cole o conteúdo do certificado .pem aqui...\n-----BEGIN CERTIFICATE-----\n...'}
+                                    value={coraForm.certificatePem}
+                                    onChange={e => setCoraForm(f => ({ ...f, certificatePem: e.target.value }))}
+                                    onFocus={e => (e.currentTarget.style.borderColor = '#f59e0b')}
+                                    onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
+                                />
+
+                                <label style={labelStyle}>Chave Privada (.key)</label>
+                                <textarea style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' as const }}
+                                    placeholder={cora?.config?.privateKeyPem === '***PRIVATE_KEY_CONFIGURED***'
+                                        ? '✅ Chave privada já configurada. Deixe em branco para manter, ou cole uma nova.'
+                                        : 'Cole o conteúdo da chave privada .key aqui...\n-----BEGIN PRIVATE KEY-----\n...'}
+                                    value={coraForm.privateKeyPem}
+                                    onChange={e => setCoraForm(f => ({ ...f, privateKeyPem: e.target.value }))}
+                                    onFocus={e => (e.currentTarget.style.borderColor = '#f59e0b')}
+                                    onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
+                                />
+
+                                <label style={labelStyle}>Ambiente</label>
+                                <select style={inputStyle} value={coraForm.environment}
+                                    onChange={e => setCoraForm(f => ({ ...f, environment: e.target.value }))}>
+                                    <option value="sandbox">🧪 Sandbox (Homologação)</option>
+                                    <option value="production">🚀 Produção</option>
+                                </select>
+
+                                <WebhookUrlBox url={cora?.webhookUrl || null} label="Webhook URL (cole no painel Cora)" />
+                                <TestInfo provider={cora} />
+
+                                <div style={{ display: 'flex', gap: '8px', marginTop: '18px' }}>
+                                    <button className="btn btn-primary" style={{ flex: 1, borderRadius: '10px', fontWeight: 700 }}
+                                        onClick={() => handleSaveIntegration('CORA')} disabled={saving}>
+                                        {saving ? '⏳ Salvando...' : '💾 Salvar Cora'}
+                                    </button>
+                                    <button className="btn btn-secondary" style={{ borderRadius: '10px', fontWeight: 700 }}
+                                        onClick={() => handleTest('CORA')}
+                                        disabled={testingProvider === 'CORA' || !cora?.configured}>
+                                        {testingProvider === 'CORA' ? '⏳ Testando...' : '🧪 Testar Conexão'}
+                                    </button>
                                 </div>
                             </div>
 
-                            <label style={labelStyle}>Secret Key</label>
-                            <input style={inputStyle} type="password" placeholder="sk_test_xxx ou sk_live_xxx"
-                                value={stripeForm.secretKey} onChange={e => setStripeForm(f => ({ ...f, secretKey: e.target.value }))} />
-
-                            <label style={labelStyle}>Publishable Key</label>
-                            <input style={inputStyle} type="text" placeholder="pk_test_xxx ou pk_live_xxx"
-                                value={stripeForm.publishableKey} onChange={e => setStripeForm(f => ({ ...f, publishableKey: e.target.value }))} />
-
-                            <label style={labelStyle}>Webhook Secret</label>
-                            <input style={inputStyle} type="password" placeholder="whsec_xxx"
-                                value={stripeForm.webhookSecret} onChange={e => setStripeForm(f => ({ ...f, webhookSecret: e.target.value }))} />
-
-                            <label style={labelStyle}>Ambiente</label>
-                            <select style={inputStyle} value={stripeForm.environment}
-                                onChange={e => setStripeForm(f => ({ ...f, environment: e.target.value }))}>
-                                <option value="sandbox">🧪 Teste (sk_test)</option>
-                                <option value="production">🚀 Produção (sk_live)</option>
-                            </select>
-
-                            {stripe?.webhookUrl && (
-                                <div style={{ marginTop: '14px' }}>
-                                    <label style={labelStyle}>Webhook URL (cole no dashboard Stripe)</label>
-                                    <div style={{
-                                        padding: '8px 12px', borderRadius: '8px', fontSize: '0.75rem',
-                                        background: 'rgba(45,212,191,0.06)', border: '1px solid rgba(45,212,191,0.15)',
-                                        color: '#14b8a6', fontFamily: 'monospace', wordBreak: 'break-all',
-                                    }}>
-                                        {stripe.webhookUrl}
+                            {/* ─── STRIPE Card ─── */}
+                            <div style={{
+                                padding: '24px', borderRadius: '16px',
+                                background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
+                                borderTop: `3px solid ${stripe?.enabled ? '#635bff' : 'var(--border-color)'}`,
+                            }}>
+                                {/* Header */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                        <div style={{
+                                            width: 48, height: 48, borderRadius: '12px',
+                                            background: 'rgba(99,91,255,0.10)', display: 'flex',
+                                            alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem',
+                                            border: '1px solid rgba(99,91,255,0.2)',
+                                        }}>💳</div>
+                                        <div>
+                                            <div style={{ fontSize: '1.0625rem', fontWeight: 800, color: 'var(--text-primary)' }}>Stripe</div>
+                                            <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>Cartão de Crédito, Débito e PIX</div>
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                        {statusBadge(stripe)}
+                                        <div
+                                            onClick={() => stripe?.configured && handleToggle('STRIPE', !stripe?.enabled)}
+                                            style={{
+                                                width: 44, height: 24, borderRadius: '12px',
+                                                cursor: stripe?.configured ? 'pointer' : 'not-allowed',
+                                                background: stripe?.enabled ? '#10b981' : 'var(--bg-elevated)',
+                                                border: `1px solid ${stripe?.enabled ? '#10b981' : 'var(--border-color)'}`,
+                                                position: 'relative', transition: 'all 0.2s ease',
+                                                opacity: stripe?.configured ? 1 : 0.5,
+                                            }}
+                                        >
+                                            <div style={{
+                                                width: 18, height: 18, borderRadius: '50%', background: '#fff',
+                                                position: 'absolute', top: 2,
+                                                left: stripe?.enabled ? 22 : 2,
+                                                transition: 'left 0.2s ease',
+                                                boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                                            }} />
+                                        </div>
                                     </div>
                                 </div>
-                            )}
 
-                            {stripe?.lastTestedAt && (
-                                <div style={{ marginTop: '8px', fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
-                                    Último teste: {new Date(stripe.lastTestedAt).toLocaleString('pt-BR')}
-                                    {stripe.testMessage && <span> — {stripe.testMessage}</span>}
+                                {/* Fields */}
+                                <label style={labelStyle}>Secret Key</label>
+                                <input style={inputStyle} type="password"
+                                    placeholder={stripe?.config?.secretKey ? 'Já configurada (masked)' : 'sk_test_xxx ou sk_live_xxx'}
+                                    value={stripeForm.secretKey}
+                                    onChange={e => setStripeForm(f => ({ ...f, secretKey: e.target.value }))}
+                                    onFocus={e => (e.currentTarget.style.borderColor = '#635bff')}
+                                    onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
+                                />
+
+                                <label style={labelStyle}>Publishable Key</label>
+                                <input style={inputStyle} type="text"
+                                    placeholder={stripe?.config?.publishableKey ? 'Já configurada' : 'pk_test_xxx ou pk_live_xxx'}
+                                    value={stripeForm.publishableKey}
+                                    onChange={e => setStripeForm(f => ({ ...f, publishableKey: e.target.value }))}
+                                    onFocus={e => (e.currentTarget.style.borderColor = '#635bff')}
+                                    onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
+                                />
+
+                                <label style={labelStyle}>Webhook Secret</label>
+                                <input style={inputStyle} type="password"
+                                    placeholder={stripe?.config?.webhookSecret ? 'Já configurado (masked)' : 'whsec_xxx'}
+                                    value={stripeForm.webhookSecret}
+                                    onChange={e => setStripeForm(f => ({ ...f, webhookSecret: e.target.value }))}
+                                    onFocus={e => (e.currentTarget.style.borderColor = '#635bff')}
+                                    onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
+                                />
+
+                                <label style={labelStyle}>Ambiente</label>
+                                <select style={inputStyle} value={stripeForm.environment}
+                                    onChange={e => setStripeForm(f => ({ ...f, environment: e.target.value }))}>
+                                    <option value="sandbox">🧪 Teste (sk_test)</option>
+                                    <option value="production">🚀 Produção (sk_live)</option>
+                                </select>
+
+                                <WebhookUrlBox url={stripe?.webhookUrl || null} label="Webhook URL (cole no dashboard Stripe)" />
+                                <TestInfo provider={stripe} />
+
+                                <div style={{ display: 'flex', gap: '8px', marginTop: '18px' }}>
+                                    <button className="btn btn-primary" style={{ flex: 1, borderRadius: '10px', fontWeight: 700 }}
+                                        onClick={() => handleSaveIntegration('STRIPE')} disabled={saving}>
+                                        {saving ? '⏳ Salvando...' : '💾 Salvar Stripe'}
+                                    </button>
+                                    <button className="btn btn-secondary" style={{ borderRadius: '10px', fontWeight: 700 }}
+                                        onClick={() => handleTest('STRIPE')}
+                                        disabled={testingProvider === 'STRIPE' || !stripe?.configured}>
+                                        {testingProvider === 'STRIPE' ? '⏳ Testando...' : '🧪 Testar Conexão'}
+                                    </button>
                                 </div>
-                            )}
-
-                            <div style={{ display: 'flex', gap: '8px', marginTop: '18px' }}>
-                                <button className="btn btn-primary" style={{ flex: 1, borderRadius: '10px', fontWeight: 700 }}
-                                    onClick={() => handleSaveIntegration('STRIPE')} disabled={saving}>
-                                    {saving ? '⏳...' : '💾 Salvar Stripe'}
-                                </button>
-                                <button className="btn btn-secondary" style={{ borderRadius: '10px', fontWeight: 700 }}
-                                    onClick={() => handleTest('STRIPE')} disabled={testingProvider === 'STRIPE'}>
-                                    {testingProvider === 'STRIPE' ? '⏳ Testando...' : '🧪 Testar'}
-                                </button>
                             </div>
                         </div>
                     </div>

@@ -1,9 +1,13 @@
 // ─── Cora Bank API Service ──────────────────────────────
 // Handles OAuth2 authentication and boleto/PIX emission via Cora API
 // Docs: https://developers.cora.com.br
+//
+// Uses node:https directly for mTLS (client certificate auth).
+// Node's native fetch (undici) does NOT support https.Agent for mTLS.
 
 import { prisma } from './prisma';
 import https from 'https';
+import { URL } from 'url';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -78,17 +82,115 @@ async function getCoraConfig(): Promise<{ config: CoraConfig; environment: strin
     if (!integration || !integration.enabled) return null;
     try {
         const config = JSON.parse(integration.config) as CoraConfig;
+        
+        // Fix potential escaped newlines from JSON DB serialization
+        if (config.certificatePem) config.certificatePem = config.certificatePem.replace(/\\n/g, '\n');
+        if (config.privateKeyPem)  config.privateKeyPem  = config.privateKeyPem.replace(/\\n/g, '\n');
+
         return { config, environment: integration.environment };
     } catch {
         return null;
     }
 }
 
-function createHttpsAgent(config: CoraConfig): https.Agent {
-    return new https.Agent({
-        cert: config.certificatePem,
-        key: config.privateKeyPem,
-        rejectUnauthorized: true,
+/**
+ * Makes an HTTPS request with mTLS client certificate.
+ * Uses node:https directly because `fetch` (undici) does NOT support https.Agent.
+ */
+function httpsRequest(
+    url: string,
+    options: {
+        method: string;
+        headers?: Record<string, string>;
+        body?: string;
+        cert: string;
+        key: string;
+    }
+): Promise<{ status: number; body: string }> {
+    return new Promise((resolve, reject) => {
+        const parsed = new URL(url);
+
+        const reqOptions: https.RequestOptions = {
+            hostname: parsed.hostname,
+            port: parsed.port || 443,
+            path: parsed.pathname + parsed.search,
+            method: options.method,
+            headers: options.headers || {},
+            cert: options.cert,
+            key: options.key,
+            rejectUnauthorized: true,
+        };
+
+        const req = https.request(reqOptions, (res) => {
+            const chunks: Buffer[] = [];
+            res.on('data', (chunk) => chunks.push(chunk));
+            res.on('end', () => {
+                const body = Buffer.concat(chunks).toString('utf-8');
+                resolve({ status: res.statusCode || 500, body });
+            });
+        });
+
+        req.on('error', reject);
+        req.setTimeout(30_000, () => {
+            req.destroy(new Error('Request timeout (30s)'));
+        });
+
+        if (options.body) {
+            req.write(options.body);
+        }
+        req.end();
+    });
+}
+
+/**
+ * Makes an HTTPS request WITHOUT mTLS (for non-auth endpoints when
+ * cert is not required after obtaining the token).
+ * Still uses node:https for consistency.
+ */
+function httpsRequestWithToken(
+    url: string,
+    options: {
+        method: string;
+        headers?: Record<string, string>;
+        body?: string;
+        cert?: string;
+        key?: string;
+    }
+): Promise<{ status: number; body: string }> {
+    return new Promise((resolve, reject) => {
+        const parsed = new URL(url);
+
+        const reqOptions: https.RequestOptions = {
+            hostname: parsed.hostname,
+            port: parsed.port || 443,
+            path: parsed.pathname + parsed.search,
+            method: options.method,
+            headers: options.headers || {},
+            rejectUnauthorized: true,
+        };
+
+        // mTLS certs if provided (Cora requires mTLS on ALL endpoints)
+        if (options.cert) reqOptions.cert = options.cert;
+        if (options.key) reqOptions.key = options.key;
+
+        const req = https.request(reqOptions, (res) => {
+            const chunks: Buffer[] = [];
+            res.on('data', (chunk) => chunks.push(chunk));
+            res.on('end', () => {
+                const body = Buffer.concat(chunks).toString('utf-8');
+                resolve({ status: res.statusCode || 500, body });
+            });
+        });
+
+        req.on('error', reject);
+        req.setTimeout(30_000, () => {
+            req.destroy(new Error('Request timeout (30s)'));
+        });
+
+        if (options.body) {
+            req.write(options.body);
+        }
+        req.end();
     });
 }
 
@@ -106,26 +208,24 @@ export async function coraAuthenticate(): Promise<string> {
     const { config, environment } = setup;
     const urls = CORA_URLS[environment as keyof typeof CORA_URLS] || CORA_URLS.sandbox;
 
-    const agent = createHttpsAgent(config);
     const body = new URLSearchParams({
         grant_type: 'client_credentials',
         client_id: config.clientId,
-    });
+    }).toString();
 
-    const response = await fetch(urls.auth, {
+    const response = await httpsRequest(urls.auth, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: body.toString(),
-        // @ts-ignore — Node fetch supports dispatcher/agent
-        dispatcher: agent,
+        body,
+        cert: config.certificatePem,
+        key: config.privateKeyPem,
     });
 
-    if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Cora auth failed (${response.status}): ${text}`);
+    if (response.status >= 400) {
+        throw new Error(`Cora auth failed (${response.status}): ${response.body}`);
     }
 
-    const data: CoraToken = await response.json() as CoraToken;
+    const data: CoraToken = JSON.parse(response.body);
     _tokenCache = {
         token: data.access_token,
         expiresAt: Date.now() + (data.expires_in * 1000),
@@ -141,15 +241,14 @@ export async function coraCreateBoleto(payload: CoraBoletoPayload): Promise<Cora
     const token = await coraAuthenticate();
     const { config, environment } = setup;
     const urls = CORA_URLS[environment as keyof typeof CORA_URLS] || CORA_URLS.sandbox;
-    const agent = createHttpsAgent(config);
 
     // PIX QR Code uses a separate endpoint from boleto
     if (payload.withPixQrCode) {
-        return coraCreatePixQrCode(payload, token, urls, agent);
+        return coraCreatePixQrCode(payload, token, urls, config);
     }
 
     // ─── Boleto Registrado: POST /v2/invoices ────────────
-    const body = {
+    const body = JSON.stringify({
         code: `boleto-${Date.now()}`,
         customer: {
             name: payload.customer.name,
@@ -166,26 +265,25 @@ export async function coraCreateBoleto(payload: CoraBoletoPayload): Promise<Cora
             ...(payload.finePercentage ? { fine: { percentage: payload.finePercentage } } : {}),
             ...(payload.interestPercentage ? { interest: { type: 'MONTHLY_PERCENTAGE', value: payload.interestPercentage } } : {}),
         },
-    };
+    });
 
-    const response = await fetch(`${urls.api}/v2/invoices`, {
+    const response = await httpsRequestWithToken(`${urls.api}/v2/invoices`, {
         method: 'POST',
         headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
             'Idempotency-Key': `boleto-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         },
-        body: JSON.stringify(body),
-        // @ts-ignore
-        dispatcher: agent,
+        body,
+        cert: config.certificatePem,
+        key: config.privateKeyPem,
     });
 
-    if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Cora create boleto failed (${response.status}): ${text}`);
+    if (response.status >= 400) {
+        throw new Error(`Cora create boleto failed (${response.status}): ${response.body}`);
     }
 
-    const result = await response.json() as any;
+    const result = JSON.parse(response.body);
 
     return {
         id: result.id,
@@ -202,9 +300,9 @@ async function coraCreatePixQrCode(
     payload: CoraBoletoPayload,
     token: string,
     urls: { auth: string; api: string },
-    agent: https.Agent
+    config: CoraConfig
 ): Promise<CoraBoletoResult> {
-    const body = {
+    const body = JSON.stringify({
         code: `pix-${Date.now()}`,
         amount: payload.amount,
         customer: {
@@ -214,26 +312,25 @@ async function coraCreatePixQrCode(
         },
         description: payload.description,
         expiration_date: payload.dueDate,
-    };
+    });
 
-    const response = await fetch(`${urls.api}/v2/pix-qrcode`, {
+    const response = await httpsRequestWithToken(`${urls.api}/v2/pix-qrcode`, {
         method: 'POST',
         headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
             'Idempotency-Key': `pix-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         },
-        body: JSON.stringify(body),
-        // @ts-ignore
-        dispatcher: agent,
+        body,
+        cert: config.certificatePem,
+        key: config.privateKeyPem,
     });
 
-    if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Cora create PIX QR code failed (${response.status}): ${text}`);
+    if (response.status >= 400) {
+        throw new Error(`Cora create PIX QR code failed (${response.status}): ${response.body}`);
     }
 
-    const result = await response.json() as any;
+    const result = JSON.parse(response.body);
 
     return {
         id: result.id,
@@ -252,20 +349,19 @@ export async function coraGetBoleto(boletoId: string): Promise<any> {
     const token = await coraAuthenticate();
     const { config, environment } = setup;
     const urls = CORA_URLS[environment as keyof typeof CORA_URLS] || CORA_URLS.sandbox;
-    const agent = createHttpsAgent(config);
 
-    const response = await fetch(`${urls.api}/v2/invoices/${boletoId}`, {
+    const response = await httpsRequestWithToken(`${urls.api}/v2/invoices/${boletoId}`, {
         method: 'GET',
         headers: { 'Authorization': `Bearer ${token}` },
-        // @ts-ignore
-        dispatcher: agent,
+        cert: config.certificatePem,
+        key: config.privateKeyPem,
     });
 
-    if (!response.ok) {
+    if (response.status >= 400) {
         throw new Error(`Cora get boleto failed (${response.status})`);
     }
 
-    return response.json();
+    return JSON.parse(response.body);
 }
 
 export async function coraCancelBoleto(boletoId: string): Promise<void> {
@@ -275,16 +371,15 @@ export async function coraCancelBoleto(boletoId: string): Promise<void> {
     const token = await coraAuthenticate();
     const { config, environment } = setup;
     const urls = CORA_URLS[environment as keyof typeof CORA_URLS] || CORA_URLS.sandbox;
-    const agent = createHttpsAgent(config);
 
-    const response = await fetch(`${urls.api}/v2/invoices/${boletoId}`, {
+    const response = await httpsRequestWithToken(`${urls.api}/v2/invoices/${boletoId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` },
-        // @ts-ignore
-        dispatcher: agent,
+        cert: config.certificatePem,
+        key: config.privateKeyPem,
     });
 
-    if (!response.ok) {
+    if (response.status >= 400) {
         throw new Error(`Cora cancel boleto failed (${response.status})`);
     }
 }
@@ -294,9 +389,19 @@ export async function coraTestConnection(): Promise<{ success: boolean; message:
     try {
         await coraAuthenticate();
         _tokenCache = null; // Clear cache after test
-        return { success: true, message: 'Autenticação Cora realizada com sucesso!' };
+        return { success: true, message: 'Autenticação Cora realizada com sucesso! (mTLS OK)' };
     } catch (err) {
         const msg = err instanceof Error ? err.message : 'Erro desconhecido';
+        // Provide more helpful error messages
+        if (msg.includes('ECONNREFUSED')) {
+            return { success: false, message: 'Conexão recusada. Verifique se o ambiente (sandbox/produção) está correto.' };
+        }
+        if (msg.includes('certificate') || msg.includes('key')) {
+            return { success: false, message: 'Erro no certificado mTLS. Verifique se o certificado e chave privada estão corretos e no formato PEM.' };
+        }
+        if (msg.includes('client_id') || msg.includes('401')) {
+            return { success: false, message: 'Client ID inválido ou não autorizado. Verifique suas credenciais no painel Cora.' };
+        }
         return { success: false, message: `Falha na autenticação: ${msg}` };
     }
 }

@@ -1,0 +1,7 @@
+--- Testing Integrations ---
+
+Testing Stripe...
+Stripe Result: {"success":false,"message":"Secret Key inválida. Verifique se a chave começa com sk_test_ ou sk_live_."}
+
+Testing Cora...
+Cora Result: {"success":false,"message":"Falha na autenticação: error:0680009B:asn1 encoding routines::too long"}

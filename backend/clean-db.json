@@ -1,0 +1,26 @@
+[
+  {
+    "id": "5a46f0f2-89b3-4e54-b004-4bc66e105303",
+    "provider": "STRIPE",
+    "enabled": true,
+    "environment": "sandbox",
+    "config": "{\"secretKey\":\"\",\"publishableKey\":\"pk_test_fake456\",\"webhookSecret\":\"whsec_fake789\"}",
+    "webhookUrl": "http://localhost:3001/api/webhooks/stripe",
+    "lastTestedAt": "2026-03-30T21:30:46.494Z",
+    "testStatus": "error",
+    "testMessage": "Falha na conexão: Neither apiKey nor config.authenticator provided",
+    "updatedAt": "2026-03-30T21:30:46.495Z"
+  },
+  {
+    "id": "0abf006a-cad5-4ba8-aefb-213c8455ef9c",
+    "provider": "CORA",
+    "enabled": true,
+    "environment": "sandbox",
+    "config": "{\"clientId\":\"test-client-id-123\",\"certificatePem\":\"-----BEGIN CERTIFICATE-----\\\\nTEST\\\\n-----END CERTIFICATE-----\",\"privateKeyPem\":\"-----BEGIN PRIVATE KEY-----\\\\nTEST\\\\n-----END PRIVATE KEY-----\",\"pixKey\":\"test@buziosdigital.com\"}",
+    "webhookUrl": "http://localhost:3001/api/webhooks/cora",
+    "lastTestedAt": "2026-04-01T09:37:26.732Z",
+    "testStatus": "error",
+    "testMessage": "Falha na autenticação: fetch failed",
+    "updatedAt": "2026-04-01T09:37:26.733Z"
+  }
+]

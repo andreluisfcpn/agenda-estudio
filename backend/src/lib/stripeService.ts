@@ -48,8 +48,7 @@ async function getStripeClient(): Promise<Stripe> {
     if (!setup) throw new Error('Stripe integration not configured or disabled');
 
     return new Stripe(setup.config.secretKey, {
-        apiVersion: '2025-02-24.acacia' as any,
-        typescript: true,
+        apiVersion: '2026-03-25.dahlia' as any,
     });
 }
 
@@ -126,7 +125,7 @@ export async function stripeVerifyWebhook(body: string | Buffer, signature: stri
     if (!setup) throw new Error('Stripe not configured');
 
     const stripe = new Stripe(setup.config.secretKey, {
-        apiVersion: '2025-02-24.acacia' as any,
+        apiVersion: '2026-03-25.dahlia' as any,
     });
 
     return stripe.webhooks.constructEvent(body, signature, setup.config.webhookSecret);
@@ -144,8 +143,15 @@ export async function stripeTestConnection(): Promise<{ success: boolean; messag
             success: true,
             message: `Conexão Stripe OK! Saldo disponível: ${amountStr}`,
         };
-    } catch (err) {
+    } catch (err: any) {
         const msg = err instanceof Error ? err.message : 'Erro desconhecido';
+        // Provide more helpful error messages
+        if (msg.includes('Invalid API Key') || err.type === 'StripeAuthenticationError') {
+            return { success: false, message: 'Secret Key inválida. Verifique se a chave começa com sk_test_ ou sk_live_.' };
+        }
+        if (msg.includes('network') || msg.includes('ECONNREFUSED')) {
+            return { success: false, message: 'Erro de rede. Verifique sua conexão com a internet.' };
+        }
         return { success: false, message: `Falha na conexão: ${msg}` };
     }
 }

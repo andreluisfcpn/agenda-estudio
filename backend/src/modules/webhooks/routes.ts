@@ -93,9 +93,9 @@ router.post('/stripe', async (req: Request, res: Response) => {
         let event;
 
         if (sig) {
-            // Verify signature in production
+            // Verify signature — req.body is a Buffer from express.raw()
             try {
-                const rawBody = (req as any).rawBody || JSON.stringify(req.body);
+                const rawBody = Buffer.isBuffer(req.body) ? req.body : (req as any).rawBody || JSON.stringify(req.body);
                 event = await stripeVerifyWebhook(rawBody, sig);
             } catch (err) {
                 console.error('[Webhook:Stripe] Signature verification failed:', err);
@@ -104,7 +104,8 @@ router.post('/stripe', async (req: Request, res: Response) => {
             }
         } else {
             // No signature (dev mode) — accept raw body
-            event = req.body;
+            const body = Buffer.isBuffer(req.body) ? JSON.parse(req.body.toString()) : req.body;
+            event = body;
             console.log('[Webhook:Stripe] No signature — dev mode');
         }
 
