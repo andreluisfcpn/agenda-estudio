@@ -182,13 +182,12 @@ router.put('/business-config', authenticate, authorize('ADMIN'), async (req: Req
 });
 
 // ─── GET /api/pricing/payment-methods (public) ──────────
+// Returns ONLY methods that are active AND whose provider (Stripe/Cora) is enabled.
 
 router.get('/payment-methods', async (_req: Request, res: Response) => {
     try {
-        const methods = await prisma.paymentMethodConfig.findMany({
-            where: { active: true },
-            orderBy: { sortOrder: 'asc' },
-        });
+        const { getAvailablePaymentMethods } = await import('../../lib/paymentGateway');
+        const methods = await getAvailablePaymentMethods();
 
         // If no configs exist yet, return hardcoded defaults
         if (methods.length === 0) {

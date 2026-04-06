@@ -171,6 +171,152 @@ router.post('/stripe', async (req: Request, res: Response) => {
             }
         }
 
+        // Handle payment_intent.succeeded (inline card payments via Elements)
+        if (event.type === 'payment_intent.succeeded') {
+            const pi = event.data.object;
+            const paymentId = pi.metadata?.paymentId;
+
+            if (paymentId) {
+                const payment = await prisma.payment.findUnique({ where: { id: paymentId } });
+                if (payment && payment.status !== 'PAID') {
+                    await prisma.payment.update({
+                        where: { id: paymentId },
+                        data: {
+                            status: 'PAID',
+                            providerRef: pi.id,
+                            paymentType: pi.payment_method_types?.includes('card') ? 'CREDIT' : null,
+                        },
+                    });
+                    console.log(`[Webhook:Stripe] Payment ${paymentId} marked as PAID (PaymentIntent)`);
+
+                    if (payment.contractId) {
+                        await unlockNextCycleBookings(payment.contractId);
+                    }
+                }
+            }
+        }
+
+        // Handle setup_intent.succeeded (card saved to vault)
+        if (event.type === 'setup_intent.succeeded') {
+            const si = event.data.object;
+            const customerId = si.customer;
+            const paymentMethodId = si.payment_method;
+
+            if (customerId && paymentMethodId) {
+                // Find user by Stripe Customer ID
+                const user = await prisma.user.findFirst({
+                    where: { stripeCustomerId: String(customerId) },
+                });
+
+                if (user && typeof paymentMethodId === 'string') {
+                    // Get card details from Stripe
+                    try {
+                        const { stripeListPaymentMethods } = await import('../../lib/stripeService');
+                        const cards = await stripeListPaymentMethods(String(customerId));
+                        const card = cards.find(c => c.paymentMethodId === paymentMethodId);
+
+                        if (card) {
+                            // Check if already saved
+                            const existing = await prisma.savedPaymentMethod.findUnique({
+                                where: { stripePaymentMethodId: paymentMethodId },
+                            });
+
+                            if (!existing) {
+                                // Count existing methods to determine default
+                                const count = await prisma.savedPaymentMethod.count({ where: { userId: user.id } });
+
+                                await prisma.savedPaymentMethod.create({
+                                    data: {
+                                        userId: user.id,
+                                        stripePaymentMethodId: paymentMethodId,
+                                        brand: card.brand,
+                                        last4: card.last4,
+                                        expMonth: card.expMonth,
+                                        expYear: card.expYear,
+                                        isDefault: count === 0, // first card is default
+                                    },
+                                });
+                                console.log(`[Webhook:Stripe] Saved card ${card.brand} ****${card.last4} for user ${user.id}`);
+                            }
+                        }
+                    } catch (cardErr) {
+                        console.error('[Webhook:Stripe] Error saving card details:', cardErr);
+                    }
+                }
+            }
+        }
+
+        // Handle invoice.payment_succeeded (subscription recurring payment)
+        if (event.type === 'invoice.payment_succeeded') {
+            const invoice = event.data.object;
+            const subscriptionId = invoice.subscription;
+
+            if (subscriptionId) {
+                // Find pending payments linked to this subscription
+                const payment = await prisma.payment.findFirst({
+                    where: {
+                        stripeSubscriptionId: String(subscriptionId),
+                        status: 'PENDING',
+                    },
+                    orderBy: { dueDate: 'asc' },
+                });
+
+                if (payment) {
+                    await prisma.payment.update({
+                        where: { id: payment.id },
+                        data: {
+                            status: 'PAID',
+                            providerRef: invoice.payment_intent ? String(invoice.payment_intent) : invoice.id,
+                        },
+                    });
+                    console.log(`[Webhook:Stripe] Subscription payment ${payment.id} marked as PAID`);
+
+                    if (payment.contractId) {
+                        await unlockNextCycleBookings(payment.contractId);
+                    }
+                }
+            }
+        }
+
+        // Handle invoice.payment_failed (subscription payment failed)
+        if (event.type === 'invoice.payment_failed') {
+            const invoice = event.data.object;
+            const subscriptionId = invoice.subscription;
+
+            if (subscriptionId) {
+                const payment = await prisma.payment.findFirst({
+                    where: {
+                        stripeSubscriptionId: String(subscriptionId),
+                        status: 'PENDING',
+                    },
+                    orderBy: { dueDate: 'asc' },
+                });
+
+                if (payment) {
+                    await prisma.payment.update({
+                        where: { id: payment.id },
+                        data: { status: 'FAILED' },
+                    });
+                    console.log(`[Webhook:Stripe] Subscription payment ${payment.id} marked as FAILED`);
+                }
+            }
+        }
+
+        // Handle customer.subscription.deleted (subscription cancelled)
+        if (event.type === 'customer.subscription.deleted') {
+            const subscription = event.data.object;
+            console.log(`[Webhook:Stripe] Subscription ${subscription.id} cancelled`);
+
+            // Mark remaining pending payments as FAILED
+            await prisma.payment.updateMany({
+                where: {
+                    stripeSubscriptionId: subscription.id,
+                    status: 'PENDING',
+                },
+                data: { status: 'FAILED' },
+            });
+        }
+
         res.status(200).json({ received: true });
     } catch (err) {
         console.error('[Webhook:Stripe] Error processing webhook:', err);

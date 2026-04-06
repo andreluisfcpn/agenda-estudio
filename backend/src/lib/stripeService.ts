@@ -167,3 +167,314 @@ export async function stripeGetPublishableKey(): Promise<string | null> {
     const setup = await getStripeConfig();
     return setup?.config.publishableKey || null;
 }
+
+// ─── Customer Management ────────────────────────────────
+
+/** Get or create a Stripe Customer linked to our User */
+export async function stripeGetOrCreateCustomer(userId: string): Promise<string> {
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    const stripe = await getStripeClient();
+
+    // Verify existing Stripe Customer
+    if (user.stripeCustomerId) {
+        try {
+            const customer = await stripe.customers.retrieve(user.stripeCustomerId);
+            if (!customer.deleted) {
+                return user.stripeCustomerId;
+            }
+            console.warn(`[Stripe] Customer ${user.stripeCustomerId} was deleted. Creating a new one.`);
+        } catch (err: any) {
+            console.warn(`[Stripe] Error retrieving customer ${user.stripeCustomerId} (e.g. absent in test mode). Creating a new one.`, err.message);
+        }
+    }
+
+    const customer = await stripe.customers.create({
+        email: user.email || undefined,
+        name: user.name,
+        metadata: { userId: user.id },
+    });
+
+    await prisma.user.update({
+        where: { id: userId },
+        data: { stripeCustomerId: customer.id },
+    });
+
+    return customer.id;
+}
+
+// ─── Payment Intents ────────────────────────────────────
+
+export interface CreatePaymentIntentOpts {
+    amount: number;            // in cents (BRL)
+    customerId: string;        // Stripe Customer ID
+    description: string;
+    paymentId: string;         // our internal Payment ID
+    userId: string;
+    contractId?: string;
+    installmentsEnabled?: boolean;
+    savedPaymentMethodId?: string; // if paying with saved card
+    offSession?: boolean;
+    paymentMethodTypes?: string[];
+}
+
+export interface PaymentIntentResult {
+    clientSecret: string;
+    paymentIntentId: string;
+    status: string;
+}
+
+/** Create a PaymentIntent for inline card payment */
+export async function stripeCreatePaymentIntent(opts: CreatePaymentIntentOpts): Promise<PaymentIntentResult> {
+    const stripe = await getStripeClient();
+
+    const params: Stripe.PaymentIntentCreateParams = {
+        amount: opts.amount,
+        currency: 'brl',
+        customer: opts.customerId,
+        description: opts.description,
+        metadata: {
+            paymentId: opts.paymentId,
+            userId: opts.userId,
+            ...(opts.contractId && { contractId: opts.contractId }),
+        },
+    };
+
+    if (opts.paymentMethodTypes) {
+        params.payment_method_types = opts.paymentMethodTypes;
+    } else {
+        params.automatic_payment_methods = { enabled: true };
+    }
+
+    // Enable installments for card payments
+    if (opts.installmentsEnabled) {
+        params.payment_method_options = {
+            card: {
+                installments: { enabled: true },
+            },
+        };
+    }
+
+    // If using a saved payment method, attach it and optionally confirm off-session
+    if (opts.savedPaymentMethodId) {
+        params.payment_method = opts.savedPaymentMethodId;
+        if (opts.offSession) {
+            params.off_session = true;
+            params.confirm = true;
+        }
+    }
+
+    const intent = await stripe.paymentIntents.create(params);
+
+    return {
+        clientSecret: intent.client_secret || '',
+        paymentIntentId: intent.id,
+        status: intent.status,
+    };
+}
+
+// ─── Setup Intents (Save Card Without Charging) ─────────
+
+/** Create a SetupIntent so the client can save a card */
+export async function stripeCreateSetupIntent(customerId: string): Promise<{ clientSecret: string; setupIntentId: string }> {
+    const stripe = await getStripeClient();
+
+    const intent = await stripe.setupIntents.create({
+        customer: customerId,
+        payment_method_types: ['card'],
+        usage: 'off_session', // allow future off-session charges
+    });
+
+    return {
+        clientSecret: intent.client_secret || '',
+        setupIntentId: intent.id,
+    };
+}
+
+// ─── Payment Method Management ──────────────────────────
+
+export interface StripeCardInfo {
+    paymentMethodId: string;
+    brand: string;
+    last4: string;
+    expMonth: number;
+    expYear: number;
+}
+
+/** List all card payment methods for a Stripe Customer */
+export async function stripeListPaymentMethods(customerId: string): Promise<StripeCardInfo[]> {
+    const stripe = await getStripeClient();
+    const methods = await stripe.paymentMethods.list({
+        customer: customerId,
+        type: 'card',
+    });
+
+    return methods.data.map(pm => ({
+        paymentMethodId: pm.id,
+        brand: pm.card?.brand || 'unknown',
+        last4: pm.card?.last4 || '0000',
+        expMonth: pm.card?.exp_month || 0,
+        expYear: pm.card?.exp_year || 0,
+    }));
+}
+
+/** Detach a payment method from a customer */
+export async function stripeDetachPaymentMethod(paymentMethodId: string): Promise<void> {
+    const stripe = await getStripeClient();
+    await stripe.paymentMethods.detach(paymentMethodId);
+}
+
+/** Set a customer's default payment method */
+export async function stripeSetDefaultPaymentMethod(customerId: string, paymentMethodId: string): Promise<void> {
+    const stripe = await getStripeClient();
+    await stripe.customers.update(customerId, {
+        invoice_settings: { default_payment_method: paymentMethodId },
+    });
+}
+
+// ─── Subscriptions (Recurring Payments) ─────────────────
+
+export interface CreateSubscriptionOpts {
+    customerId: string;
+    amount: number;             // monthly amount in cents (BRL)
+    description: string;
+    paymentMethodId: string;    // saved card to charge
+    paymentId: string;          // our internal first payment ID
+    contractId?: string;
+    userId: string;
+    durationMonths?: number;    // optional: auto-cancel after N months
+}
+
+export interface SubscriptionResult {
+    subscriptionId: string;
+    clientSecret?: string; // if requires payment confirmation (3D Secure)
+    status: string;
+}
+
+/** Create a Stripe Subscription for recurring billing */
+export async function stripeCreateSubscription(opts: CreateSubscriptionOpts): Promise<SubscriptionResult> {
+    const stripe = await getStripeClient();
+
+    // Create a one-time Product + Price dynamically
+    const product = await stripe.products.create({
+        name: opts.description,
+        metadata: { userId: opts.userId },
+    });
+
+    const price = await stripe.prices.create({
+        product: product.id,
+        unit_amount: opts.amount,
+        currency: 'brl',
+        recurring: { interval: 'month' },
+    });
+
+    // Attach payment method as default for the customer
+    await stripeSetDefaultPaymentMethod(opts.customerId, opts.paymentMethodId);
+
+    const subParams: Stripe.SubscriptionCreateParams = {
+        customer: opts.customerId,
+        items: [{ price: price.id }],
+        default_payment_method: opts.paymentMethodId,
+        payment_settings: {
+            payment_method_types: ['card'],
+            save_default_payment_method: 'on_subscription',
+        },
+        payment_behavior: 'default_incomplete',
+        expand: ['latest_invoice.payment_intent'],
+        metadata: {
+            paymentId: opts.paymentId,
+            userId: opts.userId,
+            ...(opts.contractId && { contractId: opts.contractId }),
+        },
+    };
+
+    if (opts.durationMonths) {
+        const cancelAt = new Date();
+        cancelAt.setMonth(cancelAt.getMonth() + opts.durationMonths);
+        subParams.cancel_at = Math.floor(cancelAt.getTime() / 1000);
+    }
+
+    const subscription = await stripe.subscriptions.create(subParams);
+
+    // Extract client secret if first invoice requires confirmation
+    let clientSecret: string | undefined;
+    const latestInvoice = subscription.latest_invoice;
+    if (latestInvoice && typeof latestInvoice !== 'string') {
+        const pi = (latestInvoice as any).payment_intent;
+        if (pi && typeof pi !== 'string') {
+            clientSecret = pi.client_secret || undefined;
+        }
+    }
+
+    return {
+        subscriptionId: subscription.id,
+        clientSecret,
+        status: subscription.status,
+    };
+}
+
+/** Cancel a Stripe Subscription */
+export async function stripeCancelSubscription(subscriptionId: string): Promise<void> {
+    const stripe = await getStripeClient();
+    await stripe.subscriptions.cancel(subscriptionId);
+}
+
+// ─── Off-Session Charging ───────────────────────────────
+
+/** Charge a saved card without the customer being present */
+export async function stripeChargeOffSession(
+    customerId: string,
+    paymentMethodId: string,
+    amount: number,
+    metadata: Record<string, string>,
+): Promise<PaymentIntentResult> {
+    return stripeCreatePaymentIntent({
+        amount,
+        customerId,
+        description: metadata.description || 'Cobrança automática',
+        paymentId: metadata.paymentId || '',
+        userId: metadata.userId || '',
+        contractId: metadata.contractId,
+        savedPaymentMethodId: paymentMethodId,
+        offSession: true,
+    });
+}
+
+// ─── Installment Plan Calculation ───────────────────────
+
+export interface InstallmentPlan {
+    count: number;
+    perInstallment: number;
+    total: number;
+    feePercent: number;
+    freeOfCharge: boolean; // true = studio absorbs the fee
+}
+
+/** Calculate available installment plans for a given amount */
+export async function stripeGetInstallmentPlans(
+    amount: number,
+    contractDurationMonths: number,
+): Promise<InstallmentPlan[]> {
+    const plans: InstallmentPlan[] = [];
+
+    // Get fee rates from BusinessConfig
+    const feeConfigs = await prisma.businessConfig.findMany({
+        where: { key: { startsWith: 'card_fee_' } },
+    });
+    const feeMap: Record<number, number> = {};
+    for (const fc of feeConfigs) {
+        const match = fc.key.match(/card_fee_(\d+)x_pct/);
+        if (match) feeMap[parseInt(match[1])] = parseFloat(fc.value);
+    }
+
+    for (let n = 1; n <= 12; n++) {
+        const freeOfCharge = n <= contractDurationMonths;
+        const feePercent = n === 1 ? 0 : (freeOfCharge ? 0 : (feeMap[n] || feeMap[6] || 5));
+        const total = n === 1 ? amount : Math.round(amount * (1 + feePercent / 100));
+        const perInstallment = Math.round(total / n);
+
+        plans.push({ count: n, perInstallment, total, feePercent, freeOfCharge });
+    }
+
+    return plans;
+}
+

@@ -4,8 +4,63 @@
 // Falls back to mock data when integrations are not configured.
 
 import { coraCreateBoleto, isCoraEnabled, type CoraBoletoPayload } from './coraService';
-import { stripeCreateCheckoutSession, isStripeEnabled, type StripeCheckoutPayload } from './stripeService';
+import { stripeCreatePaymentIntent, stripeGetOrCreateCustomer, isStripeEnabled } from './stripeService';
 import { prisma } from './prisma';
+
+// ─── Global Provider Routing ────────────────────────────
+// Fixed mapping: which provider handles which payment method.
+// This is the SINGLE SOURCE OF TRUTH for the entire system.
+
+export const PROVIDER_MAP: Record<string, 'STRIPE' | 'CORA'> = {
+    CARTAO: 'STRIPE',
+    PIX: 'CORA',
+    BOLETO: 'CORA',
+};
+
+/** Returns only payment methods that are BOTH admin-active AND have their provider enabled. */
+export async function getAvailablePaymentMethods() {
+    const methods = await prisma.paymentMethodConfig.findMany({
+        where: { active: true },
+        orderBy: { sortOrder: 'asc' },
+    });
+
+    const integrations = await prisma.integrationConfig.findMany();
+    const enabledProviders = new Set(
+        integrations.filter(i => i.enabled).map(i => i.provider)
+    );
+
+    return methods.filter(m => {
+        const provider = PROVIDER_MAP[m.key];
+        // If no provider mapping exists, keep it (future-proof)
+        return !provider || enabledProviders.has(provider);
+    });
+}
+
+/** Check if a specific payment method is currently allowed. */
+export async function isPaymentMethodAllowed(method: string): Promise<boolean> {
+    const available = await getAvailablePaymentMethods();
+    return available.some(m => m.key === method.toUpperCase());
+}
+
+/** Throws an error if the method is not available. Use as a guard in endpoints. */
+export async function validatePaymentMethod(method: string): Promise<void> {
+    if (!(await isPaymentMethodAllowed(method))) {
+        throw new PaymentMethodDisabledError(method);
+    }
+}
+
+/** Get the provider for a given method key. */
+export function getProviderForMethod(method: string): 'STRIPE' | 'CORA' {
+    return PROVIDER_MAP[method.toUpperCase()] || 'CORA';
+}
+
+/** Custom error for disabled payment methods — caught by route handlers to return 400. */
+export class PaymentMethodDisabledError extends Error {
+    constructor(method: string) {
+        super(`Método de pagamento "${method.toUpperCase()}" não está disponível no momento.`);
+        this.name = 'PaymentMethodDisabledError';
+    }
+}
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -21,6 +76,7 @@ export interface CreatePaymentOpts {
     dueDate: Date;
     paymentId: string;     // internal Payment record ID
     contractId?: string;
+    userId?: string;       // needed for Stripe PaymentIntent flow
     frontendUrl?: string;  // base URL for success/cancel redirects
 }
 
@@ -30,6 +86,7 @@ export interface PaymentResult {
     pixString: string | null;
     boletoUrl: string | null;
     paymentUrl: string | null;
+    clientSecret: string | null; // Stripe PaymentIntent secret for inline card payment
     qrCodeBase64: string | null;
 }
 
@@ -45,6 +102,7 @@ function generateMockResult(opts: CreatePaymentOpts): PaymentResult {
             pixString: '00020126580014br.gov.bcb.pix0136123e4567-e89b-12d3-a456-426614174000520400005303986540510.005802BR5913Buzios Studio6008BuziosRJ62070503***63041A2B',
             boletoUrl: null,
             paymentUrl: null,
+            clientSecret: null,
             qrCodeBase64: null,
         };
     }
@@ -56,6 +114,7 @@ function generateMockResult(opts: CreatePaymentOpts): PaymentResult {
             pixString: null,
             boletoUrl: `https://cora.br/boleto/${mockId}.pdf`,
             paymentUrl: null,
+            clientSecret: null,
             qrCodeBase64: null,
         };
     }
@@ -66,7 +125,8 @@ function generateMockResult(opts: CreatePaymentOpts): PaymentResult {
         providerRef: mockId,
         pixString: null,
         boletoUrl: null,
-        paymentUrl: `https://checkout.stripe.com/mock/${mockId}`,
+        paymentUrl: null,
+        clientSecret: `pi_mock_secret_${mockId}`,
         qrCodeBase64: null,
     };
 }
@@ -106,6 +166,7 @@ export async function createPayment(opts: CreatePaymentOpts): Promise<PaymentRes
                 pixString: result.pixString || null,
                 boletoUrl: result.boletoUrl || null,
                 paymentUrl: null,
+                clientSecret: null,
                 qrCodeBase64: result.qrCodeBase64 || null,
             };
         } catch (err) {
@@ -144,6 +205,7 @@ export async function createPayment(opts: CreatePaymentOpts): Promise<PaymentRes
                 pixString: null,
                 boletoUrl: result.boletoUrl || null,
                 paymentUrl: null,
+                clientSecret: null,
                 qrCodeBase64: null,
             };
         } catch (err) {
@@ -152,7 +214,7 @@ export async function createPayment(opts: CreatePaymentOpts): Promise<PaymentRes
         }
     }
 
-    // ─── CARTAO: Stripe Checkout Session ─────────────────
+    // ─── CARTAO: Stripe PaymentIntent (inline Elements) ──
     if (paymentMethod === 'CARTAO') {
         const stripeEnabled = await isStripeEnabled();
         if (!stripeEnabled) {
@@ -160,29 +222,34 @@ export async function createPayment(opts: CreatePaymentOpts): Promise<PaymentRes
             return generateMockResult(opts);
         }
 
-        const baseUrl = opts.frontendUrl || process.env.FRONTEND_URL || 'http://localhost:5173';
+        if (!opts.userId) {
+            console.error('[Gateway] userId is required for Stripe PaymentIntent flow');
+            return generateMockResult(opts);
+        }
 
         try {
-            const result = await stripeCreateCheckoutSession({
+            const customerId = await stripeGetOrCreateCustomer(opts.userId);
+            const result = await stripeCreatePaymentIntent({
                 amount: opts.amount,
+                customerId,
                 description: opts.description,
-                customerEmail: opts.customer.email,
-                customerName: opts.customer.name,
                 paymentId: opts.paymentId,
-                successUrl: `${baseUrl}/my-contracts?payment=success&id=${opts.paymentId}`,
-                cancelUrl: `${baseUrl}/my-contracts?payment=cancelled&id=${opts.paymentId}`,
+                userId: opts.userId,
+                contractId: opts.contractId,
+                installmentsEnabled: true,
             });
 
             return {
                 provider: 'STRIPE',
-                providerRef: result.sessionId,
+                providerRef: result.paymentIntentId,
                 pixString: null,
                 boletoUrl: null,
-                paymentUrl: result.checkoutUrl,
+                paymentUrl: null,
+                clientSecret: result.clientSecret,
                 qrCodeBase64: null,
             };
         } catch (err) {
-            console.error('[Gateway] Stripe checkout creation failed, falling back to mock:', err);
+            console.error('[Gateway] Stripe PaymentIntent creation failed, falling back to mock:', err);
             return generateMockResult(opts);
         }
     }

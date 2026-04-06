@@ -9,10 +9,12 @@ import DashboardPage from './pages/DashboardPage';
 import CalendarPage from './pages/CalendarPage';
 import MyBookingsPage from './pages/MyBookingsPage';
 import MyContractsPage from './pages/MyContractsPage';
+import MyPaymentsPage from './pages/MyPaymentsPage';
 import AdminClientsPage from './pages/AdminClientsPage';
 import AdminBookingsPage from './pages/AdminBookingsPage';
 import AdminContractsPage from './pages/AdminContractsPage';
 import AdminPricingPage from './pages/AdminPricingPage';
+import AdminServicesPage from './pages/AdminServicesPage';
 import AdminTodayPage from './pages/AdminTodayPage';
 import AdminFinancePage from './pages/AdminFinancePage';
 import AdminReportsPage from './pages/AdminReportsPage';
@@ -522,6 +524,7 @@ function AppRoutes() {
             <Route path="/calendar" element={<ProtectedRoute><CalendarPage /></ProtectedRoute>} />
             <Route path="/my-bookings" element={<ProtectedRoute><MyBookingsPage /></ProtectedRoute>} />
             <Route path="/my-contracts" element={<ProtectedRoute><MyContractsPage /></ProtectedRoute>} />
+            <Route path="/meus-pagamentos" element={<ProtectedRoute><MyPaymentsPage /></ProtectedRoute>} />
 
             {/* Admin routes */}
             <Route path="/admin/today" element={<ProtectedRoute><AdminRoute><AdminTodayPage /></AdminRoute></ProtectedRoute>} />
@@ -530,6 +533,7 @@ function AppRoutes() {
             <Route path="/admin/clients/:id" element={<ProtectedRoute><AdminRoute><ClientProfilePage /></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/contracts" element={<ProtectedRoute><AdminRoute><AdminContractsPage /></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/pricing" element={<ProtectedRoute><AdminRoute><AdminPricingPage /></AdminRoute></ProtectedRoute>} />
+            <Route path="/admin/services" element={<ProtectedRoute><AdminRoute><AdminServicesPage /></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/finance" element={<ProtectedRoute><AdminRoute><AdminFinancePage /></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/reports" element={<ProtectedRoute><AdminRoute><AdminReportsPage /></AdminRoute></ProtectedRoute>} />
 

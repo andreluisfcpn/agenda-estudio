@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import ModalOverlay from './ModalOverlay';
-import { PricingConfig, AddOnConfig, bookingsApi, contractsApi, pricingApi, CustomContractData, CustomConflict } from '../api/client';
+import { PricingConfig, AddOnConfig, bookingsApi, contractsApi, pricingApi, CustomContractData, CustomConflict, stripeApi } from '../api/client';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import { getPaymentMethods } from '../constants/paymentMethods';
+import StripeCardForm from './StripeCardForm';
 
 export interface CustomContractWizardProps {
     pricing: PricingConfig[];
@@ -10,7 +11,7 @@ export interface CustomContractWizardProps {
     onComplete: () => void;
 }
 
-type WizardStep = 1 | 2 | 3 | 4 | 5 | 6 | 7; // 5=loading, 6=success, 7=conflicts
+type WizardStep = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8; // 5=loading, 6=success, 7=conflicts, 8=card-payment
 
 const DAY_NAMES: Record<number, string> = { 1: 'Seg', 2: 'Ter', 3: 'Qua', 4: 'Qui', 5: 'Sex', 6: 'Sáb' };
 const DAY_NAMES_FULL: Record<number, string> = { 1: 'Segunda', 2: 'Terça', 3: 'Quarta', 4: 'Quinta', 5: 'Sexta', 6: 'Sábado' };
@@ -55,6 +56,9 @@ export default function CustomContractWizard({ pricing, onClose, onComplete }: C
     // Submission
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
+
+    // Inline card payment
+    const [cardClientSecret, setCardClientSecret] = useState<string | null>(null);
 
     const { get: getRule } = useBusinessConfig();
 
@@ -137,7 +141,7 @@ export default function CustomContractWizard({ pricing, onClose, onComplete }: C
                 };
             }
 
-            await contractsApi.createCustom({
+            const res = await contractsApi.createCustom({
                 name: contractName,
                 tier: selectedTier as 'COMERCIAL' | 'AUDIENCIA' | 'SABADO',
                 durationMonths,
@@ -148,7 +152,14 @@ export default function CustomContractWizard({ pricing, onClose, onComplete }: C
                 resolvedConflicts: resolutions.length > 0 ? resolutions : undefined,
                 startDate: startDateStr,
             });
-            setStep(6);
+
+            // If CARTAO with clientSecret, show inline card form
+            if (res.clientSecret && paymentMethod === 'CARTAO') {
+                setCardClientSecret(res.clientSecret);
+                setStep(8);
+            } else {
+                setStep(6);
+            }
         } catch (err: any) {
             setError(err.message || 'Erro ao criar contrato personalizado');
             setStep(conflicts.length > 0 ? 7 : 4);
@@ -248,6 +259,45 @@ export default function CustomContractWizard({ pricing, onClose, onComplete }: C
                                 </p>
                                 <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => { onComplete(); onClose(); }}>
                                     ✅ Ver Meus Contratos
+                                </button>
+                            </div>
+                        )}
+
+                        {/* ══════════ STEP 8: INLINE CARD PAYMENT ══════════ */}
+                        {step === 8 && cardClientSecret && (
+                            <div style={{ padding: '20px 0' }}>
+                                <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+                                    <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>💳</div>
+                                    <h3 style={{ fontSize: '1.25rem', marginBottom: '8px' }}>Pagamento do 1º Ciclo</h3>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                                        Complete o pagamento para ativar seu plano personalizado.
+                                    </p>
+                                </div>
+
+                                <div style={{
+                                    padding: '12px 16px', borderRadius: 'var(--radius-md)',
+                                    background: 'rgba(34, 197, 94, 0.06)', border: '1px solid rgba(34, 197, 94, 0.2)',
+                                    fontSize: '0.8125rem', color: '#22c55e', fontWeight: 600,
+                                    textAlign: 'center', marginBottom: '24px'
+                                }}>
+                                    💰 Valor: {formatBRL(cycleAmount)} (1º ciclo de {durationMonths}x)
+                                </div>
+
+                                <StripeCardForm
+                                    mode="payment"
+                                    clientSecret={cardClientSecret}
+                                    onSuccess={() => setStep(6)}
+                                    onError={(msg) => { setError(msg); setStep(3); }}
+                                    onCancel={() => setStep(6)}
+                                    submitLabel={`Pagar ${formatBRL(cycleAmount)}`}
+                                />
+
+                                <button
+                                    className="btn btn-ghost btn-sm"
+                                    style={{ width: '100%', marginTop: '12px', fontSize: '0.75rem', color: 'var(--text-muted)' }}
+                                    onClick={() => setStep(6)}
+                                >
+                                    Pagar depois na aba Pagamentos →
                                 </button>
                             </div>
                         )}

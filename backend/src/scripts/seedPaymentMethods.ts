@@ -2,9 +2,10 @@
  * Seed default payment method configurations.
  * Run with: npx tsx src/scripts/seedPaymentMethods.ts
  */
-import { PrismaClient } from '@prisma/client';
+import 'dotenv/config';
+import { prisma } from '../lib/prisma';
 
-const prisma = new PrismaClient();
+
 
 const DEFAULTS = [
   {

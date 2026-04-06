@@ -6,7 +6,7 @@ const router = Router();
 
 interface ComputedNotification {
     id: string;
-    type: 'CONTRACT_EXPIRING' | 'PAYMENT_OVERDUE' | 'BOOKING_UNCONFIRMED' | 'CLIENT_INACTIVE' | 'CANCELLATION_PENDING' | 'FLEX_CREDITS_LOW';
+    type: 'CONTRACT_EXPIRING' | 'PAYMENT_OVERDUE' | 'BOOKING_UNCONFIRMED' | 'CLIENT_INACTIVE' | 'CANCELLATION_PENDING' | 'FLEX_CREDITS_LOW' | 'CONTRACT_AWAITING_PAYMENT';
     severity: 'critical' | 'warning' | 'info';
     title: string;
     message: string;
@@ -79,7 +79,27 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
             });
         }
 
-        // 3. Unconfirmed bookings for today/tomorrow
+        // 2b. Failed payments (card declined, etc)
+        const failedPayments = await prisma.payment.findMany({
+            where: {
+                status: 'FAILED',
+                ...(userRole !== 'ADMIN' ? { userId } : {}),
+            },
+            include: { user: { select: { name: true } }, contract: { select: { name: true } } },
+        });
+
+        for (const p of failedPayments) {
+            notifications.push({
+                id: `payment-failed-${p.id}`,
+                type: 'PAYMENT_OVERDUE',
+                severity: 'critical',
+                title: '❌ Pagamento Recusado',
+                message: userRole === 'ADMIN' ? `${p.user.name} teve um pagamento recusado (R$ ${(p.amount / 100).toFixed(2).replace('.', ',')})` : `Seu último pagamento via cartão falhou. Acesse Meus Pagamentos para tentar novamente.`,
+                entityType: 'PAYMENT', entityId: p.id,
+                actionUrl: userRole === 'ADMIN' ? '/admin/finance' : '/meus-pagamentos',
+                createdAt: now.toISOString(),
+            });
+        }
         const tomorrow = new Date(today);
         tomorrow.setDate(tomorrow.getDate() + 1);
 
@@ -121,6 +141,29 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
                 message: userRole === 'ADMIN' ? `${c.user.name} — "${c.name}" aguarda resolução` : `O cancelamento de "${c.name}" está sendo avaliado.`,
                 entityType: 'CONTRACT', entityId: c.id,
                 actionUrl: userRole === 'ADMIN' ? '/admin/contracts' : '/my-contracts',
+                createdAt: now.toISOString(),
+            });
+        }
+
+        // 4b. Contracts awaiting payment
+        const awaitingPayment = await prisma.contract.findMany({
+            where: { status: 'AWAITING_PAYMENT', ...(userRole !== 'ADMIN' ? { userId } : {}) },
+            include: { user: { select: { name: true } } },
+        });
+
+        for (const c of awaitingPayment) {
+            const deadline = c.paymentDeadline ? new Date(c.paymentDeadline) : null;
+            const isUrgent = deadline && (deadline.getTime() - now.getTime()) < 30 * 60 * 1000; // < 30 min
+            notifications.push({
+                id: `contract-awaiting-${c.id}`,
+                type: 'CONTRACT_AWAITING_PAYMENT',
+                severity: isUrgent ? 'critical' : 'warning',
+                title: '💳 Pagamento Pendente',
+                message: userRole === 'ADMIN'
+                    ? `${c.user.name} — "${c.name}" aguardando pagamento`
+                    : `Seu contrato "${c.name}" está aguardando pagamento para ser ativado.`,
+                entityType: 'CONTRACT', entityId: c.id,
+                actionUrl: userRole === 'ADMIN' ? `/admin/clients/${c.userId}` : '/meus-contratos',
                 createdAt: now.toISOString(),
             });
         }

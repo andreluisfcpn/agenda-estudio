@@ -1,10 +1,10 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../../lib/prisma';
 import { authenticate, authorize } from '../../middleware/auth';
 import { getConfig } from '../../lib/businessConfig';
 
 const router = Router();
-const prisma = new PrismaClient();
+
 
 // GET /api/finance/closing/:year/:month
 router.get('/closing/:year/:month', authenticate, authorize('ADMIN'), async (req, res) => {

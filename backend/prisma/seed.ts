@@ -1,12 +1,18 @@
-import { PrismaClient, Role, Tier, ContractType, ContractStatus, BookingStatus } from '@prisma/client';
+import 'dotenv/config';
+import { PrismaClient, Role, Tier, ContractType, ContractStatus, BookingStatus } from '../src/generated/prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
 import bcrypt from 'bcryptjs';
 
-const prisma = new PrismaClient();
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter });
 
 async function main() {
     console.log('🌱 Wiping database and seeding comprehensive edge cases...');
 
     // Clean existing data
+    await prisma.savedPaymentMethod.deleteMany();
     await prisma.payment.deleteMany();
     await prisma.booking.deleteMany();
     await prisma.blockedSlot.deleteMany();

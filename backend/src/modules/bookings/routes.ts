@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { authenticate, authorize } from '../../middleware/auth';
 import { acquireMultiSlotLock, releaseMultiSlotLock } from '../../lib/redis';
+import { stripeCreatePaymentIntent, stripeGetOrCreateCustomer, isStripeEnabled } from '../../lib/stripeService';
+import { getProviderForMethod } from '../../lib/paymentGateway';
 import {
     getSlotTier,
     getBasePrice,
@@ -16,7 +18,7 @@ import {
     isOperatingDay,
     getSlotDuration,
 } from '../../utils/pricing';
-import { BookingStatus, Tier } from '@prisma/client';
+import { BookingStatus, Tier } from '../../generated/prisma/client';
 import { getConfig } from '../../lib/businessConfig';
 
 const router = Router();
@@ -32,6 +34,9 @@ const createBookingSchema = z.object({
     startTime: z.string().regex(/^\d{2}:\d{2}$/, 'Formato de hora inválido (HH:MM)'),
     contractId: z.string().uuid().optional(),
     addOns: z.array(z.string()).optional(),
+    paymentMethod: z.enum(['CARTAO', 'PIX']).optional(),
+    installments: z.number().int().min(1).max(3).optional(),
+    paymentType: z.enum(['CREDIT', 'DEBIT']).optional(),
 });
 
 const bulkBookingSchema = z.object({
@@ -283,9 +288,9 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
             }
 
             // For Flex: check remaining credits
-            if (contract.type === 'FLEX') {
+            if (contract.type === 'FLEX' || contract.type === 'AVULSO') {
                 if (!contract.flexCreditsRemaining || contract.flexCreditsRemaining <= 0) {
-                    res.status(400).json({ error: 'Créditos Flex esgotados neste ciclo.' });
+                    res.status(400).json({ error: 'Créditos esgotados neste ciclo.' });
                     return;
                 }
             } else if (contract.type === 'FIXO') {
@@ -351,25 +356,32 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                 return;
             }
 
+            // Determine booking status and payment flow
+            const isAvulso = !contractId;
+            const holdExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
             // Create Avulso Contract if needed
             let isAvulsoCreated = false;
             let finalContractId = contractId;
             if (!finalContractId) {
                 const parts = data.date.split('-');
                 const formattedDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                const avulsoStatus = 'AWAITING_PAYMENT';
                 const newContract = await prisma.contract.create({
                     data: {
                         userId,
                         name: `Avulso ${formattedDate} as ${data.startTime}`,
-                        type: 'FLEX',
+                        type: 'AVULSO',
                         tier: slotTier,
                         durationMonths: 1,
                         discountPct: 0,
                         startDate: dateObj,
                         endDate: new Date(dateObj.getTime() + 30 * 24 * 60 * 60 * 1000),
-                        status: 'ACTIVE',
+                        status: avulsoStatus as any,
+                        paymentMethod: data.paymentMethod as any || null,
                         flexCreditsTotal: 1,
                         flexCreditsRemaining: 0, // Consumed immediately
+                        paymentDeadline: holdExpiresAt,
                     }
                 });
                 finalContractId = newContract.id;
@@ -377,7 +389,7 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
             } else {
                 // Decrement credits based on contract type
                 const contract = await prisma.contract.findUnique({ where: { id: finalContractId } });
-                if (contract?.type === 'FLEX' && (contract.flexCreditsRemaining || 0) > 0) {
+                if ((contract?.type === 'FLEX' || contract?.type === 'AVULSO') && (contract.flexCreditsRemaining || 0) > 0) {
                     await prisma.contract.update({
                         where: { id: finalContractId },
                         data: { flexCreditsRemaining: contract.flexCreditsRemaining! - 1 },
@@ -390,6 +402,9 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                 }
             }
 
+            // Avulso: RESERVED with 10-min hold timer (payment required). Plan-based: RESERVED (no timer).
+            const bookingStatus = BookingStatus.RESERVED;
+
             // Create booking
             const booking = await prisma.booking.create({
                 data: {
@@ -398,12 +413,61 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                     date: dateObj,
                     startTime: data.startTime,
                     endTime,
-                    status: BookingStatus.RESERVED,
+                    status: bookingStatus,
                     tierApplied: slotTier,
                     price,
                     addOns: data.addOns || [],
+                    holdExpiresAt: isAvulso ? holdExpiresAt : null,
                 },
             });
+
+            // Create payment record for ALL avulso bookings
+            let clientSecret: string | null = null;
+            let createdPaymentId: string | null = null;
+            if (isAvulso) {
+                try {
+                    // Create pending Payment record
+                    const payment = await prisma.payment.create({
+                        data: {
+                            userId,
+                            contractId: finalContractId,
+                            bookingId: booking.id,
+                            provider: data.paymentMethod === 'CARTAO' ? 'STRIPE' : 'CORA',
+                            amount: price,
+                            status: 'PENDING',
+                            dueDate: dateObj,
+                            installments: data.installments || 1,
+                            paymentType: data.paymentType || (data.paymentMethod === 'CARTAO' ? 'CREDIT' : null),
+                        },
+                    });
+                    createdPaymentId = payment.id;
+
+                    // For Card: also create Stripe PaymentIntent
+                    if (data.paymentMethod === 'CARTAO' && (await isStripeEnabled())) {
+                        const customerId = await stripeGetOrCreateCustomer(userId);
+                        const addOnDesc = data.addOns && data.addOns.length > 0 ? ` + ${data.addOns.length} extras` : '';
+                        const piResult = await stripeCreatePaymentIntent({
+                            amount: price,
+                            customerId,
+                            description: `Avulso ${data.date} ${data.startTime}${addOnDesc}`,
+                            paymentId: payment.id,
+                            userId,
+                            contractId: finalContractId!,
+                            installmentsEnabled: (data.installments || 1) > 1,
+                        });
+                        clientSecret = piResult.clientSecret;
+
+                        // Update payment with Stripe reference
+                        await prisma.payment.update({
+                            where: { id: payment.id },
+                            data: { providerRef: piResult.paymentIntentId },
+                        });
+                    }
+                } catch (payErr: any) {
+                    console.error('[BOOKING] Payment creation failed:', payErr.message);
+                    // Still return the booking — client can retry payment
+                }
+            }
 
             res.status(201).json({
                 booking: {
@@ -415,12 +479,15 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                     price: booking.price,
                     status: booking.status,
                     contractId: booking.contractId,
+                    holdExpiresAt: booking.holdExpiresAt?.toISOString() || null,
                 },
+                paymentId: createdPaymentId,
+                clientSecret,
                 creditWarning: isAvulsoCreated,
                 lockExpiresIn: 600, // 10 minutes
-                message: !contractId
-                    ? 'Horário reservado como agendamento avulso (sem plano). Confirme em até 10 minutos.'
-                    : 'Horário reservado! Confirme o pagamento em até 10 minutos.',
+                message: isAvulso
+                    ? 'Horário reservado por 10 minutos. Complete o pagamento para confirmar.'
+                    : 'Horário reservado com sucesso!',
             });
         } catch (err) {
             // Release locks on error
@@ -436,7 +503,95 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
     }
 });
 
-// ─── POST /api/bookings/bulk ─────────────────────────────
+// ─── POST /api/bookings/:id/complete-payment ─────────────
+// Called after successful Stripe payment to confirm a HELD booking
+
+router.post('/:id/complete-payment', authenticate, async (req: Request, res: Response) => {
+    try {
+        const bookingId = req.params.id as string;
+        const userId = req.user!.userId;
+        const { paymentIntentId } = req.body;
+
+        const booking = await prisma.booking.findFirst({
+            where: { id: bookingId, userId },
+            include: { contract: true },
+        });
+
+        if (!booking) {
+            res.status(404).json({ error: 'Agendamento não encontrado.' });
+            return;
+        }
+
+        if (booking.status !== 'HELD' && booking.status !== 'RESERVED') {
+            res.status(400).json({ error: `Agendamento já está com status ${booking.status}.` });
+            return;
+        }
+
+        // Check if hold has expired
+        if (booking.holdExpiresAt && new Date(booking.holdExpiresAt) < new Date()) {
+            res.status(410).json({ error: 'A reserva temporária expirou. O horário foi liberado.' });
+            return;
+        }
+
+        // Update booking to CONFIRMED
+        const updated = await prisma.booking.update({
+            where: { id: bookingId },
+            data: {
+                status: 'CONFIRMED' as BookingStatus,
+                holdExpiresAt: null,
+            },
+        });
+
+        // Update Payment record to PAID
+        if (paymentIntentId) {
+            await prisma.payment.updateMany({
+                where: {
+                    bookingId,
+                    providerRef: paymentIntentId,
+                    status: 'PENDING',
+                },
+                data: { status: 'PAID' },
+            });
+        } else {
+            // Fallback: mark any pending payment for this booking as PAID
+            await prisma.payment.updateMany({
+                where: {
+                    bookingId,
+                    status: 'PENDING',
+                },
+                data: { status: 'PAID' },
+            });
+        }
+
+        // If avulso micro-contract, activate it
+        if (booking.contract?.status === 'AWAITING_PAYMENT') {
+            await prisma.contract.update({
+                where: { id: booking.contractId },
+                data: { status: 'ACTIVE', paymentDeadline: null },
+            });
+        }
+
+        // Release Redis locks (booking is now confirmed in DB)
+        const dateStr = booking.date.toISOString().split('T')[0];
+        const packageSlots = getPackageSlots(booking.startTime);
+        await releaseMultiSlotLock(dateStr, packageSlots, userId);
+
+        res.json({
+            booking: {
+                id: updated.id,
+                date: dateStr,
+                startTime: updated.startTime,
+                endTime: updated.endTime,
+                status: updated.status,
+                price: updated.price,
+            },
+            message: '✅ Pagamento confirmado! Seu horário está reservado.',
+        });
+    } catch (err) {
+        console.error('[BOOKING] complete-payment error:', err);
+        res.status(500).json({ error: 'Erro ao confirmar pagamento.' });
+    }
+});
 
 router.post('/bulk', authenticate, async (req: Request, res: Response) => {
     try {
@@ -605,7 +760,7 @@ router.put('/:id/client-cancel', authenticate, async (req: Request, res: Respons
 
         if (booking.contractId) {
             const contract = await prisma.contract.findUnique({ where: { id: booking.contractId } });
-            if (contract?.type === 'FLEX') {
+            if (contract?.type === 'FLEX' || contract?.type === 'AVULSO') {
                 await prisma.contract.update({
                     where: { id: booking.contractId },
                     data: { flexCreditsRemaining: (contract.flexCreditsRemaining || 0) + 1 },
@@ -1354,7 +1509,7 @@ router.post('/:id/addons', authenticate, async (req: Request, res: Response) => 
             data: {
                 userId,
                 contractId: booking.contract?.id || null, // Associates with contract if applicable
-                provider: 'CORA',
+                provider: getProviderForMethod('CARTAO'),
                 amount: price,
                 status: 'PENDING',
                 dueDate: new Date(),

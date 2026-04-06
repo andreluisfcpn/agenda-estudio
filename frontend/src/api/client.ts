@@ -92,7 +92,8 @@ export const authApi = {
 // ─── Bookings ───────────────────────────────────────────
 export const bookingsApi = {
     getAvailability: (date: string) => request<{ date: string; dayOfWeek: number; closed: boolean; slots: Slot[]; myBookings: MyBookingSlot[] }>(`/bookings/availability?date=${date}`),
-    create: (data: { date: string; startTime: string; contractId?: string; addOns?: string[] }) => request<{ booking: Booking; lockExpiresIn: number; message: string }>('/bookings', { method: 'POST', body: JSON.stringify(data) }),
+    create: (data: { date: string; startTime: string; contractId?: string; addOns?: string[]; paymentMethod?: 'CARTAO' | 'PIX'; installments?: number; paymentType?: 'CREDIT' | 'DEBIT' }) => request<{ booking: Booking & { holdExpiresAt?: string | null }; paymentId?: string | null; clientSecret?: string | null; lockExpiresIn: number; message: string }>('/bookings', { method: 'POST', body: JSON.stringify(data) }),
+    completePayment: (id: string, data: { paymentIntentId?: string }) => request<{ booking: Booking; message: string }>(`/bookings/${id}/complete-payment`, { method: 'POST', body: JSON.stringify(data) }),
     createBulk: (data: { contractId: string; slots: { date: string; startTime: string }[] }) => request<{ message: string }>('/bookings/bulk', { method: 'POST', body: JSON.stringify(data) }),
     adminCreate: (data: { userId: string; date: string; startTime: string; status?: string; addOns?: string[]; adminNotes?: string; customPrice?: number }) => request<{ booking: Booking; message: string }>('/bookings/admin', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: { date?: string; startTime?: string; status?: string; adminNotes?: string; clientNotes?: string; platforms?: string; platformLinks?: string, durationMinutes?: number | null, peakViewers?: number | null, chatMessages?: number | null, audienceOrigin?: string | null }) => request<{ booking: BookingWithUser; message: string }>(`/bookings/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
@@ -124,9 +125,9 @@ export const contractsApi = {
     checkFixo: (data: { tier: string; durationMonths: number; startDate: string; fixedDayOfWeek: number; fixedTime: string }) =>
         request<{ available: boolean; conflicts: { date: string; originalTime: string; suggestedReplacement?: { date: string; time: string } }[] }>('/contracts/check-fixo', { method: 'POST', body: JSON.stringify(data) }),
     create: (data: CreateContractData) => request<{ contract: Contract; payments: PaymentSummary[]; message: string }>('/contracts', { method: 'POST', body: JSON.stringify(data) }),
-    createSelf: (data: SelfContractData) => request<{ contract: Contract; message: string }>('/contracts/self', { method: 'POST', body: JSON.stringify(data) }),    // Standalone services (e.g. Social Media Management)
-    createService: (opts: { serviceKey: string, paymentMethod: 'CARTAO' | 'PIX' | 'BOLETO', durationMonths?: number }) => request<{ contract: Contract; checkoutUrl?: string; message: string }>('/contracts/service', { method: 'POST', body: JSON.stringify(opts) }),
-    createCustom: (data: CustomContractData) => request<{ contract: Contract; payments: PaymentSummary[]; summary: CustomContractSummary; message: string }>('/contracts/custom', { method: 'POST', body: JSON.stringify(data) }),
+    createSelf: (data: SelfContractData) => request<{ contract: Contract; message: string; clientSecret?: string }>('/contracts/self', { method: 'POST', body: JSON.stringify(data) }),    // Standalone services (e.g. Social Media Management)
+    createService: (opts: { serviceKey: string, paymentMethod: 'CARTAO' | 'PIX' | 'BOLETO', durationMonths?: number }) => request<{ contract: Contract; checkoutUrl?: string; clientSecret?: string; message: string }>('/contracts/service', { method: 'POST', body: JSON.stringify(opts) }),
+    createCustom: (data: CustomContractData) => request<{ contract: Contract; payments: PaymentSummary[]; summary: CustomContractSummary; message: string; clientSecret?: string }>('/contracts/custom', { method: 'POST', body: JSON.stringify(data) }),
     checkCustom: (data: { tier: string; durationMonths: number; schedule: { day: number; time: string }[]; startDate: string }) =>
         request<{ available: boolean; conflicts: CustomConflict[]; totalConflicts: number; totalSessions: number }>('/contracts/custom/check', { method: 'POST', body: JSON.stringify(data) }),
     getAll: () => request<{ contracts: Contract[] }>('/contracts'),
@@ -137,6 +138,10 @@ export const contractsApi = {
     requestCancellation: (id: string) => request<{ contract: Contract; message: string }>(`/contracts/${id}/request-cancellation`, { method: 'POST' }),
     resolveCancellation: (id: string, action: 'CHARGE_FEE' | 'WAIVE_FEE') => request<{ contract: Contract; message: string }>(`/contracts/${id}/resolve-cancellation`, { method: 'POST', body: JSON.stringify({ action }) }),
     renew: (id: string, data?: { durationMonths?: number; tier?: string; type?: string; startDate?: string }) => request<{ contract: Contract; message: string }>(`/contracts/${id}/renew`, { method: 'POST', body: JSON.stringify(data || {}) }),
+    clientRenew: (id: string, data: { durationMonths: number; paymentMethod?: 'PIX' | 'CARTAO' | 'BOLETO'; installments?: number }) => request<{ contract: Contract; message: string }>(`/contracts/${id}/client-renew`, { method: 'POST', body: JSON.stringify(data) }),
+    subscribe: (id: string, data: { paymentMethodId: string; durationMonths?: number }) => request<{ success: boolean; subscriptionId: string; status: string; message: string }>(`/contracts/${id}/subscribe`, { method: 'POST', body: JSON.stringify(data) }),
+    pay: (id: string, data?: { paymentType?: 'CREDIT' | 'DEBIT'; installments?: number }) => request<{ clientSecret: string; paymentId: string; amount: number; maxInstallments: number; message: string }>(`/contracts/${id}/pay`, { method: 'POST', body: JSON.stringify(data || {}) }),
+    confirmPayment: (id: string, data: { paymentIntentId?: string }) => request<{ contract: { id: string; status: string }; message: string }>(`/contracts/${id}/confirm-payment`, { method: 'POST', body: JSON.stringify(data) }),
     pause: (id: string, data?: { reason?: string; resumeDate?: string }) => request<{ contract: Contract; message: string }>(`/contracts/${id}/pause`, { method: 'PATCH', body: JSON.stringify(data || {}) }),
     resume: (id: string) => request<{ contract: Contract; message: string }>(`/contracts/${id}/resume`, { method: 'PATCH' }),
 };
@@ -187,7 +192,7 @@ export interface Slot {
 }
 export interface Booking {
     id: string; date: string; startTime: string; endTime: string;
-    status: 'RESERVED' | 'CONFIRMED' | 'COMPLETED' | 'FALTA' | 'NAO_REALIZADO' | 'CANCELLED';
+    status: 'RESERVED' | 'CONFIRMED' | 'HELD' | 'COMPLETED' | 'FALTA' | 'NAO_REALIZADO' | 'CANCELLED';
     tierApplied: 'COMERCIAL' | 'AUDIENCIA' | 'SABADO';
     price: number; contractId?: string | null; userId?: string | null;
     adminNotes?: string | null;
@@ -199,6 +204,7 @@ export interface Booking {
     chatMessages?: number | null;
     audienceOrigin?: string | null;
     addOns?: string[];
+    holdExpiresAt?: string | null;
     contract?: {
         id: string;
         name: string;
@@ -211,7 +217,7 @@ export interface Booking {
 }
 export interface MyBookingSlot {
     id: string; startTime: string; endTime: string;
-    status: 'RESERVED' | 'CONFIRMED' | 'COMPLETED' | 'FALTA' | 'NAO_REALIZADO';
+    status: 'RESERVED' | 'CONFIRMED' | 'HELD' | 'COMPLETED' | 'FALTA' | 'NAO_REALIZADO';
     tierApplied: 'COMERCIAL' | 'AUDIENCIA' | 'SABADO';
     price: number; contractId?: string | null;
     adminNotes?: string | null; clientNotes?: string | null;
@@ -222,13 +228,14 @@ export interface BookingWithUser extends Booking {
     user: { id: string; name: string; email: string; role: string };
 }
 export interface Contract {
-    id: string; name: string; type: 'FIXO' | 'FLEX' | 'SERVICO' | 'CUSTOM'; tier: 'COMERCIAL' | 'AUDIENCIA' | 'SABADO';
+    id: string; name: string; type: 'FIXO' | 'FLEX' | 'SERVICO' | 'CUSTOM' | 'AVULSO'; tier: 'COMERCIAL' | 'AUDIENCIA' | 'SABADO';
     durationMonths: number; discountPct: number; startDate: string; endDate: string;
-    status: 'ACTIVE' | 'EXPIRED' | 'CANCELLED' | 'PENDING_CANCELLATION' | 'PAUSED';
+    status: 'ACTIVE' | 'AWAITING_PAYMENT' | 'EXPIRED' | 'CANCELLED' | 'PENDING_CANCELLATION' | 'PAUSED';
     fixedDayOfWeek?: number | null; fixedTime?: string | null;
     contractUrl?: string | null;
     flexCreditsTotal?: number | null; flexCreditsRemaining?: number | null;
     paymentMethod?: 'CARTAO' | 'PIX' | 'BOLETO' | null;
+    paymentDeadline?: string | null;
     addOns?: string[];
     user?: { id: string; name: string; email: string };
     pausedAt?: string | null;
@@ -311,7 +318,7 @@ export interface UserSummary {
     id: string; email: string; name: string; phone: string | null; role: string;
     clientStatus: string; tags: string[];
     createdAt: string; _count: { bookings: number; contracts: number };
-    contracts?: { type: 'FIXO' | 'FLEX' | 'SERVICO'; status: string; addOns: string[] }[];
+    contracts?: { type: 'FIXO' | 'FLEX' | 'SERVICO' | 'CUSTOM' | 'AVULSO'; status: string; addOns: string[] }[];
     totalPaid: number; totalPending: number;
 }
 export interface UserDetail {
@@ -375,6 +382,8 @@ export const paymentsApi = {
     },
     update: (id: string, data: { status?: string; providerRef?: string }) =>
         request<{ payment: PaymentFull; message: string }>(`/payments/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    getStatus: (paymentId: string) =>
+        request<{ status: string; provider: string; pixString?: string; boletoUrl?: string }>(`/payments/${paymentId}/status`),
 };
 
 // ─── Notifications ──────────────────────────────────────
@@ -491,4 +500,40 @@ function buildQS(params?: Record<string, string | number | undefined>): string {
     const entries = Object.entries(params).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]);
     return entries.length > 0 ? '?' + new URLSearchParams(entries as [string, string][]).toString() : '';
 }
+
+// ─── Stripe API (Card Payments) ─────────────────────────
+
+export interface SavedCard {
+    id: string;
+    stripePaymentMethodId: string;
+    brand: string;
+    last4: string;
+    expMonth: number;
+    expYear: number;
+    isDefault: boolean;
+}
+
+export interface InstallmentPlan {
+    count: number;
+    perInstallment: number;
+    total: number;
+    feePercent: number;
+    freeOfCharge: boolean;
+}
+
+export const stripeApi = {
+    getPublishableKey: () => request<{ publishableKey: string }>('/stripe/publishable-key'),
+    createSetupIntent: () => request<{ clientSecret: string; setupIntentId: string }>('/stripe/setup-intent', { method: 'POST' }),
+    listPaymentMethods: () => request<{ paymentMethods: SavedCard[]; autoChargeEnabled: boolean }>('/stripe/payment-methods'),
+    removePaymentMethod: (pmId: string) => request<{ message: string }>(`/stripe/payment-methods/${pmId}`, { method: 'DELETE' }),
+    setDefaultPaymentMethod: (pmId: string) => request<{ message: string }>(`/stripe/payment-methods/${pmId}/default`, { method: 'PUT' }),
+    createPayment: (data: { paymentId: string; installments?: number; savedPaymentMethodId?: string; paymentMethod?: 'cartao' | 'pix' | 'boleto' }) =>
+        request<{ provider: 'STRIPE' | 'CORA'; clientSecret?: string; paymentIntentId?: string; pixString?: string; qrCodeBase64?: string; boletoUrl?: string; barcode?: string; paymentId?: string }>('/stripe/create-payment', { method: 'POST', body: JSON.stringify(data) }),
+    verifyPayment: (data: { paymentId: string; paymentIntentId: string }) =>
+        request<{ status: string; message: string }>('/stripe/verify-payment', { method: 'POST', body: JSON.stringify(data) }),
+    getInstallmentPlans: (data: { paymentId?: string; amount?: number; contractDurationMonths?: number }) =>
+        request<{ plans: InstallmentPlan[] }>('/stripe/installment-plans', { method: 'POST', body: JSON.stringify(data) }),
+    setAutoCharge: (enabled: boolean) => request<{ message: string }>('/stripe/auto-charge', { method: 'PUT', body: JSON.stringify({ enabled }) }),
+};
+
 

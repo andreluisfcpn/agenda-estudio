@@ -1,10 +1,10 @@
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 // ─── Enums ──────────────────────────────────────────────
@@ -19,6 +19,7 @@ enum ContractType {
   FLEX
   SERVICO
   CUSTOM
+  AVULSO
 }
 
 enum Tier {
@@ -30,6 +31,7 @@ enum Tier {
 enum BookingStatus {
   RESERVED
   CONFIRMED
+  HELD
   COMPLETED
   FALTA
   NAO_REALIZADO
@@ -38,6 +40,7 @@ enum BookingStatus {
 
 enum ContractStatus {
   ACTIVE
+  AWAITING_PAYMENT
   EXPIRED
   CANCELLED
   PENDING_CANCELLATION
@@ -81,13 +84,16 @@ model User {
   tags         String[] @default([])
   socialLinks  String?  @map("social_links") @db.Text // JSON: {"youtube":"url","instagram":"url",...}
   clientStatus String   @default("ACTIVE") @map("client_status") // ACTIVE, INACTIVE, BLOCKED
+  stripeCustomerId  String?  @unique @map("stripe_customer_id")
+  autoChargeEnabled Boolean  @default(false) @map("auto_charge_enabled")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  bookings     Booking[]
-  contracts    Contract[]
-  payments     Payment[]
-  blockedSlots BlockedSlot[]
+  bookings            Booking[]
+  contracts           Contract[]
+  payments            Payment[]
+  blockedSlots        BlockedSlot[]
+  savedPaymentMethods SavedPaymentMethod[]
 
   @@map("users")
 }
@@ -135,10 +141,11 @@ model Contract {
   paymentMethod PaymentMethod? @map("payment_method")
 
   // Pause / Renewal
-  pausedAt       DateTime? @map("paused_at")
-  pauseReason    String?   @map("pause_reason")
-  resumeDate     DateTime? @map("resume_date")
-  renewedFromId  String?   @map("renewed_from_id")
+  pausedAt        DateTime? @map("paused_at")
+  pauseReason     String?   @map("pause_reason")
+  resumeDate      DateTime? @map("resume_date")
+  paymentDeadline DateTime? @map("payment_deadline")
+  renewedFromId   String?   @map("renewed_from_id")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -168,6 +175,7 @@ model Booking {
   platforms     String?       @map("platforms") // JSON array: ["YOUTUBE","TIKTOK",...]
   platformLinks String?       @map("platform_links") @db.Text // JSON object: {"YOUTUBE":"url",...}
   addOns        String[]      @map("add_ons")
+  holdExpiresAt DateTime?     @map("hold_expires_at")
 
   // Phase 2 Analytical Metrics
   durationMinutes Int?    @map("duration_minutes")
@@ -200,6 +208,9 @@ model Payment {
   pixString   String?         @map("pix_string") @db.Text
   boletoUrl   String?         @map("boleto_url") @db.Text
   paymentUrl  String?         @map("payment_url") @db.Text // Checkout Link
+  installments         Int?      @default(1)  // number of installments
+  paymentType          String?   @map("payment_type")  // DEBIT | CREDIT
+  stripeSubscriptionId String?   @map("stripe_subscription_id")
   createdAt   DateTime        @default(now()) @map("created_at")
   updatedAt   DateTime        @updatedAt @map("updated_at")
 
@@ -208,6 +219,22 @@ model Payment {
   booking  Booking?  @relation(fields: [bookingId], references: [id])
 
   @@map("payments")
+}
+
+model SavedPaymentMethod {
+  id                    String   @id @default(uuid())
+  userId                String   @map("user_id")
+  stripePaymentMethodId String   @unique @map("stripe_pm_id")
+  brand                 String   // visa, mastercard, elo, etc.
+  last4                 String
+  expMonth              Int      @map("exp_month")
+  expYear               Int      @map("exp_year")
+  isDefault             Boolean  @default(false) @map("is_default")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("saved_payment_methods")
 }
 
 model BlockedSlot {

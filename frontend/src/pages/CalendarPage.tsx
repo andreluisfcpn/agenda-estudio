@@ -1,20 +1,15 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
-import { bookingsApi, blockedSlotsApi, pricingApi, Slot, BookingWithUser, MyBookingSlot, PricingConfig } from '../api/client';
+import React, { useState, useEffect, useCallback } from 'react';
+import { bookingsApi, blockedSlotsApi, pricingApi, contractsApi, Slot, BookingWithUser, MyBookingSlot, PricingConfig, AddOnConfig, ContractWithStats } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import ModalOverlay from '../components/ModalOverlay';
+import BookingDetailModal from '../components/BookingDetailModal';
 import BookingModal from '../components/BookingModal';
 import ContractWizard from '../components/ContractWizard';
 import CustomContractWizard from '../components/CustomContractWizard';
 
 const DAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-const PLATFORMS = [
-    { key: 'YOUTUBE', label: '▶️ YouTube', color: '#FF0000' },
-    { key: 'TIKTOK', label: '🎵 TikTok', color: '#00F2EA' },
-    { key: 'INSTAGRAM', label: '📸 Instagram', color: '#E1306C' },
-    { key: 'FACEBOOK', label: '📘 Facebook', color: '#1877F2' },
-];
 
 const TIER_COLORS: Record<string, { color: string; bg: string; label: string; emoji: string }> = {
     comercial: { color: '#10b981', bg: 'rgba(16,185,129,0.10)', label: 'Comercial', emoji: '🏢' },
@@ -73,17 +68,17 @@ export default function CalendarPage() {
     const [pricing, setPricing] = useState<PricingConfig[]>([]);
 
     const [detailBooking, setDetailBooking] = useState<{ booking: MyBookingSlot; date: string } | null>(null);
-    const [clientNotes, setClientNotes] = useState('');
-    const [platforms, setPlatforms] = useState<string[]>([]);
-    const [platformLinks, setPlatformLinks] = useState<Record<string, string>>({});
-    const [saving, setSaving] = useState(false);
+    const [allAddons, setAllAddons] = useState<AddOnConfig[]>([]);
+    const [contracts, setContracts] = useState<ContractWithStats[]>([]);
     const { showAlert, showToast } = useUI();
 
-    const [showReschedule, setShowReschedule] = useState(false);
-    const [rescheduleDate, setRescheduleDate] = useState('');
-    const [rescheduleTime, setRescheduleTime] = useState('');
-    const [rescheduleError, setRescheduleError] = useState('');
-    const [rescheduling, setRescheduling] = useState(false);
+    // Load addons and contracts once on mount so the detail modal has full context
+    useEffect(() => {
+        pricingApi.getAddons().then(res => setAllAddons(res.addons)).catch(() => {});
+        if (!isAdmin) {
+            contractsApi.getMy().then(res => setContracts(res.contracts)).catch(() => {});
+        }
+    }, [isAdmin]);
 
     const loadWeekData = useCallback(async (dates: Date[]) => {
         setLoading(true);
@@ -171,58 +166,6 @@ export default function CalendarPage() {
 
     const openDetailModal = (b: MyBookingSlot, date: string) => {
         setDetailBooking({ booking: b, date });
-        setClientNotes(b.clientNotes || '');
-        try { setPlatforms(b.platforms ? JSON.parse(b.platforms) : []); } catch { setPlatforms([]); }
-        try { setPlatformLinks(b.platformLinks ? JSON.parse(b.platformLinks) : {}); } catch { setPlatformLinks({}); }
-        setShowReschedule(false);
-        setRescheduleError('');
-    };
-
-    const togglePlatform = (key: string) => {
-        setPlatforms(prev => prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key]);
-    };
-
-    const handleSaveDetail = async () => {
-        if (!detailBooking) return;
-        setSaving(true);
-        try {
-            await bookingsApi.clientUpdate(detailBooking.booking.id, {
-                clientNotes, platforms: JSON.stringify(platforms), platformLinks: JSON.stringify(platformLinks),
-            });
-            showToast('Gravação atualizada!');
-            setDetailBooking(null);
-            loadWeekData(weekDates);
-        } catch (err: any) { showAlert({ message: err.message, type: 'error' }); }
-        finally { setSaving(false); }
-    };
-
-    const canModifyBooking = (b: MyBookingSlot, date: string): boolean => {
-        if (b.status !== 'RESERVED' && b.status !== 'CONFIRMED') return false;
-        const bookingDateTime = new Date(`${date}T${b.startTime}:00`);
-        return (bookingDateTime.getTime() - Date.now()) / (1000 * 60 * 60) >= 24;
-    };
-
-    const handleReschedule = async () => {
-        if (!detailBooking) return;
-        setRescheduling(true); setRescheduleError('');
-        try {
-            await bookingsApi.reschedule(detailBooking.booking.id, { date: rescheduleDate, startTime: rescheduleTime });
-            showToast('Reagendado com sucesso!');
-            setDetailBooking(null);
-            loadWeekData(weekDates);
-        } catch (err: any) { setRescheduleError(err.message); }
-        finally { setRescheduling(false); }
-    };
-
-    const statusLabel = (s: string) => {
-        switch (s) {
-            case 'COMPLETED': return '✅ Concluído';
-            case 'CONFIRMED': return '✅ Confirmado';
-            case 'RESERVED': return '⏳ Reservado';
-            case 'FALTA': return '❌ Falta';
-            case 'NAO_REALIZADO': return '🔄 Não Realizado';
-            default: return '❌ Cancelado';
-        }
     };
 
     // Compute weekly summary
@@ -499,7 +442,8 @@ export default function CalendarPage() {
 
             {selectedSlot && (
                 <BookingModal date={selectedSlot.date} time={selectedSlot.time} tier={selectedSlot.tier}
-                    price={selectedSlot.price} onClose={() => setSelectedSlot(null)}
+                    price={selectedSlot.price}
+                    onClose={() => { setSelectedSlot(null); loadWeekData(weekDates); }}
                     onBooked={() => { setSelectedSlot(null); loadWeekData(weekDates); }}
                     onNewContract={() => setShowWizard(true)} />
             )}
@@ -526,144 +470,33 @@ export default function CalendarPage() {
 
             {/* ─── DETAIL MODAL ─── */}
             {detailBooking && (
-                <ModalOverlay onClose={() => setDetailBooking(null)}>
-                    <div className="modal" style={{ maxWidth: 540, borderRadius: '16px' }}>
-                        <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '1.25rem' }}>📌</span> Meu Agendamento
-                        </h2>
-
-                        <div style={{ display: 'grid', gap: '8px', marginBottom: '20px' }}>
-                            {[
-                                ['📅 Data', detailBooking.date.split('-').reverse().join('/')],
-                                ['🕐 Horário', `${detailBooking.booking.startTime} — ${detailBooking.booking.endTime}`],
-                            ].map(([label, val]) => (
-                                <div key={label} style={{
-                                    display: 'flex', justifyContent: 'space-between', padding: '10px 14px',
-                                    background: 'var(--bg-secondary)', borderRadius: '10px',
-                                    border: '1px solid var(--border-color)',
-                                }}>
-                                    <span style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>{label}</span>
-                                    <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>{val}</span>
-                                </div>
-                            ))}
-                            <div style={{
-                                display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px',
-                                background: 'var(--bg-secondary)', borderRadius: '10px',
-                                border: '1px solid var(--border-color)',
-                            }}>
-                                <span style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>🏷️ Faixa</span>
-                                <span className={`badge badge-${detailBooking.booking.tierApplied.toLowerCase()}`}>{detailBooking.booking.tierApplied}</span>
-                            </div>
-                            <div style={{
-                                display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px',
-                                background: 'var(--bg-secondary)', borderRadius: '10px',
-                                border: '1px solid var(--border-color)',
-                            }}>
-                                <span style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>📊 Status</span>
-                                <span style={{ fontWeight: 600, fontSize: '0.8125rem' }}>{statusLabel(detailBooking.booking.status)}</span>
-                            </div>
-                        </div>
-
-                        <div className="form-group">
-                            <label className="form-label">📝 Minha Observação</label>
-                            <textarea className="form-input" rows={3} value={clientNotes}
-                                onChange={e => setClientNotes(e.target.value)}
-                                placeholder="Anotações pessoais sobre esta gravação..." style={{ resize: 'vertical' }} />
-                        </div>
-
-                        {detailBooking.booking.adminNotes && (
-                            <div className="form-group">
-                                <label className="form-label">🔒 Observação do Admin</label>
-                                <div style={{
-                                    padding: '10px 14px', background: 'var(--bg-secondary)', borderRadius: '10px',
-                                    border: '1px solid var(--border-color)', fontSize: '0.875rem',
-                                    color: 'var(--text-secondary)', whiteSpace: 'pre-wrap',
-                                }}>
-                                    {detailBooking.booking.adminNotes}
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="form-group">
-                            <label className="form-label">📡 Distribuição</label>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '4px' }}>
-                                {PLATFORMS.map(p => (
-                                    <label key={p.key} style={{
-                                        display: 'flex', alignItems: 'center', gap: '6px',
-                                        padding: '6px 12px', borderRadius: '10px',
-                                        border: `1px solid ${platforms.includes(p.key) ? p.color : 'var(--border-color)'}`,
-                                        background: platforms.includes(p.key) ? `${p.color}15` : 'var(--bg-secondary)',
-                                        cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600,
-                                        transition: 'all 0.2s',
-                                    }}>
-                                        <input type="checkbox" checked={platforms.includes(p.key)}
-                                            onChange={() => togglePlatform(p.key)} style={{ accentColor: p.color }} />
-                                        {p.label}
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
-
-                        {platforms.length > 0 && (
-                            <div style={{ display: 'grid', gap: '10px', marginBottom: '16px' }}>
-                                {platforms.map(pk => {
-                                    const plat = PLATFORMS.find(p => p.key === pk);
-                                    return (
-                                        <div key={pk} className="form-group" style={{ marginBottom: 0 }}>
-                                            <label className="form-label">{plat?.label || pk} — Link</label>
-                                            <input className="form-input" value={platformLinks[pk] || ''}
-                                                onChange={e => setPlatformLinks(prev => ({ ...prev, [pk]: e.target.value }))}
-                                                placeholder={`https://${pk.toLowerCase()}.com/...`} />
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-
-                        {showReschedule && (
-                            <div style={{
-                                padding: '14px', background: 'var(--bg-secondary)', borderRadius: '12px',
-                                border: '1px solid var(--border-color)', marginBottom: '16px',
-                            }}>
-                                <h4 style={{ fontSize: '0.875rem', fontWeight: 700, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>🔄 Reagendar</h4>
-                                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '10px' }}>Máx. 7 dias · Mesma faixa ({detailBooking.booking.tierApplied})</p>
-                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                    <input type="date" className="form-input" value={rescheduleDate}
-                                        onChange={e => setRescheduleDate(e.target.value)}
-                                        min={new Date().toISOString().split('T')[0]}
-                                        max={new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]}
-                                        style={{ flex: 1 }} />
-                                    <input type="time" className="form-input" value={rescheduleTime}
-                                        onChange={e => setRescheduleTime(e.target.value)} step={3600} style={{ width: 120 }} />
-                                    <button className="btn btn-primary btn-sm" onClick={handleReschedule}
-                                        disabled={rescheduling || !rescheduleDate || !rescheduleTime}
-                                        style={{ borderRadius: '10px' }}>
-                                        {rescheduling ? '⏳' : '✅'} Confirmar
-                                    </button>
-                                </div>
-                                {rescheduleError && <div className="error-message" style={{ marginTop: '8px' }}>{rescheduleError}</div>}
-                            </div>
-                        )}
-
-                        <div className="modal-actions" style={{ justifyContent: 'space-between' }}>
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                                {canModifyBooking(detailBooking.booking, detailBooking.date) && (
-                                    <button className="btn btn-secondary btn-sm" onClick={() => setShowReschedule(!showReschedule)}
-                                        style={{ borderRadius: '10px' }}>
-                                        🔄 Reagendar
-                                    </button>
-                                )}
-                            </div>
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                                <button className="btn btn-secondary" onClick={() => setDetailBooking(null)} style={{ borderRadius: '10px' }}>Fechar</button>
-                                <button className="btn btn-primary" onClick={handleSaveDetail} disabled={saving}
-                                    style={{ borderRadius: '10px' }}>
-                                    {saving ? '⏳ Salvando...' : '💾 Salvar'}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </ModalOverlay>
+                <BookingDetailModal
+                    booking={{
+                        id: detailBooking.booking.id,
+                        date: detailBooking.date,
+                        startTime: detailBooking.booking.startTime,
+                        endTime: detailBooking.booking.endTime,
+                        tierApplied: detailBooking.booking.tierApplied,
+                        status: detailBooking.booking.status,
+                        price: detailBooking.booking.price,
+                        clientNotes: detailBooking.booking.clientNotes,
+                        adminNotes: detailBooking.booking.adminNotes,
+                        platforms: detailBooking.booking.platforms,
+                        platformLinks: detailBooking.booking.platformLinks,
+                        addOns: detailBooking.booking.addOns,
+                    }}
+                    onClose={() => setDetailBooking(null)}
+                    onSaved={() => { setDetailBooking(null); loadWeekData(weekDates); }}
+                    allAddons={allAddons}
+                    contractDiscountPct={(() => {
+                        const parent = contracts.find(c => c.bookings?.some(b => b.id === detailBooking.booking.id));
+                        return parent?.discountPct || 0;
+                    })()}
+                    contractAddOns={(() => {
+                        const parent = contracts.find(c => c.bookings?.some(b => b.id === detailBooking.booking.id));
+                        return parent?.addOns || [];
+                    })()}
+                />
             )}
         </div>
     );

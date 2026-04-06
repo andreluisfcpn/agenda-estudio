@@ -1,9 +1,10 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { bookingsApi, contractsApi, usersApi, Booking, BookingWithUser, Contract, UserSummary, PaymentSummary } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
 import { useNavigate } from 'react-router-dom';
 import ModalOverlay from '../components/ModalOverlay';
+import InlineCheckout from '../components/InlineCheckout';
 
 function formatBRL(cents: number): string {
     return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
@@ -498,6 +499,7 @@ function ClientDashboard() {
 
     const [cancelingBooking, setCancelingBooking] = useState<Booking | null>(null);
     const [isCanceling, setIsCanceling] = useState(false);
+    const [payingInvoice, setPayingInvoice] = useState<PaymentSummary | null>(null);
 
     const handleCancelSubmit = async () => {
         if (!cancelingBooking) return;
@@ -673,25 +675,10 @@ function ClientDashboard() {
                                             </td>
                                             <td>
                                                 <div style={{ display: 'flex', gap: '8px' }}>
-                                                    {p.pixString && (
-                                                        <button className="btn btn-sm" style={{ background: '#0ea5e9', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer' }}
-                                                            onClick={async () => {
-                                                                await navigator.clipboard.writeText(p.pixString!);
-                                                                showToast('PIX Copia e Cola copiado com sucesso!');
-                                                            }}>
-                                                            ❖ Copiar PIX
-                                                        </button>
-                                                    )}
-                                                    {p.boletoUrl && (
-                                                        <a href={p.boletoUrl} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-default)', textDecoration: 'none', padding: '6px 14px', borderRadius: '6px', fontWeight: 600, display: 'inline-flex', alignItems: 'center' }}>
-                                                            📄 Boleto
-                                                        </a>
-                                                    )}
-                                                    {(!p.pixString && !p.boletoUrl && p.paymentUrl) && (
-                                                        <a href={p.paymentUrl} target="_blank" rel="noreferrer" className="btn btn-sm" style={{ background: 'var(--brand-primary)', color: '#fff', textDecoration: 'none', padding: '6px 14px', borderRadius: '6px', fontWeight: 600, display: 'inline-flex', alignItems: 'center' }}>
-                                                            Pagar
-                                                        </a>
-                                                    )}
+                                                    <button className="btn btn-sm" style={{ background: 'var(--brand-primary)', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                                                        onClick={() => setPayingInvoice(p)}>
+                                                        💳 Pagar Fatura
+                                                    </button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -839,6 +826,30 @@ function ClientDashboard() {
                                 {isCanceling ? '⏳ Cancelando...' : 'Confirmar Cancelamento'}
                             </button>
                         </div>
+                    </div>
+                </ModalOverlay>
+            )}
+            {/* ══════════ INLINE CHECKOUT MODAL ══════════ */}
+            {payingInvoice && (
+                <ModalOverlay onClose={() => setPayingInvoice(null)}>
+                    <div className="modal" style={{ maxWidth: 480, width: '95%' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                            <h2 className="modal-title" style={{ margin: 0 }}>💳 Pagar Fatura</h2>
+                            <button className="btn btn-ghost btn-sm" onClick={() => setPayingInvoice(null)}>✕</button>
+                        </div>
+                        <InlineCheckout
+                            amount={payingInvoice.amount}
+                            paymentId={payingInvoice.id}
+                            description={`Fatura — ${formatBRL(payingInvoice.amount)}`}
+                            allowedMethods={['CARTAO', 'PIX', 'BOLETO']}
+                            onSuccess={() => {
+                                setPayingInvoice(null);
+                                showToast('✅ Pagamento realizado com sucesso!');
+                                loadData();
+                            }}
+                            onError={(msg) => showToast(`❌ ${msg}`)}
+                            onCancel={() => setPayingInvoice(null)}
+                        />
                     </div>
                 </ModalOverlay>
             )}

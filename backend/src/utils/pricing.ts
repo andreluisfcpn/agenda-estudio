@@ -1,4 +1,4 @@
-import { Tier } from '@prisma/client';
+import { Tier } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
 import { getConfig, getConfigString } from '../lib/businessConfig';
 

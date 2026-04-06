@@ -15,8 +15,8 @@ import pricingRoutes from './modules/pricing/routes';
 import paymentRoutes from './modules/payments/routes';
 import { financeRouter } from './modules/finance/routes';
 
-import { PrismaClient } from '@prisma/client';
-const prisma = new PrismaClient();
+import { prisma } from './lib/prisma';
+
 
 const app = express();
 
@@ -72,6 +72,9 @@ app.use('/api/integrations', integrationRoutes);
 import webhookRoutes from './modules/webhooks/routes';
 app.use('/api/webhooks', webhookRoutes);
 
+import stripeRoutes from './modules/stripe/routes';
+app.use('/api/stripe', stripeRoutes);
+
 // ─── Serve Frontend (Production) ────────────────────────
 
 if (config.nodeEnv === 'production') {
@@ -125,6 +128,12 @@ app.listen(config.port, () => {
 
     // runCron(); // Temporarily disabled on startup to prevent sync block on typescript compilation errors during dev
     setInterval(runCron, 5 * 60 * 1000);
+
+    // Hold Expiration Cronjob — clean expired HELD bookings & AWAITING_PAYMENT contracts every 60s
+    import('./jobs/cleanExpiredHolds').then(({ cleanExpiredHolds }) => {
+        setInterval(cleanExpiredHolds, 60 * 1000);
+        console.log('   ⏰ Hold cleanup job registered (every 60s)');
+    }).catch(err => console.error('[HOLD-CLEANUP] Failed to load job:', err));
 });
 
 export default app;

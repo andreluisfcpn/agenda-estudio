@@ -124,7 +124,7 @@ export default function ServicesCarousel() {
                                         marginBottom: '24px', flexShrink: 0, border: '1px solid rgba(17, 129, 155, 0.3)',
                                         boxShadow: '0 0 20px rgba(17, 129, 155, 0.2)'
                                     }}>
-                                        {ICON_MAP[activeService.key]}
+                                        {ICON_MAP[activeService.key] || <Sparkles size={24} />}
                                     </div>
                                     <h3 style={{ fontSize: '2rem', fontWeight: 800, marginBottom: '16px' }}>{activeService.name}</h3>
                                     <p style={{ fontSize: '1.125rem', color: 'var(--text-muted)', lineHeight: 1.6, marginBottom: '0', maxWidth: '600px', flexGrow: 1 }}>
@@ -141,26 +141,29 @@ export default function ServicesCarousel() {
                         padding: '20px', background: 'rgba(0,0,0,0.2)', borderRadius: '100px',
                         width: 'fit-content', margin: '0 auto'
                     }}>
-                        {addons.map((addon, index) => (
-                            <button
-                                key={addon.key}
-                                onClick={() => handleThumbnailClick(index)}
-                                style={{
-                                    display: 'flex', alignItems: 'center', gap: '8px',
-                                    padding: '10px 20px', borderRadius: '100px', border: 'none',
-                                    background: activeIndex === index ? '#11819B' : 'transparent',
-                                    color: activeIndex === index ? '#F4F9FA' : 'rgba(255,255,255,0.6)',
-                                    fontWeight: activeIndex === index ? 800 : 500,
-                                    cursor: 'pointer', transition: 'all 0.3s ease',
-                                    outline: 'none', boxShadow: activeIndex === index ? '0 8px 16px rgba(17, 129, 155, 0.4)' : 'none'
-                                }}
-                            >
-                                <span style={{ transform: activeIndex === index ? 'scale(1.1)' : 'scale(1)' }}>
-                                    {React.cloneElement(ICON_MAP[addon.key] as any, { size: 16 })}
-                                </span>
-                                {addon.name}
-                            </button>
-                        ))}
+                        {addons.map((addon, index) => {
+                            const iconElement = ICON_MAP[addon.key] || <Sparkles size={24} />;
+                            return (
+                                <button
+                                    key={addon.key}
+                                    onClick={() => handleThumbnailClick(index)}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '8px',
+                                        padding: '10px 20px', borderRadius: '100px', border: 'none',
+                                        background: activeIndex === index ? '#11819B' : 'transparent',
+                                        color: activeIndex === index ? '#F4F9FA' : 'rgba(255,255,255,0.6)',
+                                        fontWeight: activeIndex === index ? 800 : 500,
+                                        cursor: 'pointer', transition: 'all 0.3s ease',
+                                        outline: 'none', boxShadow: activeIndex === index ? '0 8px 16px rgba(17, 129, 155, 0.4)' : 'none'
+                                    }}
+                                >
+                                    <span style={{ transform: activeIndex === index ? 'scale(1.1)' : 'scale(1)' }}>
+                                        {React.cloneElement(iconElement as any, { size: 16 })}
+                                    </span>
+                                    {addon.name}
+                                </button>
+                            );
+                        })}
                     </div>
 
                 </div>

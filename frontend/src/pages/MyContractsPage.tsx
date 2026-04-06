@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { contractsApi, bookingsApi, ContractWithStats, ContractBooking, pricingApi, PricingConfig } from '../api/client';
+import { contractsApi, bookingsApi, ContractWithStats, ContractBooking, pricingApi, PricingConfig, stripeApi, SavedCard } from '../api/client';
 import ContractWizard from '../components/ContractWizard';
 import CustomContractWizard from '../components/CustomContractWizard';
 import BulkBookingModal from '../components/BulkBookingModal';
+import BookingDetailModal from '../components/BookingDetailModal';
 import ModalOverlay from '../components/ModalOverlay';
 import { useLocation } from 'react-router-dom';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
@@ -67,6 +68,18 @@ export default function MyContractsPage() {
     const [showCancelModalFor, setShowCancelModalFor] = useState<{ id: string, feeNote: string } | null>(null);
     const [cancellingContract, setCancellingContract] = useState(false);
 
+    // Renew Modal
+    const [showRenewModalFor, setShowRenewModalFor] = useState<ContractWithStats | null>(null);
+    const [renewDuration, setRenewDuration] = useState<3 | 6 | 12>(3);
+    const [renewMethod, setRenewMethod] = useState<'PIX' | 'CARTAO' | 'BOLETO'>('PIX');
+    const [renewLoading, setRenewLoading] = useState(false);
+
+    // Subscribe (Recurring) Modal
+    const [showSubscribeModalFor, setShowSubscribeModalFor] = useState<ContractWithStats | null>(null);
+    const [savedCards, setSavedCards] = useState<SavedCard[]>([]);
+    const [selectedCardId, setSelectedCardId] = useState<string>('');
+    const [subscribeLoading, setSubscribeLoading] = useState(false);
+
     const { get: getRule } = useBusinessConfig();
 
     useEffect(() => { loadData(); }, []);
@@ -74,22 +87,59 @@ export default function MyContractsPage() {
     const loadData = async () => {
         setLoading(true);
         try {
-            const [contractsRes, pricingRes, addonsRes] = await Promise.all([
+            const [contractsRes, pricingRes, addonsRes, cardsRes] = await Promise.all([
                 contractsApi.getMy(), 
                 pricingApi.get(),
-                pricingApi.getAddons()
+                pricingApi.getAddons(),
+                stripeApi.listPaymentMethods().catch(() => ({ paymentMethods: [], autoChargeEnabled: false }))
             ]);
             setContracts(contractsRes.contracts);
             setPricing(pricingRes.pricing);
             setAllAddons(addonsRes.addons);
+            setSavedCards(cardsRes.paymentMethods);
+            if (cardsRes.paymentMethods.length > 0) {
+                const defaultCard = cardsRes.paymentMethods.find((c: any) => c.isDefault) || cardsRes.paymentMethods[0];
+                setSelectedCardId(defaultCard.id);
+            }
             setSocialAddon(addonsRes.addons.find((a: any) => a.key === 'GESTAO_SOCIAL') || null);
         } catch (err) { console.error('Failed to load contracts:', err); }
         finally { setLoading(false); }
     };
 
+    const handleRenew = async () => {
+        if (!showRenewModalFor) return;
+        setRenewLoading(true);
+        try {
+            await contractsApi.clientRenew(showRenewModalFor.id, { durationMonths: renewDuration, paymentMethod: renewMethod });
+            showToast({ message: 'Renovação iniciada! Conclua o pagamento.', type: 'success' });
+            setShowRenewModalFor(null);
+            loadData();
+        } catch (err: any) {
+            showToast({ message: err.message || 'Erro ao renovar contrato.', type: 'error' });
+        } finally {
+            setRenewLoading(false);
+        }
+    };
+
+    const handleSubscribe = async () => {
+        if (!showSubscribeModalFor || !selectedCardId) return;
+        setSubscribeLoading(true);
+        try {
+            await contractsApi.subscribe(showSubscribeModalFor.id, { paymentMethodId: selectedCardId });
+            showToast({ message: 'Cobrança automática ativada com sucesso.', type: 'success' });
+            setShowSubscribeModalFor(null);
+            loadData();
+        } catch (err: any) {
+            showToast({ message: err.message || 'Erro ao ativar cobrança automática.', type: 'error' });
+        } finally {
+            setSubscribeLoading(false);
+        }
+    };
+
     const activeContracts = contracts.filter(c => {
         if (c.status === 'CANCELLED' || c.status === 'EXPIRED') return false;
-        if (c.status !== 'ACTIVE' && c.status !== 'PENDING_CANCELLATION' && c.status !== 'PAUSED') return false;
+        if (c.status !== 'ACTIVE' && c.status !== 'PENDING_CANCELLATION' && c.status !== 'PAUSED' && c.status !== 'AWAITING_PAYMENT') return false;
+        if (c.status === 'AWAITING_PAYMENT') return true;
 
         const bookings = c.bookings || [];
         const totalBookings = c.type === 'FIXO' ? c.durationMonths * 4 : c.totalBookings;
@@ -109,7 +159,7 @@ export default function MyContractsPage() {
     });
 
     const archivedContracts = contracts.filter(c => {
-        if (c.status === 'CANCELLED' || c.status === 'PENDING_CANCELLATION' || c.status === 'EXPIRED') return false;
+        if (c.status === 'CANCELLED' || c.status === 'PENDING_CANCELLATION' || c.status === 'EXPIRED' || c.status === 'AWAITING_PAYMENT') return false;
 
         const bookings = c.bookings || [];
         const totalBookings = c.type === 'FIXO' ? c.durationMonths * 4 : c.totalBookings;
@@ -127,7 +177,17 @@ export default function MyContractsPage() {
         return totalBookings > 0 && usedBookingsCount >= totalBookings;
     });
 
-    const cancelledContracts = contracts.filter(c => c.status === 'CANCELLED');
+    const cancelledContracts = contracts.filter(c => {
+        if (c.status !== 'CANCELLED') return false;
+        
+        // Hide abandoned checkout avulsos
+        const isAvulso = c.type === 'FLEX' && c.durationMonths === 1;
+        if (isAvulso) {
+            const hasNonCancelledBooking = c.bookings?.some(b => b.status !== 'CANCELLED');
+            if (!hasNonCancelledBooking) return false;
+        }
+        return true;
+    });
 
     const contractsToDisplay = tab === 'active' ? activeContracts : tab === 'archived' ? archivedContracts : cancelledContracts;
 
@@ -230,12 +290,12 @@ export default function MyContractsPage() {
         setSubscribingSocial(true);
         try {
             const res = await contractsApi.createService({ serviceKey: socialAddon.key, paymentMethod: socialPayment as any, durationMonths: socialDuration });
-            showToast('Serviço contratado com sucesso! Redirecionando...');
+            showToast('Serviço contratado com sucesso!');
             setShowSocialModal(false);
-            if (res.checkoutUrl) {
-                // In a real app we would redirect: window.location.href = res.checkoutUrl;
-                setTimeout(() => loadData(), 1000);
+            if (res.clientSecret) {
+                showToast('Acesse "Pagamentos" para completar o pagamento com cartão.');
             }
+            setTimeout(() => loadData(), 1000);
         } catch (err: any) {
             showAlert({ message: err.message || 'Erro ao contratar serviço.', type: 'error' });
         } finally {
@@ -337,251 +397,59 @@ export default function MyContractsPage() {
                             onRequestCancel={c.status === 'ACTIVE' && !isContractArchived(c) ? handleRequestCancel : undefined}
                             onBulkBooking={c.status === 'ACTIVE' && !isContractArchived(c) ? () => setShowBulkModalFor(c) : undefined}
                             isArchived={isContractArchived(c)}
-                            isCancelled={c.status === 'CANCELLED'} />
+                            isCancelled={c.status === 'CANCELLED'}
+                            onRenewContract={() => setShowRenewModalFor(c)}
+                            onSubscribeContract={() => setShowSubscribeModalFor(c)}
+                            onPayContract={c.status === 'AWAITING_PAYMENT' ? async () => {
+                                try {
+                                    const res = await contractsApi.pay(c.id);
+                                    showToast({ type: 'success', message: 'Abrindo pagamento...' });
+                                    window.location.href = `/meus-pagamentos?pay=${c.id}&secret=${res.clientSecret}`;
+                                } catch (err: any) {
+                                    showToast({ type: 'error', message: err.message || 'Erro ao iniciar pagamento' });
+                                }
+                            } : undefined}
+                            onExpireContract={c.status === 'AWAITING_PAYMENT' ? () => {
+                                setContracts(prev => prev.filter(ct => ct.id !== c.id));
+                                showToast('⏰ Tempo esgotado. O horário foi liberado.');
+                            } : undefined} />
                     ))}
                 </div>
             )}
 
             {/* Booking Detail Modal */}
             {detailBooking && (
-                <ModalOverlay onClose={() => setDetailBooking(null)}>
-                    <div className="modal" style={{ maxWidth: 540 }}>
-                        <h2 className="modal-title">📌 Detalhes do Agendamento</h2>
-
-                        <div style={{ display: 'grid', gap: '10px', marginBottom: '16px' }}>
-                            {[
-                                ['📅 Data', new Date(detailBooking.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })],
-                                ['🕐 Horário', `${detailBooking.startTime} — ${detailBooking.endTime}`],
-                            ].map(([label, val]) => (
-                                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
-                                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem' }}>{label}</span>
-                                    <span style={{ fontWeight: 600 }}>{val}</span>
-                                </div>
-                            ))}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
-                                <span style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem' }}>🏷️ Faixa</span>
-                                <span className={`badge badge-${detailBooking.tierApplied.toLowerCase()}`}>{detailBooking.tierApplied}</span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
-                                <span style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem' }}>📊 Status</span>
-                                <span style={{ fontWeight: 600, fontSize: '0.8125rem' }}>{statusLabel(detailBooking.status)}</span>
-                            </div>
-                        </div>
-
-                        {/* TABS HEADER */}
-                        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
-                            <button className={`btn btn-sm ${detailTab === 'preparativos' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setDetailTab('preparativos')} style={{ flex: 1 }}>
-                                ⚙️ Preparativos
-                            </button>
-                            <button className={`btn btn-sm ${detailTab === 'metricas' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setDetailTab('metricas')} style={{ flex: 1 }}>
-                                📊 Métricas
-                            </button>
-                            <button className={`btn btn-sm ${detailTab === 'servicos' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setDetailTab('servicos')} style={{ flex: 1 }}>
-                                ✨ Serviços
-                            </button>
-                        </div>
-
-                        {/* TAB: PREPARATIVOS */}
-                        {detailTab === 'preparativos' && (
-                            <>
-                                <div style={{ marginBottom: '16px' }}>
-                                    <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '4px' }}>Preparativos da Sessão</h3>
-                                    <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Configure sua gravação livremente. Os dados são mantidos caso haja reagendamento.</p>
-                                </div>
-
-                                {/* Client Notes */}
-                                <div className="form-group">
-                                    <label className="form-label">📝 Minha Observação</label>
-                                    <textarea className="form-input" rows={3} value={clientNotes}
-                                        onChange={e => setClientNotes(e.target.value)}
-                                        placeholder="Anotações pessoais..." style={{ resize: 'vertical' }} />
-                                </div>
-
-                                {/* Admin Notes */}
-                                {detailBooking.adminNotes && (
-                                    <div className="form-group">
-                                        <label className="form-label">🔒 Observação do Admin</label>
-                                        <div style={{ padding: '10px 14px', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)', fontSize: '0.875rem', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap' }}>
-                                            {detailBooking.adminNotes}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Distribution */}
-                                <div className="form-group">
-                                    <label className="form-label">📡 Distribuição</label>
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '4px' }}>
-                                        {PLATFORMS.map(p => (
-                                            <label key={p.key} style={{
-                                                display: 'flex', alignItems: 'center', gap: '6px',
-                                                padding: '6px 12px', borderRadius: 'var(--radius-md)',
-                                                border: `1px solid ${platforms.includes(p.key) ? p.color : 'var(--border-default)'}`,
-                                                background: platforms.includes(p.key) ? `${p.color}15` : 'var(--bg-card)',
-                                                cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600,
-                                            }}>
-                                                <input type="checkbox" checked={platforms.includes(p.key)}
-                                                    onChange={() => togglePlatform(p.key)} style={{ accentColor: p.color }} />
-                                                {p.label}
-                                            </label>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {platforms.length > 0 && (
-                                    <div style={{ display: 'grid', gap: '10px', marginBottom: '16px' }}>
-                                        {platforms.map(pk => {
-                                            const plat = PLATFORMS.find(p => p.key === pk);
-                                            return (
-                                                <div key={pk} className="form-group" style={{ marginBottom: 0 }}>
-                                                    <label className="form-label">{plat?.label || pk} — Link</label>
-                                                    <input className="form-input" value={platformLinks[pk] || ''}
-                                                        onChange={e => setPlatformLinks(prev => ({ ...prev, [pk]: e.target.value }))}
-                                                        placeholder={`https://${pk.toLowerCase()}.com/...`} />
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                            </>
-                        )}
-
-                        {/* TAB: MÉTRICAS */}
-                        {detailTab === 'metricas' && (
-                            <>
-                                <div style={{ marginBottom: '16px' }}>
-                                    <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '4px' }}>Métricas de Audiência</h3>
-                                    <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Visualize os resultados alcançados pelo seu episódio após a gravação.</p>
-                                </div>
-
-                                {(() => {
-                                    const eventDate = new Date(`${detailBooking.date.split('T')[0]}T${detailBooking.endTime}:00`);
-                                    const isPast = eventDate.getTime() < Date.now();
-                                    
-                                    if (!isPast) {
-                                        return (
-                                            <div style={{ padding: '16px', background: 'var(--bg-secondary)', border: '1px dashed var(--border-subtle)', borderRadius: 'var(--radius-md)', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '16px' }}>
-                                                🔒 As métricas não estão disponíveis pois o evento ainda não aconteceu.
-                                            </div>
-                                        );
-                                    }
-                                    
-                                    if (detailBooking.status !== 'COMPLETED') {
-                                        return (
-                                            <div style={{ padding: '16px', background: 'var(--bg-secondary)', border: '1px dashed var(--border-subtle)', borderRadius: 'var(--radius-md)', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '16px' }}>
-                                                🔒 Métricas disponíveis para edição e visualização apenas após o status ser alterado para REALIZADA (COMPLETED).
-                                            </div>
-                                        );
-                                    }
-
-                                    return (
-                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '12px', marginBottom: '16px' }}>
-                                            <div className="card" style={{ background: 'var(--bg-card)', padding: '12px', border: '1px solid var(--border-default)' }}>
-                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Duração Real</div>
-                                                <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>{detailBooking.durationMinutes ? `${detailBooking.durationMinutes} min` : '--'}</div>
-                                            </div>
-                                            <div className="card" style={{ background: 'var(--bg-card)', padding: '12px', border: '1px solid var(--border-default)' }}>
-                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Pico ao Vivo</div>
-                                                <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>{detailBooking.peakViewers ? `${detailBooking.peakViewers}` : '--'}</div>
-                                            </div>
-                                            <div className="card" style={{ background: 'var(--bg-card)', padding: '12px', border: '1px solid var(--border-default)' }}>
-                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Chat</div>
-                                                <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>{detailBooking.chatMessages ? `${detailBooking.chatMessages}` : '--'}</div>
-                                            </div>
-                                            <div className="card" style={{ background: 'var(--bg-card)', padding: '12px', border: '1px solid var(--border-default)' }}>
-                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Origem</div>
-                                                <div style={{ fontSize: '1rem', fontWeight: 700, marginTop: '4px' }}>{detailBooking.audienceOrigin || '--'}</div>
-                                            </div>
-                                        </div>
-                                    );
-                                })()}
-                            </>
-                        )}
-
-                        {/* TAB: SERVIÇOS EXTRAS */}
-                        {detailTab === 'servicos' && (
-                            <>
-                                <div style={{ marginBottom: '16px' }}>
-                                    <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '4px' }}>Serviços Extras (Episódio)</h3>
-                                    <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Melhore a entrega e distribuição deste episódio com nossos serviços especializados.</p>
-                                </div>
-                                
-                                <div style={{ display: 'grid', gap: '12px', marginBottom: '16px' }}>
-                                    {allAddons.filter(a => !a.monthly && a.key !== 'GESTAO_SOCIAL').map(addon => {
-                                        const parentContract = contracts.find(c => c.bookings?.some(b => b.id === detailBooking.id));
-                                        const isInContract = parentContract?.addOns?.includes(addon.key) || false;
-                                        const isInBooking = detailBooking.addOns?.includes(addon.key) || false;
-                                        const isActive = isInContract || isInBooking;
-                                        
-                                        const discountPct = parentContract ? parentContract.discountPct : 0;
-                                        const finalPrice = Math.round(addon.price * (1 - discountPct / 100));
-
-                                        return (
-                                            <div key={addon.key} style={{ 
-                                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                                padding: '12px 14px', borderRadius: 'var(--radius-md)',
-                                                border: `2px solid ${isActive ? 'var(--accent-primary)' : 'var(--border-subtle)'}`,
-                                                background: isActive ? 'rgba(139, 92, 246, 0.08)' : 'var(--bg-secondary)',
-                                            }}>
-                                                <div>
-                                                    <div style={{ fontWeight: 700, fontSize: '0.875rem', color: isActive ? 'var(--accent-primary)' : 'var(--text-primary)' }}>{addon.name}</div>
-                                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                                                        {isActive && isInContract ? '✅ Incluso no seu Plano' : isActive ? '✅ Ativado neste Episódio' : addon.description}
-                                                    </div>
-                                                </div>
-                                                {isActive ? (
-                                                    <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--accent-primary)', padding: '4px 8px', background: 'rgba(139, 92, 246, 0.15)', borderRadius: '4px' }}>ATIVO</span>
-                                                ) : (
-                                                    <button className="btn btn-sm btn-secondary" onClick={() => handlePurchaseAddon(detailBooking.id, addon.key)} style={{ whiteSpace: 'nowrap' }}>
-                                                        Adicionar por {formatBRL(finalPrice)}
-                                                    </button>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </>
-                        )}
-
-                        {/* Reschedule Panel */}
-                        {showReschedule && (
-                            <div style={{ padding: '14px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', marginBottom: '16px' }}>
-                                <h4 style={{ fontSize: '0.875rem', fontWeight: 700, marginBottom: '10px' }}>🔄 Reagendar</h4>
-                                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '12px' }}>Máx. {getRule('reschedule_max_days')} dias · Mesma faixa ({detailBooking.tierApplied})</p>
-                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                    <input type="date" className="form-input" value={rescheduleDate}
-                                        onChange={e => setRescheduleDate(e.target.value)}
-                                        min={new Date().toISOString().split('T')[0]}
-                                        max={new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]}
-                                        style={{ flex: 1 }} />
-                                    <input type="time" className="form-input" value={rescheduleTime}
-                                        onChange={e => setRescheduleTime(e.target.value)} step={3600} style={{ width: 120 }} />
-                                    <button className="btn btn-primary btn-sm" onClick={handleReschedule}
-                                        disabled={rescheduling || !rescheduleDate || !rescheduleTime}>
-                                        {rescheduling ? '⏳' : '✅'} Confirmar
-                                    </button>
-                                </div>
-                                {rescheduleError && <div className="error-message" style={{ marginTop: '8px' }}>{rescheduleError}</div>}
-                            </div>
-                        )}
-
-                        {/* Actions */}
-                        <div className="modal-actions" style={{ justifyContent: 'space-between' }}>
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                                {canModifyBooking(detailBooking) && (
-                                    <button className="btn btn-secondary btn-sm" onClick={() => setShowReschedule(!showReschedule)}>
-                                        🔄 Reagendar
-                                    </button>
-                                )}
-                            </div>
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                                <button className="btn btn-secondary" onClick={() => setDetailBooking(null)}>Fechar</button>
-                                <button className="btn btn-primary" onClick={handleSaveDetail} disabled={saving}>
-                                    {saving ? '⏳ Salvando...' : '💾 Salvar'}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </ModalOverlay>
+                <BookingDetailModal
+                    booking={{
+                        id: detailBooking.id,
+                        date: detailBooking.date,
+                        startTime: detailBooking.startTime,
+                        endTime: detailBooking.endTime,
+                        tierApplied: detailBooking.tierApplied,
+                        status: detailBooking.status,
+                        price: detailBooking.price,
+                        clientNotes: detailBooking.clientNotes,
+                        adminNotes: detailBooking.adminNotes,
+                        platforms: detailBooking.platforms,
+                        platformLinks: detailBooking.platformLinks,
+                        addOns: detailBooking.addOns,
+                        durationMinutes: detailBooking.durationMinutes,
+                        peakViewers: detailBooking.peakViewers,
+                        chatMessages: detailBooking.chatMessages,
+                        audienceOrigin: detailBooking.audienceOrigin,
+                    }}
+                    onClose={() => setDetailBooking(null)}
+                    onSaved={() => { setDetailBooking(null); loadData(); }}
+                    allAddons={allAddons}
+                    contractDiscountPct={(() => {
+                        const parent = contracts.find(c => c.bookings?.some(b => b.id === detailBooking.id));
+                        return parent?.discountPct || 0;
+                    })()}
+                    contractAddOns={(() => {
+                        const parent = contracts.find(c => c.bookings?.some(b => b.id === detailBooking.id));
+                        return parent?.addOns || [];
+                    })()}
+                />
             )}
 
             {/* Contract Wizard Modal */}
@@ -761,17 +629,211 @@ export default function MyContractsPage() {
                     onComplete={loadData}
                 />
             )}
+
+            {/* Subscribe (Recurring) Modal */}
+            {showSubscribeModalFor && (
+                <ModalOverlay onClose={() => !subscribeLoading && setShowSubscribeModalFor(null)}>
+                    <div className="modal-content" style={{ maxWidth: '450px' }}>
+                        <div className="modal-header">
+                            <h2 style={{ fontSize: '1.25rem', fontWeight: 800 }}>Ativar Cobrança Automática</h2>
+                            <button className="btn-close" onClick={() => setShowSubscribeModalFor(null)} disabled={subscribeLoading}>×</button>
+                        </div>
+                        <div style={{ padding: '20px' }}>
+                            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                                O plano <strong>{showSubscribeModalFor.name} ({showSubscribeModalFor.tier})</strong> será cobrado mensalmente no seu cartão salvo de forma automática.
+                            </p>
+
+                            {savedCards.length > 0 ? (
+                                <div className="form-group">
+                                    <label className="form-label" style={{ fontWeight: 700 }}>Escolha o Cartão</label>
+                                    <div style={{ display: 'grid', gap: '8px' }}>
+                                        {savedCards.map(card => (
+                                            <div key={card.id} onClick={() => setSelectedCardId(card.id)}
+                                                style={{
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                    padding: '12px 16px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)',
+                                                    border: `2px solid ${selectedCardId === card.id ? 'var(--accent-primary)' : 'transparent'}`,
+                                                    cursor: 'pointer', transition: 'all 0.2s ease',
+                                                }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                    <span style={{ fontSize: '1.5rem' }}>💳</span>
+                                                    <div>
+                                                        <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                                                            {card.brand.toUpperCase()} final {card.last4}
+                                                        </div>
+                                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Exp {card.expMonth.toString().padStart(2, '0')}/{card.expYear.toString().slice(-2)}</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div style={{ background: '#FFF8E1', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid #FFE082', marginBottom: '20px' }}>
+                                    <span style={{ fontSize: '1.25rem' }}>⚠️</span>
+                                    <span style={{ fontSize: '0.875rem', color: '#F57F17', fontWeight: 600, display: 'block', marginTop: '8px' }}>
+                                        Você precisa adicionar um Cartão de Crédito primeiro em "Meus Pagamentos".
+                                    </span>
+                                </div>
+                            )}
+
+                            <div className="modal-actions" style={{ marginTop: '24px' }}>
+                                <button className="btn btn-secondary" onClick={() => setShowSubscribeModalFor(null)} disabled={subscribeLoading} style={{ flex: 1 }}>
+                                    Cancelar
+                                </button>
+                                <button className="btn btn-primary" onClick={handleSubscribe} disabled={subscribeLoading || savedCards.length === 0 || !selectedCardId} style={{ flex: 1 }}>
+                                    {subscribeLoading ? '⏳ Processando...' : 'Assinar Automaticamente'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </ModalOverlay>
+            )}
+
+            {/* Renew Modal */}
+            {showRenewModalFor && (
+                <ModalOverlay onClose={() => !renewLoading && setShowRenewModalFor(null)}>
+                    <div className="modal-content" style={{ maxWidth: '400px' }}>
+                        <div className="modal-header">
+                            <h2 style={{ fontSize: '1.25rem', fontWeight: 800 }}>Renovar Contrato</h2>
+                            <button className="btn-close" onClick={() => setShowRenewModalFor(null)} disabled={renewLoading}>×</button>
+                        </div>
+                        <div style={{ padding: '20px' }}>
+                            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '20px' }}>
+                                Renove seu plano <strong>{showRenewModalFor.tier}</strong> agora para garantir seu horário e preço.
+                            </p>
+
+                            <div className="form-group">
+                                <label className="form-label">Duração (Meses)</label>
+                                <select className="form-input" value={renewDuration} onChange={e => setRenewDuration(Number(e.target.value) as any)}>
+                                    <option value={3}>3 Meses</option>
+                                    <option value={6}>6 Meses</option>
+                                    <option value={12}>12 Meses</option>
+                                </select>
+                            </div>
+
+                            <div className="form-group" style={{ marginTop: '16px' }}>
+                                <label className="form-label">Método de Pagamento da Fatura</label>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                                    {getPaymentMethods().map(pm => (
+                                        <button key={pm.key} onClick={() => setRenewMethod(pm.key as 'PIX'|'CARTAO'|'BOLETO')}
+                                            style={{
+                                                padding: '10px 0', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)',
+                                                background: renewMethod === pm.key ? 'var(--bg-card)' : 'transparent', fontWeight: 600, fontSize: '0.8125rem',
+                                                borderColor: renewMethod === pm.key ? pm.color : 'var(--border-subtle)',
+                                                color: renewMethod === pm.key ? pm.color : 'var(--text-secondary)'
+                                            }}>
+                                            {pm.emoji} {pm.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="modal-actions" style={{ marginTop: '24px' }}>
+                                <button className="btn btn-secondary" onClick={() => setShowRenewModalFor(null)} disabled={renewLoading} style={{ flex: 1 }}>Voltar</button>
+                                <button className="btn btn-primary" onClick={handleRenew} disabled={renewLoading} style={{ flex: 1 }}>
+                                    {renewLoading ? '⏳ Gerando...' : 'Confirmar'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </ModalOverlay>
+            )}
+
         </div>
     );
 }
 
-function ContractCard({ contract: c, planConfig, allAddons, expanded, onToggle, onBookingClick, statusLabel, canModify, onRequestCancel, onBulkBooking, isArchived, isCancelled }: {
+function AwaitingPaymentBanner({ paymentDeadline, onPay, onExpire }: {
+    paymentDeadline: string | null;
+    onPay: () => void;
+    onExpire?: () => void;
+}) {
+    const [remaining, setRemaining] = useState(() => {
+        if (!paymentDeadline) return 600;
+        const diff = new Date(paymentDeadline).getTime() - Date.now();
+        return Math.max(0, Math.floor(diff / 1000));
+    });
+
+    useEffect(() => {
+        if (!paymentDeadline) return;
+        const timer = setInterval(() => {
+            const diff = new Date(paymentDeadline).getTime() - Date.now();
+            const secs = Math.max(0, Math.floor(diff / 1000));
+            setRemaining(secs);
+            if (secs <= 0) {
+                clearInterval(timer);
+                onExpire?.();
+            }
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [paymentDeadline, onExpire]);
+
+    const mins = Math.floor(remaining / 60);
+    const secs = remaining % 60;
+    const totalDuration = 600; // 10 min
+    const pct = Math.max(0, (remaining / totalDuration) * 100);
+    const timerColor = remaining <= 60 ? '#ef4444' : remaining <= 180 ? '#f59e0b' : '#d97706';
+
+    return (
+        <div style={{
+            background: 'rgba(217, 119, 6, 0.1)', border: '1px solid rgba(217, 119, 6, 0.2)',
+            borderLeft: '3px solid #d97706', padding: '16px', margin: '0 24px 16px 24px',
+            borderRadius: 'var(--radius-sm)',
+        }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                <div style={{ flex: 1 }}>
+                    <h4 style={{ fontSize: '0.875rem', fontWeight: 700, color: '#d97706', marginBottom: '4px' }}>
+                        💳 Pagamento Necessário
+                    </h4>
+                    <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginBottom: 0 }}>
+                        Complete o pagamento para ativar. O horário será liberado quando o tempo esgotar.
+                    </p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{
+                        display: 'flex', alignItems: 'baseline', gap: '2px',
+                        fontSize: '1.5rem', fontWeight: 800, fontVariantNumeric: 'tabular-nums',
+                        color: timerColor, minWidth: '65px', justifyContent: 'center',
+                    }}>
+                        <span>{String(mins).padStart(2, '0')}</span>
+                        <span style={{ opacity: 0.5, fontSize: '1.25rem' }}>:</span>
+                        <span>{String(secs).padStart(2, '0')}</span>
+                    </div>
+                    <button className="btn btn-primary btn-sm"
+                        onClick={(e) => { e.stopPropagation(); onPay(); }}
+                        style={{ whiteSpace: 'nowrap', minWidth: '130px', background: '#d97706', borderColor: '#d97706' }}>
+                        💳 Pagar Agora
+                    </button>
+                </div>
+            </div>
+            {/* Progress bar */}
+            <div style={{
+                height: 4, borderRadius: 2, background: 'var(--bg-elevated)',
+                marginTop: '10px', overflow: 'hidden',
+            }}>
+                <div style={{
+                    height: '100%', borderRadius: 2,
+                    background: timerColor,
+                    width: `${pct}%`,
+                    transition: 'width 1s linear, background 0.3s ease',
+                }} />
+            </div>
+        </div>
+    );
+}
+
+function ContractCard({ contract: c, planConfig, allAddons, expanded, onToggle, onBookingClick, statusLabel, canModify, onRequestCancel, onBulkBooking, isArchived, isCancelled, onPayContract, onRenewContract, onSubscribeContract, onExpireContract }: {
     contract: ContractWithStats; planConfig?: PricingConfig; allAddons: { key: string, name: string }[]; expanded: boolean; onToggle: () => void;
     onBookingClick: (b: ContractBooking) => void; statusLabel: (s: string) => string; canModify: (b: ContractBooking) => boolean;
     onRequestCancel?: (id: string, feeNote: string) => void;
     onBulkBooking?: () => void;
     isArchived?: boolean;
     isCancelled?: boolean;
+    onPayContract?: () => void;
+    onRenewContract?: () => void;
+    onSubscribeContract?: () => void;
+    onExpireContract?: () => void;
 }) {
     const bookings: ContractBooking[] = c.bookings || [];
     const totalBookings = c.type === 'FIXO' ? c.durationMonths * 4 : c.totalBookings;
@@ -826,6 +888,8 @@ function ContractCard({ contract: c, planConfig, allAddons, expanded, onToggle, 
                                         {isExpiring && <span className="badge" style={{ background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A' }}>⚠️ VENCE EM {daysLeft} DIAS</span>}
                                     </>
                                 )
+                            ) : c.status === 'AWAITING_PAYMENT' ? (
+                                <span className="badge" style={{ background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A', animation: 'pulse 2s infinite' }}>💳 AGUARDANDO PAGAMENTO</span>
                             ) : c.status === 'PENDING_CANCELLATION' ? (
                                 <span className="badge" style={{ background: '#FFF8E1', color: '#F57F17', border: '1px solid #FFE082' }}>AGUARDANDO CANCELAMENTO</span>
                             ) : c.status === 'PAUSED' ? (
@@ -839,6 +903,14 @@ function ContractCard({ contract: c, planConfig, allAddons, expanded, onToggle, 
                                 <>
                                     {new Date(c.startDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
                                     {' · '}<strong>uma gravação</strong>
+                                    {c.bookings?.[0]?.addOns && c.bookings[0].addOns.length > 0 && (
+                                        <>
+                                            {' · '}
+                                            <span style={{ color: 'var(--accent-primary)', fontWeight: 600 }}>
+                                                ✨ Inclusos: {c.bookings[0].addOns.map(ak => allAddons.find(a => a.key === ak)?.name || ak).join(', ')}
+                                            </span>
+                                        </>
+                                    )}
                                 </>
                             ) : (
                                 <>
@@ -867,6 +939,15 @@ function ContractCard({ contract: c, planConfig, allAddons, expanded, onToggle, 
                         <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▼</span>
                     </div>
                 </div>
+
+                {/* Awaiting Payment Banner */}
+                {c.status === 'AWAITING_PAYMENT' && onPayContract && (
+                    <AwaitingPaymentBanner
+                        paymentDeadline={c.paymentDeadline || null}
+                        onPay={onPayContract}
+                        onExpire={onExpireContract}
+                    />
+                )}
 
                 {/* Paused Banner */}
                 {c.status === 'PAUSED' && (
@@ -1056,10 +1137,16 @@ function ContractCard({ contract: c, planConfig, allAddons, expanded, onToggle, 
 
                     {c.status === 'ACTIVE' && (
                         <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap' }}>
-                            {isExpiring && (
+                            {isExpiring && onRenewContract && (
                                 <button className="btn btn-primary" style={{ fontSize: '0.75rem', padding: '6px 12px', background: 'var(--tier-comercial)', borderColor: 'var(--tier-comercial)', boxShadow: '0 4px 12px rgba(109, 40, 217, 0.3)' }}
-                                    onClick={(e) => { e.stopPropagation(); window.open(`https://wa.me/5521999999999?text=${encodeURIComponent(`Olá, meu contrato de ${c.durationMonths} meses (Plano ${c.tier}) está vencendo e quero renovar!`)}`, '_blank'); }}>
+                                    onClick={(e) => { e.stopPropagation(); onRenewContract(); }}>
                                     🔄 Renovar Contrato
+                                </button>
+                            )}
+                            {!isAvulso && c.status === 'ACTIVE' && onSubscribeContract && (
+                                <button className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '6px 12px' }}
+                                    onClick={(e) => { e.stopPropagation(); onSubscribeContract(); }}>
+                                    🔄 Ativar Recorrência (Stripe)
                                 </button>
                             )}
                             {c.type === 'FLEX' && (c.flexCreditsRemaining || 0) > 0 && onBulkBooking && (

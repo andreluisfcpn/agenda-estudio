@@ -2,10 +2,10 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { authenticate, authorize } from '../../middleware/auth';
-import { ContractType, Tier, ContractStatus, BookingStatus, PaymentMethod } from '@prisma/client';
+import { ContractType, Tier, ContractStatus, BookingStatus, PaymentMethod } from '../../generated/prisma/client';
 import { getBasePrice, getBasePriceDynamic, applyDiscount, calculateEndTime, generateTimeSlots } from '../../utils/pricing';
 import { getConfig, getConfigString } from '../../lib/businessConfig';
-import { createPayment as gatewayCreatePayment, updatePaymentWithGatewayResult } from '../../lib/paymentGateway';
+import { createPayment as gatewayCreatePayment, updatePaymentWithGatewayResult, validatePaymentMethod, getProviderForMethod, PaymentMethodDisabledError } from '../../lib/paymentGateway';
 
 const router = Router();
 
@@ -161,13 +161,10 @@ router.post('/', authenticate, authorize('ADMIN'), async (req: Request, res: Res
             payments.push({
                 userId: data.userId,
                 contractId: contract.id,
-                provider: 'CORA' as const,
+                provider: getProviderForMethod(contract.paymentMethod || 'CARTAO'),
                 amount: monthlyAmount,
                 status: 'PENDING' as const,
                 dueDate,
-                paymentUrl: `https://cora.br/pay/mock-${contract.id.slice(0, 8)}-${i}`,
-                pixString: '00020126580014br.gov.bcb.pix0136123e4567-e89b-12d3-a456-426614174000520400005303986540510.005802BR5913Buzios Studio6008BuziosRJ62070503***63041A2B',
-                boletoUrl: `https://cora.br/boleto/mock-${contract.id.slice(0, 8)}-${i}.pdf`,
             });
         }
 
@@ -236,6 +233,17 @@ router.post('/self', authenticate, async (req: Request, res: Response) => {
     try {
         const data = selfContractSchema.parse(req.body);
         const userId = req.user!.userId;
+
+        // Global guard: reject disabled payment methods
+        try {
+            await validatePaymentMethod(data.paymentMethod);
+        } catch (err) {
+            if (err instanceof PaymentMethodDisabledError) {
+                res.status(400).json({ error: err.message });
+                return;
+            }
+            throw err;
+        }
 
         // Validate first booking date is within configured window
         const firstBookingMinDays = await getConfig('first_booking_min_days');
@@ -383,7 +391,7 @@ router.post('/self', authenticate, async (req: Request, res: Response) => {
             payments.push({
                 userId,
                 contractId: contract.id,
-                provider: 'CORA' as const,
+                provider: getProviderForMethod(data.paymentMethod),
                 amount: monthlyAmount,
                 status: 'PENDING' as const,
                 dueDate,
@@ -401,6 +409,8 @@ router.post('/self', authenticate, async (req: Request, res: Response) => {
             orderBy: { dueDate: 'asc' },
         });
 
+        let firstClientSecret: string | null = null;
+
         for (const p of createdPayments) {
             try {
                 const result = await gatewayCreatePayment({
@@ -410,8 +420,15 @@ router.post('/self', authenticate, async (req: Request, res: Response) => {
                     customer: { name: p.user.name, email: p.user.email || '' },
                     dueDate: p.dueDate || new Date(),
                     paymentId: p.id,
+                    contractId: contract.id,
+                    userId,
                 });
                 await updatePaymentWithGatewayResult(p.id, result);
+
+                // Capture the first payment's clientSecret for inline card flow
+                if (!firstClientSecret && result.clientSecret) {
+                    firstClientSecret = result.clientSecret;
+                }
             } catch (err) {
                 console.error(`[Gateway] Failed to create payment for ${p.id}:`, err);
             }
@@ -420,6 +437,7 @@ router.post('/self', authenticate, async (req: Request, res: Response) => {
         res.status(201).json({
             contract,
             message: `Contrato ${data.type} criado com sucesso!`,
+            ...(firstClientSecret && { clientSecret: firstClientSecret }),
         });
     } catch (err) {
         if (err instanceof z.ZodError) {
@@ -688,6 +706,17 @@ router.post('/custom', authenticate, async (req: Request, res: Response) => {
         // Admin can create on behalf of a client
         const userId = (req.user!.role === 'ADMIN' && data.userId) ? data.userId : req.user!.userId;
 
+        // Global guard: reject disabled payment methods
+        try {
+            await validatePaymentMethod(data.paymentMethod);
+        } catch (err) {
+            if (err instanceof PaymentMethodDisabledError) {
+                res.status(400).json({ error: err.message });
+                return;
+            }
+            throw err;
+        }
+
         // ─── Volume calculations (mode-aware) ────────────────
         const frequency = data.frequency || 'WEEKLY';
         let totalSessions: number;
@@ -874,7 +903,7 @@ router.post('/custom', authenticate, async (req: Request, res: Response) => {
             payments.push({
                 userId,
                 contractId: contract.id,
-                provider: 'CORA' as const,
+                provider: getProviderForMethod(data.paymentMethod),
                 amount: cycleAmount,
                 status: 'PENDING' as const,
                 dueDate,
@@ -892,6 +921,8 @@ router.post('/custom', authenticate, async (req: Request, res: Response) => {
             orderBy: { dueDate: 'asc' },
         });
 
+        let firstClientSecret: string | null = null;
+
         for (const p of allPayments) {
             try {
                 const result = await gatewayCreatePayment({
@@ -901,8 +932,14 @@ router.post('/custom', authenticate, async (req: Request, res: Response) => {
                     customer: { name: userInfo?.name || 'Cliente', email: userInfo?.email || '' },
                     dueDate: p.dueDate || new Date(),
                     paymentId: p.id,
+                    contractId: contract.id,
+                    userId,
                 });
                 await updatePaymentWithGatewayResult(p.id, result);
+
+                if (!firstClientSecret && result.clientSecret) {
+                    firstClientSecret = result.clientSecret;
+                }
             } catch (err) {
                 console.error(`[Gateway] Failed to create payment for ${p.id}:`, err);
             }
@@ -934,6 +971,7 @@ router.post('/custom', authenticate, async (req: Request, res: Response) => {
                 totalBookingsGenerated: bookings.length,
             },
             message: `Plano Personalizado criado! ${bookings.length} sessões reservadas com ${discountPct}% de desconto.`,
+            ...(firstClientSecret && { clientSecret: firstClientSecret }),
         });
     } catch (err) {
         if (err instanceof z.ZodError) {
@@ -1265,10 +1303,352 @@ const serviceContractSchema = z.object({
     durationMonths: z.number().int().optional(),
 });
 
+// ─── POST /api/contracts/:id/pay ─────────────────────────
+// Client pays a contract that is AWAITING_PAYMENT
+
+const contractPaySchema = z.object({
+    paymentType: z.enum(['CREDIT', 'DEBIT']).optional(),
+    installments: z.number().int().min(1).max(12).optional(),
+});
+
+router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
+    try {
+        const contractId = req.params.id as string;
+        const userId = req.user!.userId;
+        const data = contractPaySchema.parse(req.body);
+
+        const contract = await prisma.contract.findFirst({
+            where: { id: contractId, userId, status: 'AWAITING_PAYMENT' },
+        });
+
+        if (!contract) {
+            res.status(404).json({ error: 'Contrato não encontrado ou não está aguardando pagamento.' });
+            return;
+        }
+
+        // Calculate amount (first monthly payment)
+        const tierPrice = await getBasePriceDynamic(contract.tier);
+        const discountedPrice = applyDiscount(tierPrice, contract.discountPct);
+        const sessionsPerMonth = await getConfig('sessions_per_month');
+        const monthlyAmount = sessionsPerMonth * discountedPrice;
+
+        // Max installments = durationMonths (exception: avulso = 3x)
+        const isAvulso = contract.durationMonths === 1;
+        const maxInstallments = isAvulso ? 3 : contract.durationMonths;
+        const installments = Math.min(data.installments || 1, maxInstallments);
+
+        // Import Stripe functions
+        const { stripeCreatePaymentIntent, stripeGetOrCreateCustomer, isStripeEnabled } = await import('../../lib/stripeService');
+
+        if (!(await isStripeEnabled())) {
+            res.status(503).json({ error: 'Stripe não está habilitado.' });
+            return;
+        }
+
+        const customerId = await stripeGetOrCreateCustomer(userId);
+
+        // Create Payment record
+        const payment = await prisma.payment.create({
+            data: {
+                userId,
+                contractId,
+                provider: 'STRIPE',
+                amount: monthlyAmount,
+                status: 'PENDING',
+                installments,
+                paymentType: data.paymentType || 'CREDIT',
+            },
+        });
+
+        const piResult = await stripeCreatePaymentIntent({
+            amount: monthlyAmount,
+            customerId,
+            description: `Contrato "${contract.name}" - ${contract.tier} ${contract.durationMonths}m`,
+            paymentId: payment.id,
+            userId,
+            contractId,
+            installmentsEnabled: installments > 1,
+        });
+
+        await prisma.payment.update({
+            where: { id: payment.id },
+            data: { providerRef: piResult.paymentIntentId },
+        });
+
+        res.json({
+            clientSecret: piResult.clientSecret,
+            paymentId: payment.id,
+            amount: monthlyAmount,
+            maxInstallments,
+            message: 'PaymentIntent criado. Complete o pagamento para ativar o contrato.',
+        });
+    } catch (err: any) {
+        console.error('[CONTRACT-PAY]', err);
+        if (err instanceof z.ZodError) {
+            res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
+            return;
+        }
+        res.status(500).json({ error: 'Erro ao processar pagamento.' });
+    }
+});
+
+// ─── POST /api/contracts/:id/confirm-payment ────────────
+// Called after successful Stripe payment to activate an AWAITING_PAYMENT contract
+
+router.post('/:id/confirm-payment', authenticate, async (req: Request, res: Response) => {
+    try {
+        const contractId = req.params.id as string;
+        const userId = req.user!.userId;
+        const { paymentIntentId } = req.body;
+
+        const contract = await prisma.contract.findFirst({
+            where: { id: contractId, userId, status: 'AWAITING_PAYMENT' },
+        });
+
+        if (!contract) {
+            res.status(404).json({ error: 'Contrato não encontrado ou já está ativo.' });
+            return;
+        }
+
+        // Activate contract
+        await prisma.contract.update({
+            where: { id: contractId },
+            data: { status: 'ACTIVE', paymentDeadline: null },
+        });
+
+        // Mark payment as PAID
+        if (paymentIntentId) {
+            await prisma.payment.updateMany({
+                where: {
+                    contractId,
+                    providerRef: paymentIntentId,
+                    status: 'PENDING',
+                },
+                data: { status: 'PAID' },
+            });
+        }
+
+        res.json({
+            contract: { id: contractId, status: 'ACTIVE' },
+            message: '✅ Contrato ativado! Agora você pode agendar seus horários.',
+        });
+    } catch (err) {
+        console.error('[CONTRACT-CONFIRM-PAYMENT]', err);
+        res.status(500).json({ error: 'Erro ao confirmar pagamento do contrato.' });
+    }
+});
+
+// ─── POST /api/contracts/:id/subscribe ──────────────────
+// Setup recurring Stripe subscription for an existing contract (Client-side)
+const subscribeSchema = z.object({
+    paymentMethodId: z.string().min(1, 'Payment Method ID obrigatório'),
+    durationMonths: z.number().int().min(1).max(12).optional(),
+});
+
+router.post('/:id/subscribe', authenticate, async (req: Request, res: Response) => {
+    try {
+        const contractId = req.params.id as string;
+        const userId = req.user!.userId;
+        const data = subscribeSchema.parse(req.body);
+
+        const contract = await prisma.contract.findFirst({
+            where: { id: contractId, userId },
+        });
+
+        if (!contract) {
+            res.status(404).json({ error: 'Contrato não encontrado.' });
+            return;
+        }
+
+        if (contract.status !== 'ACTIVE' && contract.status !== 'AWAITING_PAYMENT') {
+            res.status(400).json({ error: 'Só é possível assinar contratos ativos ou aguardando pagamento.' });
+            return;
+        }
+
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+        if (!user || !user.stripeCustomerId) {
+            res.status(400).json({ error: 'Customer não configurado no Stripe.' });
+            return;
+        }
+
+        const duration = data.durationMonths || contract.durationMonths;
+
+        // Calculate amount based on pricing
+        const { getBasePriceDynamic, applyDiscount } = await import('../../utils/pricing');
+        const basePrice = await getBasePriceDynamic(contract.tier as any);
+        const amountBRL = applyDiscount(basePrice * 4, contract.discountPct); // monthly amount
+        
+        // Ensure discount is applied if duration is 3 or 6 months
+        let finalAmount = amountBRL;
+        if (duration === 3) {
+            const d3 = await getConfig('discount_3months');
+            finalAmount = applyDiscount(basePrice * 4, d3);
+        } else if (duration === 6) {
+            const d6 = await getConfig('discount_6months');
+            finalAmount = applyDiscount(basePrice * 4, d6);
+        }
+        
+        // Convert to cents
+        const amountCents = Math.round(finalAmount * 100);
+
+        const { stripeCreateSubscription } = await import('../../lib/stripeService');
+        
+        // Create initial payment record
+        const payment = await prisma.payment.create({
+            data: {
+                userId,
+                contractId: contract.id,
+                amount: finalAmount,
+                provider: 'STRIPE',
+                status: 'PENDING',
+                paymentType: 'CREDIT',
+            }
+        });
+
+        const subResult = await stripeCreateSubscription({
+            customerId: user.stripeCustomerId,
+            paymentMethodId: data.paymentMethodId,
+            amount: amountCents,
+            contractId: contract.id,
+            userId: user.id,
+            paymentId: payment.id,
+            description: `Assinatura ${contract.name} (${contract.tier})`,
+            durationMonths: duration,
+        });
+
+        // Update payment providerRef if subscription created successfully
+        if (subResult.subscriptionId) {
+            await prisma.payment.update({
+                where: { id: payment.id },
+                data: { providerRef: subResult.subscriptionId }
+            });
+        }
+
+        // Activate the contract if it wasn't already
+        if (contract.status === 'AWAITING_PAYMENT') {
+            await prisma.contract.update({
+                where: { id: contract.id },
+                data: { status: 'ACTIVE', paymentDeadline: null, durationMonths: duration },
+            });
+        } else if (data.durationMonths && data.durationMonths !== contract.durationMonths) {
+            await prisma.contract.update({
+                where: { id: contract.id },
+                data: { durationMonths: duration },
+            });
+        }
+
+        res.json({
+            success: true,
+            subscriptionId: subResult.subscriptionId,
+            status: subResult.status,
+            message: 'Assinatura configurada com sucesso.',
+        });
+
+    } catch (err: any) {
+        console.error('[SUBSCRIBE]', err);
+        if (err instanceof z.ZodError) {
+            res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
+            return;
+        }
+        res.status(500).json({ error: err.message || 'Erro ao configurar assinatura.' });
+    }
+});
+
+// ─── POST /api/contracts/:id/client-renew ───────────────
+// Allows client to renew their active or expired contract manually
+const clientRenewSchema = z.object({
+    durationMonths: z.number().int().min(1).max(12),
+    paymentMethod: z.enum(['PIX', 'CARTAO', 'BOLETO']).optional(),
+    installments: z.number().int().min(1).max(12).optional(),
+});
+
+router.post('/:id/client-renew', authenticate, async (req: Request, res: Response) => {
+    try {
+        const id = req.params.id as string;
+        const userId = req.user!.userId;
+        const data = clientRenewSchema.parse(req.body);
+
+        const original = await prisma.contract.findFirst({ where: { id, userId } });
+        if (!original) { res.status(404).json({ error: 'Contrato não encontrado.' }); return; }
+        if (!['ACTIVE', 'EXPIRED'].includes(original.status)) { 
+            res.status(400).json({ error: 'Só é possível renovar contratos ativos ou expirados.' }); 
+            return; 
+        }
+
+        // Calculate discount based on duration
+        const d6 = await getConfig('discount_6months');
+        const d3 = await getConfig('discount_3months');
+        const discountPct = data.durationMonths === 6 ? d6 : (data.durationMonths === 3 ? d3 : 0);
+
+        // Start date: immediately if expired, or end of current contract if active
+        let start = new Date();
+        if (original.status === 'ACTIVE' && new Date(original.endDate) > start) {
+            start = new Date(original.endDate);
+        }
+        
+        const end = new Date(start);
+        end.setMonth(end.getMonth() + data.durationMonths);
+
+        const flexCreditsTotal = original.type === 'FLEX' ? data.durationMonths * 4 : undefined;
+
+        // Create the new contract as AWAITING_PAYMENT
+        const pDeadline = new Date();
+        pDeadline.setDate(pDeadline.getDate() + 3); // 3 days to pay
+
+        const renewed = await prisma.contract.create({
+            data: {
+                name: original.name,
+                userId: original.userId,
+                type: original.type,
+                tier: original.tier,
+                durationMonths: data.durationMonths,
+                discountPct,
+                startDate: start,
+                endDate: end,
+                status: 'AWAITING_PAYMENT',
+                paymentDeadline: pDeadline,
+                fixedDayOfWeek: original.type === 'FIXO' ? original.fixedDayOfWeek : null,
+                fixedTime: original.type === 'FIXO' ? original.fixedTime : null,
+                contractUrl: original.contractUrl,
+                addOns: original.addOns,
+                paymentMethod: data.paymentMethod || original.paymentMethod,
+                flexCreditsTotal: flexCreditsTotal ?? null,
+                flexCreditsRemaining: flexCreditsTotal ?? null,
+                flexCycleStart: original.type === 'FLEX' ? start : null,
+                renewedFromId: original.id,
+            },
+        });
+
+        // Audit log
+        const { logAudit } = await import('../../lib/audit');
+        await logAudit('CONTRACT', renewed.id, 'RENEWAL_REQUESTED', userId, { fromContractId: original.id, durationMonths: data.durationMonths });
+
+        res.status(201).json({ contract: renewed, message: 'Renovação iniciada com sucesso. Realize o pagamento.' });
+    } catch (err: any) {
+        console.error('[CLIENT-RENEW]', err);
+        if (err instanceof z.ZodError) {
+            res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
+            return;
+        }
+        res.status(500).json({ error: err.message || 'Erro ao processar renovação.' });
+    }
+});
+
 router.post('/service', authenticate, async (req: Request, res: Response) => {
     try {
         const data = serviceContractSchema.parse(req.body);
         const userId = req.user!.userId;
+
+        // Global guard: reject disabled payment methods
+        try {
+            await validatePaymentMethod(data.paymentMethod);
+        } catch (err) {
+            if (err instanceof PaymentMethodDisabledError) {
+                res.status(400).json({ error: err.message });
+                return;
+            }
+            throw err;
+        }
 
         const addon = await prisma.addOnConfig.findUnique({ where: { key: data.serviceKey } });
         if (!addon) {
@@ -1321,7 +1701,7 @@ router.post('/service', authenticate, async (req: Request, res: Response) => {
             data: {
                 userId,
                 contractId: contract.id,
-                provider: 'CORA',
+                provider: getProviderForMethod(data.paymentMethod),
                 amount: paymentAmount,
                 status: 'PENDING',
                 dueDate: startDate,
@@ -1330,7 +1710,8 @@ router.post('/service', authenticate, async (req: Request, res: Response) => {
 
         // Dispatch to gateway (Cora/Stripe)
         const userInfo = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } });
-        let checkoutUrl = `/checkout/payment-method?paymentId=${payment.id}`;
+        let checkoutUrl: string | undefined = undefined;
+        let clientSecret: string | undefined = undefined;
         try {
             const result = await gatewayCreatePayment({
                 paymentMethod: data.paymentMethod as 'PIX' | 'BOLETO' | 'CARTAO',
@@ -1339,16 +1720,20 @@ router.post('/service', authenticate, async (req: Request, res: Response) => {
                 customer: { name: userInfo?.name || 'Cliente', email: userInfo?.email || '' },
                 dueDate: startDate,
                 paymentId: payment.id,
+                contractId: contract.id,
+                userId,
             });
             await updatePaymentWithGatewayResult(payment.id, result);
             if (result.paymentUrl) checkoutUrl = result.paymentUrl;
+            if (result.clientSecret) clientSecret = result.clientSecret;
         } catch (err) {
             console.error(`[Gateway] Service payment fallback:`, err);
         }
 
         res.status(201).json({
             contract,
-            checkoutUrl,
+            ...(checkoutUrl && { checkoutUrl }),
+            ...(clientSecret && { clientSecret }),
             message: `Serviço ${addon.name} contratado com sucesso!`,
         });
     } catch (err) {

@@ -18,6 +18,8 @@ import {
     User,
     Pencil,
     LogOut,
+    Wallet,
+    Sparkles,
 } from 'lucide-react';
 
 interface NavItemProps {
@@ -179,6 +181,7 @@ export default function Sidebar({ collapsed, onProfileClick }: SidebarProps) {
                     <>
                         <NavItem to="/my-bookings" icon={Clapperboard} label="Minhas Gravações" collapsed={collapsed} />
                         <NavItem to="/my-contracts" icon={FileText} label="Meus Contratos" collapsed={collapsed} />
+                        <NavItem to="/meus-pagamentos" icon={Wallet} label="Pagamentos" collapsed={collapsed} />
                     </>
                 )}
 
@@ -195,6 +198,7 @@ export default function Sidebar({ collapsed, onProfileClick }: SidebarProps) {
                         <NavItem to="/admin/clients" icon={Users} label="Clientes" collapsed={collapsed} />
                         <NavItem to="/admin/contracts" icon={FileSignature} label="Contratos" collapsed={collapsed} />
                         <NavItem to="/admin/pricing" icon={BadgeDollarSign} label="Planos & Valores" collapsed={collapsed} />
+                        <NavItem to="/admin/services" icon={Sparkles} label="Serviços" collapsed={collapsed} />
                         <NavItem to="/admin/finance" icon={CreditCard} label="Financeiro" collapsed={collapsed} />
                         <NavItem to="/admin/reports" icon={BarChart3} label="Relatórios" collapsed={collapsed} />
                     </>

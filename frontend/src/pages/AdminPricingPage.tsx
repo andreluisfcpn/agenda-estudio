@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { pricingApi, PricingConfig, AddOnConfig, BusinessConfigItem, PaymentMethodConfigItem, integrationsApi, IntegrationSummary } from '../api/client';
+import { pricingApi, PricingConfig, BusinessConfigItem, PaymentMethodConfigItem, integrationsApi, IntegrationSummary } from '../api/client';
 import { setPaymentMethods as setCachedPaymentMethods } from '../constants/paymentMethods';
 
 function formatBRL(cents: number): string {
@@ -22,13 +22,11 @@ const GROUP_LABELS: Record<string, { label: string; emoji: string; desc: string;
 };
 
 export default function AdminPricingPage() {
-    const [tab, setTab] = useState<'tiers' | 'addons' | 'rules' | 'payments' | 'integrations'>('tiers');
+    const [tab, setTab] = useState<'tiers' | 'rules' | 'payments' | 'integrations'>('tiers');
 
     const [pricing, setPricing] = useState<PricingConfig[]>([]);
     const [tierEdited, setTierEdited] = useState(false);
 
-    const [addons, setAddons] = useState<AddOnConfig[]>([]);
-    const [addonEdited, setAddonEdited] = useState(false);
 
     const [configs, setConfigs] = useState<BusinessConfigItem[]>([]);
     const [configEdited, setConfigEdited] = useState(false);
@@ -54,7 +52,6 @@ export default function AdminPricingPage() {
     const loadAll = async () => {
         setLoading(true);
         try { const res = await pricingApi.get(); setPricing(res.pricing); } catch (err) { console.error(err); }
-        try { const res = await pricingApi.getAddons(); setAddons(res.addons); } catch (err) { console.error(err); }
         try {
             const res = await pricingApi.getBusinessConfig();
             setConfigs(res.configs);
@@ -116,21 +113,6 @@ export default function AdminPricingPage() {
         finally { setSaving(false); }
     };
 
-    const handleAddonChange = (key: string, field: string, value: string) => {
-        setAddons(prev => prev.map(a => {
-            if (a.key !== key) return a;
-            if (field === 'price') return { ...a, price: Math.round(parseFloat(value.replace(',', '.')) * 100) || 0 };
-            return { ...a, [field]: value };
-        }));
-        setAddonEdited(true); setSuccess('');
-    };
-
-    const handleSaveAddons = async () => {
-        setSaving(true); setError('');
-        try { await pricingApi.updateAddons(addons); showMsg('✅ Serviços extras atualizados!'); setAddonEdited(false); }
-        catch (err: any) { setError(err.message); }
-        finally { setSaving(false); }
-    };
 
     const handleConfigChange = (key: string, value: string) => {
         setConfigs(prev => prev.map(c => c.key === key ? { ...c, value } : c));
@@ -171,8 +153,8 @@ export default function AdminPricingPage() {
         finally { setSaving(false); }
     };
 
-    const isEdited = tab === 'tiers' ? tierEdited : tab === 'addons' ? addonEdited : tab === 'rules' ? configEdited : tab === 'payments' ? pmEdited : false;
-    const handleSave = tab === 'tiers' ? handleSaveTiers : tab === 'addons' ? handleSaveAddons : tab === 'rules' ? handleSaveConfigs : handleSavePaymentMethods;
+    const isEdited = tab === 'tiers' ? tierEdited : tab === 'rules' ? configEdited : tab === 'payments' ? pmEdited : false;
+    const handleSave = tab === 'tiers' ? handleSaveTiers : tab === 'rules' ? handleSaveConfigs : handleSavePaymentMethods;
 
     if (loading) return <div className="loading-spinner"><div className="spinner" /></div>;
 
@@ -213,7 +195,6 @@ export default function AdminPricingPage() {
             }}>
                 {([
                     { key: 'tiers' as const, label: '🎚️ Faixas de Preço' },
-                    { key: 'addons' as const, label: '✨ Serviços Extras' },
                     { key: 'rules' as const, label: '⚙️ Planos & Regras' },
                     { key: 'payments' as const, label: '💳 Pagamentos' },
                     { key: 'integrations' as const, label: '🔌 Integrações' },
@@ -305,60 +286,6 @@ export default function AdminPricingPage() {
                 </div>
             )}
 
-            {/* ═══════════════════════════════════════════
-               TAB: SERVIÇOS EXTRAS
-            ═══════════════════════════════════════════ */}
-            {tab === 'addons' && (
-                <div style={{ display: 'grid', gap: '16px', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
-                    {addons.map(addon => (
-                        <div key={addon.key} style={{
-                            padding: '24px', borderRadius: '16px',
-                            background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
-                        }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                                <div>
-                                    <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>{addon.name}</div>
-                                    <span style={{
-                                        fontSize: '0.625rem', color: 'var(--text-muted)', background: 'var(--bg-elevated)',
-                                        padding: '2px 8px', borderRadius: '6px', display: 'inline-block', marginTop: '4px',
-                                        fontFamily: "'JetBrains Mono', monospace",
-                                    }}>
-                                        {addon.key}
-                                    </span>
-                                </div>
-                                {addon.monthly && (
-                                    <span style={{
-                                        fontSize: '0.625rem', fontWeight: 700, letterSpacing: '0.05em',
-                                        background: 'rgba(45,212,191,0.12)', color: '#2dd4bf',
-                                        padding: '3px 10px', borderRadius: '20px', textTransform: 'uppercase',
-                                    }}>Mensal</span>
-                                )}
-                            </div>
-
-                            <div className="form-group">
-                                <label className="form-label">Nome</label>
-                                <input className="form-input" value={addon.name} onChange={e => handleAddonChange(addon.key, 'name', e.target.value)} />
-                            </div>
-
-                            <div className="form-group">
-                                <label className="form-label">Preço (R$)</label>
-                                <div style={{ position: 'relative' }}>
-                                    <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontWeight: 600 }}>R$</span>
-                                    <input className="form-input" style={{ paddingLeft: 40, fontWeight: 700, fontSize: '1.125rem' }}
-                                        type="text" value={(addon.price / 100).toFixed(2).replace('.', ',')}
-                                        onChange={e => handleAddonChange(addon.key, 'price', e.target.value)} />
-                                </div>
-                            </div>
-
-                            <div className="form-group">
-                                <label className="form-label">Descrição</label>
-                                <textarea className="form-input" style={{ minHeight: 60, resize: 'vertical', fontFamily: 'inherit', fontSize: '0.8125rem' }}
-                                    value={addon.description || ''} onChange={e => handleAddonChange(addon.key, 'description', e.target.value)} />
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
 
             {/* ═══════════════════════════════════════════
                TAB: PLANOS & REGRAS

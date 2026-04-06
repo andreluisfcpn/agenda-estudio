@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { authenticate, authorize } from '../../middleware/auth';
-import { PaymentStatus, PaymentMethod } from '@prisma/client';
+import { PaymentStatus, PaymentMethod } from '../../generated/prisma/client';
 
 const router = Router();
 
@@ -171,6 +171,37 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request<{ id:
         }
         console.error('Erro ao atualizar pagamento:', err);
         res.status(500).json({ error: 'Erro ao atualizar pagamento.' });
+    }
+});
+
+// ─── GET /api/payments/:id/status (CLIENT) ──────────────
+// Lightweight polling endpoint for PIX/Boleto status checks
+
+router.get('/:id/status', authenticate, async (req: Request, res: Response) => {
+    try {
+        const id = req.params.id as string;
+        const userId = req.user!.userId;
+        const isAdmin = req.user!.role === 'ADMIN';
+
+        const payment = await prisma.payment.findFirst({
+            where: isAdmin ? { id } : { id, userId },
+            select: { status: true, provider: true, pixString: true, boletoUrl: true },
+        });
+
+        if (!payment) {
+            res.status(404).json({ status: 'NOT_FOUND' });
+            return;
+        }
+
+        res.json({
+            status: payment.status,
+            provider: payment.provider,
+            pixString: payment.pixString,
+            boletoUrl: payment.boletoUrl,
+        });
+    } catch (err) {
+        console.error('Erro ao consultar status do pagamento:', err);
+        res.status(500).json({ error: 'Erro ao consultar status.' });
     }
 });
 

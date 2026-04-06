@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Clock, Loader2, Ban } from 'lucide-react';
-import { publicApi, PublicDayAvailability, PublicSlot } from '../api/client';
+import { publicApi, pricingApi, PublicDayAvailability, PublicSlot } from '../api/client';
 
 const COLORS = {
     primary: '#006C89',
@@ -42,7 +42,7 @@ function addSlotEnd(time: string): string {
     return `${String(eh).padStart(2, '0')}:${String(em).padStart(2, '0')}`;
 }
 
-const TIER_LABELS: Record<string, string> = {
+const FALLBACK_TIER_LABELS: Record<string, string> = {
     COMERCIAL: 'Comercial',
     AUDIENCIA: 'Audiência',
     SABADO: 'Sábado',
@@ -51,6 +51,7 @@ const TIER_LABELS: Record<string, string> = {
 export default function PublicCalendarGrid({ onSlotSelect }: { onSlotSelect?: (date: string, slot: PublicSlot) => void }) {
     const [weekStart, setWeekStart] = useState(todayISO());
     const [days, setDays] = useState<PublicDayAvailability[]>([]);
+    const [pricingConfigs, setPricingConfigs] = useState<any[]>([]);
     const [selectedIdx, setSelectedIdx] = useState(0);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -85,6 +86,10 @@ export default function PublicCalendarGrid({ onSlotSelect }: { onSlotSelect?: (d
         } finally {
             setLoading(false);
         }
+    }, []);
+
+    useEffect(() => {
+        pricingApi.get().then((res: any) => setPricingConfigs(res.pricing)).catch(() => {});
     }, []);
 
     useEffect(() => {
@@ -221,7 +226,7 @@ export default function PublicCalendarGrid({ onSlotSelect }: { onSlotSelect?: (d
                                             </div>
                                             {slot.tier && (
                                                 <div style={{ fontSize: '0.72rem', opacity: 0.5, marginTop: '2px' }}>
-                                                    {TIER_LABELS[slot.tier] || slot.tier}
+                                                    {pricingConfigs.find(p => p.tier === slot.tier?.toUpperCase())?.label || FALLBACK_TIER_LABELS[slot.tier?.toUpperCase()] || slot.tier}
                                                 </div>
                                             )}
                                         </div>

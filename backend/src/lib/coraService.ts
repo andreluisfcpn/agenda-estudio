@@ -8,6 +8,7 @@
 import { prisma } from './prisma';
 import https from 'https';
 import { URL } from 'url';
+import { randomUUID } from 'crypto';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -67,11 +68,11 @@ let _tokenCache: { token: string; expiresAt: number } | null = null;
 const CORA_URLS = {
     sandbox: {
         auth: 'https://matls-clients.api.stage.cora.com.br/token',
-        api: 'https://api.stage.cora.com.br',
+        api: 'https://matls-clients.api.stage.cora.com.br',
     },
     production: {
         auth: 'https://matls-clients.api.cora.com.br/token',
-        api: 'https://api.cora.com.br',
+        api: 'https://matls-clients.api.cora.com.br',
     },
 };
 
@@ -120,6 +121,10 @@ function httpsRequest(
             key: options.key,
             rejectUnauthorized: true,
         };
+
+        if (options.body) {
+            (reqOptions.headers as Record<string, string>)['Content-Length'] = Buffer.byteLength(options.body, 'utf-8').toString();
+        }
 
         const req = https.request(reqOptions, (res) => {
             const chunks: Buffer[] = [];
@@ -172,6 +177,10 @@ function httpsRequestWithToken(
         // mTLS certs if provided (Cora requires mTLS on ALL endpoints)
         if (options.cert) reqOptions.cert = options.cert;
         if (options.key) reqOptions.key = options.key;
+
+        if (options.body) {
+            (reqOptions.headers as Record<string, string>)['Content-Length'] = Buffer.byteLength(options.body, 'utf-8').toString();
+        }
 
         const req = https.request(reqOptions, (res) => {
             const chunks: Buffer[] = [];
@@ -239,6 +248,7 @@ export async function coraCreateBoleto(payload: CoraBoletoPayload): Promise<Cora
     if (!setup) throw new Error('Cora integration not configured');
 
     const token = await coraAuthenticate();
+    // Clear cached token if it was obtained without scopes
     const { config, environment } = setup;
     const urls = CORA_URLS[environment as keyof typeof CORA_URLS] || CORA_URLS.sandbox;
 
@@ -254,7 +264,15 @@ export async function coraCreateBoleto(payload: CoraBoletoPayload): Promise<Cora
             name: payload.customer.name,
             email: payload.customer.email,
             document: payload.customer.document,
-            address: payload.customer.address,
+            address: payload.customer.address ? {
+                street: payload.customer.address.street,
+                number: payload.customer.address.number,
+                district: payload.customer.address.district,
+                city: payload.customer.address.city,
+                state: payload.customer.address.state,
+                complement: 'N/A',
+                zip_code: payload.customer.address.zipCode,
+            } : undefined,
         },
         services: [{
             name: payload.description,
@@ -265,6 +283,7 @@ export async function coraCreateBoleto(payload: CoraBoletoPayload): Promise<Cora
             ...(payload.finePercentage ? { fine: { percentage: payload.finePercentage } } : {}),
             ...(payload.interestPercentage ? { interest: { type: 'MONTHLY_PERCENTAGE', value: payload.interestPercentage } } : {}),
         },
+        payment_forms: ['BANK_SLIP']
     });
 
     const response = await httpsRequestWithToken(`${urls.api}/v2/invoices`, {
@@ -272,7 +291,7 @@ export async function coraCreateBoleto(payload: CoraBoletoPayload): Promise<Cora
         headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
-            'Idempotency-Key': `boleto-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            'Idempotency-Key': randomUUID(),
         },
         body,
         cert: config.certificatePem,
@@ -295,49 +314,75 @@ export async function coraCreateBoleto(payload: CoraBoletoPayload): Promise<Cora
     };
 }
 
-/** PIX QR Code: POST /v2/pix-qrcode (separate Cora endpoint) */
+/** PIX QR Code via Cora Invoices: POST /v2/invoices */
 async function coraCreatePixQrCode(
     payload: CoraBoletoPayload,
     token: string,
     urls: { auth: string; api: string },
     config: CoraConfig
 ): Promise<CoraBoletoResult> {
+    // Force fresh token (clear cache) to avoid stale tokens
+    _tokenCache = null;
+    const freshToken = await coraAuthenticate();
+
     const body = JSON.stringify({
         code: `pix-${Date.now()}`,
-        amount: payload.amount,
         customer: {
             name: payload.customer.name,
             email: payload.customer.email,
             document: payload.customer.document,
+            address: payload.customer.address ? {
+                street: payload.customer.address.street,
+                number: payload.customer.address.number,
+                district: payload.customer.address.district,
+                city: payload.customer.address.city,
+                state: payload.customer.address.state,
+                complement: 'N/A',
+                zip_code: payload.customer.address.zipCode,
+            } : undefined,
         },
-        description: payload.description,
-        expiration_date: payload.dueDate,
+        services: [{
+            name: payload.description,
+            amount: payload.amount,
+        }],
+        payment_terms: {
+            due_date: payload.dueDate,
+        },
+        payment_forms: ['PIX', 'BANK_SLIP']
     });
 
-    const response = await httpsRequestWithToken(`${urls.api}/v2/pix-qrcode`, {
+    console.log('[Cora PIX] URL:', `${urls.api}/v2/invoices`);
+    console.log('[Cora PIX] Body:', body);
+
+    const response = await httpsRequestWithToken(`${urls.api}/v2/invoices`, {
         method: 'POST',
         headers: {
-            'Authorization': `Bearer ${token}`,
+            'Authorization': `Bearer ${freshToken}`,
             'Content-Type': 'application/json',
-            'Idempotency-Key': `pix-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            'Idempotency-Key': randomUUID(),
         },
         body,
         cert: config.certificatePem,
         key: config.privateKeyPem,
     });
 
+    console.log('[Cora PIX] Response status:', response.status);
+    console.log('[Cora PIX] Response body:', response.body);
+
     if (response.status >= 400) {
         throw new Error(`Cora create PIX QR code failed (${response.status}): ${response.body}`);
     }
 
     const result = JSON.parse(response.body);
+    // Per Cora docs: PIX data is at result.pix.emv (v2 invoices response)
+    const pixData = result.pix || result.payment_options?.pix;
 
     return {
         id: result.id,
-        barcode: '',
-        boletoUrl: '',
-        pixString: result.emv || result.pix_string || result.qr_code_text || '',
-        qrCodeBase64: result.qr_code_base64 || result.image_base64 || undefined,
+        barcode: result.barcode || result.digitable_line || '',
+        boletoUrl: result.payment_url || result.bank_slip_url || '',
+        pixString: pixData?.emv || result.emv || '',
+        qrCodeBase64: pixData?.qr_code_base64 || result.qr_code_base64 || undefined,
         status: result.status || 'PENDING',
     };
 }
