@@ -273,7 +273,8 @@ export async function stripeCreatePaymentIntent(opts: CreatePaymentIntentOpts): 
     if (opts.paymentMethodTypes) {
         params.payment_method_types = opts.paymentMethodTypes;
     } else {
-        params.automatic_payment_methods = { enabled: true };
+        // Disable redirect-based methods to avoid requiring return_url
+        params.automatic_payment_methods = { enabled: true, allow_redirects: 'never' };
     }
 
     // Enable installments for card payments
@@ -294,8 +295,12 @@ export async function stripeCreatePaymentIntent(opts: CreatePaymentIntentOpts): 
         }
     }
 
+    // Idempotency key must include ALL varying params to prevent collisions
+    // when retrying with a different card or different amount
+    const idempotencyKey = `pi-${opts.paymentId}-${opts.amount}-${opts.savedPaymentMethodId || 'new'}`;
+
     const intent = await stripe.paymentIntents.create(params, {
-        idempotencyKey: `pi-${opts.paymentId}-${opts.amount}`,
+        idempotencyKey,
     });
 
     return {

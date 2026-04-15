@@ -271,6 +271,44 @@ router.post('/stripe', async (req: Request, res: Response) => {
                     }
                 }
             }
+
+            // Auto-save card when setup_future_usage was set (user opted to save)
+            const pmId = pi.payment_method;
+            const custId = pi.customer;
+            if (pi.setup_future_usage && pmId && custId) {
+                try {
+                    const user = await prisma.user.findFirst({
+                        where: { stripeCustomerId: String(custId) },
+                    });
+                    if (user && typeof pmId === 'string') {
+                        const existing = await prisma.savedPaymentMethod.findUnique({
+                            where: { stripePaymentMethodId: pmId },
+                        });
+                        if (!existing) {
+                            const { stripeListPaymentMethods } = await import('../../lib/stripeService');
+                            const cards = await stripeListPaymentMethods(String(custId));
+                            const card = cards.find(c => c.paymentMethodId === pmId);
+                            if (card) {
+                                const count = await prisma.savedPaymentMethod.count({ where: { userId: user.id } });
+                                await prisma.savedPaymentMethod.create({
+                                    data: {
+                                        userId: user.id,
+                                        stripePaymentMethodId: pmId,
+                                        brand: card.brand,
+                                        last4: card.last4,
+                                        expMonth: card.expMonth,
+                                        expYear: card.expYear,
+                                        isDefault: count === 0,
+                                    },
+                                });
+                                console.log(`[Webhook:Stripe] Auto-saved card ${card.brand} ****${card.last4} for user ${user.id}`);
+                            }
+                        }
+                    }
+                } catch (saveErr) {
+                    console.error('[Webhook:Stripe] Error auto-saving card:', saveErr);
+                }
+            }
         }
 
         // Handle setup_intent.succeeded (card saved to vault)

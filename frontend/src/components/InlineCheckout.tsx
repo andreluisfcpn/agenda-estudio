@@ -93,6 +93,7 @@ export default function InlineCheckout({
     const [paymentType, setPaymentType] = useState<'CREDIT' | 'DEBIT'>('CREDIT');
     const [installments, setInstallments] = useState(1);
     const [installmentPlans, setInstallmentPlans] = useState<{ count: number; perInstallment: number; total: number; feePercent: number; freeOfCharge: boolean }[]>([]);
+    const [wantSaveCard, setWantSaveCard] = useState(true);
 
     // Saved cards state
     const [savedCards, setSavedCards] = useState<SavedCard[]>([]);
@@ -221,6 +222,7 @@ export default function InlineCheckout({
                     paymentId,
                     installments,
                     paymentMethod: 'cartao',
+                    savePaymentMethod: wantSaveCard,
                 });
                 setClientSecret(result.clientSecret || null);
                 setPaymentIntentId(result.paymentIntentId || null);
@@ -389,8 +391,9 @@ export default function InlineCheckout({
                             Carregando cartoes...
                         </div>
                     ) : (() => {
-                        const fundingFilter = paymentType === 'CREDIT' ? 'credit' : 'debit';
-                        const filteredCards = savedCards.filter(c => c.funding === fundingFilter);
+                        // Show all saved cards in both tabs — Brazilian cards often report 'credit'
+                        // funding even when they support both credit and debit transactions
+                        const filteredCards = savedCards;
                         return (
                             <>
                                 {filteredCards.length > 0 && (
@@ -466,6 +469,7 @@ export default function InlineCheckout({
                                     : `Pagar ${formatBRL(amount)}`
                                 }
                                 showSaveCard={true}
+                                onSaveCardChange={(save) => setWantSaveCard(save)}
                             />
                         </div>
                     )}
