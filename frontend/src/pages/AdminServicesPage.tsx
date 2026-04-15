@@ -1,3 +1,4 @@
+import { getErrorMessage } from '../utils/errors';
 import React, { useState, useEffect } from 'react';
 import { pricingApi, AddOnConfig } from '../api/client';
 
@@ -110,8 +111,8 @@ export default function AdminServicesPage() {
             await pricingApi.updateAddons(addons); 
             showMsg('✅ Serviços atualizados com sucesso!'); 
             setAddonEdited(false); 
-        } catch (err: any) { 
-            setError(err.message); 
+        } catch (err: unknown) { 
+            setError(getErrorMessage(err)); 
         } finally { 
             setSaving(false); 
         }

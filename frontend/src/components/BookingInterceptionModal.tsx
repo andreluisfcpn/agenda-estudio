@@ -1,3 +1,4 @@
+import { getErrorMessage } from '../utils/errors';
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Loader2, Phone, Mail, ChevronRight, User } from 'lucide-react';
@@ -83,8 +84,8 @@ export default function BookingInterceptionModal({ isOpen, onClose, slotData, on
                 setError('Google SignIn (Custom UI via useGoogleLogin) requer AccessToken mapping. Por favor use OTP para teste local.');
                 setLoading(false);
 
-            } catch (err: any) {
-                setError(err.message);
+            } catch (err: unknown) {
+                setError(getErrorMessage(err));
                 setLoading(false);
             }
         },
@@ -110,8 +111,8 @@ export default function BookingInterceptionModal({ isOpen, onClose, slotData, on
         try {
             await authApi.sendOtp(phone, email, password, name);
             setStep('OTP_VERIFY');
-        } catch (err: any) {
-            setError(err.message || 'Erro ao enviar código SMS.');
+        } catch (err: unknown) {
+            setError(getErrorMessage(err) || 'Erro ao enviar código SMS.');
         } finally {
             setLoading(false);
         }
@@ -130,8 +131,8 @@ export default function BookingInterceptionModal({ isOpen, onClose, slotData, on
             await authApi.verifyOtp(phone, otpCode, email, password, name);
             // Efetiva auth
             onSuccess();
-        } catch (err: any) {
-            setError(err.message || 'Código inválido.');
+        } catch (err: unknown) {
+            setError(getErrorMessage(err) || 'Código inválido.');
         } finally {
             setLoading(false);
         }

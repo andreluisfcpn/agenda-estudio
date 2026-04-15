@@ -88,6 +88,7 @@ router.get('/payment-methods', authenticate, async (req: Request, res: Response)
                 last4: card.last4,
                 expMonth: card.expMonth,
                 expYear: card.expYear,
+                funding: card.funding,
                 isDefault: saved?.isDefault || false,
             };
         });
@@ -172,6 +173,7 @@ const createPaymentSchema = z.object({
     paymentId: z.string().uuid(),
     installments: z.number().min(1).max(12).optional(),
     savedPaymentMethodId: z.string().optional(),
+    savePaymentMethod: z.boolean().optional(),
     paymentMethod: z.enum(['cartao', 'pix', 'boleto']).optional().default('cartao'),
 });
 
@@ -225,10 +227,10 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
             
             // Format CPF/CNPJ for Cora explicitly
             let docStr = user.cpfCnpj ? user.cpfCnpj.replace(/\D/g, '') : "";
-            // Cora API requires a mathematically valid CPF even in stage. 
-            // Fallback to a valid test standard doc if invalid.
+            // Reject if CPF/CNPJ is not valid (must be 11 or 14 digits)
             if (docStr.length !== 11 && docStr.length !== 14) {
-                docStr = "12345678909"; 
+                res.status(400).json({ error: 'CPF/CNPJ não cadastrado ou inválido. Atualize seu perfil antes de pagar com PIX.' });
+                return;
             }
             let docType: 'CPF' | 'CNPJ' = docStr.length === 14 ? 'CNPJ' : 'CPF';
             
@@ -356,6 +358,7 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
             contractId: payment.contractId || undefined,
             installmentsEnabled: true,
             savedPaymentMethodId: data.savedPaymentMethodId,
+            savePaymentMethod: data.savePaymentMethod,
         });
 
         // Update our payment with the Stripe reference
@@ -495,10 +498,12 @@ router.post('/verify-payment', authenticate, async (req: Request, res: Response)
         const pi = await stripeGetPaymentIntent(data.paymentIntentId);
         
         if (pi.status === 'succeeded') {
-            await prisma.payment.update({
-                where: { id: payment.id },
+            // Atomic update: only update if still PENDING to prevent race with webhooks
+            const updated = await prisma.payment.updateMany({
+                where: { id: payment.id, status: 'PENDING' },
                 data: {
                     status: 'PAID',
+                    paidAt: new Date(),
                     providerRef: pi.id,
                     paymentType: pi.payment_method_types?.includes('card') ? 'CREDIT' : null,
                 },

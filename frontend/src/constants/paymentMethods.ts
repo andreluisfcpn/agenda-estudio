@@ -1,4 +1,4 @@
-﻿// ─── Payment Methods — Single Source of Truth ────────────────────────
+// ─── Payment Methods — Single Source of Truth ────────────────────────
 // All UI components that display payment method options MUST consume from
 // this file to ensure consistent labels, icons, colors, and descriptions.
 // Backend source of truth: Prisma enum PaymentMethod { CARTAO, PIX, BOLETO }
@@ -142,6 +142,11 @@ export const PAYMENT_METHODS: PaymentMethodConfig[] = _cachedMethods;
 /** Get the current list (reactive — always returns latest cache) */
 export function getPaymentMethods(): PaymentMethodConfig[] {
   return _cachedMethods;
+}
+
+/** Client-facing methods only (excludes BOLETO). Use in all client UI. */
+export function getClientPaymentMethods(): PaymentMethodConfig[] {
+  return _cachedMethods.filter(m => m.key !== 'BOLETO');
 }
 
 /** Whether the methods have been loaded from the API */

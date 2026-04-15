@@ -1,10 +1,8 @@
 import { customAlphabet } from 'nanoid';
+import { redis } from './redis';
 
-// In-memory mock map. Key: target (email or phone), Value: { code, expiresAt }
-// For production, this should be moved to Redis or similar to support multi-instance deployment.
-const otpStore = new Map<string, { code: string; expiresAt: number }>();
-
-const OTP_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
+const OTP_EXPIRY_SECONDS = 5 * 60; // 5 minutes
+const OTP_PREFIX = 'otp:';
 
 export const otpService = {
     async generateAndSendMock(target: string, name: string): Promise<void> {
@@ -12,8 +10,9 @@ export const otpService = {
         const generateCode = customAlphabet('0123456789', 6);
         const code = generateCode();
 
-        const expiresAt = Date.now() + OTP_EXPIRY_MS;
-        otpStore.set(target, { code, expiresAt });
+        // Store in Redis with TTL (replaces in-memory Map)
+        const key = `${OTP_PREFIX}${target}`;
+        await redis.set(key, code, 'EX', OTP_EXPIRY_SECONDS);
 
         const isEmail = target.includes('@');
 
@@ -26,21 +25,16 @@ export const otpService = {
     },
 
     async verify(target: string, code: string): Promise<boolean> {
-        const stored = otpStore.get(target);
+        const key = `${OTP_PREFIX}${target}`;
+        const stored = await redis.get(key);
 
         if (!stored) return false;
 
-        if (Date.now() > stored.expiresAt) {
-            otpStore.delete(target); // Cleanup expired
-            return false;
-        }
-
-        if (stored.code === code) {
-            otpStore.delete(target); // Single use
+        if (stored === code) {
+            await redis.del(key); // Single use — delete after verification
             return true;
         }
 
         return false;
     }
 };
-

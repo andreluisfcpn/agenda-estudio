@@ -12,48 +12,40 @@ export class ApiError extends Error {
     }
 }
 
-let isRefreshing = false;
 let refreshPromise: Promise<boolean> | null = null;
 
 async function tryRefresh(): Promise<boolean> {
+    // Deduplicate: all callers share the same in-flight refresh
     if (refreshPromise) return refreshPromise;
-    isRefreshing = true;
+
     refreshPromise = fetch(`${API_BASE}/auth/refresh`, {
-        method: 'POST', credentials: 'include',
-    }).then(r => {
-        isRefreshing = false;
-        refreshPromise = null;
-        return r.ok;
-    }).catch(() => {
-        isRefreshing = false;
-        refreshPromise = null;
-        return false;
-    });
+        method: 'POST',
+        credentials: 'include',
+    })
+        .then(r => r.ok)
+        .catch(() => false)
+        .finally(() => { refreshPromise = null; });
+
     return refreshPromise;
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-    const res = await fetch(`${API_BASE}${path}`, {
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json', ...options.headers },
-        ...options,
-    });
+    const doFetch = () =>
+        fetch(`${API_BASE}${path}`, {
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json', ...options.headers },
+            ...options,
+        });
 
-    // Auto-refresh on 401 (except auth endpoints that should not retry)
-    if (res.status === 401 && !path.includes('/auth/refresh') && !path.includes('/auth/login')) {
+    let res = await doFetch();
+
+    // Auto-refresh on 401 (skip auth endpoints to avoid infinite loop)
+    const isAuthEndpoint = path.includes('/auth/refresh') || path.includes('/auth/login');
+    if (res.status === 401 && !isAuthEndpoint) {
         const refreshed = await tryRefresh();
         if (refreshed) {
-            // Retry the original request with new tokens
-            const retryRes = await fetch(`${API_BASE}${path}`, {
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json', ...options.headers },
-                ...options,
-            });
-            if (!retryRes.ok) {
-                const body = await retryRes.json().catch(() => ({ error: 'Erro desconhecido' }));
-                throw new ApiError(body.error || `HTTP ${retryRes.status}`, retryRes.status, body.details);
-            }
-            return retryRes.json();
+            // Retry the original request with the new access token
+            res = await doFetch();
         }
     }
 
@@ -61,6 +53,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
         const body = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
         throw new ApiError(body.error || `HTTP ${res.status}`, res.status, body.details);
     }
+
     return res.json();
 }
 
@@ -223,6 +216,7 @@ export interface MyBookingSlot {
     adminNotes?: string | null; clientNotes?: string | null;
     platforms?: string | null; platformLinks?: string | null;
     addOns?: string[];
+    holdExpiresAt?: string | null;
 }
 export interface BookingWithUser extends Booking {
     user: { id: string; name: string; email: string; role: string };
@@ -510,6 +504,7 @@ export interface SavedCard {
     last4: string;
     expMonth: number;
     expYear: number;
+    funding: string; // 'credit' | 'debit' | 'prepaid' | 'unknown'
     isDefault: boolean;
 }
 
@@ -527,7 +522,7 @@ export const stripeApi = {
     listPaymentMethods: () => request<{ paymentMethods: SavedCard[]; autoChargeEnabled: boolean }>('/stripe/payment-methods'),
     removePaymentMethod: (pmId: string) => request<{ message: string }>(`/stripe/payment-methods/${pmId}`, { method: 'DELETE' }),
     setDefaultPaymentMethod: (pmId: string) => request<{ message: string }>(`/stripe/payment-methods/${pmId}/default`, { method: 'PUT' }),
-    createPayment: (data: { paymentId: string; installments?: number; savedPaymentMethodId?: string; paymentMethod?: 'cartao' | 'pix' | 'boleto' }) =>
+    createPayment: (data: { paymentId: string; installments?: number; savedPaymentMethodId?: string; savePaymentMethod?: boolean; paymentMethod?: 'cartao' | 'pix' | 'boleto' }) =>
         request<{ provider: 'STRIPE' | 'CORA'; clientSecret?: string; paymentIntentId?: string; pixString?: string; qrCodeBase64?: string; boletoUrl?: string; barcode?: string; paymentId?: string }>('/stripe/create-payment', { method: 'POST', body: JSON.stringify(data) }),
     verifyPayment: (data: { paymentId: string; paymentIntentId: string }) =>
         request<{ status: string; message: string }>('/stripe/verify-payment', { method: 'POST', body: JSON.stringify(data) }),

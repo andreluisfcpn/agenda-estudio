@@ -170,7 +170,11 @@ export async function createPayment(opts: CreatePaymentOpts): Promise<PaymentRes
                 qrCodeBase64: result.qrCodeBase64 || null,
             };
         } catch (err) {
-            console.error('[Gateway] Cora PIX creation failed, falling back to mock:', err);
+            console.error('[Gateway] Cora PIX creation failed:', err);
+            if (process.env.NODE_ENV === 'production') {
+                throw new Error('Erro ao gerar PIX. Tente novamente ou use outro método de pagamento.');
+            }
+            console.log('[Gateway] Falling back to mock for PIX (dev only)');
             return generateMockResult(opts);
         }
     }
@@ -209,7 +213,11 @@ export async function createPayment(opts: CreatePaymentOpts): Promise<PaymentRes
                 qrCodeBase64: null,
             };
         } catch (err) {
-            console.error('[Gateway] Cora BOLETO creation failed, falling back to mock:', err);
+            console.error('[Gateway] Cora BOLETO creation failed:', err);
+            if (process.env.NODE_ENV === 'production') {
+                throw new Error('Erro ao gerar boleto. Tente novamente ou use outro método de pagamento.');
+            }
+            console.log('[Gateway] Falling back to mock for BOLETO (dev only)');
             return generateMockResult(opts);
         }
     }
@@ -249,7 +257,11 @@ export async function createPayment(opts: CreatePaymentOpts): Promise<PaymentRes
                 qrCodeBase64: null,
             };
         } catch (err) {
-            console.error('[Gateway] Stripe PaymentIntent creation failed, falling back to mock:', err);
+            console.error('[Gateway] Stripe PaymentIntent creation failed:', err);
+            if (process.env.NODE_ENV === 'production') {
+                throw new Error('Erro ao processar cartão. Tente novamente.');
+            }
+            console.log('[Gateway] Falling back to mock for CARTAO (dev only)');
             return generateMockResult(opts);
         }
     }
@@ -263,7 +275,7 @@ export async function updatePaymentWithGatewayResult(paymentId: string, result: 
     await prisma.payment.update({
         where: { id: paymentId },
         data: {
-            provider: result.provider === 'MOCK' ? 'CORA' : result.provider as any,
+            provider: result.provider === 'MOCK' ? 'CORA' : result.provider,
             providerRef: result.providerRef,
             pixString: result.pixString,
             boletoUrl: result.boletoUrl,

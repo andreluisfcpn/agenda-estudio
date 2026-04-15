@@ -11,8 +11,10 @@ import { config } from '../../config';
 import { authenticate } from '../../middleware/auth';
 import { OAuth2Client } from 'google-auth-library';
 import { otpService } from '../../lib/otp';
+import { Prisma } from '../../generated/prisma/client';
+import { getErrorMessage } from '../../utils/errors';
 
-const googleClient = new OAuth2Client(process.env.VITE_GOOGLE_CLIENT_ID);
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID);
 
 
 const router = Router();
@@ -21,7 +23,7 @@ const router = Router();
 const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 10 * 1024 * 1024 }, // 10MB raw
-    fileFilter: (_req: any, file: any, cb: any) => {
+    fileFilter: (_req, file, cb) => {
         if (file.mimetype.startsWith('image/')) cb(null, true);
         else cb(new Error('Apenas imagens são permitidas.'));
     },
@@ -73,10 +75,10 @@ const otpVerifySchema = z.object({
 
 function generateTokens(payload: { userId: string; email: string; role: string }) {
     const accessToken = jwt.sign(payload, config.jwt.secret as string, {
-        expiresIn: config.jwt.accessExpiry as any,
+        expiresIn: config.jwt.accessExpiry as any, // string literal e.g. '15m'
     });
     const refreshToken = jwt.sign(payload, config.jwt.refreshSecret as string, {
-        expiresIn: config.jwt.refreshExpiry as any,
+        expiresIn: config.jwt.refreshExpiry as any, // string literal e.g. '7d'
     });
     return { accessToken, refreshToken };
 }
@@ -169,7 +171,7 @@ router.post('/register', async (req: Request, res: Response) => {
 
         // Verify OTP
         const target = data.method === 'email' ? data.email : data.phone;
-        let isValid = data.code === '999999'; // Test master code bypass
+        let isValid = process.env.NODE_ENV === 'development' && data.code === '999999';
         if (!isValid) {
             isValid = await otpService.verify(target, data.code);
         }
@@ -277,27 +279,23 @@ router.post('/google', async (req: Request, res: Response) => {
     try {
         const { idToken } = googleLoginSchema.parse(req.body);
 
-        let payload: any = null;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Google payload shape varies between ID token and userinfo endpoint
+        let payload: Record<string, any> | null = null;
 
         // Try verifying as ID Token first (for backwards compatibility if any client still sends it)
         try {
             const ticket = await googleClient.verifyIdToken({
                 idToken,
-                audience: process.env.VITE_GOOGLE_CLIENT_ID,
+                audience: process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID,
             });
-            payload = ticket.getPayload();
+            payload = ticket.getPayload() ?? null;
         } catch {
             // If verification fails, it might be an access_token. Let's fetch user info.
             const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
                 headers: { Authorization: `Bearer ${idToken}` }
             });
             if (!response.ok) throw new Error('Invalid token');
-            payload = await response.json();
-            // Normalize payload to match ID token structure
-            payload.sub = payload.sub;
-            payload.email = payload.email;
-            payload.name = payload.name;
-            payload.picture = payload.picture;
+            payload = await response.json() as Record<string, any>;
         }
 
         if (!payload || !payload.email) {
@@ -380,7 +378,7 @@ router.post('/otp/verify', async (req: Request, res: Response) => {
     try {
         const { phone, code, name, email, password } = otpVerifySchema.parse(req.body);
 
-        let isValid = code === '999999'; // Test master code bypass
+        let isValid = process.env.NODE_ENV === 'development' && code === '999999';
         if (!isValid) {
             isValid = await otpService.verify(phone, code);
         }
@@ -493,13 +491,22 @@ const profileUpdateSchema = z.object({
     address: z.string().optional(),
     city: z.string().optional(),
     state: z.string().optional(),
-    socialLinks: z.any().optional(), // Allow JSON
+    socialLinks: z.union([
+        z.string().max(500),
+        z.object({
+            instagram: z.string().max(100).optional(),
+            linkedin: z.string().max(200).optional(),
+            youtube: z.string().max(200).optional(),
+            tiktok: z.string().max(200).optional(),
+            twitter: z.string().max(200).optional(),
+        }),
+    ]).optional(),
 });
 
 router.patch('/profile', authenticate, async (req: Request, res: Response) => {
     try {
         const data = profileUpdateSchema.parse(req.body);
-        const updateData: any = {};
+        const updateData: Prisma.UserUncheckedUpdateInput = {};
         if (data.name) updateData.name = data.name;
         if (data.phone !== undefined) updateData.phone = data.phone;
         if (data.password) updateData.passwordHash = await bcrypt.hash(data.password, 12);
@@ -507,7 +514,7 @@ router.patch('/profile', authenticate, async (req: Request, res: Response) => {
         if (data.address !== undefined) updateData.address = data.address;
         if (data.city !== undefined) updateData.city = data.city;
         if (data.state !== undefined) updateData.state = data.state;
-        if (data.socialLinks !== undefined) updateData.socialLinks = data.socialLinks;
+        if (data.socialLinks !== undefined) updateData.socialLinks = JSON.stringify(data.socialLinks);
 
         const user = await prisma.user.update({
             where: { id: req.user!.userId },
@@ -529,7 +536,7 @@ router.patch('/profile', authenticate, async (req: Request, res: Response) => {
 
 router.post('/profile/photo', authenticate, upload.single('photo'), async (req: Request, res: Response) => {
     try {
-        const file = (req as any).file;
+        const file = req.file;
         if (!file) {
             res.status(400).json({ error: 'Nenhuma foto enviada.' });
             return;
@@ -553,9 +560,9 @@ router.post('/profile/photo', authenticate, upload.single('photo'), async (req: 
         });
 
         res.json({ user, message: 'Foto atualizada com sucesso.' });
-    } catch (err: any) {
+    } catch (err: unknown) {
         console.error('Photo upload error:', err);
-        res.status(500).json({ error: 'Erro ao processar foto: ' + (err.message || 'Erro desconhecido') });
+        res.status(500).json({ error: 'Erro ao processar foto: ' + getErrorMessage(err) });
     }
 });
 

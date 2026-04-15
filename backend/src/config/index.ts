@@ -45,4 +45,10 @@ export const config = {
         operatingDays: [1, 2, 3, 4, 5, 6], // Mon=1 to Sat=6
         lockTtlSeconds: 600, // 10 minutes
     },
+
+    push: {
+        vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
+        vapidPrivateKey: process.env.VAPID_PRIVATE_KEY || '',
+        vapidSubject: process.env.VAPID_SUBJECT || 'mailto:contato@buzios.digital',
+    },
 } as const;

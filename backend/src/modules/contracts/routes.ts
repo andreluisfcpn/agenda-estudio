@@ -1424,7 +1424,7 @@ router.post('/:id/confirm-payment', authenticate, async (req: Request, res: Resp
                     providerRef: paymentIntentId,
                     status: 'PENDING',
                 },
-                data: { status: 'PAID' },
+                data: { status: 'PAID', paidAt: new Date() },
             });
         }
 

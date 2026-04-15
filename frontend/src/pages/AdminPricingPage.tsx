@@ -1,3 +1,4 @@
+import { getErrorMessage } from '../utils/errors';
 import React, { useState, useEffect } from 'react';
 import { pricingApi, PricingConfig, BusinessConfigItem, PaymentMethodConfigItem, integrationsApi, IntegrationSummary } from '../api/client';
 import { setPaymentMethods as setCachedPaymentMethods } from '../constants/paymentMethods';
@@ -109,7 +110,7 @@ export default function AdminPricingPage() {
     const handleSaveTiers = async () => {
         setSaving(true); setError('');
         try { await pricingApi.update(pricing); showMsg('✅ Preços atualizados!'); setTierEdited(false); }
-        catch (err: any) { setError(err.message); }
+        catch (err: unknown) { setError(getErrorMessage(err)); }
         finally { setSaving(false); }
     };
 
@@ -130,7 +131,7 @@ export default function AdminPricingPage() {
             await pricingApi.updateBusinessConfig(configs.map(c => ({ key: c.key, value: c.value })));
             showMsg('✅ Regras de negócio atualizadas!');
             setConfigEdited(false);
-        } catch (err: any) { setError(err.message); }
+        } catch (err: unknown) { setError(getErrorMessage(err)); }
         finally { setSaving(false); }
     };
 
@@ -149,7 +150,7 @@ export default function AdminPricingPage() {
             setPmEdited(false);
             // Update the global cache so all components reflect changes immediately
             setCachedPaymentMethods(res.methods);
-        } catch (err: any) { setError(err.message); }
+        } catch (err: unknown) { setError(getErrorMessage(err)); }
         finally { setSaving(false); }
     };
 
@@ -611,7 +612,7 @@ export default function AdminPricingPage() {
                         setSuccess(res.message);
                         const listRes = await integrationsApi.list();
                         setIntegrations(listRes.integrations);
-                    } catch (e: any) { setError(e.message || 'Erro ao salvar'); } finally { setSaving(false); }
+                    } catch (e: unknown) { setError(getErrorMessage(e) || 'Erro ao salvar'); } finally { setSaving(false); }
                 };
 
                 const handleTest = async (provider: string) => {
@@ -622,7 +623,7 @@ export default function AdminPricingPage() {
                         else setError(`❌ ${provider}: ${res.message}`);
                         const listRes = await integrationsApi.list();
                         setIntegrations(listRes.integrations);
-                    } catch (e: any) { setError(e.message || 'Erro ao testar'); } finally { setTestingProvider(null); }
+                    } catch (e: unknown) { setError(getErrorMessage(e) || 'Erro ao testar'); } finally { setTestingProvider(null); }
                 };
 
                 const handleToggle = async (provider: string, enabled: boolean) => {
@@ -631,7 +632,7 @@ export default function AdminPricingPage() {
                         const listRes = await integrationsApi.list();
                         setIntegrations(listRes.integrations);
                         setSuccess(`${provider} ${enabled ? 'ativado' : 'desativado'}`);
-                    } catch (e: any) { setError(e.message); }
+                    } catch (e: unknown) { setError(getErrorMessage(e)); }
                 };
 
                 const copyToClipboard = (text: string) => {

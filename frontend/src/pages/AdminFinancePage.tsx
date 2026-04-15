@@ -1,4 +1,5 @@
-﻿import React, { useState, useEffect, useMemo } from 'react';
+import { getErrorMessage } from '../utils/errors';
+import React, { useState, useEffect, useMemo } from 'react';
 import { financeApi, FinanceClosingResponse, EnrichedPayment } from '../api/client';
 import { useUI } from '../context/UIContext';
 
@@ -7,15 +8,15 @@ function formatBRL(cents: number): string {
 }
 
 const MONTHS = [
-    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+    'Janeiro', 'Fevereiro', 'Mar�o', 'Abril', 'Maio', 'Junho',
     'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
 ];
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: string }> = {
-    PAID:     { label: 'Pago',       color: '#10b981', bg: 'rgba(16,185,129,0.12)',  icon: '✓' },
-    PENDING:  { label: 'Pendente',   color: '#f59e0b', bg: 'rgba(245,158,11,0.12)',  icon: '⏳' },
-    FAILED:   { label: 'Falhou',     color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   icon: '✗' },
-    REFUNDED: { label: 'Estornado',  color: '#14b8a6', bg: 'rgba(45,212,191,0.12)',  icon: '↩' },
+    PAID:     { label: 'Pago',       color: '#10b981', bg: 'rgba(16,185,129,0.12)',  icon: '?' },
+    PENDING:  { label: 'Pendente',   color: '#f59e0b', bg: 'rgba(245,158,11,0.12)',  icon: '?' },
+    FAILED:   { label: 'Falhou',     color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   icon: '?' },
+    REFUNDED: { label: 'Estornado',  color: '#14b8a6', bg: 'rgba(45,212,191,0.12)',  icon: '?' },
 };
 
 export default function AdminFinancePage() {
@@ -39,8 +40,8 @@ export default function AdminFinancePage() {
         try {
             const res = await financeApi.getMonthlyClosing(selectedYear, selectedMonth);
             setData(res);
-        } catch (err: any) {
-            showAlert({ message: err.message || 'Erro ao carregar dados financeiros', type: 'error' });
+        } catch (err: unknown) {
+            showAlert({ message: getErrorMessage(err) || 'Erro ao carregar dados financeiros', type: 'error' });
         } finally {
             setLoading(false);
         }
@@ -96,11 +97,11 @@ export default function AdminFinancePage() {
 
     return (
         <div>
-            {/* ─── HEADER ─── */}
+            {/* --- HEADER --- */}
             <div style={{ marginBottom: '28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
                 <div>
                     <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontSize: '1.75rem' }}>💰</span> Financeiro
+                        <span style={{ fontSize: '1.75rem' }}>??</span> Financeiro
                     </h1>
                     <p className="page-subtitle" style={{ marginTop: '4px' }}>
                         Fechamento mensal e controle de pagamentos
@@ -118,7 +119,7 @@ export default function AdminFinancePage() {
                         padding: '10px 14px', cursor: 'pointer', fontSize: '1rem',
                         transition: 'all 0.2s'
                     }} onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-elevated)')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
-                        ‹
+                        �
                     </button>
                     <div style={{
                         padding: '10px 20px', fontWeight: 700, fontSize: '0.9375rem',
@@ -127,14 +128,14 @@ export default function AdminFinancePage() {
                         background: isCurrentMonth ? 'rgba(16,185,129,0.06)' : 'none'
                     }}>
                         {MONTHS[selectedMonth - 1]} {selectedYear}
-                        {isCurrentMonth && <span style={{ fontSize: '0.6875rem', color: '#10b981', display: 'block', fontWeight: 500 }}>Mês Atual</span>}
+                        {isCurrentMonth && <span style={{ fontSize: '0.6875rem', color: '#10b981', display: 'block', fontWeight: 500 }}>M�s Atual</span>}
                     </div>
                     <button onClick={() => goMonth(1)} style={{
                         background: 'none', border: 'none', color: 'var(--text-secondary)',
                         padding: '10px 14px', cursor: 'pointer', fontSize: '1rem',
                         transition: 'all 0.2s'
                     }} onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-elevated)')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
-                        ›
+                        �
                     </button>
                 </div>
             </div>
@@ -142,28 +143,28 @@ export default function AdminFinancePage() {
             {loading ? (
                 <div className="loading-spinner"><div className="spinner" /></div>
             ) : !data ? (
-                <div className="empty-state">Nenhum dado encontrado para este período.</div>
+                <div className="empty-state">Nenhum dado encontrado para este per�odo.</div>
             ) : (
                 <>
-                    {/* ─── KPI HERO CARDS ─── */}
+                    {/* --- KPI HERO CARDS --- */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '24px' }}>
                         
-                        {/* NET REVENUE — hero card */}
+                        {/* NET REVENUE � hero card */}
                         <div style={{
                             padding: '28px', borderRadius: '16px',
                             background: 'linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(6,78,59,0.08) 100%)',
                             border: '1px solid rgba(16,185,129,0.2)',
                             position: 'relative', overflow: 'hidden'
                         }}>
-                            <div style={{ position: 'absolute', top: '-20px', right: '-20px', fontSize: '6rem', opacity: 0.04, transform: 'rotate(15deg)' }}>💎</div>
+                            <div style={{ position: 'absolute', top: '-20px', right: '-20px', fontSize: '6rem', opacity: 0.04, transform: 'rotate(15deg)' }}>??</div>
                             <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
-                                Repasse Líquido
+                                Repasse L�quido
                             </div>
                             <div style={{ fontSize: '2.75rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.1, marginBottom: '6px' }}>
                                 {formatBRL(data.metrics.netRevenue)}
                             </div>
                             <p style={{ fontSize: '0.8125rem', color: 'rgba(16,185,129,0.8)', fontWeight: 500, margin: 0 }}>
-                                Na conta do Estúdio {isCurrentMonth && '(parcial)'}
+                                Na conta do Est�dio {isCurrentMonth && '(parcial)'}
                             </p>
                         </div>
 
@@ -176,7 +177,7 @@ export default function AdminFinancePage() {
                                 <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
                                     Faturamento Bruto
                                 </div>
-                                <span style={{ fontSize: '1.5rem', opacity: 0.6 }}>💳</span>
+                                <span style={{ fontSize: '1.5rem', opacity: 0.6 }}>??</span>
                             </div>
                             <div style={{ fontSize: '1.875rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: '10px' }}>
                                 {formatBRL(data.metrics.grossRevenue)}
@@ -187,7 +188,7 @@ export default function AdminFinancePage() {
                                     padding: '3px 8px', borderRadius: '6px', fontSize: '0.6875rem', fontWeight: 600,
                                     background: 'rgba(16,185,129,0.1)', color: '#10b981'
                                 }}>
-                                    ✓ {data.metrics.paidCount} pagos
+                                    ? {data.metrics.paidCount} pagos
                                 </span>
                             </div>
                         </div>
@@ -201,10 +202,10 @@ export default function AdminFinancePage() {
                                 <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
                                     Taxas Retidas
                                 </div>
-                                <span style={{ fontSize: '1.5rem', opacity: 0.6 }}>🏦</span>
+                                <span style={{ fontSize: '1.5rem', opacity: 0.6 }}>??</span>
                             </div>
                             <div style={{ fontSize: '1.875rem', fontWeight: 800, color: '#ef4444', marginTop: '10px' }}>
-                                − {formatBRL(data.metrics.totalFees)}
+                                - {formatBRL(data.metrics.totalFees)}
                             </div>
                             <div style={{ marginTop: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                                 {data.metrics.breakdown.stripe > 0 && (
@@ -238,9 +239,9 @@ export default function AdminFinancePage() {
                         }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                 <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                                    {isCurrentMonth ? 'A Receber' : 'Inadimplência'}
+                                    {isCurrentMonth ? 'A Receber' : 'Inadimpl�ncia'}
                                 </div>
-                                <span style={{ fontSize: '1.5rem', opacity: 0.6 }}>{data.metrics.pendingRevenue > 0 ? '🚨' : '✅'}</span>
+                                <span style={{ fontSize: '1.5rem', opacity: 0.6 }}>{data.metrics.pendingRevenue > 0 ? '??' : '?'}</span>
                             </div>
                             <div style={{ fontSize: '1.875rem', fontWeight: 800, color: data.metrics.pendingRevenue > 0 ? '#ea580c' : '#10b981', marginTop: '10px' }}>
                                 {data.metrics.pendingRevenue > 0 ? formatBRL(data.metrics.pendingRevenue) : 'R$ 0,00'}
@@ -257,7 +258,7 @@ export default function AdminFinancePage() {
                         </div>
                     </div>
 
-                    {/* ─── COLLECTION RATE BAR ─── */}
+                    {/* --- COLLECTION RATE BAR --- */}
                     <div style={{
                         padding: '16px 20px', borderRadius: '12px', marginBottom: '24px',
                         background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
@@ -286,7 +287,7 @@ export default function AdminFinancePage() {
                         </div>
                     </div>
 
-                    {/* ─── INVOICES TABLE ─── */}
+                    {/* --- INVOICES TABLE --- */}
                     <div style={{ borderRadius: '16px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', overflow: 'hidden' }}>
                         
                         {/* Table Header */}
@@ -296,7 +297,7 @@ export default function AdminFinancePage() {
                             borderBottom: '1px solid var(--border-color)'
                         }}>
                             <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                📋 Faturas
+                                ?? Faturas
                                 <span style={{
                                     fontSize: '0.6875rem', fontWeight: 600, padding: '2px 8px',
                                     borderRadius: '10px', background: 'var(--bg-elevated)', color: 'var(--text-muted)'
@@ -322,7 +323,7 @@ export default function AdminFinancePage() {
                                         onFocus={e => (e.currentTarget.style.borderColor = '#10b981')}
                                         onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
                                     />
-                                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🔍</span>
+                                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>??</span>
                                 </div>
 
                                 {/* Status Filter Pills */}
@@ -356,9 +357,9 @@ export default function AdminFinancePage() {
 
                         {filteredPayments.length === 0 ? (
                             <div style={{ padding: '48px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                                <div style={{ fontSize: '2.5rem', marginBottom: '12px', opacity: 0.4 }}>📭</div>
+                                <div style={{ fontSize: '2.5rem', marginBottom: '12px', opacity: 0.4 }}>??</div>
                                 <div style={{ fontWeight: 600 }}>Nenhuma fatura encontrada</div>
-                                <div style={{ fontSize: '0.8125rem', marginTop: '4px' }}>Tente ajustar os filtros ou período</div>
+                                <div style={{ fontSize: '0.8125rem', marginTop: '4px' }}>Tente ajustar os filtros ou per�odo</div>
                             </div>
                         ) : (
                             <>
@@ -372,7 +373,7 @@ export default function AdminFinancePage() {
                                                 <th>Canal</th>
                                                 <th style={{ textAlign: 'right' }}>Bruto</th>
                                                 <th style={{ textAlign: 'right', color: '#ef4444' }}>Taxa</th>
-                                                <th style={{ textAlign: 'right', color: '#10b981' }}>Líquido</th>
+                                                <th style={{ textAlign: 'right', color: '#10b981' }}>L�quido</th>
                                                 <th style={{ textAlign: 'center' }}>Status</th>
                                             </tr>
                                         </thead>
@@ -414,7 +415,7 @@ export default function AdminFinancePage() {
                                                         <td>
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                                 <span style={{ fontSize: '0.9375rem' }}>
-                                                                    {p.methodEmoji || '💰'}
+                                                                    {p.methodEmoji || '??'}
                                                                 </span>
                                                                 <div>
                                                                     <div style={{ fontSize: '0.8125rem', fontWeight: 500 }}>{p.methodLabel}</div>
@@ -426,10 +427,10 @@ export default function AdminFinancePage() {
                                                             {formatBRL(p.amount)}
                                                         </td>
                                                         <td style={{ textAlign: 'right', color: p.feeDeduced > 0 ? '#ef4444' : 'var(--text-muted)', fontSize: '0.8125rem', fontVariantNumeric: 'tabular-nums' }}>
-                                                            {p.feeDeduced > 0 ? `− ${formatBRL(p.feeDeduced)}` : '—'}
+                                                            {p.feeDeduced > 0 ? `- ${formatBRL(p.feeDeduced)}` : '�'}
                                                         </td>
                                                         <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '0.875rem', color: p.status === 'PAID' ? '#10b981' : 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
-                                                            {p.status === 'PAID' ? formatBRL(p.netAmount) : '—'}
+                                                            {p.status === 'PAID' ? formatBRL(p.netAmount) : '�'}
                                                         </td>
                                                         <td style={{ textAlign: 'center' }}>
                                                             <span style={{
@@ -457,7 +458,7 @@ export default function AdminFinancePage() {
                                                         {formatBRL(filteredTotals.gross)}
                                                     </td>
                                                     <td style={{ textAlign: 'right', fontWeight: 700, color: '#ef4444', fontSize: '0.8125rem', fontVariantNumeric: 'tabular-nums' }}>
-                                                        − {formatBRL(filteredTotals.fees)}
+                                                        - {formatBRL(filteredTotals.fees)}
                                                     </td>
                                                     <td style={{ textAlign: 'right', fontWeight: 800, color: '#10b981', fontSize: '0.9375rem', fontVariantNumeric: 'tabular-nums' }}>
                                                         {formatBRL(filteredTotals.net)}

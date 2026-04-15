@@ -5,27 +5,92 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../../lib/prisma';
 import { stripeVerifyWebhook } from '../../lib/stripeService';
+import { decryptConfigSafe } from '../../utils/crypto';
+import crypto from 'crypto';
 
 const router = Router();
+
+// ─── Cora Webhook Signature Verification ────────────────
+// Cora sends these headers:
+//   user-agent: Cora-Webhook
+//   webhook-event-id: evt_xxx
+//   webhook-event-type: invoice.paid
+//   webhook-resource-id: inv_xxx
+
+async function verifyCoraSignature(req: Request): Promise<boolean> {
+    // Cora identifies via user-agent and webhook-specific headers
+    const userAgent = req.headers['user-agent'] as string;
+    const eventId = req.headers['webhook-event-id'] as string;
+    const signature = req.headers['x-cora-signature'] as string || req.headers['x-webhook-signature'] as string;
+
+    // Primary: check HMAC signature if webhookSecret is configured
+    if (signature) {
+        try {
+            const integration = await prisma.integrationConfig.findUnique({ where: { provider: 'CORA' } });
+            if (!integration) return false;
+
+            const decrypted = decryptConfigSafe(integration.config);
+            const config = JSON.parse(decrypted);
+            const webhookSecret = config.webhookSecret;
+            if (!webhookSecret) {
+                console.warn('[Webhook:Cora] Signature present but no webhookSecret configured');
+                return process.env.NODE_ENV !== 'production';
+            }
+
+            const rawBody = (req as any).rawBody || JSON.stringify(req.body);
+            const expectedSignature = crypto
+                .createHmac('sha256', webhookSecret)
+                .update(rawBody)
+                .digest('hex');
+
+            return crypto.timingSafeEqual(
+                Buffer.from(signature),
+                Buffer.from(expectedSignature)
+            );
+        } catch {
+            return false;
+        }
+    }
+
+    // Fallback: verify Cora identity via user-agent + event-id headers
+    if (userAgent?.includes('Cora-Webhook') && eventId) {
+        return true;
+    }
+
+    // No signature and no Cora headers — reject in production
+    if (process.env.NODE_ENV === 'production') return false;
+    console.warn('[Webhook:Cora] No signature/Cora headers — accepting in dev mode');
+    return true;
+}
 
 // ─── POST /api/webhooks/cora ────────────────────────────
 // Cora sends notifications when boleto/PIX payments are confirmed
 
 router.post('/cora', async (req: Request, res: Response) => {
     try {
+        // Verify webhook signature
+        const isValid = await verifyCoraSignature(req);
+        if (!isValid) {
+            console.error('[Webhook:Cora] Invalid or missing signature — rejecting');
+            res.status(401).json({ error: 'Invalid webhook signature' });
+            return;
+        }
+
         const event = req.body;
 
         console.log('[Webhook:Cora] Received event:', JSON.stringify(event).slice(0, 500));
 
-        // Cora sends different event types
-        const eventType = event.event_type || event.type || event.event;
-        const invoiceId = event.data?.id || event.invoice_id || event.id;
+        // Cora sends event metadata in HEADERS (primary) and sometimes in body (fallback)
+        const eventType = (req.headers['webhook-event-type'] as string) || event.event_type || event.type || event.event;
+        const invoiceId = (req.headers['webhook-resource-id'] as string) || event.data?.id || event.invoice_id || event.id;
 
         if (!invoiceId) {
             console.log('[Webhook:Cora] No invoice ID found in event');
             res.status(200).json({ received: true });
             return;
         }
+
+        console.log(`[Webhook:Cora] Event: ${eventType}, Invoice: ${invoiceId}`);
 
         // Handle payment confirmation events
         const confirmationEvents = [
@@ -42,17 +107,18 @@ router.post('/cora', async (req: Request, res: Response) => {
             });
 
             if (payment && payment.status !== 'PAID') {
-                await prisma.payment.update({
-                    where: { id: payment.id },
-                    data: { status: 'PAID' },
+                // Atomic update: only update if still PENDING to prevent race conditions
+                const updated = await prisma.payment.updateMany({
+                    where: { id: payment.id, status: 'PENDING' },
+                    data: { status: 'PAID', paidAt: new Date() },
                 });
 
-                console.log(`[Webhook:Cora] Payment ${payment.id} marked as PAID (invoice: ${invoiceId})`);
+                if (updated.count > 0) {
+                    console.log(`[Webhook:Cora] Payment ${payment.id} marked as PAID (invoice: ${invoiceId})`);
 
-                // If this payment is linked to a contract with PROGRESSIVE access,
-                // unlock the next cycle's bookings
-                if (payment.contractId) {
-                    await unlockNextCycleBookings(payment.contractId);
+                    if (payment.contractId) {
+                        await unlockNextCycleBookings(payment.contractId);
+                    }
                 }
             } else if (!payment) {
                 console.log(`[Webhook:Cora] No payment found for providerRef: ${invoiceId}`);
@@ -67,8 +133,8 @@ router.post('/cora', async (req: Request, res: Response) => {
             });
 
             if (payment && payment.status === 'PENDING') {
-                await prisma.payment.update({
-                    where: { id: payment.id },
+                await prisma.payment.updateMany({
+                    where: { id: payment.id, status: 'PENDING' },
                     data: { status: 'FAILED' },
                 });
                 console.log(`[Webhook:Cora] Payment ${payment.id} marked as FAILED (invoice: ${invoiceId})`);
@@ -102,8 +168,12 @@ router.post('/stripe', async (req: Request, res: Response) => {
                 res.status(400).json({ error: 'Invalid signature' });
                 return;
             }
+        } else if (process.env.NODE_ENV === 'production') {
+            // In production, NEVER accept unsigned webhooks
+            res.status(400).json({ error: 'Missing stripe-signature header' });
+            return;
         } else {
-            // No signature (dev mode) — accept raw body
+            // No signature (dev mode only) — accept raw body
             const body = Buffer.isBuffer(req.body) ? JSON.parse(req.body.toString()) : req.body;
             event = body;
             console.log('[Webhook:Stripe] No signature — dev mode');
@@ -120,18 +190,21 @@ router.post('/stripe', async (req: Request, res: Response) => {
                 const payment = await prisma.payment.findUnique({ where: { id: paymentId } });
 
                 if (payment && payment.status !== 'PAID') {
-                    await prisma.payment.update({
-                        where: { id: paymentId },
+                    // Atomic update to prevent race conditions with verifyPayment
+                    const updated = await prisma.payment.updateMany({
+                        where: { id: paymentId, status: 'PENDING' },
                         data: {
                             status: 'PAID',
+                            paidAt: new Date(),
                             providerRef: session.payment_intent || session.id,
                         },
                     });
 
-                    console.log(`[Webhook:Stripe] Payment ${paymentId} marked as PAID`);
-
-                    if (payment.contractId) {
-                        await unlockNextCycleBookings(payment.contractId);
+                    if (updated.count > 0) {
+                        console.log(`[Webhook:Stripe] Payment ${paymentId} marked as PAID`);
+                        if (payment.contractId) {
+                            await unlockNextCycleBookings(payment.contractId);
+                        }
                     }
                 }
             }
@@ -179,18 +252,22 @@ router.post('/stripe', async (req: Request, res: Response) => {
             if (paymentId) {
                 const payment = await prisma.payment.findUnique({ where: { id: paymentId } });
                 if (payment && payment.status !== 'PAID') {
-                    await prisma.payment.update({
-                        where: { id: paymentId },
+                    // Atomic update to prevent race conditions
+                    const updated = await prisma.payment.updateMany({
+                        where: { id: paymentId, status: 'PENDING' },
                         data: {
                             status: 'PAID',
+                            paidAt: new Date(),
                             providerRef: pi.id,
                             paymentType: pi.payment_method_types?.includes('card') ? 'CREDIT' : null,
                         },
                     });
-                    console.log(`[Webhook:Stripe] Payment ${paymentId} marked as PAID (PaymentIntent)`);
 
-                    if (payment.contractId) {
-                        await unlockNextCycleBookings(payment.contractId);
+                    if (updated.count > 0) {
+                        console.log(`[Webhook:Stripe] Payment ${paymentId} marked as PAID (PaymentIntent)`);
+                        if (payment.contractId) {
+                            await unlockNextCycleBookings(payment.contractId);
+                        }
                     }
                 }
             }
@@ -262,17 +339,20 @@ router.post('/stripe', async (req: Request, res: Response) => {
                 });
 
                 if (payment) {
-                    await prisma.payment.update({
-                        where: { id: payment.id },
+                    const updated = await prisma.payment.updateMany({
+                        where: { id: payment.id, status: 'PENDING' },
                         data: {
                             status: 'PAID',
+                            paidAt: new Date(),
                             providerRef: invoice.payment_intent ? String(invoice.payment_intent) : invoice.id,
                         },
                     });
-                    console.log(`[Webhook:Stripe] Subscription payment ${payment.id} marked as PAID`);
 
-                    if (payment.contractId) {
-                        await unlockNextCycleBookings(payment.contractId);
+                    if (updated.count > 0) {
+                        console.log(`[Webhook:Stripe] Subscription payment ${payment.id} marked as PAID`);
+                        if (payment.contractId) {
+                            await unlockNextCycleBookings(payment.contractId);
+                        }
                     }
                 }
             }

@@ -1,10 +1,15 @@
+import { getErrorMessage } from '../utils/errors';
 import { useState, useEffect } from 'react';
 import { bookingsApi, contractsApi, usersApi, Booking, BookingWithUser, Contract, UserSummary, PaymentSummary } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
 import { useNavigate } from 'react-router-dom';
 import ModalOverlay from '../components/ModalOverlay';
-import InlineCheckout from '../components/InlineCheckout';
+import PaymentModal from '../components/PaymentModal';
+import StatCard from '../components/ui/StatCard';
+import StatusBadge from '../components/ui/StatusBadge';
+import NotificationBanner from '../components/NotificationBanner';
+import { Wallet, CalendarDays, Clapperboard, FileText, Package, AlertTriangle, ArrowRight, XCircle, Clock, CheckCircle } from 'lucide-react';
 
 function formatBRL(cents: number): string {
     return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
@@ -96,7 +101,7 @@ function AdminDashboard() {
             else res = await bookingsApi.markFalta(id);
             showToast(res.message);
             await loadAll();
-        } catch (err: any) { showToast(err.message || 'Erro ao atualizar.'); }
+        } catch (err: unknown) { showToast(getErrorMessage(err) || 'Erro ao atualizar.'); }
     };
 
     if (loading) return <div className="loading-spinner"><div className="spinner" /></div>;
@@ -509,8 +514,8 @@ function ClientDashboard() {
             showToast(res.message);
             setCancelingBooking(null);
             await loadData();
-        } catch (err: any) {
-            showToast(err.message);
+        } catch (err: unknown) {
+            showToast(getErrorMessage(err));
         } finally {
             setIsCanceling(false);
         }
@@ -558,90 +563,100 @@ function ClientDashboard() {
         finally { setLoading(false); }
     };
 
-    const statusLabel = (status: string) => {
-        switch (status) {
-            case 'COMPLETED': return '✅ Concluído';
-            case 'CONFIRMED': return '✅ Confirmado';
-            case 'RESERVED': return '⏳ Reservado';
-            case 'FALTA': return '❌ Falta';
-            case 'NAO_REALIZADO': return '🔄 Não Realizado';
-            default: return '❌ Cancelado';
-        }
-    };
-
     if (loading) return <div className="loading-spinner"><div className="spinner" /></div>;
+
+    // Smart contextual message
+    const nextBooking = upcomingBookings[0];
+    const heroMessage = (() => {
+        if (stats.overdueCount > 0) return `Você tem ${stats.overdueCount} fatura(s) em atraso`;
+        if (nextBooking) {
+            const bookingDate = new Date(nextBooking.date);
+            const today = new Date();
+            const diffDays = Math.ceil((bookingDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            if (diffDays === 0) return `Sua sessão é hoje às ${nextBooking.startTime}`;
+            if (diffDays === 1) return `Sua próxima sessão é amanhã às ${nextBooking.startTime}`;
+            return `Próxima sessão em ${diffDays} dias — ${bookingDate.toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: 'short' })} às ${nextBooking.startTime}`;
+        }
+        if (stats.openPaymentsValue > 0) return 'Você tem pagamentos pendentes';
+        return 'Tudo em dia! Agende sua próxima sessão';
+    })();
+
+    const greeting = (() => {
+        const h = new Date().getHours();
+        if (h < 12) return 'Bom dia';
+        if (h < 18) return 'Boa tarde';
+        return 'Boa noite';
+    })();
 
     return (
         <div>
-            <div className="page-header">
-                <h2 className="page-title">👋 Olá, {user?.name}</h2>
-                <p className="page-subtitle">Seus agendamentos e gravações</p>
-            </div>
-
-            <div className="stats-row">
-                <div className="stat-card" style={stats.overdueCount > 0 ? { border: '1px solid #ef4444', background: 'rgba(239, 68, 68, 0.05)' } : {}}>
-                    <div className="stat-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>💸 Faturas Abertas</div>
-                    <div className="stat-value" style={{ color: stats.overdueCount > 0 ? '#ef4444' : 'inherit' }}>
-                        {formatBRL(stats.openPaymentsValue)}
-                    </div>
-                    <div className="stat-detail" style={{ color: stats.overdueCount > 0 ? '#ef4444' : 'var(--text-muted)', fontWeight: stats.overdueCount > 0 ? 600 : 400 }}>
-                        {stats.overdueCount > 0 ? `⚠️ ${stats.overdueCount} faturas atrasadas` : stats.openPaymentsValue > 0 ? 'Faturas no prazo' : 'Tudo em dia'}
-                    </div>
-                </div>
-
-                <div className="stat-card">
-                    <div className="stat-label">Agendamentos</div>
-                    <div className="stat-value">{stats.bookings}</div>
-                    <div className="stat-detail">agendamentos ativos</div>
-                </div>
-                <div className="stat-card">
-                    <div className="stat-label">🎬 Gravações Totais</div>
-                    <div className="stat-value">{stats.completedBookings}</div>
-                    <div className="stat-detail">sessões concluídas</div>
-                </div>
-                <div className="stat-card">
-                    <div className="stat-label">Meus Contratos</div>
-                    <div className="stat-value" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        {stats.contracts}
-                        {stats.pausedContracts > 0 && (
-                            <span className="badge badge-paused" style={{ fontSize: '0.65rem', verticalAlign: 'middle' }}>
-                                {stats.pausedContracts} ⏸️
-                            </span>
-                        )}
-                    </div>
-                    <div className="stat-detail">Fixo e Flex</div>
+            {/* ─── Welcome Hero ─── */}
+            <div className="animate-card-enter" style={{
+                background: stats.overdueCount > 0
+                    ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(239, 68, 68, 0.04))'
+                    : 'linear-gradient(135deg, rgba(17, 129, 155, 0.12), rgba(16, 185, 129, 0.06))',
+                border: `1px solid ${stats.overdueCount > 0 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(17, 129, 155, 0.15)'}`,
+                borderRadius: 'var(--radius-lg)',
+                padding: '28px 24px',
+                marginBottom: '24px',
+            }}>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 800, letterSpacing: '-0.02em', marginBottom: '6px', color: 'var(--text-primary)' }}>
+                    {greeting}, {user?.name?.split(' ')[0]}
+                </h2>
+                <p style={{ fontSize: '0.9375rem', color: 'var(--text-secondary)', marginBottom: '20px', lineHeight: 1.5 }}>
+                    {heroMessage}
+                </p>
+                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                    <button className="btn btn-primary" onClick={() => navigate('/calendar')}
+                        style={{ padding: '12px 20px', minHeight: '48px', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <CalendarDays size={18} /> Ver Agenda
+                    </button>
+                    <button className="btn btn-secondary" onClick={() => navigate('/my-bookings')}
+                        style={{ padding: '12px 20px', minHeight: '48px', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Clapperboard size={18} /> Suas Gravações
+                    </button>
                 </div>
             </div>
 
-            {/* Consumo de Pacotes (Custom Contracts) */}
+            {/* ─── Push Notification Prompt ─── */}
+            <NotificationBanner />
+
+            {/* ─── Stat Cards ─── */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+                <StatCard icon={Wallet} label="Faturas Abertas" value={formatBRL(stats.openPaymentsValue)}
+                    detail={stats.overdueCount > 0 ? `${stats.overdueCount} fatura(s) atrasada(s)` : stats.openPaymentsValue > 0 ? 'No prazo' : 'Tudo em dia'}
+                    accent={stats.overdueCount > 0 ? '#ef4444' : '#10b981'} index={0} onClick={() => navigate('/meus-pagamentos')} />
+                <StatCard icon={CalendarDays} label="Agendamentos Ativos" value={stats.bookings}
+                    detail="próximas sessões" accent="var(--accent-primary)" index={1} onClick={() => navigate('/calendar')} />
+                <StatCard icon={Clapperboard} label="Gravações" value={stats.completedBookings}
+                    detail="sessões concluídas" accent="#2dd4bf" index={2} onClick={() => navigate('/my-bookings')} />
+                <StatCard icon={FileText} label="Contratos" value={stats.contracts}
+                    detail={stats.pausedContracts > 0 ? `${stats.pausedContracts} pausado(s)` : 'Fixo e Flex'}
+                    accent="#f59e0b" index={3} onClick={() => navigate('/my-contracts')} />
+            </div>
+
+            {/* ─── Consumo de Pacotes ─── */}
             {myContracts.filter(c => c.status === 'ACTIVE' && c.addonUsage && Object.keys(c.addonUsage).length > 0).map(c => (
-                <div key={c.id} className="card" style={{ marginBottom: '24px', borderLeft: '3px solid var(--accent-primary)' }}>
+                <div key={c.id} className="card animate-card-enter" style={{ marginBottom: '24px', borderLeft: '3px solid var(--accent-primary)', '--i': 4 } as React.CSSProperties}>
                     <div className="card-header" style={{ paddingBottom: '12px' }}>
                         <h3 className="card-title" style={{ fontSize: '0.9375rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            📦 Consumo de Pacotes ({c.tier})
+                            <Package size={18} style={{ color: 'var(--accent-primary)' }} /> Consumo de Pacotes ({c.tier})
                         </h3>
                     </div>
                     <div style={{ padding: '0 20px 20px 20px' }}>
                         {Object.entries(c.addonUsage!).map(([addonKey, usage], i, arr) => {
                             const usedPct = usage.limit > 0 ? Math.round((usage.used / usage.limit) * 100) : 0;
-                            const addonName = addonKey === 'CORTES_REELS' ? '✂️ Cortes p/ Reels' : addonKey === 'CAPA_YOUTUBE' ? '🖼️ Capas (Thumbnails)' : addonKey === 'GESTAO_SOCIAL' ? '📱 Gestão de Redes' : ("✨ " + addonKey.replace(/_/g, ' '));
-                            
+                            const addonName = addonKey === 'CORTES_REELS' ? 'Cortes p/ Reels' : addonKey === 'CAPA_YOUTUBE' ? 'Capas (Thumbnails)' : addonKey === 'GESTAO_SOCIAL' ? 'Gestão de Redes' : addonKey.replace(/_/g, ' ');
                             return (
                                 <div key={addonKey} style={{ marginBottom: i === arr.length - 1 ? 0 : '16px' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                                         <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--text-primary)' }}>{addonName}</span>
-                                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{usage.used} / {usage.limit} Entregues</span>
+                                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{usage.used} / {usage.limit}</span>
                                     </div>
                                     <div style={{ height: 8, borderRadius: 4, background: 'var(--bg-elevated)', overflow: 'hidden' }}>
-                                        <div style={{
-                                            height: '100%', borderRadius: 4,
-                                            background: usedPct >= 100 ? 'var(--tier-audiencia)' : 'linear-gradient(90deg, var(--accent-primary), #2dd4bf)',
-                                            width: `${Math.min(usedPct, 100)}%`, transition: 'width 0.5s ease',
-                                        }} />
+                                        <div style={{ height: '100%', borderRadius: 4, background: usedPct >= 100 ? 'var(--tier-audiencia)' : 'linear-gradient(90deg, var(--accent-primary), #2dd4bf)', width: `${Math.min(usedPct, 100)}%`, transition: 'width 0.5s ease' }} />
                                     </div>
-                                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px', textAlign: 'right' }}>
-                                        Ciclo atual (renovado mês a mês)
-                                    </div>
+                                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px', textAlign: 'right' }}>Ciclo atual</div>
                                 </div>
                             );
                         })}
@@ -649,133 +664,122 @@ function ClientDashboard() {
                 </div>
             ))}
 
+            {/* ─── Faturas em Aberto (Card-based) ─── */}
             {openPayments.length > 0 && (
-                <div className="card" style={{ marginBottom: '24px', border: '1px solid var(--tier-audiencia)' }}>
-                    <div className="card-header" style={{ background: 'rgba(239, 68, 68, 0.05)' }}>
-                        <h3 className="card-title" style={{ color: 'var(--tier-audiencia)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            ⚠️ Suas Faturas em Aberto
-                        </h3>
-                    </div>
-                    <div className="table-container">
-                        <table>
-                            <thead><tr><th>Vencimento</th><th>Valor</th><th>Detalhes</th><th>Pagamento Expresso</th></tr></thead>
-                            <tbody>
-                                {openPayments.map(p => {
-                                    const isOverdue = new Date(p.dueDate) < new Date();
-                                    return (
-                                        <tr key={p.id} style={{ background: isOverdue ? 'rgba(239, 68, 68, 0.03)' : '' }}>
-                                            <td style={{ color: isOverdue ? 'var(--tier-audiencia)' : 'inherit', fontWeight: isOverdue ? 600 : 400 }}>
-                                                {new Date(p.dueDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
-                                            </td>
-                                            <td style={{ fontWeight: 700 }}>{formatBRL(p.amount)}</td>
-                                            <td>
-                                                <span className={`badge badge-${p.status.toLowerCase()}`}>
-                                                    {isOverdue ? 'ATRASADO' : p.status === 'PENDING' ? 'PENDENTE' : p.status}
-                                                </span>
-                                            </td>
-                                            <td>
-                                                <div style={{ display: 'flex', gap: '8px' }}>
-                                                    <button className="btn btn-sm" style={{ background: 'var(--brand-primary)', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-                                                        onClick={() => setPayingInvoice(p)}>
-                                                        💳 Pagar Fatura
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
+                <div style={{ marginBottom: '24px' }}>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}>
+                        <AlertTriangle size={18} style={{ color: '#f59e0b' }} /> Faturas em Aberto
+                    </h3>
+                    <div style={{ display: 'grid', gap: '12px' }}>
+                        {openPayments.map((p, i) => {
+                            const isOverdue = new Date(p.dueDate) < new Date();
+                            return (
+                                <div key={p.id} className="animate-card-enter card-interactive" style={{
+                                    background: 'var(--bg-card)', border: `1px solid ${isOverdue ? 'rgba(239, 68, 68, 0.3)' : 'var(--border-subtle)'}`,
+                                    borderRadius: 'var(--radius-lg)', padding: '16px 20px',
+                                    display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px',
+                                    cursor: 'pointer', '--i': i + 5,
+                                } as React.CSSProperties} onClick={() => setPayingInvoice(p)}>
+                                    <div>
+                                        <div style={{ fontWeight: 800, fontSize: '1.125rem', color: 'var(--text-primary)' }}>{formatBRL(p.amount)}</div>
+                                        <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                            {isOverdue ? 'Vencida' : 'Vence'} em {new Date(p.dueDate).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: 'short' })}
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <StatusBadge status={isOverdue ? 'FAILED' : p.status} label={isOverdue ? 'Atrasada' : undefined} />
+                                        <ArrowRight size={16} style={{ color: 'var(--text-muted)' }} />
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             )}
 
-            {/* Upcoming */}
-            <div className="card" style={{ marginBottom: '24px' }}>
-                <div className="card-header"><h3 className="card-title">🔜 Próximos Agendamentos</h3></div>
+            {/* ─── Próximos Agendamentos (Card-based) ─── */}
+            <div style={{ marginBottom: '24px' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}>
+                    <CalendarDays size={18} style={{ color: 'var(--accent-primary)' }} /> Próximos Agendamentos
+                </h3>
                 {upcomingBookings.length === 0 ? (
-                    <div className="empty-state">
-                        <div className="empty-state-icon">📅</div>
-                        <div className="empty-state-text">Nenhum agendamento futuro encontrado</div>
+                    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', padding: '40px 20px', textAlign: 'center' }}>
+                        <CalendarDays size={32} style={{ color: 'var(--text-muted)', marginBottom: '12px' }} />
+                        <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: 500 }}>Nenhum agendamento futuro</div>
+                        <button className="btn btn-primary" onClick={() => navigate('/calendar')} style={{ marginTop: '16px', minHeight: '48px', padding: '12px 24px' }}>Agendar Sessão</button>
                     </div>
                 ) : (
-                    <div className="table-container">
-                        <table>
-                            <thead><tr><th>Data</th><th>Horário</th><th>Faixa</th><th>Origem</th><th>Status</th><th>Ações</th></tr></thead>
-                            <tbody>
-                                {upcomingBookings.map(b => (
-                                    <tr key={b.id}>
-                                        <td>{new Date(b.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</td>
-                                        <td style={{ fontWeight: 600 }}>{b.startTime} — {b.endTime}</td>
-                                        <td><span className={`badge badge-${b.tierApplied.toLowerCase()}`}>{b.tierApplied}</span></td>
-                                        <td>
-                                            {b.contract ? (
-                                                <span style={{ cursor: 'pointer', textDecoration: 'underline', color: 'var(--brand-primary)', fontWeight: 500 }}
-                                                    onClick={() => navigate('/my-contracts', { state: { expandContractId: b.contract!.id } })}>
-                                                    {formatContractOrigin(b)}
-                                                </span>
-                                            ) : (
-                                                <span style={{ opacity: 0.6 }}>{formatContractOrigin(b)}</span>
-                                            )}
-                                        </td>
-                                        <td><span className={`badge badge-${b.status.toLowerCase()}`}>{statusLabel(b.status)}</span></td>
-                                        <td>
-                                            <button className="btn btn-sm" style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'none', padding: '6px 12px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer' }}
-                                                onClick={() => setCancelingBooking(b)}>
-                                                ❌ Cancelar
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                    <div style={{ display: 'grid', gap: '10px' }}>
+                        {upcomingBookings.slice(0, 5).map((b, i) => {
+                            const bookingDate = new Date(b.date);
+                            const dayLabel = DAY_LABELS[bookingDate.getUTCDay()];
+                            const dateLabel = bookingDate.toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit' });
+                            const d = daysUntil(b.date);
+                            const isToday = d <= 0;
+                            return (
+                                <div key={b.id} className="animate-card-enter" style={{
+                                    background: isToday ? 'linear-gradient(135deg, rgba(17,129,155,0.1), rgba(16,185,129,0.05))' : 'var(--bg-card)',
+                                    border: `1px solid ${isToday ? 'rgba(17,129,155,0.2)' : 'var(--border-subtle)'}`,
+                                    borderRadius: 'var(--radius-lg)', padding: '14px 16px',
+                                    display: 'flex', alignItems: 'center', gap: '14px', '--i': i + 6,
+                                } as React.CSSProperties}>
+                                    <div style={{ minWidth: '52px', textAlign: 'center', padding: '8px 4px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)' }}>
+                                        <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{dayLabel}</div>
+                                        <div style={{ fontSize: '0.9375rem', fontWeight: 800, color: isToday ? 'var(--accent-primary)' : 'var(--text-primary)' }}>{dateLabel}</div>
+                                    </div>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--text-primary)' }}>{b.startTime} — {b.endTime}</div>
+                                        <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{formatContractOrigin(b)}</div>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                                        <span className={`badge badge-${b.tierApplied.toLowerCase()}`} style={{ fontSize: '0.6875rem' }}>{b.tierApplied}</span>
+                                        <button onClick={(e) => { e.stopPropagation(); setCancelingBooking(b); }} aria-label="Cancelar"
+                                            style={{ background: 'rgba(239,68,68,0.08)', border: 'none', borderRadius: '8px', padding: '8px', cursor: 'pointer', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '36px', minHeight: '36px' }}>
+                                            <XCircle size={16} />
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 )}
             </div>
 
-            {/* History */}
-            <div className="card">
-                <div className="card-header"><h3 className="card-title">🕐 Últimas Gravações</h3></div>
+            {/* ─── Últimas Gravações ─── */}
+            <div>
+                <h3 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}>
+                    <Clock size={18} style={{ color: 'var(--text-muted)' }} /> Últimas Gravações
+                </h3>
                 {recentBookings.length === 0 ? (
-                    <div className="empty-state">
-                        <div className="empty-state-icon">📂</div>
-                        <div className="empty-state-text">Nenhum histórico encontrado</div>
+                    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', padding: '40px 20px', textAlign: 'center' }}>
+                        <Clapperboard size={32} style={{ color: 'var(--text-muted)', marginBottom: '12px' }} />
+                        <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: 500 }}>Nenhum histórico encontrado</div>
                     </div>
                 ) : (
-                    <div className="table-container">
-                        <table>
-                            <thead><tr><th>Data</th><th>Horário</th><th>Faixa</th><th>Origem</th><th>Status</th></tr></thead>
-                            <tbody>
-                                {recentBookings.map(b => (
-                                    <tr key={b.id}>
-                                        <td>{new Date(b.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</td>
-                                        <td style={{ fontWeight: 600 }}>{b.startTime} — {b.endTime}</td>
-                                        <td><span className={`badge badge-${b.tierApplied.toLowerCase()}`}>{b.tierApplied}</span></td>
-                                        <td>
-                                            {b.contract ? (
-                                                <span style={{ cursor: 'pointer', textDecoration: 'underline', color: 'var(--brand-primary)', fontWeight: 500 }}
-                                                    onClick={() => navigate('/my-contracts', { state: { expandContractId: b.contract!.id } })}>
-                                                    {formatContractOrigin(b)}
-                                                </span>
-                                            ) : (
-                                                <span style={{ opacity: 0.6 }}>{formatContractOrigin(b)}</span>
-                                            )}
-                                        </td>
-                                        <td><span className={`badge badge-${b.status.toLowerCase()}`}>{statusLabel(b.status)}</span></td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+                        {recentBookings.slice(0, 5).map((b, i) => (
+                            <div key={b.id} style={{ padding: '14px 16px', borderBottom: i < Math.min(recentBookings.length, 5) - 1 ? '1px solid var(--border-subtle)' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div>
+                                    <div style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-primary)' }}>
+                                        {new Date(b.date).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: 'short' })} — {b.startTime}
+                                    </div>
+                                    <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '2px' }}>{formatContractOrigin(b)}</div>
+                                </div>
+                                <StatusBadge status={b.status} />
+                            </div>
+                        ))}
                     </div>
                 )}
             </div>
 
-            {/* Cancel Confirm Modal */}
+            {/* ─── Cancel Modal ─── */}
             {cancelingBooking && (
                 <ModalOverlay onClose={() => setCancelingBooking(null)} preventClose={isCanceling}>
                     <div className="modal-content" style={{ maxWidth: 500 }}>
                         <div className="modal-header">
-                            <h2 className="modal-title">❌ Cancelar Sessão</h2>
+                            <h2 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <XCircle size={20} style={{ color: '#ef4444' }} /> Cancelar Sessão
+                            </h2>
                             <button className="btn-close" onClick={() => !isCanceling && setCancelingBooking(null)}>✕</button>
                         </div>
                         <div className="modal-body" style={{ display: 'grid', gap: '16px' }}>
@@ -783,75 +787,52 @@ function ClientDashboard() {
                                 const now = new Date();
                                 const bookingDateTime = new Date(`${cancelingBooking.date.split('T')[0]}T${cancelingBooking.startTime}:00-03:00`);
                                 const diffHours = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-
                                 return (
                                     <>
                                         <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)' }}>
                                             <div style={{ fontWeight: 700, marginBottom: '8px' }}>
                                                 {new Date(cancelingBooking.date).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: 'long' })} às {cancelingBooking.startTime}
                                             </div>
-                                            <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                                                {formatContractOrigin(cancelingBooking)}
-                                            </div>
+                                            <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>{formatContractOrigin(cancelingBooking)}</div>
                                         </div>
-
                                         {diffHours >= 24 ? (
-                                            <div style={{ padding: '16px', background: 'rgba(16, 185, 129, 0.1)', color: '#059669', borderRadius: 'var(--radius-md)', border: '1px solid rgba(16, 185, 129, 0.2)', fontSize: '0.875rem' }}>
-                                                ✅ <strong>Cancelamento Antecipado</strong>
-                                                <p style={{ marginTop: '8px', lineHeight: 1.5 }}>
-                                                    Como você está cancelando com mais de 24h de antecedência, <strong>seu crédito retornará automaticamente</strong> ao seu plano e você poderá reagendar.
-                                                </p>
+                                            <div style={{ padding: '16px', background: 'rgba(16,185,129,0.1)', color: '#059669', borderRadius: 'var(--radius-md)', border: '1px solid rgba(16,185,129,0.2)', fontSize: '0.875rem' }}>
+                                                <span style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}><CheckCircle size={16} /> <strong>Cancelamento Antecipado</strong></span>
+                                                <p style={{ lineHeight: 1.5 }}>Como você está cancelando com mais de 24h de antecedência, <strong>seu crédito retornará automaticamente</strong> ao seu plano.</p>
                                             </div>
                                         ) : (
-                                            <div style={{ padding: '16px', background: 'rgba(239, 68, 68, 0.1)', color: '#dc2626', borderRadius: 'var(--radius-md)', border: '1px solid rgba(239, 68, 68, 0.2)', fontSize: '0.875rem' }}>
-                                                ⚠️ <strong>Cancelamento Tardio</strong>
-                                                <p style={{ marginTop: '8px', lineHeight: 1.5 }}>
-                                                    Faltam menos de 24 horas para o início da sua sessão. Se você cancelar agora, o horário será liberado para o público, mas <strong>o crédito desta sessão não será estornado</strong> de acordo com a política do estúdio.
-                                                </p>
+                                            <div style={{ padding: '16px', background: 'rgba(239,68,68,0.1)', color: '#dc2626', borderRadius: 'var(--radius-md)', border: '1px solid rgba(239,68,68,0.2)', fontSize: '0.875rem' }}>
+                                                <span style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}><AlertTriangle size={16} /> <strong>Cancelamento Tardio</strong></span>
+                                                <p style={{ lineHeight: 1.5 }}>Faltam menos de 24h. O horário será liberado, mas <strong>o crédito não será estornado</strong>.</p>
                                             </div>
                                         )}
-
-                                        <p style={{ fontSize: '0.875rem', textAlign: 'center', marginTop: '12px' }}>
-                                            Tem certeza que deseja desmarcar essa gravação?
-                                        </p>
+                                        <p style={{ fontSize: '0.875rem', textAlign: 'center', marginTop: '12px' }}>Tem certeza que deseja desmarcar?</p>
                                     </>
                                 );
                             })()}
                         </div>
                         <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                            <button className="btn btn-secondary" disabled={isCanceling} onClick={() => setCancelingBooking(null)}>
-                                Voltar
-                            </button>
+                            <button className="btn btn-secondary" disabled={isCanceling} onClick={() => setCancelingBooking(null)}>Voltar</button>
                             <button className="btn btn-primary" style={{ background: '#ef4444', borderColor: '#b91c1c' }} disabled={isCanceling} onClick={handleCancelSubmit}>
-                                {isCanceling ? '⏳ Cancelando...' : 'Confirmar Cancelamento'}
+                                {isCanceling ? 'Cancelando...' : 'Confirmar Cancelamento'}
                             </button>
                         </div>
                     </div>
                 </ModalOverlay>
             )}
-            {/* ══════════ INLINE CHECKOUT MODAL ══════════ */}
+
+            {/* ─── Checkout Modal ─── */}
             {payingInvoice && (
-                <ModalOverlay onClose={() => setPayingInvoice(null)}>
-                    <div className="modal" style={{ maxWidth: 480, width: '95%' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                            <h2 className="modal-title" style={{ margin: 0 }}>💳 Pagar Fatura</h2>
-                            <button className="btn btn-ghost btn-sm" onClick={() => setPayingInvoice(null)}>✕</button>
-                        </div>
-                        <InlineCheckout
-                            amount={payingInvoice.amount}
-                            paymentId={payingInvoice.id}
-                            description={`Fatura — ${formatBRL(payingInvoice.amount)}`}
-                            allowedMethods={['CARTAO', 'PIX', 'BOLETO']}
-                            onSuccess={() => {
-                                setPayingInvoice(null);
-                                showToast('✅ Pagamento realizado com sucesso!');
-                                loadData();
-                            }}
-                            onError={(msg) => showToast(`❌ ${msg}`)}
-                            onCancel={() => setPayingInvoice(null)}
-                        />
-                    </div>
-                </ModalOverlay>
+                <PaymentModal
+                    title="Pagar Fatura"
+                    amount={payingInvoice.amount}
+                    paymentId={payingInvoice.id}
+                    description={`Fatura — ${formatBRL(payingInvoice.amount)}`}
+                    allowedMethods={['CARTAO', 'PIX', 'BOLETO']}
+                    onSuccess={() => { setPayingInvoice(null); showToast('Pagamento realizado com sucesso!'); loadData(); }}
+                    onError={(msg) => showToast({ message: msg, type: 'error' })}
+                    onClose={() => setPayingInvoice(null)}
+                />
             )}
         </div>
     );

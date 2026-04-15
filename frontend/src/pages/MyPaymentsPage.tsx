@@ -1,12 +1,15 @@
+import { getErrorMessage } from '../utils/errors';
 import { useState, useEffect, useCallback } from 'react';
-import { stripeApi, contractsApi, SavedCard, InstallmentPlan, ContractWithStats, PaymentSummary } from '../api/client';
-import StripeCardForm, { getStripe } from '../components/StripeCardForm';
-import InstallmentSelector from '../components/InstallmentSelector';
+import { stripeApi, contractsApi, SavedCard, ContractWithStats, PaymentSummary } from '../api/client';
+import StripeCardForm from '../components/StripeCardForm';
 import { useUI } from '../context/UIContext';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { CreditCard, Trash2, Shield, Plus, Zap, Clock, CheckCircle, XCircle, AlertTriangle, QrCode, Wallet, Copy, X } from 'lucide-react';
+import { CreditCard, Trash2, Shield, Plus, Zap, Clock, CheckCircle, XCircle, AlertTriangle, Wallet, X } from 'lucide-react';
 import ModalOverlay from '../components/ModalOverlay';
-import { getPaymentMethods } from '../constants/paymentMethods';
+import PaymentModal from '../components/PaymentModal';
+import { getClientPaymentMethods } from '../constants/paymentMethods';
+import ToggleSwitch from '../components/ui/ToggleSwitch';
+import StatusBadge from '../components/ui/StatusBadge';
 
 const BRAND_LABELS: Record<string, string> = {
     visa: 'Visa',
@@ -55,15 +58,7 @@ export default function MyPaymentsPage() {
 
     // Payment flow
     const [payingPayment, setPayingPayment] = useState<(PaymentSummary & { contractName: string; contractDuration: number }) | null>(null);
-    const [paymentSecret, setPaymentSecret] = useState<string | null>(null);
-    const [installmentPlans, setInstallmentPlans] = useState<InstallmentPlan[]>([]);
-    const [selectedInstallments, setSelectedInstallments] = useState<number | null>(1);
-    const [paymentContractDuration, setPaymentContractDuration] = useState(0);
-    const [creatingPayment, setCreatingPayment] = useState(false);
-    const [pixData, setPixData] = useState<{ pixString: string; qrCodeBase64?: string } | null>(null);
-
-    // One-click/Pix mode
-    const [paymentMode, setPaymentMode] = useState<'CARD' | 'PIX' | null>(null);
+    const [showAllHistory, setShowAllHistory] = useState(false);
 
     // ─── Data Loading ─────────────────────────────────────
     const loadData = useCallback(async () => {
@@ -75,8 +70,8 @@ export default function MyPaymentsPage() {
             setCards(cardsRes.paymentMethods);
             setAutoCharge(cardsRes.autoChargeEnabled);
             setContracts(contractsRes.contracts);
-        } catch (err: any) {
-            showToast({ message: err.message || 'Erro ao carregar dados.', type: 'error' });
+        } catch (err: unknown) {
+            showToast({ message: getErrorMessage(err) || 'Erro ao carregar dados.', type: 'error' });
         } finally {
             setLoading(false);
         }
@@ -139,8 +134,8 @@ export default function MyPaymentsPage() {
             const res = await stripeApi.createSetupIntent();
             setSetupSecret(res.clientSecret);
             setShowAddCard(true);
-        } catch (err: any) {
-            showToast({ message: err.message || 'Erro ao iniciar adição de cartão.', type: 'error' });
+        } catch (err: unknown) {
+            showToast({ message: getErrorMessage(err) || 'Erro ao iniciar adição de cartão.', type: 'error' });
         }
     };
 
@@ -161,8 +156,8 @@ export default function MyPaymentsPage() {
                     await stripeApi.removePaymentMethod(card.id);
                     showToast('Cartão removido.');
                     loadData();
-                } catch (err: any) {
-                    showToast({ message: err.message || 'Erro ao remover cartão.', type: 'error' });
+                } catch (err: unknown) {
+                    showToast({ message: getErrorMessage(err) || 'Erro ao remover cartão.', type: 'error' });
                 } finally {
                     setRemovingId(null);
                 }
@@ -176,8 +171,8 @@ export default function MyPaymentsPage() {
             await stripeApi.setDefaultPaymentMethod(card.id);
             showToast('Cartão padrão definido!');
             loadData();
-        } catch (err: any) {
-            showToast({ message: err.message || 'Erro ao definir padrão.', type: 'error' });
+        } catch (err: unknown) {
+            showToast({ message: getErrorMessage(err) || 'Erro ao definir padrão.', type: 'error' });
         } finally {
             setSettingDefaultId(null);
         }
@@ -189,155 +184,11 @@ export default function MyPaymentsPage() {
             // Optimistic update
             setAutoCharge(enabled);
             showToast(enabled ? 'Cobrança automática ATIVADA.' : 'Cobrança automática DESATIVADA.');
-        } catch (err: any) {
-            showToast({ message: err.message || 'Erro ao alterar auto-charge.', type: 'error' });
+        } catch (err: unknown) {
+            showToast({ message: getErrorMessage(err) || 'Erro ao alterar auto-charge.', type: 'error' });
         }
     };
 
-
-    // ─── Payment Flow ─────────────────────────────────────
-
-    const openPaymentModal = async (payment: any, mode: 'CARD' | 'PIX') => {
-        setPayingPayment(payment);
-        setPaymentMode(mode);
-        setSelectedInstallments(1);
-        setPaymentContractDuration(payment.contractDuration);
-        setPaymentSecret(null);
-        setPixData(null);
-
-        if (mode === 'CARD') {
-            // Load installments
-            try {
-                const res = await stripeApi.getInstallmentPlans({ paymentId: payment.id });
-                setInstallmentPlans(res.plans);
-            } catch (err) {
-                console.error("Installment error:", err);
-            }
-        } else {
-            // For Pix
-            setInstallmentPlans([]);
-        }
-    };
-
-    const processPix = async () => {
-        if (!payingPayment) return;
-        setCreatingPayment(true);
-        try {
-            const res = await stripeApi.createPayment({ 
-                paymentId: payingPayment.id,
-                paymentMethod: 'pix'
-            });
-
-            if (res.provider === 'CORA' && res.pixString) {
-                setPixData({ pixString: res.pixString, qrCodeBase64: res.qrCodeBase64 });
-                showToast('PIX gerado! Leia o QR Code ou cole o código.');
-            } else if (res.clientSecret) {
-                const stripe = await getStripe();
-                if (!stripe) throw new Error("Stripe não carregado.");
-
-                // Show Pix QR Code Modal (Fallback if Stripe still used)
-                const { error } = await stripe.confirmPixPayment(res.clientSecret, {
-                    payment_method: {
-                        billing_details: {
-                            name: 'Cliente',
-                        }
-                    },
-                    return_url: window.location.href,
-                });
-                if (error) {
-                    throw new Error(error.message);
-                }
-
-                showToast('PIX gerado! Faça o pagamento no seu banco.');
-                setPayingPayment(null);
-                setTimeout(loadData, 2000);
-            }
-        } catch(err: any) {
-            showToast({ message: err.message, type: 'error' });
-        } finally {
-            setCreatingPayment(false);
-        }
-    };
-
-    const processOneClickCard = async () => {
-        if (!payingPayment || !selectedInstallments) return;
-        const defaultCard = cards.find(c => c.isDefault) || cards[0];
-        if (!defaultCard) {
-            // Fallback to manual entry if no card is somehow saved
-            createCardIntent();
-            return;
-        }
-
-        setCreatingPayment(true);
-        try {
-            const res = await stripeApi.createPayment({ 
-                paymentId: payingPayment.id,
-                installments: selectedInstallments,
-                savedPaymentMethodId: defaultCard.stripePaymentMethodId,
-                paymentMethod: 'cartao'
-            });
-
-            const stripe = await getStripe();
-            if (!stripe) throw new Error("Stripe não carregado.");
-
-            // Confirm payment with the attached card
-            if (!res.clientSecret) throw new Error("Segredo do cliente ausente.");
-            
-            const { error, paymentIntent } = await stripe.confirmCardPayment(res.clientSecret, {
-                payment_method: defaultCard.stripePaymentMethodId
-            });
-
-            if (error) {
-                throw new Error(error.message);
-            }
-
-            if (paymentIntent?.status === 'succeeded') {
-                showToast('Pagamento confirmado com sucesso!');
-                
-                // Atualização otimista da UI para evitar Race Condition com o Webhook
-                if (payingPayment) {
-                    setContracts(prev => prev.map(c => ({
-                        ...c,
-                        payments: c.payments?.map(p => 
-                            p.id === payingPayment.id ? { ...p, status: 'PAID', provider: 'STRIPE' } : p
-                        )
-                    })));
-
-                    await stripeApi.verifyPayment({
-                        paymentId: payingPayment.id,
-                        paymentIntentId: paymentIntent.id
-                    }).catch(console.error); // Fogo e esquece, garante que o banco sincronizou
-                }
-
-                setPayingPayment(null);
-            } else if (paymentIntent?.status === 'requires_action') {
-                showToast('Autenticação adicional necessária.');
-            }
-        } catch(err: any) {
-            showToast({ message: err.message, type: 'error' });
-        } finally {
-            setCreatingPayment(false);
-        }
-    };
-
-    const createCardIntent = async () => {
-        if (!payingPayment || !selectedInstallments) return;
-        setCreatingPayment(true);
-        try {
-            const res = await stripeApi.createPayment({
-                paymentId: payingPayment.id,
-                installments: selectedInstallments,
-                paymentMethod: 'cartao'
-            });
-            if (res.clientSecret) {
-                setPaymentSecret(res.clientSecret);
-            }
-        } catch (err: any) {
-            showToast({ message: err.message, type: 'error' });
-        } finally {
-            setCreatingPayment(false);
-        }
-    };
 
     if (loading && contracts.length === 0) {
         return <div className="loading-spinner"><div className="spinner" /></div>;
@@ -371,7 +222,7 @@ export default function MyPaymentsPage() {
                             const isOverdue = new Date(p.dueDate).getTime() < Date.now();
                             const isFailed = p.status === 'FAILED';
                             const defaultCard = cards.find(c => c.isDefault) || cards[0];
-                            const availableMethods = getPaymentMethods();
+                            const availableMethods = getClientPaymentMethods();
                             const pixEnabled = availableMethods.some(m => m.key === 'PIX');
                             const cardEnabled = availableMethods.some(m => m.key === 'CARTAO');
 
@@ -390,7 +241,7 @@ export default function MyPaymentsPage() {
                                         </div>
                                     )}
 
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '24px', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                         <div>
                                             <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '8px' }}>
                                                 {formatBRL(p.amount)}
@@ -403,51 +254,14 @@ export default function MyPaymentsPage() {
                                             </div>
                                         </div>
 
-                                        {/* Actions */}
-                                        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-                                            {cards.length > 0 ? (
-                                                <>
-                                                    {cardEnabled && (
-                                                        <button 
-                                                            onClick={() => openPaymentModal(p, 'CARD')}
-                                                            className="btn btn-primary"
-                                                            style={{ padding: '12px 20px', borderRadius: 'var(--radius-full)' }}>
-                                                            <CreditCard size={18} />
-                                                            Pagar com Cartão ({defaultCard.last4})
-                                                        </button>
-                                                    )}
-                                                    {pixEnabled && (
-                                                        <button 
-                                                            onClick={() => openPaymentModal(p, 'PIX')}
-                                                            className="btn btn-secondary"
-                                                            style={{ padding: '12px 20px', borderRadius: 'var(--radius-full)' }}>
-                                                            <QrCode size={18} />
-                                                            PIX Agora
-                                                        </button>
-                                                    )}
-                                                </>
-                                            ) : (
-                                                <>
-                                                    {cardEnabled && (
-                                                        <button 
-                                                            onClick={() => openPaymentModal(p, 'CARD')}
-                                                            className="btn btn-primary"
-                                                            style={{ padding: '12px 20px', borderRadius: 'var(--radius-full)' }}>
-                                                            <CreditCard size={18} />
-                                                            Pagar com Cartão
-                                                        </button>
-                                                    )}
-                                                    {pixEnabled && (
-                                                        <button 
-                                                            onClick={() => openPaymentModal(p, 'PIX')}
-                                                            className="btn btn-secondary"
-                                                            style={{ padding: '12px 20px', borderRadius: 'var(--radius-full)' }}>
-                                                            <QrCode size={18} />
-                                                            PIX
-                                                        </button>
-                                                    )}
-                                                </>
-                                            )}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                            <button 
+                                                onClick={() => setPayingPayment(p)}
+                                                className="btn btn-primary"
+                                                style={{ padding: '14px 20px', borderRadius: 'var(--radius-full)', minHeight: '48px', width: '100%', justifyContent: 'center' }}>
+                                                <CreditCard size={18} />
+                                                Pagar Agora
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
@@ -480,27 +294,11 @@ export default function MyPaymentsPage() {
                             </p>
                         </div>
 
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}>
-                            <span style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
-                                {autoCharge ? 'Ligado' : 'Desligado'}
-                            </span>
-                            <div style={{
-                                width: 50, height: 26, background: autoCharge ? '#10b981' : 'var(--text-muted)',
-                                borderRadius: 13, position: 'relative', transition: 'background-color 0.2s', padding: 3
-                            }}>
-                                <div style={{
-                                    width: 20, height: 20, background: '#fff', borderRadius: '50%',
-                                    transform: `translateX(${autoCharge ? 24 : 0}px)`, transition: 'transform 0.2s',
-                                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                                }} />
-                            </div>
-                            <input 
-                                type="checkbox" 
-                                checked={autoCharge} 
-                                onChange={e => handleToggleAutoCharge(e.target.checked)} 
-                                style={{ display: 'none' }} 
-                            />
-                        </label>
+                        <ToggleSwitch
+                            checked={autoCharge}
+                            onChange={handleToggleAutoCharge}
+                            label={autoCharge ? 'Ligado' : 'Desligado'}
+                        />
                     </div>
                 </div>
             )}
@@ -513,10 +311,10 @@ export default function MyPaymentsPage() {
                         Histórico de Pagamentos
                     </h2>
                     <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
-                        {paidPayments.slice(0, 5).map((p, i) => (
+                        {paidPayments.slice(0, showAllHistory ? undefined : 5).map((p, i, arr) => (
                             <div key={p.id} style={{
                                 padding: '16px 20px', 
-                                borderBottom: i < Math.min(paidPayments.length, 5) - 1 ? '1px solid var(--border-subtle)' : 'none',
+                                borderBottom: i < arr.length - 1 ? '1px solid var(--border-subtle)' : 'none',
                                 display: 'flex', justifyContent: 'space-between', alignItems: 'center'
                             }}>
                                 <div>
@@ -525,13 +323,20 @@ export default function MyPaymentsPage() {
                                 </div>
                                 <div style={{ textAlign: 'right' }}>
                                     <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{formatBRL(p.amount)}</div>
-                                    <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#10b981', background: 'rgba(16,185,129,0.1)', padding: '2px 8px', borderRadius: '12px', display: 'inline-block', marginTop: '4px' }}>
-                                        {p.provider === 'STRIPE' ? 'Automático' : 'Pago'}
-                                    </div>
+                                    <StatusBadge status="PAID" label={p.provider === 'STRIPE' ? 'Automático' : 'Pago'} />
                                 </div>
                             </div>
                         ))}
                     </div>
+                    {paidPayments.length > 5 && !showAllHistory && (
+                        <button onClick={() => setShowAllHistory(true)} style={{
+                            display: 'block', width: '100%', padding: '12px', marginTop: '8px',
+                            background: 'transparent', border: '1px solid var(--border-subtle)',
+                            borderRadius: 'var(--radius-md)', color: 'var(--text-secondary)',
+                            fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer',
+                            minHeight: '44px',
+                        }}>Ver todos ({paidPayments.length})</button>
+                    )}
                 </div>
             )}
 
@@ -570,7 +375,7 @@ export default function MyPaymentsPage() {
                                     <button
                                         onClick={() => handleSetDefault(card)}
                                         disabled={settingDefaultId === card.id}
-                                        style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', flex: 1 }}
+                                        style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: 'none', padding: '10px 12px', borderRadius: '8px', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer', flex: 1, minHeight: '44px' }}
                                     >
                                         {settingDefaultId === card.id ? '...' : 'Tornar Padrão'}
                                     </button>
@@ -579,9 +384,9 @@ export default function MyPaymentsPage() {
                                     onClick={() => handleRemoveCard(card)}
                                     disabled={removingId === card.id}
                                     aria-label="Remover Cartão"
-                                    style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                    style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: 'none', padding: '10px 12px', borderRadius: '8px', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '44px', minWidth: '44px' }}
                                 >
-                                    {removingId === card.id ? <div className="spinner" style={{ width: 14, height: 14 }} /> : <Trash2 size={14} />}
+                                    {removingId === card.id ? <div className="spinner" style={{ width: 14, height: 14 }} /> : <Trash2 size={16} />}
                                 </button>
                             </div>
                         </div>
@@ -619,182 +424,23 @@ export default function MyPaymentsPage() {
                 </ModalOverlay>
             )}
 
-            {/* Payment Modal (Pix or Card) */}
-            {payingPayment && paymentMode && (
-                <ModalOverlay onClose={() => !creatingPayment && setPayingPayment(null)}>
-                    <div className="modal-content" style={{ maxWidth: 500, padding: 0 }}>
-                        <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '24px', borderBottom: '1px solid var(--border-subtle)'}}>
-                            <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>Pagar Parcela</h2>
-                            <button 
-                                onClick={() => setPayingPayment(null)} 
-                                disabled={creatingPayment}
-                                aria-label="Fechar"
-                                style={{
-                                    background: 'transparent',
-                                    border: 'none',
-                                    color: 'var(--text-secondary)',
-                                    cursor: creatingPayment ? 'not-allowed' : 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    padding: '8px',
-                                    marginRight: '-8px',
-                                    borderRadius: '50%',
-                                    transition: 'background 0.2s',
-                                }}
-                                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-secondary)'}
-                                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                            >
-                                <X size={20} />
-                            </button>
-                        </div>
-                        <div style={{ padding: '0 32px 32px' }}>
-                            {/* Summary */}
-                            <div style={{ 
-                                background: 'var(--bg-secondary)', 
-                                borderRadius: '24px', 
-                                padding: '24px', 
-                                marginBottom: '32px', 
-                                textAlign: 'center',
-                                boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)'
-                            }}>
-                                <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px' }}>Valor do Pagamento</div>
-                                <div style={{ fontSize: '2.5rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em', marginBottom: '4px' }}>{formatBRL(payingPayment.amount)}</div>
-                                <div style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-muted)' }}>{payingPayment.contractName || 'Avulso'}</div>
-                            </div>
-
-                            {paymentMode === 'PIX' ? (
-                                <div style={{ textAlign: 'center' }}>
-                                    {pixData ? (
-                                        <div style={{ animation: typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'none' : 'fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1)' }}>
-                                            <div style={{ background: 'var(--bg-secondary)', padding: '32px', borderRadius: '24px', border: '1px solid var(--border-subtle)', marginBottom: '24px', textAlign: 'center' }}>
-                                                <div style={{ color: 'var(--accent-primary)', marginBottom: '12px' }}>
-                                                    <QrCode size={40} style={{ margin: '0 auto' }} />
-                                                </div>
-                                                <div style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '8px', color: 'var(--text-primary)' }}>Pague via PIX</div>
-                                                <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '24px', lineHeight: 1.5 }}>
-                                                    Abra o app do seu banco e escaneie o código abaixo para confirmar instantaneamente.
-                                                </div>
-                                                
-                                                <div style={{ background: '#ffffff', padding: '16px', borderRadius: '16px', display: 'inline-block', marginBottom: '24px', boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}>
-                                                    <img 
-                                                        src={pixData.qrCodeBase64 ? `data:image/png;base64,${pixData.qrCodeBase64}` : `https://quickchart.io/qr?text=${encodeURIComponent(pixData.pixString)}&size=220&margin=0`} 
-                                                        alt="PIX QR Code" 
-                                                        width={220}
-                                                        height={220}
-                                                        style={{ display: 'block', borderRadius: '8px' }} 
-                                                    />
-                                                </div>
-                                                
-                                                <div style={{ textAlign: 'left', marginBottom: '12px', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
-                                                    Ou use o código Pix Copia e Cola:
-                                                </div>
-                                                <div style={{ display: 'flex', gap: '8px' }}>
-                                                    <div
-                                                        style={{ flex: 1, padding: '12px 16px', borderRadius: '12px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '0.8125rem', fontFamily: '"JetBrains Mono", monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textAlign: 'left' }} 
-                                                    >
-                                                        {pixData.pixString}
-                                                    </div>
-                                                    <button 
-                                                        onClick={() => {
-                                                            navigator.clipboard.writeText(pixData.pixString);
-                                                            showToast('Código Pix copiado para a área de transferência!');
-                                                        }}
-                                                        className="btn btn-secondary"
-                                                        style={{ borderRadius: '12px', padding: '0 20px', display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}
-                                                    >
-                                                        <Copy size={16} /> <span style={{ fontWeight: 700 }}>Copiar</span>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            <button className="btn btn-primary" onClick={() => { setPixData(null); setPayingPayment(null); loadData(); }} style={{ width: '100%', padding: '18px', fontSize: '1rem', fontWeight: 800, borderRadius: 'var(--radius-full)' }}>
-                                                Já fiz o pagamento
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <div style={{ background: '#E0F2FE', color: '#0369A1', padding: '16px', borderRadius: 'var(--radius-md)', marginBottom: '24px' }}>
-                                                <QrCode size={48} style={{ margin: '0 auto 16px' }} />
-                                                <div style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '8px' }}>Pagamento PIX</div>
-                                                <div style={{ fontSize: '0.875rem', opacity: 0.9 }}>Clique abaixo para gerar o <strong>QR Code</strong> ou <strong>Copia e Cola</strong> e pagar no app do seu banco.</div>
-                                            </div>
-                                            
-                                            <button className="btn btn-primary" onClick={processPix} disabled={creatingPayment} style={{ width: '100%', padding: '16px', fontSize: '1rem', fontWeight: 700, borderRadius: 'var(--radius-full)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                                                {creatingPayment ? <><span className="spinner" aria-hidden="true" style={{width: 16, height: 16}} /> Gerando PIX...</> : 'Gerar PIX Agora'}
-                                            </button>
-                                        </>
-                                    )}
-                                </div>
-                            ) : (
-                                <div>
-                                    {/* Installments */}
-                                    {installmentPlans.length > 0 && (
-                                        <div style={{ marginBottom: '32px' }}>
-                                            <label style={{ display: 'block', fontSize: '1rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '16px' }}>
-                                                Opções de Parcelamento
-                                            </label>
-                                            <div style={{ maxHeight: '320px', overflowY: 'auto', paddingRight: '4px', margin: '0 -4px' }}>
-                                                <div style={{ padding: '0 4px' }}>
-                                                    <InstallmentSelector
-                                                        plans={installmentPlans}
-                                                        selected={selectedInstallments}
-                                                        onSelect={setSelectedInstallments}
-                                                        maxFreeInstallments={paymentContractDuration}
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Action */}
-                                    {paymentSecret ? (
-                                        <div style={{ marginTop: '16px' }}>
-                                            <StripeCardForm
-                                                mode="payment"
-                                                clientSecret={paymentSecret}
-                                                onSuccess={async () => {
-                                                    showToast('Pagamento recebido com sucesso!');
-                                                    
-                                                    // Atualização otimista
-                                                    if (payingPayment && paymentSecret) {
-                                                        setContracts(prev => prev.map(c => ({
-                                                            ...c,
-                                                            payments: c.payments?.map(p => 
-                                                                p.id === payingPayment.id ? { ...p, status: 'PAID', provider: 'STRIPE' } : p
-                                                            )
-                                                        })));
-
-                                                        // Extrair o ID do intent do clientSecret (que é pi_xxxxx_secret_yyyy)
-                                                        const paymentIntentId = paymentSecret.split('_secret_')[0];
-                                                        
-                                                        await stripeApi.verifyPayment({
-                                                            paymentId: payingPayment.id,
-                                                            paymentIntentId: paymentIntentId
-                                                        }).catch(console.error);
-                                                    }
-
-                                                    setPayingPayment(null);
-                                                }}
-                                                onError={(msg: any) => showToast({ message: String(msg), type: 'error' })}
-                                                onCancel={() => setPayingPayment(null)}
-                                                submitLabel={`Confirmar Pagamento (${selectedInstallments}x)`}
-                                            />
-                                        </div>
-                                    ) : (
-                                        <button className="btn btn-primary" onClick={processOneClickCard} disabled={creatingPayment || !selectedInstallments} style={{ width: '100%', padding: '18px', fontSize: '1rem', fontWeight: 800, borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', transition: 'background-color 0.2s, transform 0.1s' }}>
-                                            {creatingPayment ? <><span className="spinner" aria-hidden="true" style={{width: 16, height: 16}} /> Processando...</> : (
-                                                <>
-                                                    <Wallet size={20} />
-                                                    Pagar com Cartão Salvo
-                                                </>
-                                            )}
-                                        </button>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </ModalOverlay>
+            {/* Payment Modal — Unified PaymentModal */}
+            {payingPayment && (
+                <PaymentModal
+                    title="Pagar Parcela"
+                    amount={payingPayment.amount}
+                    paymentId={payingPayment.id}
+                    description={payingPayment.contractName || 'Avulso'}
+                    contractDuration={payingPayment.contractDuration}
+                    allowedMethods={['CARTAO', 'PIX']}
+                    onSuccess={() => {
+                        setPayingPayment(null);
+                        showToast('Pagamento confirmado!');
+                        loadData();
+                    }}
+                    onError={(msg) => showToast({ message: msg, type: 'error' })}
+                    onClose={() => setPayingPayment(null)}
+                />
             )}
 
         </div>

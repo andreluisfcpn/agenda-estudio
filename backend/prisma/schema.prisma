@@ -94,8 +94,23 @@ model User {
   payments            Payment[]
   blockedSlots        BlockedSlot[]
   savedPaymentMethods SavedPaymentMethod[]
+  pushSubscriptions   PushSubscription[]
 
   @@map("users")
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("push_subscriptions")
 }
 
 model Contract {
@@ -156,6 +171,7 @@ model Contract {
   renewedFrom Contract? @relation("ContractRenewal", fields: [renewedFromId], references: [id])
   renewals    Contract[] @relation("ContractRenewal")
 
+  @@index([userId])
   @@map("contracts")
 }
 
@@ -192,6 +208,10 @@ model Booking {
 
   // Prevent double booking: unique on date + start_time for non-cancelled
   @@unique([date, startTime, status], name: "unique_active_booking")
+  @@index([userId])
+  @@index([contractId])
+  @@index([date])
+  @@index([status])
   @@map("bookings")
 }
 
@@ -211,6 +231,7 @@ model Payment {
   installments         Int?      @default(1)  // number of installments
   paymentType          String?   @map("payment_type")  // DEBIT | CREDIT
   stripeSubscriptionId String?   @map("stripe_subscription_id")
+  paidAt      DateTime?       @map("paid_at")
   createdAt   DateTime        @default(now()) @map("created_at")
   updatedAt   DateTime        @updatedAt @map("updated_at")
 
@@ -218,6 +239,12 @@ model Payment {
   contract Contract? @relation(fields: [contractId], references: [id])
   booking  Booking?  @relation(fields: [bookingId], references: [id])
 
+  @@index([userId])
+  @@index([contractId])
+  @@index([bookingId])
+  @@index([providerRef])
+  @@index([status])
+  @@index([stripeSubscriptionId])
   @@map("payments")
 }
 
@@ -232,8 +259,9 @@ model SavedPaymentMethod {
   isDefault             Boolean  @default(false) @map("is_default")
   createdAt             DateTime @default(now()) @map("created_at")
 
-  user User @relation(fields: [userId], references: [id])
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
   @@map("saved_payment_methods")
 }
 
@@ -248,6 +276,7 @@ model BlockedSlot {
 
   creator User @relation(fields: [createdBy], references: [id])
 
+  @@index([date])
   @@map("blocked_slots")
 }
 
@@ -309,6 +338,8 @@ model AuditLog {
   performedBy String   @map("performed_by")
   createdAt   DateTime @default(now()) @map("created_at")
 
+  @@index([entityType, entityId])
+  @@index([createdAt])
   @@map("audit_logs")
 }
 

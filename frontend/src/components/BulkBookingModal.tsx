@@ -1,3 +1,4 @@
+import { getErrorMessage } from '../utils/errors';
 import React, { useState, useEffect } from 'react';
 import ModalOverlay from './ModalOverlay';
 import { bookingsApi, Slot } from '../api/client';
@@ -99,8 +100,8 @@ export default function BulkBookingModal({ contract, onClose, onComplete }: Bulk
                 slots: selectedSlots,
             });
             onComplete();
-        } catch (err: any) {
-            setError(err.message || 'Erro ao salvar os agendamentos.');
+        } catch (err: unknown) {
+            setError(getErrorMessage(err) || 'Erro ao salvar os agendamentos.');
             // Send back to review step to let them see error
             setStep(1);
             setSubmitting(false);

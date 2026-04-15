@@ -55,7 +55,7 @@ export default function ServicesCarousel() {
     const activeService = addons[activeIndex];
 
     return (
-        <section aria-label="Carrossel de serviços" style={{ padding: '120px 8%', background: 'transparent', position: 'relative', overflow: 'hidden' }}
+        <section aria-label="Carrossel de serviços" style={{ padding: 'clamp(60px, 10vw, 120px) 5%', background: 'transparent', position: 'relative', overflow: 'hidden' }}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
@@ -69,14 +69,14 @@ export default function ServicesCarousel() {
                     <Sparkles size={16} /> PRODUÇÃO COMPLETA
                 </div>
 
-                <h2 style={{ fontSize: 'clamp(2.5rem, 5vw, 3.8rem)', fontWeight: 800, marginBottom: '60px', lineHeight: 1.15, letterSpacing: '-1px' }}>
+                <h2 style={{ fontSize: 'clamp(1.75rem, 5vw, 3.5rem)', fontWeight: 800, marginBottom: 'clamp(32px, 6vw, 60px)', lineHeight: 1.15, letterSpacing: '-1px' }}>
                     Grave seu podcast no melhor estúdio e<br />deixe o <span style={{ color: '#11819B' }}>trabalho pesado com a gente.</span>
                 </h2>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '40px', alignItems: 'center' }}>
 
                     {/* Active Slide Display */}
-                    <div style={{ position: 'relative', height: '340px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ position: 'relative', minHeight: 'clamp(260px, 40vw, 340px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         {/* Animated Ambient Glow */}
                         <motion.div
                             key={`glow-${activeIndex}`}
@@ -104,7 +104,7 @@ export default function ServicesCarousel() {
                                     background: 'rgba(0, 46, 56, 0.6)',
                                     border: '1px solid rgba(255, 255, 255, 0.1)',
                                     borderRadius: '32px',
-                                    padding: '50px 40px',
+                                    padding: 'clamp(28px, 5vw, 50px) clamp(20px, 4vw, 40px)',
                                     backdropFilter: 'blur(24px)',
                                     WebkitBackdropFilter: 'blur(24px)',
                                     maxWidth: '800px',
@@ -137,8 +137,8 @@ export default function ServicesCarousel() {
 
                     {/* Thumbnail Navigation */}
                     <div style={{
-                        display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap',
-                        padding: '20px', background: 'rgba(0,0,0,0.2)', borderRadius: '100px',
+                        display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap',
+                        padding: 'clamp(12px, 2vw, 20px)', background: 'rgba(0,0,0,0.2)', borderRadius: '100px',
                         width: 'fit-content', margin: '0 auto'
                     }}>
                         {addons.map((addon, index) => {
@@ -148,19 +148,23 @@ export default function ServicesCarousel() {
                                     key={addon.key}
                                     onClick={() => handleThumbnailClick(index)}
                                     style={{
-                                        display: 'flex', alignItems: 'center', gap: '8px',
-                                        padding: '10px 20px', borderRadius: '100px', border: 'none',
+                                        display: 'flex', alignItems: 'center', gap: '6px',
+                                        padding: '8px 14px', borderRadius: '100px', border: 'none',
                                         background: activeIndex === index ? '#11819B' : 'transparent',
                                         color: activeIndex === index ? '#F4F9FA' : 'rgba(255,255,255,0.6)',
                                         fontWeight: activeIndex === index ? 800 : 500,
                                         cursor: 'pointer', transition: 'all 0.3s ease',
-                                        outline: 'none', boxShadow: activeIndex === index ? '0 8px 16px rgba(17, 129, 155, 0.4)' : 'none'
+                                        outline: 'none', boxShadow: activeIndex === index ? '0 8px 16px rgba(17, 129, 155, 0.4)' : 'none',
+                                        fontSize: 'clamp(0.7rem, 1.5vw, 0.875rem)',
+                                        minHeight: '44px',
+                                        WebkitTapHighlightColor: 'transparent',
+                                        fontFamily: 'inherit',
                                     }}
                                 >
                                     <span style={{ transform: activeIndex === index ? 'scale(1.1)' : 'scale(1)' }}>
                                         {React.cloneElement(iconElement as any, { size: 16 })}
                                     </span>
-                                    {addon.name}
+                                    <span className="carousel-thumb-label">{addon.name}</span>
                                 </button>
                             );
                         })}

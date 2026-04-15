@@ -3,11 +3,10 @@ import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { authenticate, authorize } from '../../middleware/auth';
 import { acquireMultiSlotLock, releaseMultiSlotLock } from '../../lib/redis';
-import { stripeCreatePaymentIntent, stripeGetOrCreateCustomer, isStripeEnabled } from '../../lib/stripeService';
+import { stripeCreatePaymentIntent, stripeGetOrCreateCustomer, stripeGetPaymentIntent, isStripeEnabled } from '../../lib/stripeService';
 import { getProviderForMethod } from '../../lib/paymentGateway';
 import {
     getSlotTier,
-    getBasePrice,
     getBasePriceDynamic,
     applyDiscount,
     canAccessTier,
@@ -16,99 +15,41 @@ import {
     calculateEndTime,
     fitsInOperatingHours,
     isOperatingDay,
-    getSlotDuration,
 } from '../../utils/pricing';
-import { BookingStatus, Tier } from '../../generated/prisma/client';
+import { BookingStatus, Tier, Prisma } from '../../generated/prisma/client';
 import { getConfig } from '../../lib/businessConfig';
+import { getErrorMessage } from '../../utils/errors';
+
+// Extracted modules
+import {
+    availabilitySchema,
+    publicAvailabilitySchema,
+    createBookingSchema,
+    bulkBookingSchema,
+    adminCreateBookingSchema,
+    adminUpdateBookingSchema,
+    clientUpdateBookingSchema,
+    rescheduleSchema,
+    addOnPurchaseSchema,
+} from './validators';
+import { getPublicDayAvailability, getAuthDayAvailability } from './availability.service';
+import { restoreCredit, deductCredit, hasConflict, createAvulsoContract } from './booking.service';
 
 const router = Router();
-
-// ─── Validation Schemas ─────────────────────────────────
-
-const availabilitySchema = z.object({
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de data inválido (YYYY-MM-DD)'),
-});
-
-const createBookingSchema = z.object({
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de data inválido'),
-    startTime: z.string().regex(/^\d{2}:\d{2}$/, 'Formato de hora inválido (HH:MM)'),
-    contractId: z.string().uuid().optional(),
-    addOns: z.array(z.string()).optional(),
-    paymentMethod: z.enum(['CARTAO', 'PIX']).optional(),
-    installments: z.number().int().min(1).max(3).optional(),
-    paymentType: z.enum(['CREDIT', 'DEBIT']).optional(),
-});
-
-const bulkBookingSchema = z.object({
-    contractId: z.string().uuid(),
-    slots: z.array(z.object({
-        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de data inválido'),
-        startTime: z.string().regex(/^\d{2}:\d{2}$/, 'Formato de hora inválido (HH:MM)'),
-    })).min(1, 'Pelo menos um horário deve ser selecionado').max(24, 'Máximo de 24 marcações por vez'),
-});
 
 // ─── GET /api/bookings/public-availability ───────────────
 // Public endpoint (no auth) — returns week of slot availability for the landing page
 
-const publicAvailabilitySchema = z.object({
-    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de data inválido (YYYY-MM-DD)'),
-    days: z.coerce.number().int().min(1).max(14).default(7),
-});
-
 router.get('/public-availability', async (req: Request, res: Response) => {
     try {
         const { startDate, days } = publicAvailabilitySchema.parse(req.query);
-        const result: { date: string; dayOfWeek: number; closed: boolean; slots: { time: string; available: boolean; tier: string | null }[] }[] = [];
+        const result = [];
 
         for (let i = 0; i < days; i++) {
             const dateObj = new Date(startDate + 'T00:00:00');
             dateObj.setUTCDate(dateObj.getUTCDate() + i);
             const dateStr = dateObj.toISOString().split('T')[0];
-            const dayOfWeek = dateObj.getUTCDay();
-
-            if (!(await isOperatingDay(dayOfWeek))) {
-                result.push({ date: dateStr, dayOfWeek, closed: true, slots: [] });
-                continue;
-            }
-
-            const bookings = await prisma.booking.findMany({
-                where: { date: dateObj, status: { not: BookingStatus.CANCELLED } },
-                select: { startTime: true, endTime: true },
-            });
-
-            const blockedSlots = await prisma.blockedSlot.findMany({
-                where: { date: dateObj },
-                select: { startTime: true, endTime: true },
-            });
-
-            const occupiedSlots = new Set<string>();
-            for (const b of bookings) {
-                const slots = getPackageSlots(b.startTime, 2);
-                slots.forEach(s => occupiedSlots.add(s));
-            }
-            for (const b of blockedSlots) {
-                const [bStartH, bStartM] = b.startTime.split(':').map(Number);
-                const [bEndH, bEndM] = b.endTime.split(':').map(Number);
-                let m = bStartH * 60 + bStartM;
-                const end = bEndH * 60 + bEndM;
-                while (m < end) {
-                    const h = Math.floor(m / 60);
-                    const min = m % 60;
-                    occupiedSlots.add(`${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`);
-                    m += 30;
-                }
-            }
-
-            const allSlots = await generateTimeSlots();
-            const slotDuration = await getSlotDuration();
-            const availability = await Promise.all(allSlots.map(async slot => {
-                const tier = await getSlotTier(dayOfWeek, slot);
-                const packageSlots = getPackageSlots(slot, slotDuration);
-                const isBlocked = packageSlots.some(s => occupiedSlots.has(s));
-                return { time: slot, available: !isBlocked && tier !== null, tier };
-            }));
-
-            result.push({ date: dateStr, dayOfWeek, closed: false, slots: availability });
+            result.push(await getPublicDayAvailability(dateStr));
         }
 
         res.json({ days: result });
@@ -126,70 +67,15 @@ router.get('/public-availability', async (req: Request, res: Response) => {
 router.get('/availability', authenticate, async (req: Request, res: Response) => {
     try {
         const { date } = availabilitySchema.parse(req.query);
-        const dateObj = new Date(date + 'T00:00:00');
-        const dayOfWeek = dateObj.getUTCDay(); // 0=Sun, 6=Sat
+        const dayAvailability = await getAuthDayAvailability(date);
 
-        // Check operating day
-        if (!(await isOperatingDay(dayOfWeek))) {
+        if (dayAvailability.closed) {
             res.json({ date, closed: true, slots: [] });
             return;
         }
 
-        // Get all bookings for this date
-        const bookings = await prisma.booking.findMany({
-            where: {
-                date: dateObj,
-                status: { not: BookingStatus.CANCELLED },
-            },
-            select: {
-                startTime: true,
-                endTime: true,
-                status: true,
-                userId: true,
-            },
-        });
-
-        // Get blocked slots for this date
-        const blockedSlots = await prisma.blockedSlot.findMany({
-            where: { date: dateObj },
-            select: { startTime: true, endTime: true },
-        });
-
-        // Build occupied set
-        const occupiedSlots = new Set<string>();
-        for (const b of bookings) {
-            const slots = getPackageSlots(b.startTime, 2);
-            slots.forEach(s => occupiedSlots.add(s));
-        }
-        for (const b of blockedSlots) {
-            const [bStartH, bStartM] = b.startTime.split(':').map(Number);
-            const [bEndH, bEndM] = b.endTime.split(':').map(Number);
-            let m = bStartH * 60 + bStartM;
-            const end = bEndH * 60 + bEndM;
-            while (m < end) {
-                const h = Math.floor(m / 60);
-                const min = m % 60;
-                occupiedSlots.add(`${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`);
-                m += 30;
-            }
-        }
-
-        // Generate all slots for the day
-        const allSlots = await generateTimeSlots();
-        const availability = await Promise.all(allSlots.map(async slot => {
-            const tier = await getSlotTier(dayOfWeek, slot);
-            const packageSlots = getPackageSlots(slot, 2);
-            const isBlocked = packageSlots.some(s => occupiedSlots.has(s));
-            const available = !isBlocked && tier !== null;
-            return {
-                time: slot,
-                available,
-                tier,
-                price: tier ? await getBasePriceDynamic(tier) : null,
-            };
-        }));
-
         // Get client's own bookings for this date
+        const dateObj = new Date(date + 'T00:00:00');
         const myBookings = req.user ? await prisma.booking.findMany({
             where: {
                 date: dateObj,
@@ -200,10 +86,17 @@ router.get('/availability', authenticate, async (req: Request, res: Response) =>
                 id: true, startTime: true, endTime: true, status: true,
                 tierApplied: true, price: true, contractId: true,
                 adminNotes: true, clientNotes: true, platforms: true, platformLinks: true,
+                addOns: true, holdExpiresAt: true,
             },
         }) : [];
 
-        res.json({ date, dayOfWeek, closed: false, slots: availability, myBookings });
+        res.json({
+            date,
+            dayOfWeek: dayAvailability.dayOfWeek,
+            closed: false,
+            slots: dayAvailability.slots,
+            myBookings,
+        });
     } catch (err) {
         if (err instanceof z.ZodError) {
             res.status(400).json({ error: 'Parâmetros inválidos.', details: err.errors });
@@ -263,7 +156,7 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
         let contractId: string | undefined = data.contractId;
 
         // If user has a contract, validate tier hierarchy and apply discount
-        let contract: any = null;
+        let contract: Prisma.ContractGetPayload<{ include: { bookings: true } }> | null = null;
         if (contractId) {
             contract = await prisma.contract.findFirst({
                 where: {
@@ -294,8 +187,9 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                     return;
                 }
             } else if (contract.type === 'FIXO') {
-                const usedBookings = contract.bookings.filter((b: any) =>
-                    b.status === 'COMPLETED' || b.status === 'CONFIRMED' || b.status === 'FALTA' || b.status === 'RESERVED'
+                const activeStatuses: BookingStatus[] = [BookingStatus.COMPLETED, BookingStatus.CONFIRMED, BookingStatus.FALTA, BookingStatus.RESERVED];
+                const usedBookings = contract.bookings.filter(b =>
+                    activeStatuses.includes(b.status)
                 ).length;
                 const sessionsPerMonthBooking = await getConfig('sessions_per_month');
                 if (usedBookings >= (contract.durationMonths * sessionsPerMonthBooking)) {
@@ -339,10 +233,12 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
 
         try {
             // Check for existing bookings (double-booking at DB level)
+            // Exclude user's own RESERVED bookings — they are allowed to retry payment
             const conflicting = await prisma.booking.findFirst({
                 where: {
                     date: dateObj,
                     status: { not: BookingStatus.CANCELLED },
+                    NOT: { userId, status: BookingStatus.RESERVED },
                     OR: packageSlots.map(slot => ({
                         startTime: { lte: slot },
                         endTime: { gt: slot },
@@ -353,6 +249,109 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
             if (conflicting) {
                 await releaseMultiSlotLock(data.date, packageSlots, userId);
                 res.status(409).json({ error: 'Horário já reservado. Escolha outro.' });
+                return;
+            }
+
+            // Check if user already has a RESERVED booking for this exact slot (PIX→Card switch)
+            const existingHold = await prisma.booking.findFirst({
+                where: {
+                    date: dateObj,
+                    userId,
+                    startTime: data.startTime,
+                    status: BookingStatus.RESERVED,
+                },
+                include: { contract: true },
+            });
+
+            // If user already holds this slot, reuse it instead of creating a new booking
+            if (existingHold) {
+                await releaseMultiSlotLock(data.date, packageSlots, userId);
+
+                // Find existing pending payment
+                const existingPayment = await prisma.payment.findFirst({
+                    where: { bookingId: existingHold.id, status: 'PENDING' },
+                });
+
+                let clientSecret: string | null = null;
+                let paymentId = existingPayment?.id || null;
+
+                // If switching to CARTAO and no Stripe intent exists, create one
+                if (data.paymentMethod === 'CARTAO' && (await isStripeEnabled())) {
+                    if (!paymentId) {
+                        const payment = await prisma.payment.create({
+                            data: {
+                                userId,
+                                contractId: existingHold.contractId,
+                                bookingId: existingHold.id,
+                                provider: 'STRIPE',
+                                amount: existingHold.price,
+                                status: 'PENDING',
+                                dueDate: dateObj,
+                                installments: data.installments || 1,
+                                paymentType: data.paymentType || 'CREDIT',
+                            },
+                        });
+                        paymentId = payment.id;
+                    } else if (existingPayment && existingPayment.provider !== 'STRIPE') {
+                        // Previous payment was PIX/CORA, create a new Stripe payment
+                        const payment = await prisma.payment.create({
+                            data: {
+                                userId,
+                                contractId: existingHold.contractId,
+                                bookingId: existingHold.id,
+                                provider: 'STRIPE',
+                                amount: existingHold.price,
+                                status: 'PENDING',
+                                dueDate: dateObj,
+                                installments: data.installments || 1,
+                                paymentType: data.paymentType || 'CREDIT',
+                            },
+                        });
+                        paymentId = payment.id;
+                    }
+
+                    const customerId = await stripeGetOrCreateCustomer(userId);
+                    const piResult = await stripeCreatePaymentIntent({
+                        amount: existingHold.price,
+                        customerId,
+                        description: `Avulso ${data.date} ${data.startTime} (retry)`,
+                        paymentId: paymentId!,
+                        userId,
+                        contractId: existingHold.contractId!,
+                        installmentsEnabled: (data.installments || 1) > 1,
+                    });
+                    clientSecret = piResult.clientSecret;
+
+                    await prisma.payment.update({
+                        where: { id: paymentId! },
+                        data: { providerRef: piResult.paymentIntentId, provider: 'STRIPE' },
+                    });
+                }
+
+                // Refresh hold timer
+                await prisma.booking.update({
+                    where: { id: existingHold.id },
+                    data: { holdExpiresAt: new Date(Date.now() + 10 * 60 * 1000) },
+                });
+
+                res.status(200).json({
+                    booking: {
+                        id: existingHold.id,
+                        date: data.date,
+                        startTime: existingHold.startTime,
+                        endTime: existingHold.endTime,
+                        tier: existingHold.tierApplied,
+                        price: existingHold.price,
+                        status: existingHold.status,
+                        contractId: existingHold.contractId,
+                        holdExpiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+                    },
+                    paymentId,
+                    clientSecret,
+                    creditWarning: false,
+                    lockExpiresIn: 600,
+                    message: 'Reserva existente reutilizada. Complete o pagamento.',
+                });
                 return;
             }
 
@@ -463,8 +462,8 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                             data: { providerRef: piResult.paymentIntentId },
                         });
                     }
-                } catch (payErr: any) {
-                    console.error('[BOOKING] Payment creation failed:', payErr.message);
+                } catch (payErr: unknown) {
+                    console.error('[BOOKING] Payment creation failed:', getErrorMessage(payErr));
                     // Still return the booking — client can retry payment
                 }
             }
@@ -542,15 +541,27 @@ router.post('/:id/complete-payment', authenticate, async (req: Request, res: Res
             },
         });
 
-        // Update Payment record to PAID
+        // Update Payment record to PAID (verify with Stripe first)
         if (paymentIntentId) {
+            // Security: verify the PaymentIntent status with Stripe before marking PAID
+            try {
+                const pi = await stripeGetPaymentIntent(paymentIntentId);
+                if (pi.status !== 'succeeded') {
+                    res.status(400).json({ error: 'Pagamento ainda não confirmado pelo Stripe.' });
+                    return;
+                }
+            } catch {
+                res.status(400).json({ error: 'Não foi possível verificar o pagamento no Stripe.' });
+                return;
+            }
+
             await prisma.payment.updateMany({
                 where: {
                     bookingId,
                     providerRef: paymentIntentId,
                     status: 'PENDING',
                 },
-                data: { status: 'PAID' },
+                data: { status: 'PAID', paidAt: new Date() },
             });
         } else {
             // Fallback: mark any pending payment for this booking as PAID
@@ -559,7 +570,7 @@ router.post('/:id/complete-payment', authenticate, async (req: Request, res: Res
                     bookingId,
                     status: 'PENDING',
                 },
-                data: { status: 'PAID' },
+                data: { status: 'PAID', paidAt: new Date() },
             });
         }
 
@@ -617,6 +628,7 @@ router.post('/bulk', authenticate, async (req: Request, res: Response) => {
 
         const validBookings = [];
         const locksAcquired: { date: string; slots: string[] }[] = [];
+        const bulkMinAdvance = await getConfig('booking_min_advance_minutes');
 
         try {
             for (const slot of data.slots) {
@@ -625,7 +637,6 @@ router.post('/bulk', authenticate, async (req: Request, res: Response) => {
 
                 // Validate: Past Time Booking Check
                 const slotDateTime = new Date(`${slot.date}T${slot.startTime}:00`);
-                const bulkMinAdvance = await getConfig('booking_min_advance_minutes');
                 const diffMinutes = (slotDateTime.getTime() - Date.now()) / (1000 * 60);
                 if (diffMinutes < bulkMinAdvance) {
                     throw new Error(`Não é possível agendar o horário ${slot.startTime} no dia ${slot.date} (antecedência mínima de ${bulkMinAdvance} minutos não respeitada).`);
@@ -671,11 +682,8 @@ router.post('/bulk', authenticate, async (req: Request, res: Response) => {
             ]);
 
             res.status(201).json({ message: `${validBookings.length} gravações agendadas com sucesso!` });
-        } catch (err: any) {
-            for (const l of locksAcquired) {
-                await releaseMultiSlotLock(l.date, l.slots, userId);
-            }
-            res.status(400).json({ error: err.message });
+        } catch (err: unknown) {
+            res.status(400).json({ error: getErrorMessage(err) });
             return;
         } finally {
             for (const l of locksAcquired) {
@@ -759,18 +767,7 @@ router.put('/:id/client-cancel', authenticate, async (req: Request, res: Respons
         });
 
         if (booking.contractId) {
-            const contract = await prisma.contract.findUnique({ where: { id: booking.contractId } });
-            if (contract?.type === 'FLEX' || contract?.type === 'AVULSO') {
-                await prisma.contract.update({
-                    where: { id: booking.contractId },
-                    data: { flexCreditsRemaining: (contract.flexCreditsRemaining || 0) + 1 },
-                });
-            } else if (contract?.type === 'CUSTOM') {
-                await prisma.contract.update({
-                    where: { id: booking.contractId },
-                    data: { customCreditsRemaining: { increment: 1 } },
-                });
-            }
+            await restoreCredit(booking.contractId);
         }
         res.json({ message: 'Agendamento cancelado com sucesso. O crédito retornou ao seu plano.' });
     } else {
@@ -863,15 +860,9 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
         await releaseMultiSlotLock(dateStr, packageSlots, booking.userId);
     }
 
-    // If Flex contract, restore credit
+    // If Flex/Custom contract, restore credit
     if (booking.contractId) {
-        const contract = await prisma.contract.findUnique({ where: { id: booking.contractId } });
-        if (contract?.type === 'FLEX') {
-            await prisma.contract.update({
-                where: { id: booking.contractId },
-                data: { flexCreditsRemaining: (contract.flexCreditsRemaining || 0) + 1 },
-            });
-        }
+        await restoreCredit(booking.contractId);
     }
 
     res.json({ message: 'Reserva cancelada com sucesso.' });
@@ -903,20 +894,7 @@ router.delete('/:id/hard-delete', authenticate, authorize('ADMIN'), async (req: 
         // Restore credits if from FLEX or CUSTOM contract (and booking was NOT already cancelled)
         let creditRestored = false;
         if (booking.contractId && booking.status !== BookingStatus.CANCELLED) {
-            const contract = booking.contract;
-            if (contract?.type === 'FLEX' && contract.flexCreditsRemaining != null) {
-                await prisma.contract.update({
-                    where: { id: booking.contractId },
-                    data: { flexCreditsRemaining: contract.flexCreditsRemaining + 1 },
-                });
-                creditRestored = true;
-            } else if (contract?.type === 'CUSTOM' && contract.customCreditsRemaining != null) {
-                await prisma.contract.update({
-                    where: { id: booking.contractId },
-                    data: { customCreditsRemaining: contract.customCreditsRemaining + 1 },
-                });
-                creditRestored = true;
-            }
+            creditRestored = await restoreCredit(booking.contractId);
         }
 
         // Hard delete from database
@@ -991,10 +969,10 @@ router.get('/my', authenticate, async (req: Request, res: Response) => {
 router.get('/', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
     const { date, status } = req.query;
 
-    const where: any = {};
+    const where: Prisma.BookingWhereInput = {};
 
     if (status && typeof status === 'string') {
-        where.status = status;
+        where.status = status as BookingStatus;
     } else {
         where.status = { not: BookingStatus.CANCELLED };
     }
@@ -1020,17 +998,6 @@ router.get('/', authenticate, authorize('ADMIN'), async (req: Request, res: Resp
 });
 
 // ─── POST /api/bookings/admin (ADMIN direct create) ─────
-
-const adminCreateBookingSchema = z.object({
-    userId: z.string().uuid(),
-    contractId: z.string().uuid().optional(),
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de data inválido'),
-    startTime: z.string().regex(/^\d{2}:\d{2}$/, 'Formato de hora inválido (HH:MM)'),
-    status: z.enum(['RESERVED', 'CONFIRMED']).optional().default('CONFIRMED'),
-    addOns: z.array(z.string()).optional(),
-    adminNotes: z.string().optional(),
-    customPrice: z.number().int().min(0).optional(),
-});
 
 router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
     try {
@@ -1168,20 +1135,6 @@ router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res
 
 // ─── PATCH /api/bookings/:id (ADMIN update) ─────────────
 
-const adminUpdateBookingSchema = z.object({
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-    startTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
-    status: z.enum(['RESERVED', 'CONFIRMED', 'COMPLETED', 'FALTA', 'NAO_REALIZADO', 'CANCELLED']).optional(),
-    adminNotes: z.string().optional(),
-    clientNotes: z.string().optional(),
-    platforms: z.string().optional(),
-    platformLinks: z.string().optional(),
-    durationMinutes: z.number().optional().nullable(),
-    peakViewers: z.number().optional().nullable(),
-    chatMessages: z.number().optional().nullable(),
-    audienceOrigin: z.string().optional().nullable(),
-});
-
 router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
     try {
         const id = req.params.id as string;
@@ -1193,7 +1146,7 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
             return;
         }
 
-        const updateData: any = {};
+        const updateData: Prisma.BookingUncheckedUpdateInput = {};
 
         if (data.status) {
             updateData.status = data.status;
@@ -1282,16 +1235,6 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
 
 // ─── PATCH /api/bookings/:id/client-update (Client) ─────
 
-const clientUpdateBookingSchema = z.object({
-    clientNotes: z.string().optional(),
-    platforms: z.string().optional(),
-    platformLinks: z.string().optional(),
-    durationMinutes: z.number().optional().nullable(),
-    peakViewers: z.number().optional().nullable(),
-    chatMessages: z.number().optional().nullable(),
-    audienceOrigin: z.string().optional().nullable(),
-});
-
 router.patch('/:id/client-update', authenticate, async (req: Request, res: Response) => {
     try {
         const id = req.params.id as string;
@@ -1306,7 +1249,7 @@ router.patch('/:id/client-update', authenticate, async (req: Request, res: Respo
             return;
         }
 
-        const updateData: any = {};
+        const updateData: Prisma.BookingUncheckedUpdateInput = {};
         if (data.clientNotes !== undefined) updateData.clientNotes = data.clientNotes;
         if (data.platforms !== undefined) updateData.platforms = data.platforms;
         if (data.platformLinks !== undefined) updateData.platformLinks = data.platformLinks;
@@ -1347,11 +1290,6 @@ router.patch('/:id/client-update', authenticate, async (req: Request, res: Respo
 });
 
 // ─── PATCH /api/bookings/:id/reschedule (Client) ────────
-
-const rescheduleSchema = z.object({
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de data inválido'),
-    startTime: z.string().regex(/^\d{2}:\d{2}$/, 'Formato de hora inválido'),
-});
 
 router.patch('/:id/reschedule', authenticate, async (req: Request, res: Response) => {
     try {
@@ -1435,7 +1373,7 @@ router.patch('/:id/reschedule', authenticate, async (req: Request, res: Response
         const endTime = calculateEndTime(data.startTime);
 
         // Set originalDate if not already set (anchor for future reschedules)
-        const updateData: any = {
+        const updateData: Prisma.BookingUncheckedUpdateInput = {
             date: new Date(data.date + 'T00:00:00'),
             startTime: data.startTime,
             endTime,
@@ -1464,10 +1402,6 @@ router.patch('/:id/reschedule', authenticate, async (req: Request, res: Response
 });
 
 // ─── POST /api/bookings/:id/addons (Purchase Addon) ─────
-
-const addOnPurchaseSchema = z.object({
-    addonKey: z.string().min(1, 'ID do serviço é obrigatório'),
-});
 
 router.post('/:id/addons', authenticate, async (req: Request, res: Response) => {
     try {
@@ -1540,3 +1474,4 @@ router.post('/:id/addons', authenticate, async (req: Request, res: Response) => 
 });
 
 export default router;
+

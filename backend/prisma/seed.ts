@@ -81,6 +81,22 @@ async function main() {
     }
     console.log(`  ✅ Business config: ${configEntries.length} chaves (schedule/gateway/studio)`);
 
+    // ─── 4. Pricing Config (tier prices) ───────────────────────
+    const pricingEntries = [
+        { tier: 'COMERCIAL' as const, price: 30000, label: 'Comercial', description: 'Faixa horário comercial (10h–17h)' },
+        { tier: 'AUDIENCIA' as const, price: 40000, label: 'Audiência', description: 'Faixa prime-time (18h–22h)' },
+        { tier: 'SABADO' as const,    price: 50000, label: 'Sábado',    description: 'Sábado (horário premium)' },
+    ];
+
+    for (const entry of pricingEntries) {
+        await prisma.pricingConfig.upsert({
+            where: { tier: entry.tier },
+            create: entry,
+            update: {},  // don't overwrite existing values
+        });
+    }
+    console.log(`  ✅ Pricing config: ${pricingEntries.length} tiers`);
+
     console.log('\n✨ Database Reset completed successfully!');
     console.log('\nCredenciais limitadas prontas para teste:');
     console.log('  🛡️ Admin:     admin@studio.com (admin123)');

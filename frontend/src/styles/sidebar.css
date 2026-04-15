@@ -397,31 +397,12 @@
 /* ─── Responsive ─── */
 @media (max-width: 768px) {
   .sidebar {
-    width: 52px;
-  }
-
-  .sidebar-link-label {
-    opacity: 0;
-    width: 0;
-  }
-
-  .sidebar-link {
-    justify-content: center;
-    padding: 10px 0;
-  }
-
-  .sidebar-section-label {
-    opacity: 0;
-    width: 0;
-    overflow: hidden;
-  }
-
-  .sidebar-section-divider {
-    justify-content: center;
+    display: none;
   }
 
   .main-content {
-    margin-left: 52px;
+    margin-left: 0;
     padding: 72px 16px 20px;
+    padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
   }
 }

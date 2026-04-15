@@ -1,13 +1,16 @@
+import { getErrorMessage } from '../utils/errors';
 import { useState, useEffect } from 'react';
 import { bookingsApi, Booking } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
+import StatusBadge from '../components/ui/StatusBadge';
+import { Clapperboard, Building2, Mic, Star, RefreshCw, Loader2, CheckCircle } from 'lucide-react';
 
 const PLATFORMS = [
-    { key: 'YOUTUBE', label: '▶️ YouTube', color: '#FF0000' },
-    { key: 'TIKTOK', label: '🎵 TikTok', color: '#00F2EA' },
-    { key: 'INSTAGRAM', label: '📸 Instagram', color: '#E1306C' },
-    { key: 'FACEBOOK', label: '📘 Facebook', color: '#1877F2' },
+    { key: 'YOUTUBE', label: 'YouTube', color: '#FF0000' },
+    { key: 'TIKTOK', label: 'TikTok', color: '#00F2EA' },
+    { key: 'INSTAGRAM', label: 'Instagram', color: '#E1306C' },
+    { key: 'FACEBOOK', label: 'Facebook', color: '#1877F2' },
 ];
 
 function formatBRL(cents: number): string {
@@ -76,7 +79,7 @@ export default function MyBookingsPage() {
             });
             showToast('Gravação atualizada com sucesso!');
             await loadBookings();
-        } catch (err: any) { showAlert({ message: err.message, type: 'error' }); }
+        } catch (err: unknown) { showAlert({ message: getErrorMessage(err), type: 'error' }); }
         finally { setSaving(false); }
     };
 
@@ -96,18 +99,18 @@ export default function MyBookingsPage() {
             showToast('Reagendado com sucesso!');
             setRescheduleId(null);
             await loadBookings();
-        } catch (err: any) { setRescheduleError(err.message); }
+        } catch (err: unknown) { setRescheduleError(getErrorMessage(err)); }
         finally { setRescheduling(false); }
     };
 
     const statusLabel = (status: string) => {
         switch (status) {
-            case 'COMPLETED': return '✅ Concluído';
-            case 'CONFIRMED': return '✅ Confirmado';
+            case 'COMPLETED': return 'Concluído';
+            case 'CONFIRMED': return 'Confirmado';
             case 'RESERVED': return '⏳ Reservado';
-            case 'FALTA': return '❌ Falta';
-            case 'NAO_REALIZADO': return '🔄 Não Realizado';
-            default: return '❌ Cancelado';
+            case 'FALTA': return 'Falta';
+            case 'NAO_REALIZADO': return 'Não Realizado';
+            default: return 'Cancelado';
         }
     };
 
@@ -127,7 +130,7 @@ export default function MyBookingsPage() {
     return (
         <div>
             <div className="page-header">
-                <h1 className="page-title">🎬 Minhas Gravações</h1>
+                <h1 className="page-title">Minhas Gravações</h1>
                 <p className="page-subtitle">Histórico de sessões finalizadas — gerencie plataformas e links</p>
             </div>
 
@@ -146,7 +149,7 @@ export default function MyBookingsPage() {
                 return finalized.length === 0 ? (
                     <div className="card">
                         <div className="empty-state">
-                            <div className="empty-state-icon">🎤</div>
+                            <div className="empty-state-icon"><Clapperboard size={32} /></div>
                             <div className="empty-state-text">Nenhuma gravação realizada ainda</div>
                             <p style={{ color: 'var(--text-muted)', marginTop: '8px', fontSize: '0.8125rem' }}>
                                 Suas sessões aparecerão aqui após serem concluídas.
@@ -176,7 +179,7 @@ export default function MyBookingsPage() {
                                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                                             fontSize: '1.25rem',
                                         }}>
-                                            {b.tierApplied === 'COMERCIAL' ? '🏢' : b.tierApplied === 'AUDIENCIA' ? '🎤' : '🌟'}
+                                            
                                         </div>
                                         <div>
                                             <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>
@@ -217,7 +220,7 @@ export default function MyBookingsPage() {
 
                                             {/* Client Notes */}
                                             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                                                <label className="form-label">📝 Minha Observação</label>
+                                                <label className="form-label">Minha Observação</label>
                                                 <textarea
                                                     className="form-input"
                                                     rows={3}
@@ -231,7 +234,7 @@ export default function MyBookingsPage() {
                                             {/* Admin Notes (read-only) */}
                                             {b.adminNotes && (
                                                 <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                                                    <label className="form-label">🔒 Observação do Admin</label>
+                                                    <label className="form-label">Observação do Admin</label>
                                                     <div style={{
                                                         padding: '10px 14px', background: 'var(--bg-elevated)',
                                                         border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)',
@@ -245,7 +248,7 @@ export default function MyBookingsPage() {
 
                                             {/* Distribution - Platforms */}
                                             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                                                <label className="form-label">📡 Distribuição</label>
+                                                <label className="form-label">Distribuição</label>
                                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '4px' }}>
                                                     {PLATFORMS.map(p => (
                                                         <label
@@ -301,7 +304,7 @@ export default function MyBookingsPage() {
 
                                             {b.status !== 'COMPLETED' ? (
                                                 <div style={{ gridColumn: '1 / -1', padding: '16px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '16px' }}>
-                                                    🔒 Métricas disponíveis apenas para gravações finalizadas (COMPLETED).
+                                                    Métricas disponíveis apenas para gravações finalizadas (COMPLETED).
                                                 </div>
                                             ) : (
                                                 <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '12px', marginBottom: '16px' }}>
@@ -330,12 +333,12 @@ export default function MyBookingsPage() {
                                             <div style={{ display: 'flex', gap: '10px' }}>
                                                 {canReschedule(b) && (
                                                     <button className="btn btn-secondary btn-sm" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setRescheduleId(rescheduleId === b.id ? null : b.id); setRescheduleError(''); }}>
-                                                        🔄 Reagendar
+                                                        Reagendar
                                                     </button>
                                                 )}
                                             </div>
                                             <button className="btn btn-primary btn-sm" onClick={() => handleSave(b.id)} disabled={saving}>
-                                                {saving ? '⏳ Salvando...' : '💾 Salvar'}
+                                                {saving ? 'Salvando...' : 'Salvar'}
                                             </button>
                                         </div>
 
@@ -346,7 +349,7 @@ export default function MyBookingsPage() {
                                                 background: 'var(--bg-card)', borderRadius: 'var(--radius-md)',
                                                 border: '1px solid var(--border-default)',
                                             }}>
-                                                <h4 style={{ fontSize: '0.875rem', fontWeight: 700, marginBottom: '12px' }}>🔄 Reagendar Gravação</h4>
+                                                <h4 style={{ fontSize: '0.875rem', fontWeight: 700, marginBottom: '12px' }}>Reagendar Gravação</h4>
                                                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '12px' }}>
                                                     Máximo 7 dias à frente · Mesma faixa ({b.tierApplied})
                                                 </p>
@@ -373,7 +376,7 @@ export default function MyBookingsPage() {
                                                         onClick={() => handleReschedule(b.id)}
                                                         disabled={rescheduling || !rescheduleDate || !rescheduleTime}
                                                     >
-                                                        {rescheduling ? '⏳' : '✅'} Confirmar
+                                                        Confirmar
                                                     </button>
                                                 </div>
                                                 {rescheduleError && (

@@ -1,39 +1,20 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { gsap } from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { motion, AnimatePresence } from 'framer-motion';
 import PublicCalendarGrid from '../components/PublicCalendarGrid';
 import ServicesCarousel from '../components/ServicesCarousel';
 import AmbientBackground from '../components/AmbientBackground';
-
 import LoginModal from '../components/LoginModal';
+import InstallBanner from '../components/InstallBanner';
 import VideoModal from '../components/VideoModal';
 import { useAuth } from '../context/AuthContext';
 import { PublicSlot, pricingApi } from '../api/client';
 
 import {
-    Calendar,
-    BarChart3,
-    ShieldCheck,
-    ArrowRight,
-    Mic2,
-    Headphones,
-    PlayCircle,
-    LucideProps,
-    CheckCircle2,
-    Zap,
-    Cpu,
-
-    Sparkles,
-    Wifi,
-    Wind,
-    Shield
+    PlayCircle, CheckCircle2, Sparkles, Menu, X,
+    MonitorPlay, Cpu, Clock, RotateCcw, CalendarCheck,
+    ArrowRight, Headphones, MapPin, Phone, Mail,
 } from 'lucide-react';
 
-gsap.registerPlugin(ScrollTrigger);
-
-// Búzios Digital Branding Colors
 const COLORS = {
     primary: '#11819B',
     secondary: '#096E85',
@@ -47,30 +28,48 @@ const DEFAULT_ASSETS = {
     heroImage: 'https://buzios.digital/wp-content/uploads/elementor/thumbs/bd-estudio-enhanced-sr-r9lm9twze86yo0wxu68fp1e0yf8baho28zrniyf1o0.jpg'
 };
 
+// Placeholder social proof (replace with real data later)
+const SOCIAL_PROOF = [
+    { name: 'Podcast do Atleta', initials: 'PA' },
+    { name: 'Búzios Cast', initials: 'BC' },
+    { name: 'Dr. Felipe Alves', initials: 'FA' },
+    { name: 'Conecta RJ', initials: 'CR' },
+    { name: 'Studio Sessions', initials: 'SS' },
+    { name: 'Papo de Empreendedor', initials: 'PE' },
+    { name: 'Saúde em Foco', initials: 'SF' },
+    { name: 'Tech Talks BR', initials: 'TT' },
+];
+
+const STEPS = [
+    { num: '01', title: 'Escolha seu horário', desc: 'Veja a disponibilidade em tempo real e selecione o slot perfeito para seu projeto.' },
+    { num: '02', title: 'Reserve online', desc: 'Confirmação instantânea. Sem burocracia, sem ligações. Tudo digital.' },
+    { num: '03', title: 'Grave com qualidade', desc: 'Chegue e produza. Equipamentos profissionais já configurados para você.' },
+];
+
 export default function LandingPage() {
     const navigate = useNavigate();
-    const { fetchUser, user } = useAuth();
+    const { user } = useAuth();
 
     const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
     const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
-    const heroRef = useRef<HTMLDivElement>(null);
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const [navScrolled, setNavScrolled] = useState(false);
     const agendaRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
-    const [activeTab, setActiveTab] = useState(0);
 
-    // Dynamic branding from config
     const [studioName, setStudioName] = useState('Estúdio Búzios Digital');
     const [studioLogo, setStudioLogo] = useState(DEFAULT_ASSETS.logo);
     const [studioHero, setStudioHero] = useState(DEFAULT_ASSETS.heroImage);
     const [studioEmail, setStudioEmail] = useState('contato@buzios.digital');
     const [studioLocation, setStudioLocation] = useState('Búzios, RJ');
 
-    const scrollToCalendar = () => {
-        agendaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    };
+    const scrollToCalendar = useCallback(() => {
+        setMobileMenuOpen(false);
+        agendaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, []);
 
+    // Load branding
     useEffect(() => {
-        // Load branding from config API
         pricingApi.getBusinessConfigPublic().then(({ config: cfg }) => {
             if (cfg.studio_name) setStudioName(String(cfg.studio_name));
             if (cfg.studio_logo_url) setStudioLogo(String(cfg.studio_logo_url));
@@ -80,84 +79,47 @@ export default function LandingPage() {
         }).catch(() => { });
     }, []);
 
+    // SEO
     useEffect(() => {
-        // SEO: title= and og: tags are set dynamically for this SPA page
         document.title = `${studioName} — O Melhor Estúdio de Podcast e Vídeo`;
         const metaDesc = document.querySelector('meta[name="description"]');
         if (metaDesc) {
             metaDesc.setAttribute("content", `Produza seu podcast ou vídeo no ${studioName}. Tecnologia 4K, automação com IA e ambiente climatizado. Reserve agora.`);
         }
-
-        // Update og: meta tags dynamically
-        const ogUpdates: Record<string, string> = {
-            'og:title': `${studioName} — O Melhor Estúdio de Podcast e Vídeo`,
-            'og:description': `Produza seu podcast ou vídeo no ${studioName}. Tecnologia 4K, automação com IA e ambiente climatizado. Reserve agora.`,
-        };
-        Object.entries(ogUpdates).forEach(([property, content]) => {
-            let tag = document.querySelector(`meta[property="${property}"]`);
-            if (tag) {
-                tag.setAttribute('content', content);
-            }
-        });
-
-        const ctx = gsap.context(() => {
-            // Hero Entrance
-            gsap.from('.hero-text > *', {
-                x: -40,
-                opacity: 0,
-                duration: 1,
-                stagger: 0.1,
-                ease: 'power3.out'
-            });
-
-            gsap.from('.hero-image-container', {
-                opacity: 0,
-                scale: 0.95,
-                duration: 1.5,
-                ease: 'power2.out',
-                delay: 0.2
-            });
-
-            // Subtle breath for photo
-            gsap.to('.hero-photo', {
-                scale: 1.03,
-                duration: 12,
-                repeat: -1,
-                yoyo: true,
-                ease: 'sine.inOut'
-            });
-
-
-            // Agenda Section Entrance
-            gsap.from('.agenda-feature', {
-                scrollTrigger: {
-                    trigger: agendaRef.current,
-                    start: 'top 75%'
-                },
-                x: -30,
-                opacity: 0,
-                duration: 0.8,
-                stagger: 0.15,
-                ease: 'power3.out'
-            });
-
-            gsap.from('.mockup-calendar', {
-                scrollTrigger: {
-                    trigger: agendaRef.current,
-                    start: 'top 70%'
-                },
-                y: 50,
-                opacity: 0,
-                duration: 1.2,
-                ease: 'power4.out'
-            });
-        }, containerRef);
-
-        return () => ctx.revert();
     }, [studioName]);
 
+    // Navbar scroll effect
+    useEffect(() => {
+        const handleScroll = () => setNavScrolled(window.scrollY > 60);
+        window.addEventListener('scroll', handleScroll, { passive: true });
+        return () => window.removeEventListener('scroll', handleScroll);
+    }, []);
+
+    // Intersection Observer for scroll reveals
+    useEffect(() => {
+        const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (prefersReduced) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('visible');
+                        observer.unobserve(entry.target);
+                    }
+                });
+            },
+            { threshold: 0.15, rootMargin: '0px 0px -40px 0px' }
+        );
+
+        const elements = containerRef.current?.querySelectorAll('.reveal');
+        elements?.forEach(el => observer.observe(el));
+
+        return () => observer.disconnect();
+    }, []);
+
     return (
-        <div ref={containerRef} aria-label="Página inicial" className="landing-root" style={{
+        <div ref={containerRef} aria-label="Página inicial" style={{
             background: COLORS.bgDark,
             minHeight: '100vh',
             color: COLORS.white,
@@ -165,209 +127,186 @@ export default function LandingPage() {
             overflowX: 'hidden',
             position: 'relative'
         }}>
-            {/* Background Blobs for Visual Depth */}
-            <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none', zIndex: 0 }}>
-                <div className="animate-blob" style={{ position: 'absolute', top: '-10%', left: '10%', width: '500px', height: '500px', background: COLORS.secondary, borderRadius: '50%', filter: 'blur(120px)', opacity: 0.25 }}></div>
-                <div className="animate-blob animation-delay-2000" style={{ position: 'absolute', top: '20%', right: '-10%', width: '600px', height: '600px', background: COLORS.primary, borderRadius: '50%', filter: 'blur(150px)', opacity: 0.15 }}></div>
-                <div className="animate-blob animation-delay-4000" style={{ position: 'absolute', bottom: '-20%', left: '30%', width: '800px', height: '800px', background: COLORS.accent, borderRadius: '50%', filter: 'blur(180px)', opacity: 0.1 }}></div>
+            {/* Background Blobs — hidden on mobile */}
+            <div className="landing-blobs" style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none', zIndex: 0 }}>
+                <div style={{ position: 'absolute', top: '-10%', left: '10%', width: '400px', height: '400px', background: COLORS.secondary, borderRadius: '50%', filter: 'blur(100px)', opacity: 0.2 }} />
+                <div style={{ position: 'absolute', top: '40%', right: '-5%', width: '500px', height: '500px', background: COLORS.primary, borderRadius: '50%', filter: 'blur(120px)', opacity: 0.12 }} />
             </div>
 
             <AmbientBackground />
-            
-            {/* Header / Navbar */}
-            <header style={{
-                position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000,
-                padding: '20px 8%',
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                background: 'rgba(0, 30, 38, 0.65)',
-                backdropFilter: 'blur(24px)',
-                WebkitBackdropFilter: 'blur(24px)',
-                borderBottom: '1px solid rgba(255,255,255,0.05)'
-            }}>
-                <nav style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                        <img
-                            src={studioLogo}
-                            alt={studioName}
-                            style={{ height: '32px', cursor: 'pointer' }}
-                            onClick={() => window.open('https://buzios.digital', '_blank')}
-                        />
-                    </div>
-                    {/* Desktop Menu */}
-                    <div className="nav-desktop" style={{ display: 'flex', gap: '32px', alignItems: 'center' }}>
-                        <button className="btn btn-ghost" onClick={() => setIsLoginModalOpen(true)} style={{ fontSize: '0.95rem', fontWeight: 600, color: COLORS.white }}>Área do Cliente</button>
-                        <button className="btn" onClick={scrollToCalendar} style={{
-                            background: COLORS.primary,
-                            color: COLORS.white,
-                            borderRadius: '10px',
-                            padding: '10px 24px',
-                            fontWeight: 700,
-                            border: 'none',
-                            fontSize: '0.9rem',
-                            boxShadow: '0 8px 30px rgba(17, 129, 155, 0.3)'
-                        }}>
-                            RESERVAR AGORA
-                        </button>
-                    </div>
 
-                    <style>{`
-                        @media (max-width: 768px) {
-                            .nav-desktop { display: none !important; }
-                            .hero-text h1 { font-size: clamp(2.5rem, 10vw, 3.5rem) !important; letter-spacing: -1.5px !important; }
-                        }
-                        @keyframes blob {
-                            0% { transform: translate(0px, 0px) scale(1); }
-                            33% { transform: translate(30px, -50px) scale(1.1); }
-                            66% { transform: translate(-20px, 20px) scale(0.9); }
-                            100% { transform: translate(0px, 0px) scale(1); }
-                        }
-                        .animate-blob { animation: blob 10s infinite alternate cubic-bezier(0.4, 0, 0.2, 1); }
-                        .animation-delay-2000 { animation-delay: 2s; }
-                        .animation-delay-4000 { animation-delay: 4s; }
-                        
-                        .btn-hover-scale { transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease; }
-                        .btn-hover-scale:hover { transform: scale(1.05); box-shadow: 0 15px 35px rgba(17, 129, 155, 0.4); }
-                        
-                        @keyframes pulse-ring {
-                            0% { box-shadow: 0 0 0 0 rgba(17, 129, 155, 0.5); transform: scale(1); }
-                            70% { box-shadow: 0 0 0 20px rgba(17, 129, 155, 0); transform: scale(1.05); }
-                            100% { box-shadow: 0 0 0 0 rgba(17, 129, 155, 0); transform: scale(1); }
-                        }
-                        .play-btn-pulse { animation: pulse-ring 2.5s infinite; transition: transform 0.3s ease; }
-                        .play-btn-pulse:hover { transform: scale(1.1); animation-play-state: paused; }
-
-                        .glass-mockup {
-                            background: rgba(0, 46, 56, 0.4);
-                            backdrop-filter: blur(24px);
-                            -webkit-backdrop-filter: blur(24px);
-                            border: 1px solid rgba(255,255,255,0.1);
-                            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5), inset 0 1px 1px rgba(255,255,255,0.1);
-                            border-radius: 32px;
-                        }
-                    `}</style>
-                </nav>
+            {/* ═══ NAVBAR ═══ */}
+            <header className={`landing-navbar ${navScrolled ? 'scrolled' : ''}`}>
+                <img
+                    src={studioLogo}
+                    alt={studioName}
+                    className="landing-navbar-logo"
+                    onClick={() => window.open('https://buzios.digital', '_blank')}
+                />
+                <div className="landing-navbar-desktop">
+                    <button className="btn btn-ghost" onClick={() => setIsLoginModalOpen(true)} style={{ fontSize: '0.9rem', fontWeight: 600, color: COLORS.white }}>
+                        Área do Cliente
+                    </button>
+                    <button className="landing-navbar-cta" onClick={scrollToCalendar}>
+                        RESERVAR AGORA
+                    </button>
+                </div>
+                <button
+                    className="landing-navbar-hamburger"
+                    onClick={() => setMobileMenuOpen(prev => !prev)}
+                    aria-label="Menu"
+                >
+                    {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
+                </button>
             </header>
 
+            {/* Mobile Sheet */}
+            {mobileMenuOpen && (
+                <>
+                    <div className="landing-mobile-sheet-backdrop" onClick={() => setMobileMenuOpen(false)} />
+                    <div className="landing-mobile-sheet">
+                        <div className="landing-mobile-sheet-handle" />
+                        <button className="landing-mobile-sheet-btn landing-mobile-sheet-btn--primary" onClick={scrollToCalendar}>
+                            Reservar Agora
+                        </button>
+                        <button className="landing-mobile-sheet-btn landing-mobile-sheet-btn--secondary" onClick={() => { setMobileMenuOpen(false); setIsLoginModalOpen(true); }}>
+                            Área do Cliente
+                        </button>
+                    </div>
+                </>
+            )}
+
             <main>
-                {/* Hero Section */}
-                <section ref={heroRef} style={{
-                    padding: '180px 8% 100px',
-                    display: 'grid',
-                    gridTemplateColumns: 'minmax(0, 1.1fr) minmax(0, 1fr)',
-                    alignItems: 'center',
-                    gap: '80px',
-                    minHeight: '95vh',
-                    maxWidth: '1600px',
-                    margin: '0 auto'
-                }}>
-                    <div className="hero-text">
-                        <div style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '8px',
-                            padding: '6px 14px', background: 'rgba(255,255,255,0.06)',
-                            borderRadius: '100px', marginBottom: '24px',
-                            fontSize: '0.8rem', fontWeight: 700, color: COLORS.accent,
-                            letterSpacing: '1px'
-                        }}>
+                {/* ═══ HERO ═══ */}
+                <section
+                    className={`landing-hero ${isLoginModalOpen ? 'landing-hero--dimmed' : ''}`}
+                >
+
+                    <div className="landing-hero-text">
+                        <div className="hero-animate-1 landing-section-badge">
                             <Sparkles size={14} /> ESTÚDIO DE PODCAST & VÍDEO
                         </div>
-                        <h1 style={{ fontSize: 'clamp(3rem, 7vw, 5.2rem)', fontWeight: 800, lineHeight: 0.95, marginBottom: '24px', letterSpacing: '-3px' }}>
-                            Transforme sua visão em <span style={{ color: COLORS.accent }}>excelência digital.</span>
+
+                        <h1 className="hero-animate-2">
+                            Transforme sua visão em{' '}
+                            <span style={{ color: COLORS.accent }}>excelência digital.</span>
                         </h1>
-                        <p style={{ fontSize: '1.25rem', color: 'rgba(255,255,255,0.6)', lineHeight: 1.7, marginBottom: '48px', maxWidth: '540px' }}>
+
+                        <p className="hero-subtitle hero-animate-3">
                             Produção profissional com tecnologia 4K, automação com IA e o suporte da maior agência de estratégia da região.
                         </p>
-                        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-                            <button className="btn btn-hover-scale" style={{
-                                background: COLORS.white, color: COLORS.bgDark, borderRadius: '14px',
-                                padding: '18px 40px', fontSize: '1.05rem', fontWeight: 800, border: 'none',
-                                boxShadow: '0 10px 30px rgba(0,0,0,0.2)', cursor: 'pointer', zIndex: 1
-                            }} onClick={scrollToCalendar}>
-                                INICIAR PROJETO
+
+                        <div className="landing-hero-ctas hero-animate-4">
+                            <button className="landing-hero-cta-primary" onClick={scrollToCalendar}>
+                                <CalendarCheck size={20} /> RESERVAR AGORA
                             </button>
-                            <div onClick={() => setIsVideoModalOpen(true)} className="group" style={{ display: 'flex', alignItems: 'center', gap: '14px', cursor: 'pointer', fontWeight: 700, zIndex: 1 }}>
-                                <div className="play-btn-pulse" style={{ width: '54px', height: '54px', borderRadius: '50%', background: 'rgba(17, 129, 155, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${COLORS.primary}` }}>
-                                    <PlayCircle size={28} style={{ color: COLORS.white }} />
+                            <button className="landing-hero-cta-secondary" onClick={() => setIsVideoModalOpen(true)}>
+                                <PlayCircle size={20} /> CONHECER ESPAÇO
+                            </button>
+                        </div>
+
+                        <div className="landing-stats hero-animate-5">
+                            <div className="landing-stat">
+                                <div className="landing-stat-icon"><MonitorPlay size={18} /></div>
+                                <div className="landing-stat-text">
+                                    <span className="landing-stat-value">4K</span>
+                                    <span className="landing-stat-label">Vídeo</span>
                                 </div>
-                                CONHECER ESPAÇO
+                            </div>
+                            <div className="landing-stat">
+                                <div className="landing-stat-icon"><Cpu size={18} /></div>
+                                <div className="landing-stat-text">
+                                    <span className="landing-stat-value">IA</span>
+                                    <span className="landing-stat-label">Automação</span>
+                                </div>
+                            </div>
+                            <div className="landing-stat">
+                                <div className="landing-stat-icon"><Clock size={18} /></div>
+                                <div className="landing-stat-text">
+                                    <span className="landing-stat-value">2h</span>
+                                    <span className="landing-stat-label">Sessions</span>
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    <div className="hero-image-container glass-mockup" style={{
-                        position: 'relative',
-                        width: '100%',
-                        aspectRatio: '16 / 11',
-                        padding: '12px',
-                        transform: 'translateZ(0)'
-                    }}>
-                        <div style={{ width: '100%', height: '100%', borderRadius: '24px', overflow: 'hidden', position: 'relative' }}>
-                            <img
-                                src={studioHero}
-                                className="hero-photo"
-                                alt={studioName}
-                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                            />
-                            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,30,38,0.6), transparent)' }} />
-                            <div style={{ position: 'absolute', bottom: '24px', left: '24px', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', padding: '12px 20px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                                <div style={{ fontSize: '0.8rem', opacity: 0.7, letterSpacing: '1px' }}>LOCALIZAÇÃO</div>
-                                <div style={{ fontWeight: 700 }}>{studioLocation}</div>
-                            </div>
+                    {/* Studio Image — visible on tablet/desktop only */}
+                    <div className="landing-hero-visual hero-animate-5">
+                        <img src={studioHero} alt={`Interior do ${studioName}`} />
+                        <div className="landing-hero-visual-overlay" />
+                        <div className="landing-hero-visual-badge">
+                            <MapPin size={12} style={{ opacity: 0.6 }} />
+                            <span style={{ opacity: 0.6, fontSize: '0.65rem', letterSpacing: '0.5px' }}>LOCALIZAÇÃO</span>
+                            <span style={{ fontWeight: 700, marginLeft: '4px' }}>{studioLocation}</span>
+                        </div>
+                        <div className="landing-hero-visual-360">
+                            <RotateCcw size={12} /> 360°
                         </div>
                     </div>
                 </section>
 
+                {/* ═══ SOCIAL PROOF ═══ */}
+                <section className="landing-social-proof">
+                    <div className="landing-social-proof-label">Eles já gravaram conosco</div>
+                    <div style={{ overflow: 'hidden' }}>
+                        <div className="landing-marquee">
+                            {[...SOCIAL_PROOF, ...SOCIAL_PROOF, ...SOCIAL_PROOF].map((item, i) => (
+                                <div key={i} className="landing-marquee-item">
+                                    <div className="landing-marquee-avatar">{item.initials}</div>
+                                    {item.name}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </section>
 
+                {/* ═══ HOW IT WORKS ═══ */}
+                <section className="landing-steps">
+                    <div className="landing-steps-inner">
+                        <div className="reveal landing-section-badge">
+                            <Headphones size={14} /> COMO FUNCIONA
+                        </div>
+                        <h2 className="reveal reveal-delay-1 landing-section-title">
+                            Agende em segundos.<br />Grave com excelência.
+                        </h2>
+                        <p className="reveal reveal-delay-2 landing-section-subtitle">
+                            Sem burocracia. Nosso sistema elimina toda a fricção para que você foque apenas no que importa: seu conteúdo.
+                        </p>
 
-                <LoginModal
-                    isOpen={isLoginModalOpen}
-                    onClose={() => setIsLoginModalOpen(false)}
-                />
-
-                <VideoModal
-                    isOpen={isVideoModalOpen}
-                    onClose={() => setIsVideoModalOpen(false)}
-                    videoUrl="https://www.youtube.com/embed/B6xNKgR3fQU?start=95"
-                />
-
-
-
-                {/* Dynamic Agenda Demo Section */}
-                <section ref={agendaRef} style={{ padding: '120px 8%', background: 'rgba(0,0,0,0.2)' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.2fr)', gap: '100px', alignItems: 'center', maxWidth: '1400px', margin: '0 auto' }}>
-                        <div>
-                            <div style={{ color: COLORS.primary, fontWeight: 700, marginBottom: '16px', letterSpacing: '2px' }}>FLUXO INTELIGENTE</div>
-                            <h2 style={{ fontSize: '3rem', fontWeight: 800, marginBottom: '32px', lineHeight: 1.1 }}>Agenda fácil.<br />Foco no conteúdo.</h2>
-                            <p style={{ color: 'rgba(255,255,255,0.5)', lineHeight: 1.8, marginBottom: '40px' }}>
-                                Nosso sistema exclusivo permite que você reserve seu horário em segundos. Sem burocracia, sem espera. A agilidade que seu projeto exige.
-                            </p>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                                {[
-                                    { t: 'Escolha seu Slot', d: 'Bloqueios fixos de 2h para máxima qualidade.' },
-                                    { t: 'Confirmação Real-Time', d: 'Seu estúdio garantido instantaneamente.' },
-                                    { t: 'Gerenciamento Total', d: 'Acompanhe métricas e gravações em um só lugar.' }
-                                ].map((item, i) => (
-                                    <div key={i} className="agenda-feature" style={{ display: 'flex', gap: '16px', background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                        <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'linear-gradient(135deg, #11819B, #096E85)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 4px 10px rgba(17, 129, 155, 0.3)' }}>
-                                            <CheckCircle2 size={16} color="#fff" />
-                                        </div>
-                                        <div>
-                                            <div style={{ fontWeight: 700, fontSize: '1.05rem', color: COLORS.white }}>{item.t}</div>
-                                            <div style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.5)', marginTop: '4px' }}>{item.d}</div>
-                                        </div>
+                        <div className="landing-steps-grid">
+                            {STEPS.map((step, i) => (
+                                <div key={step.num} className={`reveal reveal-delay-${i + 1} landing-step-card`}>
+                                    <div className="landing-step-number">{step.num}</div>
+                                    <div className="landing-step-content">
+                                        <h3>{step.title}</h3>
+                                        <p>{step.desc}</p>
                                     </div>
-                                ))}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </section>
+
+                {/* ═══ LIVE AGENDA ═══ */}
+                <section ref={agendaRef} className="landing-agenda">
+                    <div className="landing-agenda-inner">
+                        <div className="landing-agenda-header">
+                            <div className="reveal landing-section-badge">
+                                <CalendarCheck size={14} /> AGENDA AO VIVO
                             </div>
+                            <h2 className="reveal reveal-delay-1 landing-section-title" style={{ textAlign: 'center' }}>
+                                Reserve seu horário agora
+                            </h2>
+                            <p className="reveal reveal-delay-2 landing-section-subtitle" style={{ textAlign: 'center', margin: '0 auto 32px' }}>
+                                Veja a disponibilidade em tempo real e garanta seu slot.
+                            </p>
                         </div>
 
-                        {/* Live Calendar Grid */}
-                        <div className="mockup-calendar glass-mockup" style={{ flex: 1, minWidth: '320px', padding: '16px', overflow: 'hidden' }}>
+                        <div className="reveal reveal-delay-3">
                             <PublicCalendarGrid onSlotSelect={(date, slot) => {
                                 if (user) {
                                     navigate('/calendar', {
-                                        state: {
-                                            preSelectedDate: date,
-                                            preSelectedTime: slot.time
-                                        }
+                                        state: { preSelectedDate: date, preSelectedTime: slot.time }
                                     });
                                 } else {
                                     sessionStorage.setItem('pendingBooking', JSON.stringify({ date, time: slot.time }));
@@ -378,24 +317,64 @@ export default function LandingPage() {
                     </div>
                 </section>
 
-                {/* Services Carousel */}
+                {/* ═══ SERVICES ═══ */}
                 <ServicesCarousel />
             </main>
 
-            {/* Footer */}
-            <footer style={{ padding: '80px 8% 60px', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '60px', position: 'relative', zIndex: 1 }}>
-                <div>
-                    <img src={studioLogo} alt={studioName} style={{ height: '28px', marginBottom: '24px' }} />
-                    <p style={{ maxWidth: '300px', color: 'rgba(255,255,255,0.4)', lineHeight: 1.6 }}>Excelência e inovação em produção audiovisual e estratégica digital.</p>
-                </div>
-                <div style={{ display: 'flex', gap: '80px' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                        <span style={{ fontWeight: 700 }}>CONTATO</span>
-                        <span style={{ opacity: 0.5 }}>(22) 3301-5850</span>
-                        <span style={{ opacity: 0.5 }}>{studioEmail}</span>
+            {/* ═══ FOOTER ═══ */}
+            <footer className="landing-footer">
+                <div className="landing-footer-inner">
+                    <div className="landing-footer-grid">
+                        <div className="landing-footer-brand">
+                            <img src={studioLogo} alt={studioName} />
+                            <p>Excelência e inovação em produção audiovisual e estratégia digital.</p>
+                        </div>
+
+                        <div>
+                            <div className="landing-footer-col-title">CONTATO</div>
+                            <div className="landing-footer-links">
+                                <a className="landing-footer-link" href="tel:+552233015850">
+                                    <Phone size={14} /> (22) 3301-5850
+                                </a>
+                                <a className="landing-footer-link" href={`mailto:${studioEmail}`}>
+                                    <Mail size={14} /> {studioEmail}
+                                </a>
+                                <span className="landing-footer-link">
+                                    <MapPin size={14} /> {studioLocation}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div className="landing-footer-col-title">ACESSO RÁPIDO</div>
+                            <div className="landing-footer-links">
+                                <button className="landing-footer-link" onClick={scrollToCalendar}>
+                                    <CalendarCheck size={14} /> Agendar horário
+                                </button>
+                                <button className="landing-footer-link" onClick={() => setIsLoginModalOpen(true)}>
+                                    Área do Cliente
+                                </button>
+                                <a className="landing-footer-link" href="https://buzios.digital" target="_blank" rel="noreferrer">
+                                    Buzios Digital
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="landing-footer-divider" />
+
+                    <div className="landing-footer-bottom">
+                        &copy; {new Date().getFullYear()} {studioName}. Todos os direitos reservados.
                     </div>
                 </div>
             </footer>
+
+            {/* PWA Install Banner */}
+            <InstallBanner />
+
+            {/* Modals */}
+            <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} />
+            <VideoModal isOpen={isVideoModalOpen} onClose={() => setIsVideoModalOpen(false)} videoUrl="https://www.youtube.com/embed/B6xNKgR3fQU?start=95" />
         </div>
     );
 }

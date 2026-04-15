@@ -1,4 +1,5 @@
-﻿import React, { useState, useEffect } from 'react';
+import { getErrorMessage } from '../utils/errors';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { contractsApi, usersApi, pricingApi, Contract, UserSummary, CreateContractData, PricingConfig, AddOnConfig, CustomContractData } from '../api/client';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
@@ -10,14 +11,14 @@ function formatBRL(cents: number): string {
     return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
 }
 
-const DAY_NAMES_FULL = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+const DAY_NAMES_FULL = ['Domingo', 'Segunda', 'Ter�a', 'Quarta', 'Quinta', 'Sexta', 'S�bado'];
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: string }> = {
-    ACTIVE:               { label: 'Ativo',       color: '#10b981', bg: 'rgba(16,185,129,0.12)',  icon: '●' },
-    EXPIRED:              { label: 'Expirado',    color: '#6b7280', bg: 'rgba(107,114,128,0.12)', icon: '○' },
-    CANCELLED:            { label: 'Cancelado',   color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   icon: '✕' },
-    PENDING_CANCELLATION: { label: 'Pend. Cancel', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', icon: '⏳' },
-    PAUSED:               { label: 'Pausado',     color: '#14b8a6', bg: 'rgba(45,212,191,0.12)',  icon: '⏸' },
+    ACTIVE:               { label: 'Ativo',       color: '#10b981', bg: 'rgba(16,185,129,0.12)',  icon: '?' },
+    EXPIRED:              { label: 'Expirado',    color: '#6b7280', bg: 'rgba(107,114,128,0.12)', icon: '?' },
+    CANCELLED:            { label: 'Cancelado',   color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   icon: '?' },
+    PENDING_CANCELLATION: { label: 'Pend. Cancel', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', icon: '?' },
+    PAUSED:               { label: 'Pausado',     color: '#14b8a6', bg: 'rgba(45,212,191,0.12)',  icon: '?' },
 };
 
 export default function AdminContractsPage() {
@@ -48,7 +49,7 @@ export default function AdminContractsPage() {
     const [editForm, setEditForm] = useState({ status: '', endDate: '', flexCreditsRemaining: '', contractUrl: '', paymentMethod: '' });
     const [editError, setEditError] = useState('');
 
-    // ─── Custom Contract Wizard ───
+    // --- Custom Contract Wizard ---
     const [showCustom, setShowCustom] = useState(false);
     const [customStep, setCustomStep] = useState<1 | 2 | 3 | 4>(1);
     const [customForm, setCustomForm] = useState({
@@ -105,7 +106,7 @@ export default function AdminContractsPage() {
             setCreateSuccess(res.message);
             await loadData();
             setTimeout(() => { setShowCreate(false); setShowConflictModal(false); setCreateSuccess(''); }, 1500);
-        } catch (err: any) { setCreateError(err.message); }
+        } catch (err: unknown) { setCreateError(getErrorMessage(err)); }
     };
 
     const handleCreate = async () => {
@@ -136,8 +137,8 @@ export default function AdminContractsPage() {
                     setShowConflictModal(true);
                     return;
                 }
-            } catch (err: any) {
-                setCreateError(err.message || 'Erro ao validar agenda.');
+            } catch (err: unknown) {
+                setCreateError(getErrorMessage(err) || 'Erro ao validar agenda.');
                 return;
             }
         }
@@ -158,7 +159,7 @@ export default function AdminContractsPage() {
             await contractsApi.update(editContract.id, data);
             setEditContract(null);
             await loadData();
-        } catch (err: any) { setEditError(err.message); }
+        } catch (err: unknown) { setEditError(getErrorMessage(err)); }
     };
 
     const handleCancel = async (id: string) => {
@@ -172,7 +173,7 @@ export default function AdminContractsPage() {
             showToast('Contrato cancelado com sucesso.');
             setShowCancelModalFor(null);
             await loadData();
-        } catch (err: any) { showAlert({ message: err.message, type: 'error' }); }
+        } catch (err: unknown) { showAlert({ message: getErrorMessage(err), type: 'error' }); }
     };
 
     const handleResolveCancel = async (id: string, action: 'CHARGE_FEE' | 'WAIVE_FEE') => {
@@ -186,7 +187,7 @@ export default function AdminContractsPage() {
             showToast(res.message);
             setShowResolveModalFor(null);
             await loadData();
-        } catch (err: any) { showAlert({ message: err.message, type: 'error' }); }
+        } catch (err: unknown) { showAlert({ message: getErrorMessage(err), type: 'error' }); }
     };
 
     const statusFiltered = filter === 'ALL' ? contracts : contracts.filter(c => c.status === filter);
@@ -223,14 +224,14 @@ export default function AdminContractsPage() {
 
     return (
         <div>
-            {/* ─── HEADER ─── */}
+            {/* --- HEADER --- */}
             <div style={{ marginBottom: '28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
                 <div>
                     <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontSize: '1.75rem' }}>📋</span> Contratos
+                        <span style={{ fontSize: '1.75rem' }}>??</span> Contratos
                     </h1>
                     <p className="page-subtitle" style={{ marginTop: '4px' }}>
-                        Gerencie contratos de fidelidade e pacotes de episódios
+                        Gerencie contratos de fidelidade e pacotes de epis�dios
                     </p>
                 </div>
                 <div style={{ display: 'flex', gap: '10px' }}>
@@ -251,12 +252,12 @@ export default function AdminContractsPage() {
                             border: '1px solid rgba(45,212,191,0.3)', color: '#2dd4bf', cursor: 'pointer',
                             fontSize: '0.875rem', transition: 'all 0.2s',
                         }}>
-                        <span style={{ fontSize: '1.1rem' }}>🎨</span> Contrato Personalizado
+                        <span style={{ fontSize: '1.1rem' }}>??</span> Contrato Personalizado
                     </button>
                 </div>
             </div>
 
-            {/* ─── KPI CARDS ─── */}
+            {/* --- KPI CARDS --- */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '24px' }}>
                 {/* Active */}
                 <div onClick={() => setFilter('ACTIVE')} style={{
@@ -285,9 +286,9 @@ export default function AdminContractsPage() {
                     padding: '20px', borderRadius: '14px',
                     background: 'var(--bg-secondary)', border: '1px solid var(--border-color)'
                 }}>
-                    <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--accent-primary)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Créditos Flex</div>
+                    <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--accent-primary)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Cr�ditos Flex</div>
                     <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)' }}>{totalFlexCredits}</div>
-                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>episódios restantes</div>
+                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>epis�dios restantes</div>
                 </div>
                 {/* Expiring */}
                 <div style={{
@@ -297,7 +298,7 @@ export default function AdminContractsPage() {
                 }}>
                     <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: expiringIn30 > 0 ? '#ef4444' : 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Vencendo (30d)</div>
                     <div style={{ fontSize: '2rem', fontWeight: 800, color: expiringIn30 > 0 ? '#ef4444' : 'var(--text-primary)' }}>{expiringIn30}</div>
-                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>atenção necessária</div>
+                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>aten��o necess�ria</div>
                 </div>
                 {/* Total */}
                 <div onClick={() => setFilter('ALL')} style={{
@@ -312,7 +313,7 @@ export default function AdminContractsPage() {
                 </div>
             </div>
 
-            {/* ─── SEARCH + FILTERS ─── */}
+            {/* --- SEARCH + FILTERS --- */}
             <div style={{
                 padding: '12px 16px', borderRadius: '12px', marginBottom: '16px',
                 background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
@@ -330,9 +331,9 @@ export default function AdminContractsPage() {
                         onFocus={e => (e.currentTarget.style.borderColor = '#10b981')}
                         onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
                     />
-                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🔍</span>
+                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>??</span>
                 </div>
-                {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem' }}>✕</button>}
+                {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem' }}>?</button>}
 
                 <div style={{ display: 'flex', gap: '2px', padding: '3px', background: 'var(--bg-elevated)', borderRadius: '10px' }}>
                     {([
@@ -365,11 +366,11 @@ export default function AdminContractsPage() {
                 )}
             </div>
 
-            {/* ─── CONTRACTS TABLE ─── */}
+            {/* --- CONTRACTS TABLE --- */}
             <div style={{ borderRadius: '16px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', overflow: 'hidden' }}>
                 {filtered.length === 0 ? (
                     <div style={{ padding: '48px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                        <div style={{ fontSize: '2.5rem', marginBottom: '12px', opacity: 0.4 }}>📋</div>
+                        <div style={{ fontSize: '2.5rem', marginBottom: '12px', opacity: 0.4 }}>??</div>
                         <div style={{ fontWeight: 600 }}>Nenhum contrato encontrado</div>
                         <div style={{ fontSize: '0.8125rem', marginTop: '4px' }}>Tente ajustar os filtros ou busca</div>
                     </div>
@@ -380,11 +381,11 @@ export default function AdminContractsPage() {
                                 <tr>
                                     <th style={{ paddingLeft: '20px' }}>Cliente / Projeto</th>
                                     <th>Tipo</th>
-                                    <th>Gravações</th>
+                                    <th>Grava��es</th>
                                     <th>Pagamento</th>
-                                    <th>Vigência</th>
+                                    <th>Vig�ncia</th>
                                     <th style={{ textAlign: 'center' }}>Status</th>
-                                    <th style={{ textAlign: 'center' }}>Ações</th>
+                                    <th style={{ textAlign: 'center' }}>A��es</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -409,16 +410,16 @@ export default function AdminContractsPage() {
                                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                         fontSize: '0.9375rem', flexShrink: 0
                                                     }}>
-                                                        {c.type === 'FIXO' ? '📌' : '🔄'}
+                                                        {c.type === 'FIXO' ? '??' : '??'}
                                                     </div>
                                                     <div>
                                                         <div style={{ fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', color: 'var(--accent-primary)' }}
                                                             onClick={() => c.user?.id && navigate(`/admin/clients/${c.user.id}`)}>
-                                                            {c.user?.name || '—'}
+                                                            {c.user?.name || '�'}
                                                         </div>
                                                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '1px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                             {c.name}
-                                                            {c.contractUrl && <a href={c.contractUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)', fontSize: '0.65rem' }} title="Contrato digital">📄↗</a>}
+                                                            {c.contractUrl && <a href={c.contractUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)', fontSize: '0.65rem' }} title="Contrato digital">???</a>}
                                                         </div>
                                                     </div>
                                                 </div>
@@ -434,7 +435,7 @@ export default function AdminContractsPage() {
                                                         color: c.type === 'FIXO' ? '#818cf8' : '#34d399',
                                                         width: 'fit-content'
                                                     }}>
-                                                        {c.type === 'FIXO' ? '📌 Fixo' : '🔄 Flex'}
+                                                        {c.type === 'FIXO' ? '?? Fixo' : '?? Flex'}
                                                     </span>
                                                     <span style={{
                                                         padding: '2px 8px', borderRadius: '6px', fontSize: '0.625rem', fontWeight: 700,
@@ -451,7 +452,7 @@ export default function AdminContractsPage() {
                                             <td>
                                                 <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>{episodeCount(c.durationMonths)}</div>
                                                 <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
-                                                    {c.durationMonths}m · {c.discountPct}% desc
+                                                    {c.durationMonths}m � {c.discountPct}% desc
                                                 </div>
                                                 {c.type === 'FLEX' && c.flexCreditsRemaining != null && (
                                                     <div style={{
@@ -482,13 +483,13 @@ export default function AdminContractsPage() {
                                                             {pmBadge.label}
                                                         </span>
                                                     );
-                                                })() : <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>—</span>}
+                                                })() : <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>�</span>}
                                             </td>
 
-                                            {/* Vigência */}
+                                            {/* Vig�ncia */}
                                             <td>
                                                 <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                                                    {new Date(c.startDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })} – {new Date(c.endDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
+                                                    {new Date(c.startDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })} � {new Date(c.endDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
                                                 </div>
                                                 {venc && (
                                                     <span style={{
@@ -497,7 +498,7 @@ export default function AdminContractsPage() {
                                                         color: venc.color, background: venc.bg,
                                                         padding: '2px 8px', borderRadius: '10px'
                                                     }}>
-                                                        ⏳ Vence em {venc.label}
+                                                        ? Vence em {venc.label}
                                                     </span>
                                                 )}
                                             </td>
@@ -521,39 +522,39 @@ export default function AdminContractsPage() {
                                                             setEditContract(c);
                                                             setEditForm({ status: c.status, endDate: c.endDate.split('T')[0], flexCreditsRemaining: c.flexCreditsRemaining?.toString() || '', contractUrl: c.contractUrl || '', paymentMethod: c.paymentMethod || '' });
                                                             setEditError('');
-                                                        }}>✏️</button>
+                                                        }}>??</button>
 
                                                     {c.status === 'PENDING_CANCELLATION' && (
                                                         <>
                                                             <button className="btn btn-sm" style={{ background: 'rgba(239,68,68,0.12)', color: '#ef4444', border: 'none', fontSize: '0.6875rem', padding: '4px 8px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}
-                                                                onClick={() => handleResolveCancel(c.id, 'CHARGE_FEE')} title="Cobrar multa">💸</button>
+                                                                onClick={() => handleResolveCancel(c.id, 'CHARGE_FEE')} title="Cobrar multa">??</button>
                                                             <button className="btn btn-sm" style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981', border: 'none', fontSize: '0.6875rem', padding: '4px 8px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}
-                                                                onClick={() => handleResolveCancel(c.id, 'WAIVE_FEE')} title="Isentar multa">🤝</button>
+                                                                onClick={() => handleResolveCancel(c.id, 'WAIVE_FEE')} title="Isentar multa">??</button>
                                                         </>
                                                     )}
 
                                                     {c.status === 'ACTIVE' && (
                                                         <button className="btn btn-sm" style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444', border: 'none', fontSize: '0.8125rem', padding: '4px 8px', borderRadius: '8px', cursor: 'pointer' }}
-                                                            onClick={() => handleCancel(c.id)} title="Cancelar">✕</button>
+                                                            onClick={() => handleCancel(c.id)} title="Cancelar">?</button>
                                                     )}
 
                                                     {(c.status === 'ACTIVE' || c.status === 'EXPIRED') && (
                                                         <button className="btn btn-ghost btn-sm" title="Renovar" style={{ fontSize: '0.8125rem', padding: '4px 8px', borderRadius: '8px' }}
                                                             onClick={() => {
-                                                                showConfirm({ title: '🔄 Renovar Contrato', message: `Renovar "${c.name}" por mais 3 meses?`, onConfirm: async () => { try { const r = await contractsApi.renew(c.id, { durationMonths: 3 }); showToast(r.message); loadData(); } catch (e: any) { showToast(e.message || 'Erro'); } } });
-                                                            }}>🔄</button>
+                                                                showConfirm({ title: '?? Renovar Contrato', message: `Renovar "${c.name}" por mais 3 meses?`, onConfirm: async () => { try { const r = await contractsApi.renew(c.id, { durationMonths: 3 }); showToast(r.message); loadData(); } catch (e: unknown) { showToast(getErrorMessage(e) || 'Erro'); } } });
+                                                            }}>??</button>
                                                     )}
                                                     {c.status === 'ACTIVE' && (
                                                         <button className="btn btn-ghost btn-sm" title="Pausar" style={{ fontSize: '0.8125rem', padding: '4px 8px', borderRadius: '8px' }}
                                                             onClick={() => {
-                                                                showConfirm({ title: '⏸️ Pausar Contrato', message: `Pausar "${c.name}"? Bookings futuros serão cancelados.`, onConfirm: async () => { try { const r = await contractsApi.pause(c.id, { reason: 'Pausa administrativa' }); showToast(r.message); loadData(); } catch (e: any) { showToast(e.message || 'Erro'); } } });
-                                                            }}>⏸️</button>
+                                                                showConfirm({ title: '?? Pausar Contrato', message: `Pausar "${c.name}"? Bookings futuros ser�o cancelados.`, onConfirm: async () => { try { const r = await contractsApi.pause(c.id, { reason: 'Pausa administrativa' }); showToast(r.message); loadData(); } catch (e: unknown) { showToast(getErrorMessage(e) || 'Erro'); } } });
+                                                            }}>??</button>
                                                     )}
                                                     {(c.status as string) === 'PAUSED' && (
                                                         <button className="btn btn-sm" title="Retomar" style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981', border: 'none', fontSize: '0.8125rem', padding: '4px 8px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}
                                                             onClick={() => {
-                                                                showConfirm({ title: '▶️ Retomar Contrato', message: `Retomar "${c.name}"? Vigência será estendida.`, onConfirm: async () => { try { const r = await contractsApi.resume(c.id); showToast(r.message); loadData(); } catch (e: any) { showToast(e.message || 'Erro'); } } });
-                                                            }}>▶️</button>
+                                                                showConfirm({ title: '?? Retomar Contrato', message: `Retomar "${c.name}"? Vig�ncia ser� estendida.`, onConfirm: async () => { try { const r = await contractsApi.resume(c.id); showToast(r.message); loadData(); } catch (e: unknown) { showToast(getErrorMessage(e) || 'Erro'); } } });
+                                                            }}>??</button>
                                                     )}
                                                 </div>
                                             </td>
@@ -566,9 +567,9 @@ export default function AdminContractsPage() {
                 )}
             </div>
 
-            {/* ═══════════════════════════════════════════════════════════════
-               MODALS (preserved from original — these already work great)
-            ═══════════════════════════════════════════════════════════════ */}
+            {/* ---------------------------------------------------------------
+               MODALS (preserved from original � these already work great)
+            --------------------------------------------------------------- */}
 
             {showCreate && (() => {
                 const inputStyle = (hasError = false) => ({
@@ -605,10 +606,10 @@ export default function AdminContractsPage() {
                 return (
                     <ModalOverlay onClose={() => setShowCreate(false)}>
                         <div className="modal" style={{ maxWidth: 580, maxHeight: '94vh', overflowY: 'auto', padding: 0 }}>
-                            {/* ─── HEADER ─── */}
+                            {/* --- HEADER --- */}
                             <div style={{ padding: '28px 32px 0' }}>
                                 <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    <span style={{ width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #818cf8, #6366f1)', fontSize: '1rem' }}>📋</span>
+                                    <span style={{ width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #818cf8, #6366f1)', fontSize: '1rem' }}>??</span>
                                     Novo Contrato
                                 </h2>
                                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px', marginBottom: 0 }}>
@@ -620,7 +621,7 @@ export default function AdminContractsPage() {
                                 {createError && <div style={{ marginBottom: '16px', padding: '10px 14px', borderRadius: '10px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)', color: '#ef4444', fontSize: '0.8125rem', fontWeight: 600 }}>{createError}</div>}
                                 {createSuccess && <div style={{ marginBottom: '16px', padding: '10px 14px', borderRadius: '10px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.15)', color: '#10b981', fontSize: '0.8125rem', fontWeight: 600 }}>{createSuccess}</div>}
 
-                                {/* ─── SECTION 1: Cliente & Projeto ─── */}
+                                {/* --- SECTION 1: Cliente & Projeto --- */}
                                 <div style={{ marginBottom: '20px' }}>
                                     {sectionHeader(1, 'Cliente & Projeto', '#10b981')}
 
@@ -629,7 +630,7 @@ export default function AdminContractsPage() {
                                         <div>
                                             <label style={labelStyle}>Cliente *</label>
                                             <div style={{ position: 'relative' }}>
-                                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>👤</span>
+                                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>??</span>
                                                 <select
                                                     value={createForm.userId || ''}
                                                     onChange={e => setCreateForm({ ...createForm, userId: e.target.value })}
@@ -658,10 +659,10 @@ export default function AdminContractsPage() {
                                         <div>
                                             <label style={labelStyle}>Nome do Projeto *</label>
                                             <div style={{ position: 'relative' }}>
-                                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🎬</span>
+                                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>??</span>
                                                 <input
                                                     value={createForm.name || ''} onChange={e => setCreateForm({ ...createForm, name: e.target.value })}
-                                                    placeholder="Ex: Podcast Verão 2026"
+                                                    placeholder="Ex: Podcast Ver�o 2026"
                                                     style={inputStyle()}
                                                     onFocus={e => (e.currentTarget.style.borderColor = '#10b981')}
                                                     onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-default)')}
@@ -671,17 +672,17 @@ export default function AdminContractsPage() {
                                     </div>
                                 </div>
 
-                                {/* ─── SECTION 2: Configuração ─── */}
+                                {/* --- SECTION 2: Configura��o --- */}
                                 <div style={{ marginBottom: '20px' }}>
-                                    {sectionHeader(2, 'Configuração do Contrato', '#818cf8')}
+                                    {sectionHeader(2, 'Configura��o do Contrato', '#818cf8')}
 
                                     {/* Type selector cards */}
                                     <div style={{ marginBottom: '14px' }}>
                                         <label style={labelStyle}>Tipo de contrato</label>
                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                                             {[
-                                                { key: 'FIXO', icon: '📌', label: 'Fixo', desc: 'Recorrente: dia/hora fixos toda semana' },
-                                                { key: 'FLEX', icon: '🔄', label: 'Flex', desc: 'Créditos: agende quando quiser' },
+                                                { key: 'FIXO', icon: '??', label: 'Fixo', desc: 'Recorrente: dia/hora fixos toda semana' },
+                                                { key: 'FLEX', icon: '??', label: 'Flex', desc: 'Cr�ditos: agende quando quiser' },
                                             ].map(t => (
                                                 <button key={t.key} onClick={() => setCreateForm({ ...createForm, type: t.key as any })}
                                                     style={{
@@ -702,9 +703,9 @@ export default function AdminContractsPage() {
                                         <label style={labelStyle}>Faixa</label>
                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }}>
                                             {[
-                                                { key: 'COMERCIAL', icon: '🏢', label: 'Comercial', color: '#10b981' },
-                                                { key: 'AUDIENCIA', icon: '🎤', label: 'Audiência', color: '#2dd4bf' },
-                                                { key: 'SABADO', icon: '🌟', label: 'Sábado', color: '#fbbf24' },
+                                                { key: 'COMERCIAL', icon: '??', label: 'Comercial', color: '#10b981' },
+                                                { key: 'AUDIENCIA', icon: '??', label: 'Audi�ncia', color: '#2dd4bf' },
+                                                { key: 'SABADO', icon: '??', label: 'S�bado', color: '#fbbf24' },
                                             ].map(t => (
                                                 <button key={t.key} onClick={() => setCreateForm({ ...createForm, tier: t.key as any })}
                                                     style={{
@@ -723,7 +724,7 @@ export default function AdminContractsPage() {
 
                                     {/* Duration selector */}
                                     <div style={{ marginBottom: '14px' }}>
-                                        <label style={labelStyle}>Pacote & Duração</label>
+                                        <label style={labelStyle}>Pacote & Dura��o</label>
                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                                             {[
                                                 { months: 3, eps: ep3, disc: disc3 },
@@ -737,7 +738,7 @@ export default function AdminContractsPage() {
                                                         transition: 'all 0.15s',
                                                     }}>
                                                     <div style={{ fontSize: '1.25rem', fontWeight: 800, color: createForm.durationMonths === p.months ? '#10b981' : 'var(--text-primary)' }}>{p.eps}</div>
-                                                    <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)' }}>gravações · {p.months} meses</div>
+                                                    <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)' }}>grava��es � {p.months} meses</div>
                                                     <div style={{ marginTop: '4px', display: 'inline-flex', padding: '2px 6px', borderRadius: '6px', fontSize: '0.5625rem', fontWeight: 700, background: 'rgba(16,185,129,0.1)', color: '#10b981' }}>-{p.disc}% desconto</div>
                                                 </button>
                                             ))}
@@ -747,9 +748,9 @@ export default function AdminContractsPage() {
                                     {/* Date + Contract URL row */}
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
                                         <div>
-                                            <label style={labelStyle}>Data de Início</label>
+                                            <label style={labelStyle}>Data de In�cio</label>
                                             <div style={{ position: 'relative' }}>
-                                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>📅</span>
+                                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>??</span>
                                                 <input type="date" value={createForm.startDate}
                                                     onChange={e => setCreateForm({ ...createForm, startDate: e.target.value })}
                                                     style={inputStyle()}
@@ -758,9 +759,9 @@ export default function AdminContractsPage() {
                                             </div>
                                         </div>
                                         <div>
-                                            <label style={labelStyle}>🔗 Link do Contrato</label>
+                                            <label style={labelStyle}>?? Link do Contrato</label>
                                             <div style={{ position: 'relative' }}>
-                                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>📄</span>
+                                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>??</span>
                                                 <input type="url" value={createForm.contractUrl || ''}
                                                     onChange={e => setCreateForm({ ...createForm, contractUrl: e.target.value })}
                                                     placeholder="https://contrato.digital/..."
@@ -774,12 +775,12 @@ export default function AdminContractsPage() {
                                     {/* FIXO-specific fields */}
                                     {createForm.type === 'FIXO' && (
                                         <div style={{ padding: '14px', borderRadius: '10px', background: 'rgba(99,102,241,0.04)', border: '1px solid rgba(99,102,241,0.1)', marginBottom: '14px' }}>
-                                            <div style={{ fontSize: '0.625rem', fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '10px' }}>📌 Configuração Recorrente</div>
+                                            <div style={{ fontSize: '0.625rem', fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '10px' }}>?? Configura��o Recorrente</div>
                                             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '12px', alignItems: 'end' }}>
                                                 <div>
                                                     <label style={labelStyle}>Dia da Semana</label>
                                                     <div style={{ display: 'flex', gap: '4px' }}>
-                                                        {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((d, i) => (
+                                                        {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'S�b'].map((d, i) => (
                                                             <button key={i} onClick={() => setCreateForm({ ...createForm, fixedDayOfWeek: i + 1 })}
                                                                 style={{
                                                                     flex: 1, padding: '8px 2px', borderRadius: '8px', fontSize: '0.625rem', fontWeight: 700, cursor: 'pointer',
@@ -793,7 +794,7 @@ export default function AdminContractsPage() {
                                                     </div>
                                                 </div>
                                                 <div>
-                                                    <label style={labelStyle}>Horário</label>
+                                                    <label style={labelStyle}>Hor�rio</label>
                                                     <input type="time" value={createForm.fixedTime || '14:00'}
                                                         onChange={e => setCreateForm({ ...createForm, fixedTime: e.target.value })}
                                                         style={{ ...inputStyle(), paddingLeft: '14px', width: '100px' }}
@@ -807,44 +808,44 @@ export default function AdminContractsPage() {
                                     {/* FLEX info */}
                                     {createForm.type === 'FLEX' && (
                                         <div style={{ padding: '12px 14px', borderRadius: '10px', background: 'rgba(16,185,129,0.04)', border: '1px solid rgba(16,185,129,0.1)', marginBottom: '14px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                                            <div style={{ fontWeight: 700, color: '#10b981', marginBottom: '6px', fontSize: '0.6875rem' }}>ℹ️ Regras Flex</div>
+                                            <div style={{ fontWeight: 700, color: '#10b981', marginBottom: '6px', fontSize: '0.6875rem' }}>?? Regras Flex</div>
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                                                <span>• Mínimo 1 gravação/semana (use ou perca)</span>
-                                                <span>• Adiantamento livre de créditos</span>
-                                                <span>• Compensação automática de semanas futuras</span>
+                                                <span>� M�nimo 1 grava��o/semana (use ou perca)</span>
+                                                <span>� Adiantamento livre de cr�ditos</span>
+                                                <span>� Compensa��o autom�tica de semanas futuras</span>
                                             </div>
                                         </div>
                                     )}
                                 </div>
 
-                                {/* ─── SECTION 3: Price Preview ─── */}
+                                {/* --- SECTION 3: Price Preview --- */}
                                 {tierPrice && (
                                     <div style={{ marginBottom: '20px' }}>
-                                        {sectionHeader(3, 'Estimativa de Preço', '#f59e0b')}
+                                        {sectionHeader(3, 'Estimativa de Pre�o', '#f59e0b')}
                                         <div style={{ padding: '16px', borderRadius: '12px', background: 'linear-gradient(135deg, rgba(16,185,129,0.06), rgba(6,78,59,0.03))', border: '1px solid rgba(16,185,129,0.15)' }}>
                                             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '8px', fontSize: '0.8125rem' }}>
-                                                <span style={{ color: 'var(--text-muted)' }}>Preço base/episódio</span>
+                                                <span style={{ color: 'var(--text-muted)' }}>Pre�o base/epis�dio</span>
                                                 <span style={{ textAlign: 'right', fontWeight: 600 }}>{formatBRL(base)}</span>
 
                                                 <span style={{ color: 'var(--text-muted)' }}>Desconto fidelidade ({discount}%)</span>
                                                 <span style={{ textAlign: 'right', color: '#10b981', fontWeight: 600 }}>-{formatBRL(base - discounted)}</span>
 
-                                                <span style={{ color: 'var(--text-muted)' }}>Preço/ep com desconto</span>
+                                                <span style={{ color: 'var(--text-muted)' }}>Pre�o/ep com desconto</span>
                                                 <span style={{ textAlign: 'right', fontWeight: 700 }}>{formatBRL(discounted)}</span>
 
                                                 <div style={{ gridColumn: '1 / -1', borderTop: '1px solid var(--border-default)', margin: '4px 0' }} />
 
-                                                <span style={{ fontWeight: 700 }}>{episodes} episódios × {formatBRL(discounted)}</span>
+                                                <span style={{ fontWeight: 700 }}>{episodes} epis�dios � {formatBRL(discounted)}</span>
                                                 <span style={{ textAlign: 'right', fontSize: '1.125rem', fontWeight: 800, color: '#10b981' }}>{formatBRL(total)}</span>
 
                                                 <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Estimativa mensal</span>
-                                                <span style={{ textAlign: 'right', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>~{formatBRL(monthly)}/mês</span>
+                                                <span style={{ textAlign: 'right', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>~{formatBRL(monthly)}/m�s</span>
                                             </div>
                                         </div>
                                     </div>
                                 )}
 
-                                {/* ─── ACTIONS ─── */}
+                                {/* --- ACTIONS --- */}
                                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
                                     <button onClick={() => setShowCreate(false)}
                                         style={{ padding: '10px 20px', borderRadius: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer' }}>
@@ -858,7 +859,7 @@ export default function AdminContractsPage() {
                                             opacity: canCreate ? 1 : 0.5,
                                             display: 'flex', alignItems: 'center', gap: '8px',
                                         }}>
-                                        🚀 Criar Contrato
+                                        ?? Criar Contrato
                                     </button>
                                 </div>
                             </div>
@@ -873,7 +874,7 @@ export default function AdminContractsPage() {
                     <div className="modal">
                         <h2 className="modal-title">Editar Contrato</h2>
                         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '16px' }}>
-                            {editContract.type} · {editContract.tier} · {editContract.user?.name} · {episodeCount(editContract.durationMonths)} gravações
+                            {editContract.type} � {editContract.tier} � {editContract.user?.name} � {episodeCount(editContract.durationMonths)} grava��es
                         </p>
                         {editError && <div className="error-message">{editError}</div>}
                         <div className="form-group"><label className="form-label">Status</label>
@@ -881,22 +882,22 @@ export default function AdminContractsPage() {
                                 <option value="ACTIVE">Ativo</option><option value="PENDING_CANCELLATION">Aguardando Cancelamento</option><option value="EXPIRED">Expirado</option><option value="CANCELLED">Cancelado</option>
                             </select>
                         </div>
-                        <div className="form-group"><label className="form-label">Data de Término</label>
+                        <div className="form-group"><label className="form-label">Data de T�rmino</label>
                             <input type="date" className="form-input" value={editForm.endDate} onChange={e => setEditForm({ ...editForm, endDate: e.target.value })} />
                         </div>
                         {editContract.type === 'FLEX' && (
-                            <div className="form-group"><label className="form-label">Créditos Flex Restantes</label>
+                            <div className="form-group"><label className="form-label">Cr�ditos Flex Restantes</label>
                                 <input type="number" className="form-input" min={0} value={editForm.flexCreditsRemaining} onChange={e => setEditForm({ ...editForm, flexCreditsRemaining: e.target.value })} />
                             </div>
                         )}
                         <div className="form-group">
-                            <label className="form-label">🔗 Link do Contrato Digital</label>
+                            <label className="form-label">?? Link do Contrato Digital</label>
                             <input className="form-input" type="url" placeholder="https://..." value={editForm.contractUrl} onChange={e => setEditForm({ ...editForm, contractUrl: e.target.value })} />
                         </div>
                         <div className="form-group">
-                            <label className="form-label">💳 Forma de Pagamento</label>
+                            <label className="form-label">?? Forma de Pagamento</label>
                             <select className="form-select" value={editForm.paymentMethod} onChange={e => setEditForm({ ...editForm, paymentMethod: e.target.value })}>
-                                <option value="">-- Não definido --</option>
+                                <option value="">-- N�o definido --</option>
                                 {getPaymentMethods().map(pm => (
                                     <option key={pm.key} value={pm.key}>{pm.emoji} {pm.label}</option>
                                 ))}
@@ -904,7 +905,7 @@ export default function AdminContractsPage() {
                         </div>
                         <div className="modal-actions">
                             <button className="btn btn-secondary" onClick={() => setEditContract(null)}>Cancelar</button>
-                            <button className="btn btn-primary" onClick={handleEdit}>💾 Salvar</button>
+                            <button className="btn btn-primary" onClick={handleEdit}>?? Salvar</button>
                         </div>
                     </div>
                 </ModalOverlay>
@@ -915,13 +916,13 @@ export default function AdminContractsPage() {
                 <ModalOverlay onClose={() => setShowConflictModal(false)}>
                     <div className="modal" style={{ maxWidth: 600 }}>
                         <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-                            <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>⚠️</div>
+                            <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>??</div>
                             <h3 style={{ fontSize: '1.25rem', color: '#ef4444' }}>Conflitos de Agenda</h3>
-                            <p style={{ color: 'var(--text-muted)' }}>Alguns dias projetados já possuem outras gravações.</p>
+                            <p style={{ color: 'var(--text-muted)' }}>Alguns dias projetados j� possuem outras grava��es.</p>
                         </div>
 
                         <div style={{ background: 'var(--bg-secondary)', padding: '16px', borderRadius: 'var(--radius-md)', marginBottom: '24px', maxHeight: '400px', overflowY: 'auto' }}>
-                            <div style={{ fontWeight: 700, marginBottom: '12px', fontSize: '0.875rem' }}>Ocorrências Interceptadas:</div>
+                            <div style={{ fontWeight: 700, marginBottom: '12px', fontSize: '0.875rem' }}>Ocorr�ncias Interceptadas:</div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                 {conflicts.map((c, i) => {
                                     const ymd = c.date.split('-');
@@ -932,20 +933,20 @@ export default function AdminContractsPage() {
                                     return (
                                         <div key={i} style={{ padding: '12px', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                                                <span style={{ fontWeight: 600 }}>{dow}, {localDate} às {c.originalTime}</span>
-                                                <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 600, background: 'rgba(239, 68, 68, 0.1)', padding: '2px 8px', borderRadius: '10px' }}>Indisponível</span>
+                                                <span style={{ fontWeight: 600 }}>{dow}, {localDate} �s {c.originalTime}</span>
+                                                <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 600, background: 'rgba(239, 68, 68, 0.1)', padding: '2px 8px', borderRadius: '10px' }}>Indispon�vel</span>
                                             </div>
 
                                             {c.suggestedReplacement ? (
                                                 <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span>💡 Auto-Substituição:</span>
+                                                    <span>?? Auto-Substitui��o:</span>
                                                     <span style={{ background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', padding: '4px 8px', borderRadius: '4px', fontWeight: 600 }}>
                                                         {c.suggestedReplacement.time} no mesmo dia
                                                     </span>
                                                 </div>
                                             ) : (
                                                 <div style={{ fontSize: '0.8125rem', color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span>⚠️ Dia completamente lotado para a faixa. Remanejamento no fim do ciclo.</span>
+                                                    <span>?? Dia completamente lotado para a faixa. Remanejamento no fim do ciclo.</span>
                                                 </div>
                                             )}
                                         </div>
@@ -957,11 +958,11 @@ export default function AdminContractsPage() {
                         <div className="modal-actions" style={{ flexDirection: 'column', gap: '12px' }}>
                             <button className="btn btn-primary" style={{ width: '100%', padding: '14px' }}
                                 onClick={() => executeCreate(resolvedConflicts)}>
-                                ✅ Forçar Criação e Aplicar Sugestões
+                                ? For�ar Cria��o e Aplicar Sugest�es
                             </button>
                             <button className="btn btn-secondary" style={{ width: '100%', padding: '14px' }}
                                 onClick={() => setShowConflictModal(false)}>
-                                ⬅ Cancelar e voltar para escolhas
+                                ? Cancelar e voltar para escolhas
                             </button>
                         </div>
                     </div>
@@ -973,11 +974,11 @@ export default function AdminContractsPage() {
                 <ModalOverlay onClose={() => setShowCancelModalFor(null)}>
                     <div className="modal" style={{ maxWidth: 400 }}>
                         <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-                            <div style={{ fontSize: '3rem', marginBottom: '10px' }}>🛑</div>
+                            <div style={{ fontSize: '3rem', marginBottom: '10px' }}>??</div>
                             <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Cancelar Contrato</h2>
                         </div>
                         <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '24px', lineHeight: 1.5, textAlign: 'center' }}>
-                            Deseja forçar o cancelamento deste contrato agora? <strong>Todos os agendamentos futuros não realizados também serão cancelados.</strong>
+                            Deseja for�ar o cancelamento deste contrato agora? <strong>Todos os agendamentos futuros n�o realizados tamb�m ser�o cancelados.</strong>
                         </p>
                         <div className="modal-actions">
                             <button className="btn btn-secondary" onClick={() => setShowCancelModalFor(null)} style={{ flex: 1 }}>Voltar</button>
@@ -993,7 +994,7 @@ export default function AdminContractsPage() {
                     <div className="modal" style={{ maxWidth: 400 }}>
                         <div style={{ textAlign: 'center', marginBottom: '20px' }}>
                             <div style={{ fontSize: '3rem', marginBottom: '10px' }}>
-                                {showResolveModalFor.action === 'CHARGE_FEE' ? '💸' : '🤝'}
+                                {showResolveModalFor.action === 'CHARGE_FEE' ? '??' : '??'}
                             </div>
                             <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>
                                 {showResolveModalFor.action === 'CHARGE_FEE' ? 'Aplicar Multa' : 'Isentar Multa'}
@@ -1002,21 +1003,21 @@ export default function AdminContractsPage() {
                         <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '24px', lineHeight: 1.5, textAlign: 'center' }}>
                             {showResolveModalFor.action === 'CHARGE_FEE'
                                 ? `Tem certeza que deseja quebrar o contrato aplicando a MULTA INTEGRAL DE ${cancFine}% sobre o restante?`
-                                : 'Tem certeza que deseja ISENTAR a multa e aceitar o cancelamento de modo amigável?'}
+                                : 'Tem certeza que deseja ISENTAR a multa e aceitar o cancelamento de modo amig�vel?'}
                         </p>
                         <div className="modal-actions">
                             <button className="btn btn-secondary" onClick={() => setShowResolveModalFor(null)} style={{ flex: 1 }}>Voltar</button>
                             <button className={showResolveModalFor.action === 'CHARGE_FEE' ? "btn btn-danger" : "btn btn-primary"} onClick={confirmResolveCancel} style={{ flex: 1 }}>
-                                Confirmar Ação
+                                Confirmar A��o
                             </button>
                         </div>
                     </div>
                 </ModalOverlay>
             )}
 
-            {/* ═══════════════════════════════════════════════════════
+            {/* -------------------------------------------------------
                CUSTOM CONTRACT WIZARD
-            ═══════════════════════════════════════════════════════ */}
+            ------------------------------------------------------- */}
             {showCustom && (() => {
                 const POSSIBLE_SLOTS: Record<string, string[]> = {
                     COMERCIAL: ['10:00', '13:00', '15:30'],
@@ -1060,11 +1061,11 @@ export default function AdminContractsPage() {
                 }
 
                 // Dynamic discount thresholds based on tier base price
-                // 12 sessions equivalent → 30%, 24 sessions equivalent → 40%
+                // 12 sessions equivalent ? 30%, 24 sessions equivalent ? 40%
                 const threshold30 = 12 * basePrice;
                 const threshold40 = 24 * basePrice;
 
-                // Raw costs (no discount) — full price for threshold comparison
+                // Raw costs (no discount) � full price for threshold comparison
                 const activeAddonEntries = Object.entries(customAddonConfig).filter(([, v]) => v.mode !== 'none');
                 let rawAddonsCostTotal = 0;
                 for (const [key, config] of activeAddonEntries) {
@@ -1141,7 +1142,7 @@ export default function AdminContractsPage() {
                         setCustomSuccess('Contrato personalizado criado com sucesso!');
                         await loadData();
                         setTimeout(() => { setShowCustom(false); setCustomSuccess(''); }, 2000);
-                    } catch (err: any) { setCustomError(err.message || 'Erro ao criar contrato'); }
+                    } catch (err: unknown) { setCustomError(getErrorMessage(err) || 'Erro ao criar contrato'); }
                     finally { setCustomSubmitting(false); }
                 };
 
@@ -1176,7 +1177,7 @@ export default function AdminContractsPage() {
                 };
                 const prevMonth = () => setCalMonth(m => m.month === 0 ? { year: m.year - 1, month: 11 } : { ...m, month: m.month - 1 });
                 const nextMonth = () => setCalMonth(m => m.month === 11 ? { year: m.year + 1, month: 0 } : { ...m, month: m.month + 1 });
-                const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+                const monthNames = ['Janeiro', 'Fevereiro', 'Mar�o', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
                 return (
                     <ModalOverlay onClose={() => setShowCustom(false)}>
@@ -1184,7 +1185,7 @@ export default function AdminContractsPage() {
                             {/* Header */}
                             <div style={{ padding: '28px 32px 0', borderBottom: 'none' }}>
                                 <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    <span style={{ width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #2dd4bf, #3b82f6)', fontSize: '1rem' }}>🎨</span>
+                                    <span style={{ width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #2dd4bf, #3b82f6)', fontSize: '1rem' }}>??</span>
                                     Contrato Personalizado
                                 </h2>
                                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px', marginBottom: 0 }}>
@@ -1192,7 +1193,7 @@ export default function AdminContractsPage() {
                                 </p>
                                 {/* Step indicator */}
                                 <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
-                                    {[{ n: 1, label: 'Plano' }, { n: 2, label: 'Agenda' }, { n: 3, label: 'Serviços' }, { n: 4, label: 'Resumo' }].map(s => (
+                                    {[{ n: 1, label: 'Plano' }, { n: 2, label: 'Agenda' }, { n: 3, label: 'Servi�os' }, { n: 4, label: 'Resumo' }].map(s => (
                                         <div key={s.n} style={{
                                             flex: 1, padding: '8px', borderRadius: '8px', textAlign: 'center', fontSize: '0.625rem', fontWeight: 700,
                                             background: customStep === s.n ? 'rgba(45,212,191,0.12)' : customStep > s.n ? 'rgba(16,185,129,0.08)' : 'var(--bg-elevated)',
@@ -1200,7 +1201,7 @@ export default function AdminContractsPage() {
                                             color: customStep === s.n ? '#2dd4bf' : customStep > s.n ? '#10b981' : 'var(--text-muted)',
                                             transition: 'all 0.2s',
                                         }}>
-                                            {customStep > s.n ? '✓' : s.n}. {s.label}
+                                            {customStep > s.n ? '?' : s.n}. {s.label}
                                         </div>
                                     ))}
                                 </div>
@@ -1211,7 +1212,7 @@ export default function AdminContractsPage() {
 
                             <div style={{ padding: '20px 32px 28px' }}>
 
-                                {/* ═══ STEP 1: Cliente & Plano ═══ */}
+                                {/* --- STEP 1: Cliente & Plano --- */}
                                 {customStep === 1 && (
                                     <div>
                                         <div style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1223,7 +1224,7 @@ export default function AdminContractsPage() {
                                         <div style={{ marginBottom: '12px' }}>
                                             <label style={cusLabelStyle}>Cliente *</label>
                                             <div style={{ position: 'relative' }}>
-                                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>👤</span>
+                                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>??</span>
                                                 <select value={customForm.userId} onChange={e => setCustomForm(f => ({ ...f, userId: e.target.value }))}
                                                     style={{ ...cusInputStyle(), appearance: 'none', cursor: 'pointer', paddingRight: '32px', background: `var(--bg-elevated) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23888' stroke-width='1.5' fill='none'/%3E%3C/svg%3E") right 12px center no-repeat` }}>
                                                     <option value="">Selecione um cliente...</option>
@@ -1238,9 +1239,9 @@ export default function AdminContractsPage() {
                                         <div style={{ marginBottom: '12px' }}>
                                             <label style={cusLabelStyle}>Nome do Contrato *</label>
                                             <div style={{ position: 'relative' }}>
-                                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>📋</span>
+                                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>??</span>
                                                 <input value={customForm.name} onChange={e => setCustomForm(f => ({ ...f, name: e.target.value }))}
-                                                    placeholder='Ex: Podcast Verão 2x/semana' style={cusInputStyle()}
+                                                    placeholder='Ex: Podcast Ver�o 2x/semana' style={cusInputStyle()}
                                                     onFocus={e => e.currentTarget.style.borderColor = '#2dd4bf'}
                                                     onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
                                                 />
@@ -1249,9 +1250,9 @@ export default function AdminContractsPage() {
 
                                         {/* Tier selector */}
                                         <div style={{ marginBottom: '12px' }}>
-                                            <label style={cusLabelStyle}>Faixa Horária</label>
+                                            <label style={cusLabelStyle}>Faixa Hor�ria</label>
                                             <div style={{ display: 'flex', gap: '6px' }}>
-                                                {[{ key: 'COMERCIAL', emoji: '🏢', label: 'Comercial', desc: 'Até 17:30' }, { key: 'AUDIENCIA', emoji: '🎤', label: 'Audiência', desc: 'Até 23:00' }, { key: 'SABADO', emoji: '🌟', label: 'Sábado', desc: 'Sáb exclusivo' }].map(t => (
+                                                {[{ key: 'COMERCIAL', emoji: '??', label: 'Comercial', desc: 'At� 17:30' }, { key: 'AUDIENCIA', emoji: '??', label: 'Audi�ncia', desc: 'At� 23:00' }, { key: 'SABADO', emoji: '??', label: 'S�bado', desc: 'S�b exclusivo' }].map(t => (
                                                     <button key={t.key} onClick={() => setCustomForm(f => ({ ...f, tier: t.key, selectedDays: [], dayTimes: {} }))}
                                                         style={{
                                                             flex: 1, padding: '10px 8px', borderRadius: '10px', cursor: 'pointer',
@@ -1262,7 +1263,7 @@ export default function AdminContractsPage() {
                                                         }}>
                                                         <span style={{ fontSize: '1.25rem' }}>{t.emoji}</span>
                                                         <span style={{ fontSize: '0.75rem', fontWeight: 700, color: customForm.tier === t.key ? '#2dd4bf' : 'var(--text-primary)' }}>{t.label}</span>
-                                                        <span style={{ fontSize: '0.5625rem', color: 'var(--text-muted)' }}>{t.desc} — {formatBRL(pricing.find(p => p.tier === t.key)?.price || 0)}</span>
+                                                        <span style={{ fontSize: '0.5625rem', color: 'var(--text-muted)' }}>{t.desc} � {formatBRL(pricing.find(p => p.tier === t.key)?.price || 0)}</span>
                                                     </button>
                                                 ))}
                                             </div>
@@ -1271,19 +1272,19 @@ export default function AdminContractsPage() {
                                         {/* Duration + Start date */}
                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                                             <div>
-                                                <label style={cusLabelStyle}>Duração (meses)</label>
+                                                <label style={cusLabelStyle}>Dura��o (meses)</label>
                                                 <div style={{ position: 'relative' }}>
-                                                    <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>📅</span>
+                                                    <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>??</span>
                                                     <select value={customForm.durationMonths} onChange={e => setCustomForm(f => ({ ...f, durationMonths: Number(e.target.value) }))}
                                                         style={{ ...cusInputStyle(), appearance: 'none', cursor: 'pointer', paddingRight: '32px', background: `var(--bg-elevated) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23888' stroke-width='1.5' fill='none'/%3E%3C/svg%3E") right 12px center no-repeat` }}>
-                                                        {[1, 2, 3, 4, 5, 6, 9, 12].map(m => (<option key={m} value={m}>{m} {m === 1 ? 'mês' : 'meses'}</option>))}
+                                                        {[1, 2, 3, 4, 5, 6, 9, 12].map(m => (<option key={m} value={m}>{m} {m === 1 ? 'm�s' : 'meses'}</option>))}
                                                     </select>
                                                 </div>
                                             </div>
                                             <div>
-                                                <label style={cusLabelStyle}>Data Início</label>
+                                                <label style={cusLabelStyle}>Data In�cio</label>
                                                 <div style={{ position: 'relative' }}>
-                                                    <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🗓️</span>
+                                                    <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>???</span>
                                                     <input type="date" value={customForm.startDate} onChange={e => setCustomForm(f => ({ ...f, startDate: e.target.value }))}
                                                         style={cusInputStyle()}
                                                         onFocus={e => e.currentTarget.style.borderColor = '#2dd4bf'}
@@ -1302,27 +1303,27 @@ export default function AdminContractsPage() {
                                                     color: canStep1 ? '#fff' : 'var(--text-muted)', opacity: canStep1 ? 1 : 0.5,
                                                     display: 'flex', alignItems: 'center', gap: '8px',
                                                 }}>
-                                                Próximo →
+                                                Pr�ximo ?
                                             </button>
                                         </div>
                                     </div>
                                 )}
 
-                                {/* ═══ STEP 2: Agenda ═══ */}
+                                {/* --- STEP 2: Agenda --- */}
                                 {customStep === 2 && (
                                     <div>
                                         <div style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                             <span style={{ width: 18, height: 18, borderRadius: '50%', background: '#3b82f6', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.5rem', fontWeight: 800 }}>2</span>
-                                            Configuração de Agenda
+                                            Configura��o de Agenda
                                         </div>
 
                                         {/* Frequency tabs */}
                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '4px', marginBottom: '16px', background: 'var(--bg-elevated)', borderRadius: '10px', padding: '3px', border: '1px solid var(--border-default)' }}>
                                             {([
-                                                { key: 'WEEKLY', emoji: '📅', label: 'Semanal' },
-                                                { key: 'BIWEEKLY', emoji: '🔄', label: 'Quinzenal' },
-                                                { key: 'MONTHLY', emoji: '📆', label: 'Mensal' },
-                                                { key: 'CUSTOM', emoji: '🎯', label: 'Datas Livres' },
+                                                { key: 'WEEKLY', emoji: '??', label: 'Semanal' },
+                                                { key: 'BIWEEKLY', emoji: '??', label: 'Quinzenal' },
+                                                { key: 'MONTHLY', emoji: '??', label: 'Mensal' },
+                                                { key: 'CUSTOM', emoji: '??', label: 'Datas Livres' },
                                             ] as const).map(fm => (
                                                 <button key={fm.key} onClick={() => setCustomForm(f => ({ ...f, frequency: fm.key, selectedDays: [], dayTimes: {}, customDates: [] }))}
                                                     style={{
@@ -1337,13 +1338,13 @@ export default function AdminContractsPage() {
                                             ))}
                                         </div>
 
-                                        {/* ── WEEKLY / BIWEEKLY / MONTHLY shared UI ── */}
+                                        {/* -- WEEKLY / BIWEEKLY / MONTHLY shared UI -- */}
                                         {freq !== 'CUSTOM' && (
                                             <>
                                                 <label style={cusLabelStyle}>Dias da Semana</label>
                                                 <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
                                                     {(customForm.tier === 'SABADO' ? [6] : [1, 2, 3, 4, 5]).map(day => {
-                                                        const names: Record<number, string> = { 1: 'Seg', 2: 'Ter', 3: 'Qua', 4: 'Qui', 5: 'Sex', 6: 'Sáb' };
+                                                        const names: Record<number, string> = { 1: 'Seg', 2: 'Ter', 3: 'Qua', 4: 'Qui', 5: 'Sex', 6: 'S�b' };
                                                         const sel = customForm.selectedDays.includes(day);
                                                         return (
                                                             <button key={day} onClick={() => toggleDay(day)}
@@ -1362,9 +1363,9 @@ export default function AdminContractsPage() {
 
                                                 {freq === 'BIWEEKLY' && (
                                                     <div style={{ marginBottom: '10px' }}>
-                                                        <label style={cusLabelStyle}>Padrão de Semanas</label>
+                                                        <label style={cusLabelStyle}>Padr�o de Semanas</label>
                                                         <div style={{ display: 'flex', gap: '6px' }}>
-                                                            {[{ pattern: [1, 3], label: 'Semanas 1 e 3', desc: '1ª e 3ª do ciclo' }, { pattern: [2, 4], label: 'Semanas 2 e 4', desc: '2ª e 4ª do ciclo' }].map(wp => {
+                                                            {[{ pattern: [1, 3], label: 'Semanas 1 e 3', desc: '1� e 3� do ciclo' }, { pattern: [2, 4], label: 'Semanas 2 e 4', desc: '2� e 4� do ciclo' }].map(wp => {
                                                                 const sel = JSON.stringify(customForm.weekPattern) === JSON.stringify(wp.pattern);
                                                                 return (
                                                                     <button key={wp.label} onClick={() => setCustomForm(f => ({ ...f, weekPattern: wp.pattern }))}
@@ -1386,7 +1387,7 @@ export default function AdminContractsPage() {
 
                                                 {freq === 'MONTHLY' && (
                                                     <div style={{ marginBottom: '10px' }}>
-                                                        <label style={cusLabelStyle}>Semanas do Mês</label>
+                                                        <label style={cusLabelStyle}>Semanas do M�s</label>
                                                         <div style={{ display: 'flex', gap: '4px' }}>
                                                             {[1, 2, 3, 4].map(wk => {
                                                                 const sel = customForm.weekPattern.includes(wk);
@@ -1399,7 +1400,7 @@ export default function AdminContractsPage() {
                                                                             border: `1px solid ${sel ? 'rgba(45,212,191,0.3)' : 'var(--border-default)'}`,
                                                                             transition: 'all 0.15s',
                                                                         }}>
-                                                                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: sel ? '#2dd4bf' : 'var(--text-primary)' }}>{wk}ª</span>
+                                                                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: sel ? '#2dd4bf' : 'var(--text-primary)' }}>{wk}�</span>
                                                                         <span style={{ fontSize: '0.5rem', color: 'var(--text-muted)' }}>semana</span>
                                                                     </button>
                                                                 );
@@ -1410,10 +1411,10 @@ export default function AdminContractsPage() {
 
                                                 {customForm.selectedDays.length > 0 && (
                                                     <div style={{ marginBottom: '12px' }}>
-                                                        <label style={cusLabelStyle}>Horários por Dia</label>
+                                                        <label style={cusLabelStyle}>Hor�rios por Dia</label>
                                                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '8px' }}>
                                                             {customForm.selectedDays.map(day => {
-                                                                const dayNames: Record<number, string> = { 1: 'Segunda', 2: 'Terça', 3: 'Quarta', 4: 'Quinta', 5: 'Sexta', 6: 'Sábado' };
+                                                                const dayNames: Record<number, string> = { 1: 'Segunda', 2: 'Ter�a', 3: 'Quarta', 4: 'Quinta', 5: 'Sexta', 6: 'S�bado' };
                                                                 return (
                                                                     <div key={day} style={{ padding: '10px', borderRadius: '10px', background: 'rgba(59,130,246,0.04)', border: '1px solid rgba(59,130,246,0.1)' }}>
                                                                         <div style={{ fontSize: '0.625rem', fontWeight: 700, color: '#3b82f6', textTransform: 'uppercase', marginBottom: '6px' }}>{dayNames[day]}</div>
@@ -1430,17 +1431,17 @@ export default function AdminContractsPage() {
                                             </>
                                         )}
 
-                                        {/* ── CUSTOM: Mini-Calendar ── */}
+                                        {/* -- CUSTOM: Mini-Calendar -- */}
                                         {freq === 'CUSTOM' && (
                                             <div>
                                                 <label style={cusLabelStyle}>Selecione as Datas</label>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                                    <button onClick={prevMonth} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '0.875rem', padding: '4px 8px' }}>◀</button>
+                                                    <button onClick={prevMonth} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '0.875rem', padding: '4px 8px' }}>?</button>
                                                     <span style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-primary)' }}>{monthNames[calMonth.month]} {calMonth.year}</span>
-                                                    <button onClick={nextMonth} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '0.875rem', padding: '4px 8px' }}>▶</button>
+                                                    <button onClick={nextMonth} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '0.875rem', padding: '4px 8px' }}>?</button>
                                                 </div>
                                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', marginBottom: '2px' }}>
-                                                    {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(d => (
+                                                    {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'S�b'].map(d => (
                                                         <div key={d} style={{ textAlign: 'center', fontSize: '0.5rem', fontWeight: 700, color: 'var(--text-muted)', padding: '4px 0', textTransform: 'uppercase' }}>{d}</div>
                                                     ))}
                                                 </div>
@@ -1473,7 +1474,7 @@ export default function AdminContractsPage() {
                                                         <div style={{ maxHeight: '150px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                                             {customForm.customDates.map(cd => {
                                                                 const d = new Date(cd.date + 'T12:00:00');
-                                                                const dn = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+                                                                const dn = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'S�b'];
                                                                 return (
                                                                     <div key={cd.date} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', borderRadius: '8px', background: 'rgba(45,212,191,0.04)', border: '1px solid rgba(45,212,191,0.1)' }}>
                                                                         <span style={{ fontSize: '0.625rem', fontWeight: 700, color: '#2dd4bf', width: '24px' }}>{dn[d.getDay()]}</span>
@@ -1482,7 +1483,7 @@ export default function AdminContractsPage() {
                                                                             style={{ padding: '3px 6px', borderRadius: '6px', fontSize: '0.6875rem', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-primary)', outline: 'none', cursor: 'pointer' }}>
                                                                             {(POSSIBLE_SLOTS[customForm.tier] || []).map(t => (<option key={t} value={t}>{t}</option>))}
                                                                         </select>
-                                                                        <button onClick={() => toggleCalDate(cd.date)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '0.75rem', padding: '2px 4px' }}>✕</button>
+                                                                        <button onClick={() => toggleCalDate(cd.date)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '0.75rem', padding: '2px 4px' }}>?</button>
                                                                     </div>
                                                                 );
                                                             })}
@@ -1495,7 +1496,7 @@ export default function AdminContractsPage() {
                                         {/* Discount progress + summary */}
                                         <div style={{ padding: '14px', borderRadius: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', marginBottom: '14px' }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-primary)' }}>{totalSessions} sessões total</span>
+                                                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-primary)' }}>{totalSessions} sess�es total</span>
                                                 <span style={{ fontSize: '0.875rem', fontWeight: 800, color: discountPct > 0 ? '#10b981' : 'var(--text-muted)' }}>
                                                     {discountPct > 0 ? `${discountPct}% OFF` : 'Sem desconto'}
                                                 </span>
@@ -1505,7 +1506,7 @@ export default function AdminContractsPage() {
                                             </div>
                                             {nextThreshold && (
                                                 <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                                                    +{nextThreshold - totalSessions} sessões para {nextThreshold >= 24 ? '40%' : '30%'} de desconto
+                                                    +{nextThreshold - totalSessions} sess�es para {nextThreshold >= 24 ? '40%' : '30%'} de desconto
                                                 </div>
                                             )}
                                             <div style={{ display: 'grid', gridTemplateColumns: freq === 'CUSTOM' ? '1fr 1fr' : '1fr 1fr 1fr', gap: '8px', marginTop: '10px' }}>
@@ -1521,7 +1522,7 @@ export default function AdminContractsPage() {
                                                 </div>
                                                 <div style={{ textAlign: 'center' }}>
                                                     <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#2dd4bf' }}>{formatBRL(discountedSessionPrice)}</div>
-                                                    <div style={{ fontSize: '0.5625rem', color: 'var(--text-muted)' }}>por sessão</div>
+                                                    <div style={{ fontSize: '0.5625rem', color: 'var(--text-muted)' }}>por sess�o</div>
                                                 </div>
                                             </div>
                                         </div>
@@ -1530,7 +1531,7 @@ export default function AdminContractsPage() {
                                         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '20px' }}>
                                             <button onClick={() => setCustomStep(1)}
                                                 style={{ padding: '10px 20px', borderRadius: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer' }}>
-                                                ← Voltar
+                                                ? Voltar
                                             </button>
                                             <button onClick={() => { if (canStep2) setCustomStep(3); }} disabled={!canStep2}
                                                 style={{
@@ -1539,26 +1540,26 @@ export default function AdminContractsPage() {
                                                     color: canStep2 ? '#fff' : 'var(--text-muted)', opacity: canStep2 ? 1 : 0.5,
                                                     display: 'flex', alignItems: 'center', gap: '8px',
                                                 }}>
-                                                Próximo →
+                                                Pr�ximo ?
                                             </button>
                                         </div>
                                     </div>
                                 )}
 
 
-                                {/* ═══ STEP 3: Serviços Adicionais ═══ */}
+                                {/* --- STEP 3: Servi�os Adicionais --- */}
                                 {customStep === 3 && (
                                     <div>
                                         <div style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                             <span style={{ width: 18, height: 18, borderRadius: '50%', background: '#2dd4bf', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.5rem', fontWeight: 800 }}>3</span>
-                                            Serviços Adicionais
+                                            Servi�os Adicionais
                                         </div>
 
                                         {/* Value-based discount progress */}
                                         <div style={{ padding: '14px', borderRadius: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', marginBottom: '14px' }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                                                 <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                                                    {discountPct > 0 ? `🎉 ${discountPct}% de desconto ativo` : 'Barra de Desconto'}
+                                                    {discountPct > 0 ? `?? ${discountPct}% de desconto ativo` : 'Barra de Desconto'}
                                                 </span>
                                                 <span style={{ fontSize: '0.75rem', fontWeight: 800, color: discountPct >= 40 ? '#10b981' : discountPct >= 30 ? '#3b82f6' : '#f59e0b' }}>
                                                     {formatBRL(grossTotalValue)}
@@ -1566,10 +1567,10 @@ export default function AdminContractsPage() {
                                             </div>
                                             <div style={{ fontSize: '0.5625rem', color: 'var(--text-muted)', marginBottom: '6px' }}>
                                                 {discountPct >= 40
-                                                    ? `Desconto máximo atingido! (${totalSessions} gravações + serviços)`
+                                                    ? `Desconto m�ximo atingido! (${totalSessions} grava��es + servi�os)`
                                                     : discountPct >= 30
                                                         ? `Faltam ${formatBRL(threshold40 - grossTotalValue)} para 40% de desconto`
-                                                        : `${totalSessions} gravações — adicione serviços para desbloquear descontos`
+                                                        : `${totalSessions} grava��es � adicione servi�os para desbloquear descontos`
                                                 }
                                             </div>
                                             <div style={{ height: '8px', borderRadius: '4px', background: 'rgba(255,255,255,0.06)', overflow: 'hidden', position: 'relative' }}>
@@ -1584,7 +1585,7 @@ export default function AdminContractsPage() {
                                             </div>
                                             {discountPct < 30 && (
                                                 <div style={{ fontSize: '0.5625rem', color: '#f59e0b', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                    <span>💡</span>
+                                                    <span>??</span>
                                                     Faltam {formatBRL(threshold30 - grossTotalValue)} para 30% de desconto
                                                 </div>
                                             )}
@@ -1593,7 +1594,7 @@ export default function AdminContractsPage() {
                                         {/* Add-ons list */}
                                         {customAddons.length > 0 && (
                                             <div style={{ marginBottom: '14px' }}>
-                                                <label style={cusLabelStyle}>Adicionar Serviços</label>
+                                                <label style={cusLabelStyle}>Adicionar Servi�os</label>
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                                     {customAddons.map(addon => {
                                                         const cfg = customAddonConfig[addon.key] || { mode: 'none', perCycle: 4 };
@@ -1624,14 +1625,14 @@ export default function AdminContractsPage() {
                                                                                     border: `1px solid ${cfg.mode === mode ? (mode === 'none' ? 'rgba(107,114,128,0.3)' : 'rgba(45,212,191,0.3)') : 'transparent'}`,
                                                                                     color: cfg.mode === mode ? (mode === 'none' ? '#6b7280' : '#2dd4bf') : 'var(--text-muted)',
                                                                                 }}>
-                                                                                {mode === 'none' ? 'Não' : mode === 'all' ? 'Todas' : 'Créditos'}
+                                                                                {mode === 'none' ? 'N�o' : mode === 'all' ? 'Todas' : 'Cr�ditos'}
                                                                             </button>
                                                                         ))}
                                                                     </div>
                                                                 </div>
                                                                 {cfg.mode === 'credits' && (
                                                                     <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                        <span style={{ fontSize: '0.625rem', color: 'var(--text-muted)' }}>Créditos/ciclo:</span>
+                                                                        <span style={{ fontSize: '0.625rem', color: 'var(--text-muted)' }}>Cr�ditos/ciclo:</span>
                                                                         <input type="number" min={1} max={20} value={cfg.perCycle}
                                                                             onChange={e => setCustomAddonConfig(prev => ({ ...prev, [addon.key]: { ...cfg, perCycle: Math.max(1, Number(e.target.value)) } }))}
                                                                             style={{ width: '60px', padding: '4px 8px', borderRadius: '6px', fontSize: '0.75rem', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-primary)', outline: 'none', textAlign: 'center' }}
@@ -1653,7 +1654,7 @@ export default function AdminContractsPage() {
                                                     <span style={{ color: '#2dd4bf', fontWeight: 700 }}>+ {formatBRL(addonsCostPerCycle)}</span>
                                                 </div>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem', marginTop: '4px', borderTop: '1px solid rgba(45,212,191,0.1)', paddingTop: '6px' }}>
-                                                    <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>Total/ciclo (gravações + add-ons)</span>
+                                                    <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>Total/ciclo (grava��es + add-ons)</span>
                                                     <span style={{ color: '#10b981', fontWeight: 800 }}>{formatBRL(cycleAmount)}</span>
                                                 </div>
                                             </div>
@@ -1663,7 +1664,7 @@ export default function AdminContractsPage() {
                                         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '20px' }}>
                                             <button onClick={() => setCustomStep(2)}
                                                 style={{ padding: '10px 20px', borderRadius: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer' }}>
-                                                ← Voltar
+                                                ? Voltar
                                             </button>
                                             <button onClick={() => setCustomStep(4)}
                                                 style={{
@@ -1672,13 +1673,13 @@ export default function AdminContractsPage() {
                                                     color: '#fff',
                                                     display: 'flex', alignItems: 'center', gap: '8px',
                                                 }}>
-                                                Próximo →
+                                                Pr�ximo ?
                                             </button>
                                         </div>
                                     </div>
                                 )}
 
-                                {/* ═══ STEP 4: Pagamento & Resumo ═══ */}
+                                {/* --- STEP 4: Pagamento & Resumo --- */}
                                 {customStep === 4 && (
                                     <div>
                                         <div style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1687,7 +1688,7 @@ export default function AdminContractsPage() {
                                         </div>
 
                                         {/* Payment method */}
-                                        <label style={cusLabelStyle}>Método de Pagamento *</label>
+                                        <label style={cusLabelStyle}>M�todo de Pagamento *</label>
                                         <div style={{ display: 'flex', gap: '6px', marginBottom: '16px' }}>
                                             {getPaymentMethods().map(pm => (
                                                 <button key={pm.key} onClick={() => setCustomForm(f => ({ ...f, paymentMethod: pm.key }))}
@@ -1707,17 +1708,17 @@ export default function AdminContractsPage() {
 
                                         {/* Financial summary */}
                                         <div style={{ padding: '16px', borderRadius: '10px', background: 'rgba(16,185,129,0.04)', border: '1px solid rgba(16,185,129,0.1)', marginBottom: '16px' }}>
-                                            <div style={{ fontSize: '0.625rem', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '10px' }}>💰 Resumo Financeiro</div>
+                                            <div style={{ fontSize: '0.625rem', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '10px' }}>?? Resumo Financeiro</div>
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.8125rem' }}>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                    <span style={{ color: 'var(--text-muted)' }}>Base/sessão</span>
+                                                    <span style={{ color: 'var(--text-muted)' }}>Base/sess�o</span>
                                                     <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
                                                         {discountPct > 0 && <span style={{ textDecoration: 'line-through', color: 'var(--text-muted)', marginRight: '6px', fontSize: '0.75rem' }}>{formatBRL(basePrice)}</span>}
                                                         {formatBRL(discountedSessionPrice)}
                                                     </span>
                                                 </div>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                    <span style={{ color: 'var(--text-muted)' }}>{sessionsPerCycle} sessões/ciclo × {formatBRL(discountedSessionPrice)}</span>
+                                                    <span style={{ color: 'var(--text-muted)' }}>{sessionsPerCycle} sess�es/ciclo � {formatBRL(discountedSessionPrice)}</span>
                                                     <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{formatBRL(cycleBaseAmount)}</span>
                                                 </div>
                                                 {addonsCostPerCycle > 0 && (
@@ -1745,18 +1746,18 @@ export default function AdminContractsPage() {
 
                                         {/* Schedule summary */}
                                         <div style={{ padding: '12px 14px', borderRadius: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', marginBottom: '16px', fontSize: '0.75rem' }}>
-                                            <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px' }}>📆 Agenda</div>
+                                            <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px' }}>?? Agenda</div>
                                             {freq === 'CUSTOM' ? (
                                                 <div style={{ color: 'var(--text-muted)' }}>{customForm.customDates.length} datas personalizadas</div>
                                             ) : (
                                                 <>
                                                     {schedule.map(s => {
-                                                        const dayNames: Record<number, string> = { 1: 'Segunda', 2: 'Terça', 3: 'Quarta', 4: 'Quinta', 5: 'Sexta', 6: 'Sábado' };
-                                                        return <div key={s.day} style={{ color: 'var(--text-muted)' }}>{dayNames[s.day]} às {s.time}</div>;
+                                                        const dayNames: Record<number, string> = { 1: 'Segunda', 2: 'Ter�a', 3: 'Quarta', 4: 'Quinta', 5: 'Sexta', 6: 'S�bado' };
+                                                        return <div key={s.day} style={{ color: 'var(--text-muted)' }}>{dayNames[s.day]} �s {s.time}</div>;
                                                     })}
                                                     {freq !== 'WEEKLY' && (
                                                         <div style={{ color: 'var(--text-muted)', marginTop: '2px', fontSize: '0.625rem' }}>
-                                                            Modo: {freq === 'BIWEEKLY' ? 'Quinzenal' : 'Mensal'} — Semanas {customForm.weekPattern.join(', ')}
+                                                            Modo: {freq === 'BIWEEKLY' ? 'Quinzenal' : 'Mensal'} � Semanas {customForm.weekPattern.join(', ')}
                                                         </div>
                                                     )}
                                                 </>
@@ -1767,7 +1768,7 @@ export default function AdminContractsPage() {
                                         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '20px' }}>
                                             <button onClick={() => setCustomStep(3)}
                                                 style={{ padding: '10px 20px', borderRadius: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer' }}>
-                                                ← Voltar
+                                                ? Voltar
                                             </button>
                                             <button onClick={handleCustomSubmit} disabled={!canStep4 || customSubmitting}
                                                 style={{
@@ -1777,7 +1778,7 @@ export default function AdminContractsPage() {
                                                     opacity: canStep4 && !customSubmitting ? 1 : 0.5,
                                                     display: 'flex', alignItems: 'center', gap: '8px',
                                                 }}>
-                                                {customSubmitting ? '⏳ Criando...' : '🚀 Criar Contrato'}
+                                                {customSubmitting ? '? Criando...' : '?? Criar Contrato'}
                                             </button>
                                         </div>
                                     </div>

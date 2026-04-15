@@ -1,7 +1,40 @@
 import Redis from 'ioredis';
 import { config } from '../config';
 
-export const redis = new Redis(config.redis.url);
+export const redis = new Redis(config.redis.url, {
+    maxRetriesPerRequest: 3,
+    retryStrategy(times) {
+        const delay = Math.min(times * 200, 3000);
+        return delay;
+    },
+    lazyConnect: false,
+});
+
+// ─── Connection Event Handlers ──────────────────────────
+redis.on('connect', () => {
+    console.log('[Redis] Connected successfully');
+});
+
+redis.on('error', (err) => {
+    console.error('[Redis] Connection error:', err.message);
+});
+
+redis.on('close', () => {
+    console.warn('[Redis] Connection closed');
+});
+
+// ─── Graceful Shutdown ──────────────────────────────────
+const gracefulRedisShutdown = async () => {
+    try {
+        await redis.quit();
+        console.log('[Redis] Disconnected gracefully');
+    } catch {
+        redis.disconnect();
+    }
+};
+
+process.on('SIGTERM', gracefulRedisShutdown);
+process.on('SIGINT', gracefulRedisShutdown);
 
 // ─── Distributed Lock for Booking Slots ─────────────────
 
@@ -23,8 +56,21 @@ export async function acquireLock(
     ttl: number = config.studio.lockTtlSeconds
 ): Promise<boolean> {
     const key = makeLockKey(date, startTime);
-    const result = await redis.set(key, userId, 'EX', ttl, 'NX');
-    return result === 'OK';
+    // Lua script: acquire if free OR if already held by same user (refresh TTL)
+    const script = `
+    local current = redis.call("get", KEYS[1])
+    if current == false then
+      redis.call("set", KEYS[1], ARGV[1], "EX", ARGV[2])
+      return 1
+    elseif current == ARGV[1] then
+      redis.call("expire", KEYS[1], ARGV[2])
+      return 1
+    else
+      return 0
+    end
+  `;
+    const result = await redis.eval(script, 1, key, userId, ttl);
+    return result === 1;
 }
 
 /**

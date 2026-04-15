@@ -1,3 +1,4 @@
+import { getErrorMessage } from '../utils/errors';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ModalOverlay from './ModalOverlay';
 import { bookingsApi, contractsApi, pricingApi, stripeApi, ContractWithStats } from '../api/client';
@@ -95,6 +96,8 @@ export default function BookingModal({ date, time, tier, price, onClose, onBooke
     const [installments, setInstallments] = useState(1);
     const [clientSecret, setClientSecret] = useState<string | null>(null);
     const [bookingId, setBookingId] = useState<string | null>(null);
+    const bookingRef = useRef<string | null>(null);
+    const paymentRef = useRef<string | null>(null); // tracks internal Payment ID for method switch
     const [holdExpiresAt, setHoldExpiresAt] = useState<string | null>(null);
     const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
 
@@ -165,8 +168,8 @@ export default function BookingModal({ date, time, tier, price, onClose, onBooke
         try {
             await bookingsApi.create({ date, startTime: time, contractId: selectedContractId!, addOns: selectedAddons });
             setStep('done');
-        } catch (err: any) {
-            setError(err.message || 'Erro ao agendar');
+        } catch (err: unknown) {
+            setError(getErrorMessage(err) || 'Erro ao agendar');
             setStep('error');
         } finally {
             setLoading(false);
@@ -417,7 +420,7 @@ export default function BookingModal({ date, time, tier, price, onClose, onBooke
                 {/* ══════════ Step: AVULSO CHECKOUT (Unified InlineCheckout) ══════════ */}
                 {step === 'avulso_checkout' && (
                     <>
-                        <h2 className="modal-title">💳 Pagamento Avulso</h2>
+                        <h2 style={{ fontSize: '1.125rem', fontWeight: 800, margin: '0 0 16px 0' }}>Pagamento Avulso</h2>
                         <div style={{
                             padding: '14px 16px', borderRadius: 'var(--radius-md)',
                             background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.2)',
@@ -433,15 +436,48 @@ export default function BookingModal({ date, time, tier, price, onClose, onBooke
                             description={`Avulso ${dateDisplay} às ${time}`}
                             allowedMethods={['CARTAO', 'PIX']}
                             createPaymentFn={async (method) => {
+                                // If booking already exists (e.g. PIX was generated first, now switching to Card),
+                                // reuse it instead of creating a new one
+                                if (paymentRef.current) {
+                                    const pid = paymentRef.current;
+                                    if (method === 'CARTAO') {
+                                        // Create card payment for existing booking
+                                        const res = await stripeApi.createPayment({
+                                            paymentId: pid,
+                                            installments: 1,
+                                            paymentMethod: 'cartao',
+                                        });
+                                        return {
+                                            paymentId: pid,
+                                            clientSecret: res.clientSecret || undefined,
+                                            paymentIntentId: res.paymentIntentId || undefined,
+                                        };
+                                    }
+                                    // PIX for existing booking
+                                    const pixRes = await stripeApi.createPayment({
+                                        paymentId: pid,
+                                        paymentMethod: 'pix',
+                                    });
+                                    return {
+                                        paymentId: pixRes.paymentId || pid,
+                                        pixString: pixRes.pixString,
+                                        qrCodeBase64: pixRes.qrCodeBase64,
+                                    };
+                                }
+
+                                // First time: create booking + payment
                                 if (method === 'CARTAO') {
                                     const res = await bookingsApi.create({
                                         date, startTime: time, addOns: selectedAddons,
                                         paymentMethod: 'CARTAO', installments: 1, paymentType: 'CREDIT',
                                     });
+                                    bookingRef.current = res.booking.id;
                                     setBookingId(res.booking.id);
                                     setHoldExpiresAt(res.booking.holdExpiresAt || null);
+                                    const payId = res.paymentId || res.booking.id;
+                                    paymentRef.current = payId;
                                     return {
-                                        paymentId: res.paymentId || res.booking.id,
+                                        paymentId: payId,
                                         clientSecret: res.clientSecret || undefined,
                                         paymentIntentId: undefined,
                                     };
@@ -451,10 +487,11 @@ export default function BookingModal({ date, time, tier, price, onClose, onBooke
                                     date, startTime: time, addOns: selectedAddons,
                                     paymentMethod: 'PIX',
                                 });
+                                bookingRef.current = res.booking.id;
                                 setBookingId(res.booking.id);
                                 setHoldExpiresAt(res.booking.holdExpiresAt || null);
                                 const pid = res.paymentId || res.booking.id;
-                                // For PIX, use the stripe create-payment endpoint which routes to Cora
+                                paymentRef.current = pid;
                                 const pixRes = await stripeApi.createPayment({
                                     paymentId: pid,
                                     paymentMethod: 'pix',

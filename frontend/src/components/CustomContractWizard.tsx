@@ -1,8 +1,9 @@
+import { getErrorMessage } from '../utils/errors';
 import React, { useState, useEffect } from 'react';
 import ModalOverlay from './ModalOverlay';
 import { PricingConfig, AddOnConfig, bookingsApi, contractsApi, pricingApi, CustomContractData, CustomConflict, stripeApi } from '../api/client';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
-import { getPaymentMethods } from '../constants/paymentMethods';
+import { getClientPaymentMethods } from '../constants/paymentMethods';
 import StripeCardForm from './StripeCardForm';
 
 export interface CustomContractWizardProps {
@@ -46,7 +47,7 @@ export default function CustomContractWizard({ pricing, onClose, onComplete }: C
     const [addonConfig, setAddonConfig] = useState<Record<string, { mode: 'all' | 'credits' | 'none'; perCycle: number }>>({});
 
     // Step 3: Payment + Terms
-    const [paymentMethod, setPaymentMethod] = useState<'CARTAO' | 'PIX' | 'BOLETO' | null>(null);
+    const [paymentMethod, setPaymentMethod] = useState<'CARTAO' | 'PIX' | null>(null);
     const [acceptedTerms, setAcceptedTerms] = useState(false);
 
     // Step 7: Conflicts
@@ -160,8 +161,8 @@ export default function CustomContractWizard({ pricing, onClose, onComplete }: C
             } else {
                 setStep(6);
             }
-        } catch (err: any) {
-            setError(err.message || 'Erro ao criar contrato personalizado');
+        } catch (err: unknown) {
+            setError(getErrorMessage(err) || 'Erro ao criar contrato personalizado');
             setStep(conflicts.length > 0 ? 7 : 4);
         } finally {
             setSubmitting(false);
@@ -198,8 +199,8 @@ export default function CustomContractWizard({ pricing, onClose, onComplete }: C
             }
 
             await executeCreation([]);
-        } catch (err: any) {
-            setError(err.message || 'Erro ao validar agenda');
+        } catch (err: unknown) {
+            setError(getErrorMessage(err) || 'Erro ao validar agenda');
             setStep(4);
             setSubmitting(false);
         }
@@ -253,7 +254,7 @@ export default function CustomContractWizard({ pricing, onClose, onComplete }: C
                                     {`${sessionsPerWeek}x/semana · ${totalSessions} sessões em ${durationMonths} meses · ${discountPct}% de desconto`}
                                 </p>
                                 <p style={{ color: 'var(--text-muted)', marginBottom: '28px', fontSize: '0.875rem' }}>
-                                    {paymentMethod && getPaymentMethods().find(pm => pm.key === paymentMethod)?.accessMode === 'PROGRESSIVE'
+                                    {paymentMethod && getClientPaymentMethods().find(pm => pm.key === paymentMethod)?.accessMode === 'PROGRESSIVE'
                                         ? 'As sessões do primeiro ciclo estão confirmadas. Os próximos meses serão liberados após pagamento.'
                                         : 'Todas as sessões estão confirmadas na sua agenda!'}
                                 </p>
@@ -530,7 +531,7 @@ export default function CustomContractWizard({ pricing, onClose, onComplete }: C
 
                                 {/* Payment Method Cards */}
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
-                                    {getPaymentMethods().map(pm => {
+                                    {getClientPaymentMethods().map(pm => {
                                         const isSelected = paymentMethod === pm.key;
                                         let displayPrice = '';
                                         let subPrice = '';
@@ -554,7 +555,7 @@ export default function CustomContractWizard({ pricing, onClose, onComplete }: C
                                         }
 
                                         return (
-                                            <div key={pm.key} onClick={() => setPaymentMethod(pm.key as 'CARTAO' | 'PIX' | 'BOLETO')}
+                                            <div key={pm.key} onClick={() => setPaymentMethod(pm.key as 'CARTAO' | 'PIX')}
                                                 style={{
                                                     padding: '14px 16px', borderRadius: 'var(--radius-md)', cursor: 'pointer',
                                                     background: isSelected ? pm.bgActive : pm.bgInactive,
@@ -577,9 +578,9 @@ export default function CustomContractWizard({ pricing, onClose, onComplete }: C
                                 </div>
 
                                 {/* Progressive access warning */}
-                                {paymentMethod && getPaymentMethods().find(pm => pm.key === paymentMethod)?.accessMode === 'PROGRESSIVE' && (
+                                {paymentMethod && getClientPaymentMethods().find(pm => pm.key === paymentMethod)?.accessMode === 'PROGRESSIVE' && (
                                     <div style={{ padding: '12px 14px', borderRadius: 'var(--radius-md)', marginBottom: '16px', background: 'rgba(239, 68, 68, 0.06)', border: '1px solid rgba(239, 68, 68, 0.2)', fontSize: '0.8125rem', color: '#ef4444' }}>
-                                        ⚠️ <strong>Atenção:</strong> No {getPaymentMethods().find(pm => pm.key === paymentMethod)?.shortLabel || 'boleto'} mensal, as sessões do próximo ciclo só são liberadas após a compensação do pagamento. Atrasos suspendem os agendamentos.
+                                        ⚠️ <strong>Atenção:</strong> No {getClientPaymentMethods().find(pm => pm.key === paymentMethod)?.shortLabel || 'boleto'} mensal, as sessões do próximo ciclo só são liberadas após a compensação do pagamento. Atrasos suspendem os agendamentos.
                                     </div>
                                 )}
 

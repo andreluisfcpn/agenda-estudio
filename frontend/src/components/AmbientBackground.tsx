@@ -9,21 +9,21 @@ const COLORS = {
 export default function AmbientBackground() {
     // Generate static particles array safely
     const [particles] = React.useState(() => 
-        Array.from({ length: 40 }).map((_, i) => ({
+        Array.from({ length: 15 }).map((_, i) => ({
             id: i,
             size: Math.random() * 3 + 1,
             initialX: Math.random() * 100,
             initialY: Math.random() * 100,
             duration: Math.random() * 30 + 15,
             delay: Math.random() * 10,
-            peakOpacity: Math.random() * 0.4 + 0.1
+            peakOpacity: Math.random() * 0.3 + 0.08
         }))
     );
 
     return (
         <React.Fragment>
-            {/* SEO Metadata & Grain Texture Container */}
-            <svg style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 9999, opacity: 0.04 }}>
+            {/* Grain Texture */}
+            <svg style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 9999, opacity: 0.025 }}>
                 <filter id="grain">
                     <feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves="3" stitchTiles="stitch" />
                     <feColorMatrix type="saturate" values="0" />

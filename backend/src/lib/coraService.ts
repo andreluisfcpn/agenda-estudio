@@ -1,5 +1,6 @@
 // ─── Cora Bank API Service ──────────────────────────────
 // Handles OAuth2 authentication and boleto/PIX emission via Cora API
+// Mode: Integração Direta (mTLS on all endpoints)
 // Docs: https://developers.cora.com.br
 //
 // Uses node:https directly for mTLS (client certificate auth).
@@ -9,6 +10,8 @@ import { prisma } from './prisma';
 import https from 'https';
 import { URL } from 'url';
 import { randomUUID } from 'crypto';
+import QRCode from 'qrcode';
+import { decryptConfigSafe } from '../utils/crypto';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -82,7 +85,8 @@ async function getCoraConfig(): Promise<{ config: CoraConfig; environment: strin
     const integration = await prisma.integrationConfig.findUnique({ where: { provider: 'CORA' } });
     if (!integration || !integration.enabled) return null;
     try {
-        const config = JSON.parse(integration.config) as CoraConfig;
+        const decrypted = decryptConfigSafe(integration.config);
+        const config = JSON.parse(decrypted) as CoraConfig;
         
         // Fix potential escaped newlines from JSON DB serialization
         if (config.certificatePem) config.certificatePem = config.certificatePem.replace(/\\n/g, '\n');
@@ -280,8 +284,8 @@ export async function coraCreateBoleto(payload: CoraBoletoPayload): Promise<Cora
         }],
         payment_terms: {
             due_date: payload.dueDate,
-            ...(payload.finePercentage ? { fine: { percentage: payload.finePercentage } } : {}),
-            ...(payload.interestPercentage ? { interest: { type: 'MONTHLY_PERCENTAGE', value: payload.interestPercentage } } : {}),
+            ...(payload.finePercentage ? { fine: { amount: payload.finePercentage } } : {}),
+            ...(payload.interestPercentage ? { interest: { rate: payload.interestPercentage } } : {}),
         },
         payment_forms: ['BANK_SLIP']
     });
@@ -304,10 +308,13 @@ export async function coraCreateBoleto(payload: CoraBoletoPayload): Promise<Cora
 
     const result = JSON.parse(response.body);
 
+    // Cora v2 response: payment_options.bank_slip.{barcode,digitable,url}
+    const bankSlip = result.payment_options?.bank_slip;
+
     return {
         id: result.id,
-        barcode: result.barcode || result.digitable_line || '',
-        boletoUrl: result.payment_url || result.bank_slip_url || '',
+        barcode: bankSlip?.digitable || bankSlip?.barcode || '',
+        boletoUrl: bankSlip?.url || '',
         pixString: undefined,
         qrCodeBase64: undefined,
         status: result.status || 'PENDING',
@@ -321,9 +328,8 @@ async function coraCreatePixQrCode(
     urls: { auth: string; api: string },
     config: CoraConfig
 ): Promise<CoraBoletoResult> {
-    // Force fresh token (clear cache) to avoid stale tokens
-    _tokenCache = null;
-    const freshToken = await coraAuthenticate();
+    // Use existing cached token (no need to force-clear)
+    const freshToken = token;
 
     const body = JSON.stringify({
         code: `pix-${Date.now()}`,
@@ -348,11 +354,13 @@ async function coraCreatePixQrCode(
         payment_terms: {
             due_date: payload.dueDate,
         },
-        payment_forms: ['PIX', 'BANK_SLIP']
+        payment_forms: ['PIX']
     });
 
-    console.log('[Cora PIX] URL:', `${urls.api}/v2/invoices`);
-    console.log('[Cora PIX] Body:', body);
+    if (process.env.NODE_ENV !== 'production') {
+        console.log('[Cora PIX] URL:', `${urls.api}/v2/invoices`);
+        console.log('[Cora PIX] Body:', body);
+    }
 
     const response = await httpsRequestWithToken(`${urls.api}/v2/invoices`, {
         method: 'POST',
@@ -366,23 +374,42 @@ async function coraCreatePixQrCode(
         key: config.privateKeyPem,
     });
 
-    console.log('[Cora PIX] Response status:', response.status);
-    console.log('[Cora PIX] Response body:', response.body);
+    if (process.env.NODE_ENV !== 'production') {
+        console.log('[Cora PIX] Response status:', response.status);
+        console.log('[Cora PIX] Response body:', response.body.substring(0, 200));
+    }
 
     if (response.status >= 400) {
         throw new Error(`Cora create PIX QR code failed (${response.status}): ${response.body}`);
     }
 
     const result = JSON.parse(response.body);
-    // Per Cora docs: PIX data is at result.pix.emv (v2 invoices response)
-    const pixData = result.pix || result.payment_options?.pix;
+
+    // Cora v2 response structure:
+    //   result.pix.emv — PIX "Copia e Cola" string (BRCode)
+    //   result.payment_options.bank_slip — only if BANK_SLIP was included
+    //   Cora does NOT return qr_code_base64 — we generate it from EMV
+    const emv = result.pix?.emv || '';
+    const bankSlip = result.payment_options?.bank_slip;
+
+    // Generate QR code base64 from EMV string (Cora only returns the text)
+    let qrCodeBase64: string | undefined;
+    if (emv) {
+        try {
+            const dataUrl = await QRCode.toDataURL(emv, { width: 256, margin: 2 });
+            // Strip "data:image/png;base64," prefix — frontend adds it back
+            qrCodeBase64 = dataUrl.replace(/^data:image\/png;base64,/, '');
+        } catch (err) {
+            console.error('[Cora PIX] Failed to generate QR code from EMV:', err);
+        }
+    }
 
     return {
         id: result.id,
-        barcode: result.barcode || result.digitable_line || '',
-        boletoUrl: result.payment_url || result.bank_slip_url || '',
-        pixString: pixData?.emv || result.emv || '',
-        qrCodeBase64: pixData?.qr_code_base64 || result.qr_code_base64 || undefined,
+        barcode: bankSlip?.digitable || bankSlip?.barcode || '',
+        boletoUrl: bankSlip?.url || '',
+        pixString: emv,
+        qrCodeBase64,
         status: result.status || 'PENDING',
     };
 }

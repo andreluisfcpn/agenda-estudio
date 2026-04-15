@@ -1,6 +1,6 @@
 import { Tier } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
-import { getConfig, getConfigString } from '../lib/businessConfig';
+import { getConfig, getConfigString, getAllConfigs } from '../lib/businessConfig';
 
 // ─── Tier Detection ─────────────────────────────────────
 
@@ -26,6 +26,33 @@ export async function getSlotTier(dayOfWeek: number, startTime: string): Promise
     if (audienciaSlots.includes(startTime)) return Tier.AUDIENCIA;
 
     return null;
+}
+
+/**
+ * Batch version: pre-loads all config once, then resolves tiers for multiple slots.
+ * Use this in loops to avoid N * 4 async config lookups.
+ */
+export async function getSlotTierBatch(dayOfWeek: number, slots: string[]): Promise<Map<string, Tier | null>> {
+    const configs = await getAllConfigs();
+    const operatingDays = (configs['operating_days'] || '').split(',').map(Number);
+    const allSlots = (configs['time_slots'] || '').split(',').map(s => s.trim());
+    const comercialSlots = (configs['comercial_slots'] || '').split(',').map(s => s.trim());
+    const audienciaSlots = (configs['audiencia_slots'] || '').split(',').map(s => s.trim());
+
+    const result = new Map<string, Tier | null>();
+
+    for (const startTime of slots) {
+        if (!operatingDays.includes(dayOfWeek) || !allSlots.includes(startTime)) {
+            result.set(startTime, null);
+            continue;
+        }
+        if (dayOfWeek === 6) { result.set(startTime, Tier.SABADO); continue; }
+        if (comercialSlots.includes(startTime)) { result.set(startTime, Tier.COMERCIAL); continue; }
+        if (audienciaSlots.includes(startTime)) { result.set(startTime, Tier.AUDIENCIA); continue; }
+        result.set(startTime, null);
+    }
+
+    return result;
 }
 
 // ─── Pricing ────────────────────────────────────────────

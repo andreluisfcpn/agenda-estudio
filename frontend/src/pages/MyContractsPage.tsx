@@ -1,3 +1,4 @@
+import { getErrorMessage } from '../utils/errors';
 import { useState, useEffect } from 'react';
 import { contractsApi, bookingsApi, ContractWithStats, ContractBooking, pricingApi, PricingConfig, stripeApi, SavedCard } from '../api/client';
 import ContractWizard from '../components/ContractWizard';
@@ -8,14 +9,16 @@ import ModalOverlay from '../components/ModalOverlay';
 import { useLocation } from 'react-router-dom';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import { useUI } from '../context/UIContext';
-import { getPaymentMethods, type PaymentMethodKey } from '../constants/paymentMethods';
+import StatusBadge from '../components/ui/StatusBadge';
+import { FileText, Sparkles, Palette, Rocket, CheckCircle, XCircle, AlertTriangle, CreditCard, Pause, RefreshCw, CalendarDays, Clock, BarChart3, Pencil, Loader2 } from 'lucide-react';
+import { getClientPaymentMethods, type PaymentMethodKey } from '../constants/paymentMethods';
 
 const DAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const PLATFORMS = [
-    { key: 'YOUTUBE', label: '▶️ YouTube', color: '#FF0000' },
-    { key: 'TIKTOK', label: '🎵 TikTok', color: '#00F2EA' },
-    { key: 'INSTAGRAM', label: '📸 Instagram', color: '#E1306C' },
-    { key: 'FACEBOOK', label: '📘 Facebook', color: '#1877F2' },
+    { key: 'YOUTUBE', label: 'YouTube', color: '#FF0000' },
+    { key: 'TIKTOK', label: 'TikTok', color: '#00F2EA' },
+    { key: 'INSTAGRAM', label: 'Instagram', color: '#E1306C' },
+    { key: 'FACEBOOK', label: 'Facebook', color: '#1877F2' },
 ];
 
 function formatBRL(cents: number): string {
@@ -71,7 +74,7 @@ export default function MyContractsPage() {
     // Renew Modal
     const [showRenewModalFor, setShowRenewModalFor] = useState<ContractWithStats | null>(null);
     const [renewDuration, setRenewDuration] = useState<3 | 6 | 12>(3);
-    const [renewMethod, setRenewMethod] = useState<'PIX' | 'CARTAO' | 'BOLETO'>('PIX');
+    const [renewMethod, setRenewMethod] = useState<'PIX' | 'CARTAO'>('PIX');
     const [renewLoading, setRenewLoading] = useState(false);
 
     // Subscribe (Recurring) Modal
@@ -114,8 +117,8 @@ export default function MyContractsPage() {
             showToast({ message: 'Renovação iniciada! Conclua o pagamento.', type: 'success' });
             setShowRenewModalFor(null);
             loadData();
-        } catch (err: any) {
-            showToast({ message: err.message || 'Erro ao renovar contrato.', type: 'error' });
+        } catch (err: unknown) {
+            showToast({ message: getErrorMessage(err) || 'Erro ao renovar contrato.', type: 'error' });
         } finally {
             setRenewLoading(false);
         }
@@ -129,8 +132,8 @@ export default function MyContractsPage() {
             showToast({ message: 'Cobrança automática ativada com sucesso.', type: 'success' });
             setShowSubscribeModalFor(null);
             loadData();
-        } catch (err: any) {
-            showToast({ message: err.message || 'Erro ao ativar cobrança automática.', type: 'error' });
+        } catch (err: unknown) {
+            showToast({ message: getErrorMessage(err) || 'Erro ao ativar cobrança automática.', type: 'error' });
         } finally {
             setSubscribeLoading(false);
         }
@@ -138,6 +141,10 @@ export default function MyContractsPage() {
 
     const activeContracts = contracts.filter(c => {
         if (c.status === 'CANCELLED' || c.status === 'EXPIRED') return false;
+        
+        // Optimistically filter out expired pending contracts before the cleanup cron job runs
+        if (c.status === 'AWAITING_PAYMENT' && c.paymentDeadline && new Date(c.paymentDeadline).getTime() <= Date.now()) return false;
+
         if (c.status !== 'ACTIVE' && c.status !== 'PENDING_CANCELLATION' && c.status !== 'PAUSED' && c.status !== 'AWAITING_PAYMENT') return false;
         if (c.status === 'AWAITING_PAYMENT') return true;
 
@@ -237,7 +244,7 @@ export default function MyContractsPage() {
             showToast('Gravação atualizada!');
             setDetailBooking(null);
             loadData();
-        } catch (err: any) { showAlert({ message: err.message, type: 'error' }); }
+        } catch (err: unknown) { showAlert({ message: getErrorMessage(err), type: 'error' }); }
         finally { setSaving(false); }
     };
 
@@ -253,8 +260,8 @@ export default function MyContractsPage() {
             showToast('Cancelamento solicitado com sucesso. Os agendamentos futuros foram liberados.');
             loadData();
             setShowCancelModalFor(null);
-        } catch (err: any) {
-            showAlert({ message: 'Erro ao solicitar cancelamento: ' + err.message, type: 'error' });
+        } catch (err: unknown) {
+            showAlert({ message: 'Erro ao solicitar cancelamento: ' + getErrorMessage(err), type: 'error' });
         } finally {
             setCancellingContract(false);
         }
@@ -269,7 +276,7 @@ export default function MyContractsPage() {
             await loadData();
             // Optimistically update detailBooking state
             setDetailBooking(prev => prev && prev.id === bookingId ? { ...prev, addOns: [...(prev.addOns || []), addonKey] } : prev);
-        } catch (err: any) { showAlert({ message: err.message, type: 'error' }); }
+        } catch (err: unknown) { showAlert({ message: getErrorMessage(err), type: 'error' }); }
         finally { setSaving(false); }
     };
 
@@ -281,7 +288,7 @@ export default function MyContractsPage() {
             showToast('Reagendado com sucesso!');
             setDetailBooking(null);
             loadData();
-        } catch (err: any) { setRescheduleError(err.message); }
+        } catch (err: unknown) { setRescheduleError(getErrorMessage(err)); }
         finally { setRescheduling(false); }
     };
 
@@ -296,8 +303,8 @@ export default function MyContractsPage() {
                 showToast('Acesse "Pagamentos" para completar o pagamento com cartão.');
             }
             setTimeout(() => loadData(), 1000);
-        } catch (err: any) {
-            showAlert({ message: err.message || 'Erro ao contratar serviço.', type: 'error' });
+        } catch (err: unknown) {
+            showAlert({ message: getErrorMessage(err) || 'Erro ao contratar serviço.', type: 'error' });
         } finally {
             setSubscribingSocial(false);
         }
@@ -307,13 +314,13 @@ export default function MyContractsPage() {
 
     const statusLabel = (s: string) => {
         switch (s) {
-            case 'COMPLETED': return '✅ Concluído';
-            case 'CONFIRMED': return '✅ Confirmado';
+            case 'COMPLETED': return 'Concluído';
+            case 'CONFIRMED': return 'Confirmado';
             case 'RESERVED': return '⏳ Reservado';
-            case 'FALTA': return '❌ Falta';
-            case 'NAO_REALIZADO': return '🔄 Não Realizado';
-            case 'PAUSED': return '⏸️ Pausado';
-            default: return '❌ Cancelado';
+            case 'FALTA': return 'Falta';
+            case 'NAO_REALIZADO': return 'Não Realizado';
+            case 'PAUSED': return 'Pausado';
+            default: return 'Cancelado';
         }
     };
 
@@ -323,16 +330,16 @@ export default function MyContractsPage() {
         <div>
             <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
                 <div>
-                    <h1 className="page-title">📋 Meus Contratos & Serviços</h1>
+                    <h1 className="page-title">Meus Contratos & Serviços</h1>
                     <p className="page-subtitle">Acompanhe seus contratos, consumo e regras dos planos</p>
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
                     <button className="btn btn-primary" onClick={() => setShowWizard(true)}>
-                        ✨ Novo Contrato
+                        Novo Contrato
                     </button>
                     <button className="btn" onClick={() => setShowCustomWizard(true)}
                         style={{ background: 'linear-gradient(135deg, var(--accent-primary), #22c55e)', color: '#fff', border: 'none', fontWeight: 700, padding: '10px 16px' }}>
-                        🎨 Monte Seu Plano
+                        Monte Seu Plano
                     </button>
                 </div>
             </div>
@@ -351,7 +358,7 @@ export default function MyContractsPage() {
                             Novo Serviço Especializado
                         </div>
                         <h3 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '8px', color: 'var(--text-primary)' }}>
-                            🚀 {socialAddon.name}
+                            {socialAddon.name}
                         </h3>
                         <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: 500 }}>
                             {socialAddon.description || 'Deixe a publicação, análise de métricas e SEO dos seus cortes com nosso time de especialistas. Assinatura mensal avulsa independente de planos do estúdio.'}
@@ -370,22 +377,22 @@ export default function MyContractsPage() {
 
             <div className="stats-row" style={{ marginBottom: '24px' }}>
                 <div className={`stat-card ${tab === 'active' ? 'active' : ''}`} onClick={() => setTab('active')} style={{ cursor: 'pointer', border: tab === 'active' ? '2px solid var(--accent-primary)' : undefined }}>
-                    <div className="stat-label">✅ Ativos</div>
+                    <div className="stat-label">Ativos</div>
                     <div className="stat-value">{activeContracts.length}</div>
                 </div>
                 <div className={`stat-card ${tab === 'archived' ? 'active' : ''}`} onClick={() => setTab('archived')} style={{ cursor: 'pointer', border: tab === 'archived' ? '2px solid var(--accent-primary)' : undefined }}>
-                    <div className="stat-label">📁 Finalizados</div>
+                    <div className="stat-label">Finalizados</div>
                     <div className="stat-value">{archivedContracts.length}</div>
                 </div>
                 <div className={`stat-card ${tab === 'cancelled' ? 'active' : ''}`} onClick={() => setTab('cancelled')} style={{ cursor: 'pointer', border: tab === 'cancelled' ? '2px solid var(--accent-primary)' : undefined }}>
-                    <div className="stat-label">❌ Cancelados</div>
+                    <div className="stat-label">Cancelados</div>
                     <div className="stat-value">{cancelledContracts.length}</div>
                 </div>
             </div>
 
             {contractsToDisplay.length === 0 ? (
                 <div className="card"><div className="empty-state">
-                    <div className="empty-state-icon">📄</div>
+                    <div className="empty-state-icon"><FileText size={32} /></div>
                     <div className="empty-state-text">Nenhum contrato {tab === 'active' ? 'ativo' : tab === 'archived' ? 'finalizado' : 'cancelado'}</div>
                 </div></div>
             ) : (
@@ -405,8 +412,8 @@ export default function MyContractsPage() {
                                     const res = await contractsApi.pay(c.id);
                                     showToast({ type: 'success', message: 'Abrindo pagamento...' });
                                     window.location.href = `/meus-pagamentos?pay=${c.id}&secret=${res.clientSecret}`;
-                                } catch (err: any) {
-                                    showToast({ type: 'error', message: err.message || 'Erro ao iniciar pagamento' });
+                                } catch (err: unknown) {
+                                    showToast({ type: 'error', message: getErrorMessage(err) || 'Erro ao iniciar pagamento' });
                                 }
                             } : undefined}
                             onExpireContract={c.status === 'AWAITING_PAYMENT' ? () => {
@@ -488,7 +495,7 @@ export default function MyContractsPage() {
                 <ModalOverlay onClose={() => setShowCancelModalFor(null)} preventClose={cancellingContract}>
                     <div className="modal" style={{ maxWidth: 400 }}>
                         <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-                            <div style={{ fontSize: '3rem', marginBottom: '10px' }}>⚠️</div>
+                            <AlertTriangle size={48} style={{ color: '#f59e0b', marginBottom: '10px' }} />
                             <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Solicitar Cancelamento</h2>
                         </div>
                         <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.5, textAlign: 'center' }}>
@@ -502,7 +509,7 @@ export default function MyContractsPage() {
                                 Voltar
                             </button>
                             <button className="btn btn-danger" onClick={confirmCancelContract} disabled={cancellingContract} style={{ flex: 1 }}>
-                                {cancellingContract ? '⏳ Aguarde...' : 'Confirmar Cancelamento'}
+                                {cancellingContract ? 'Aguarde...' : 'Confirmar Cancelamento'}
                             </button>
                         </div>
                     </div>
@@ -514,7 +521,7 @@ export default function MyContractsPage() {
                 <ModalOverlay onClose={() => setShowSocialModal(false)} preventClose={subscribingSocial}>
                     <div className="modal" style={{ maxWidth: 460 }}>
                         <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-                            <div style={{ fontSize: '3rem', marginBottom: '10px' }}>🚀</div>
+                            <Rocket size={48} style={{ color: 'var(--accent-primary)', marginBottom: '10px' }} />
                             <h2 style={{ fontSize: '1.5rem', fontWeight: 800 }}>Assinar {socialAddon.name}</h2>
                         </div>
                         
@@ -578,10 +585,10 @@ export default function MyContractsPage() {
                                     </div>
 
                                     {/* Payment Method Cards */}
-                                    {getPaymentMethods().map(pm => {
+                                    {getClientPaymentMethods().map(pm => {
                                         const isSelected = socialPayment === pm.key;
                                         return (
-                                            <div key={pm.key} onClick={() => setSocialPayment(pm.key as 'PIX' | 'CARTAO' | 'BOLETO')}
+                                            <div key={pm.key} onClick={() => setSocialPayment(pm.key as PaymentMethodKey)}
                                                 style={{
                                                     padding: '12px 14px', borderRadius: 'var(--radius-sm)', marginBottom: '10px', cursor: 'pointer',
                                                     background: isSelected ? pm.bgActive : pm.bgInactive,
@@ -615,7 +622,7 @@ export default function MyContractsPage() {
                                 Cancelar
                             </button>
                             <button className="btn btn-primary" onClick={handleSubscribeSocial} disabled={subscribingSocial || !socialPayment} style={{ flex: 1 }}>
-                                {subscribingSocial ? '⏳ Processando...' : 'Confirmar Assinatura'}
+                                {subscribingSocial ? 'Processando...' : 'Confirmar Assinatura'}
                             </button>
                         </div>
                     </div>
@@ -656,7 +663,7 @@ export default function MyContractsPage() {
                                                     cursor: 'pointer', transition: 'all 0.2s ease',
                                                 }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                    <span style={{ fontSize: '1.5rem' }}>💳</span>
+                                                    <CreditCard size={24} />
                                                     <div>
                                                         <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
                                                             {card.brand.toUpperCase()} final {card.last4}
@@ -670,7 +677,7 @@ export default function MyContractsPage() {
                                 </div>
                             ) : (
                                 <div style={{ background: '#FFF8E1', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid #FFE082', marginBottom: '20px' }}>
-                                    <span style={{ fontSize: '1.25rem' }}>⚠️</span>
+                                    <AlertTriangle size={20} style={{ color: '#f59e0b' }} />
                                     <span style={{ fontSize: '0.875rem', color: '#F57F17', fontWeight: 600, display: 'block', marginTop: '8px' }}>
                                         Você precisa adicionar um Cartão de Crédito primeiro em "Meus Pagamentos".
                                     </span>
@@ -682,7 +689,7 @@ export default function MyContractsPage() {
                                     Cancelar
                                 </button>
                                 <button className="btn btn-primary" onClick={handleSubscribe} disabled={subscribeLoading || savedCards.length === 0 || !selectedCardId} style={{ flex: 1 }}>
-                                    {subscribeLoading ? '⏳ Processando...' : 'Assinar Automaticamente'}
+                                    {subscribeLoading ? 'Processando...' : 'Assinar Automaticamente'}
                                 </button>
                             </div>
                         </div>
@@ -715,8 +722,8 @@ export default function MyContractsPage() {
                             <div className="form-group" style={{ marginTop: '16px' }}>
                                 <label className="form-label">Método de Pagamento da Fatura</label>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-                                    {getPaymentMethods().map(pm => (
-                                        <button key={pm.key} onClick={() => setRenewMethod(pm.key as 'PIX'|'CARTAO'|'BOLETO')}
+                                    {getClientPaymentMethods().map(pm => (
+                                        <button key={pm.key} onClick={() => setRenewMethod(pm.key as 'PIX'|'CARTAO')}
                                             style={{
                                                 padding: '10px 0', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)',
                                                 background: renewMethod === pm.key ? 'var(--bg-card)' : 'transparent', fontWeight: 600, fontSize: '0.8125rem',
@@ -732,7 +739,7 @@ export default function MyContractsPage() {
                             <div className="modal-actions" style={{ marginTop: '24px' }}>
                                 <button className="btn btn-secondary" onClick={() => setShowRenewModalFor(null)} disabled={renewLoading} style={{ flex: 1 }}>Voltar</button>
                                 <button className="btn btn-primary" onClick={handleRenew} disabled={renewLoading} style={{ flex: 1 }}>
-                                    {renewLoading ? '⏳ Gerando...' : 'Confirmar'}
+                                    {renewLoading ? 'Gerando...' : 'Confirmar'}
                                 </button>
                             </div>
                         </div>
@@ -784,7 +791,7 @@ function AwaitingPaymentBanner({ paymentDeadline, onPay, onExpire }: {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
                 <div style={{ flex: 1 }}>
                     <h4 style={{ fontSize: '0.875rem', fontWeight: 700, color: '#d97706', marginBottom: '4px' }}>
-                        💳 Pagamento Necessário
+                        Pagamento Necessário
                     </h4>
                     <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginBottom: 0 }}>
                         Complete o pagamento para ativar. O horário será liberado quando o tempo esgotar.
@@ -803,7 +810,7 @@ function AwaitingPaymentBanner({ paymentDeadline, onPay, onExpire }: {
                     <button className="btn btn-primary btn-sm"
                         onClick={(e) => { e.stopPropagation(); onPay(); }}
                         style={{ whiteSpace: 'nowrap', minWidth: '130px', background: '#d97706', borderColor: '#d97706' }}>
-                        💳 Pagar Agora
+                        Pagar Agora
                     </button>
                 </div>
             </div>
@@ -872,10 +879,10 @@ function ContractCard({ contract: c, planConfig, allAddons, expanded, onToggle, 
                     <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                             {isAvulso ? (
-                                <span className="badge badge-active">🎫 AVULSO</span>
+                                <span className="badge badge-active">AVULSO</span>
                             ) : (
                                 <span className={`badge ${c.type === 'FIXO' ? 'badge-confirmed' : c.type === 'CUSTOM' ? 'badge-reserved' : 'badge-reserved'}`}>
-                                    {c.type === 'FIXO' ? '📌 Plano Fixo' : c.type === 'CUSTOM' ? '🎨 Personalizado' : '🔄 Plano Flex'}
+                                    {c.type === 'FIXO' ? 'Plano Fixo' : c.type === 'CUSTOM' ? 'Personalizado' : 'Plano Flex'}
                                 </span>
                             )}
                             <span className={`badge badge-${c.tier.toLowerCase()}`}>{c.tier}</span>
@@ -885,15 +892,15 @@ function ContractCard({ contract: c, planConfig, allAddons, expanded, onToggle, 
                                 ) : (
                                     <>
                                         <span className="badge badge-active">ATIVO</span>
-                                        {isExpiring && <span className="badge" style={{ background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A' }}>⚠️ VENCE EM {daysLeft} DIAS</span>}
+                                        {isExpiring && <span className="badge" style={{ background: 'rgba(217,119,6,0.1)', color: '#f59e0b', border: '1px solid rgba(217,119,6,0.2)' }}>VENCE EM {daysLeft} DIAS</span>}
                                     </>
                                 )
                             ) : c.status === 'AWAITING_PAYMENT' ? (
-                                <span className="badge" style={{ background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A', animation: 'pulse 2s infinite' }}>💳 AGUARDANDO PAGAMENTO</span>
+                                <span className="badge" style={{ background: 'rgba(217,119,6,0.1)', color: '#f59e0b', border: '1px solid rgba(217,119,6,0.2)', animation: 'pulse 2s infinite' }}>AGUARDANDO PAGAMENTO</span>
                             ) : c.status === 'PENDING_CANCELLATION' ? (
                                 <span className="badge" style={{ background: '#FFF8E1', color: '#F57F17', border: '1px solid #FFE082' }}>AGUARDANDO CANCELAMENTO</span>
                             ) : c.status === 'PAUSED' ? (
-                                <span className="badge badge-paused">⏸️ PAUSADO</span>
+                                <span className="badge badge-paused">PAUSADO</span>
                             ) : (
                                 <span className="badge badge-cancelled">{c.status === 'EXPIRED' ? 'EXPIRADO' : 'CANCELADO'}</span>
                             )}
@@ -907,7 +914,7 @@ function ContractCard({ contract: c, planConfig, allAddons, expanded, onToggle, 
                                         <>
                                             {' · '}
                                             <span style={{ color: 'var(--accent-primary)', fontWeight: 600 }}>
-                                                ✨ Inclusos: {c.bookings[0].addOns.map(ak => allAddons.find(a => a.key === ak)?.name || ak).join(', ')}
+                                                Inclusos: {c.bookings[0].addOns.map(ak => allAddons.find(a => a.key === ak)?.name || ak).join(', ')}
                                             </span>
                                         </>
                                     )}
@@ -921,20 +928,20 @@ function ContractCard({ contract: c, planConfig, allAddons, expanded, onToggle, 
                         </div>
                         {c.type === 'FIXO' && (
                             <div style={{ marginTop: '6px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                📅 Dia fixo: <strong>{c.fixedDayOfWeek !== null && c.fixedDayOfWeek !== undefined ? DAY_NAMES[c.fixedDayOfWeek] : '—'}</strong>
-                                {c.fixedTime && <> · 🕐 Horário: <strong>{c.fixedTime}</strong></>}
+                                Dia fixo: <strong>{c.fixedDayOfWeek !== null && c.fixedDayOfWeek !== undefined ? DAY_NAMES[c.fixedDayOfWeek] : '—'}</strong>
+                                {c.fixedTime && <> · Horário: <strong>{c.fixedTime}</strong></>}
                             </div>
                         )}
                         {c.type === 'FLEX' && !isAvulso && (
                             <div style={{ marginTop: '6px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                🔄 Créditos: <strong>{c.flexCreditsRemaining ?? 0}</strong> restantes de <strong>{c.flexCreditsTotal ?? 0}</strong>
+                                Créditos: <strong>{c.flexCreditsRemaining ?? 0}</strong> restantes de <strong>{c.flexCreditsTotal ?? 0}</strong>
                             </div>
                         )}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         {c.contractUrl && (
                             <a href={c.contractUrl} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm"
-                                onClick={e => e.stopPropagation()}>📄 Ver Contrato</a>
+                                onClick={e => e.stopPropagation()}>Ver Contrato</a>
                         )}
                         <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▼</span>
                     </div>
@@ -953,7 +960,7 @@ function ContractCard({ contract: c, planConfig, allAddons, expanded, onToggle, 
                 {c.status === 'PAUSED' && (
                     <div style={{ background: 'rgba(217, 119, 6, 0.1)', border: '1px solid rgba(217, 119, 6, 0.2)', borderLeft: '3px solid #d97706', padding: '12px 16px', margin: '0 24px 16px 24px', borderRadius: 'var(--radius-sm)' }}>
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                            <span style={{ fontSize: '1.25rem' }}>⏸️</span>
+                            <Pause size={20} style={{ color: '#f59e0b' }} />
                             <div>
                                 <h4 style={{ fontSize: '0.875rem', fontWeight: 700, color: '#d97706', marginBottom: '4px' }}>Contrato Pausado</h4>
                                 <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
@@ -986,7 +993,7 @@ function ContractCard({ contract: c, planConfig, allAddons, expanded, onToggle, 
                 ) : !isArchived ? (
                     <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>📊 Gravações</span>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Gravações</span>
                             <span style={{ fontSize: '0.75rem', fontWeight: 700 }}>{usedBookingsCount} / {totalBookings} episódios</span>
                         </div>
                         <div style={{ height: 8, borderRadius: 4, background: 'var(--bg-elevated)', overflow: 'hidden' }}>
@@ -1007,7 +1014,7 @@ function ContractCard({ contract: c, planConfig, allAddons, expanded, onToggle, 
                             return (
                                 <div key={addonKey} style={{ marginTop: '14px' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>✨ {addonName}</span>
+                                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>{addonName}</span>
                                         <span style={{ fontSize: '0.75rem', fontWeight: 700 }}>{usage.used} / {usage.limit} entregues (Ciclo Atual)</span>
                                     </div>
                                     <div style={{ height: 6, borderRadius: 3, background: 'var(--bg-elevated)', overflow: 'hidden' }}>
@@ -1029,7 +1036,7 @@ function ContractCard({ contract: c, planConfig, allAddons, expanded, onToggle, 
                             return (
                                 <div key={addonKey} style={{ marginTop: '14px' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>✨ {addonName}</span>
+                                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>{addonName}</span>
                                         <span style={{ fontSize: '0.75rem', fontWeight: 700 }}>{usedAddonCount} / {totalBookings} entregues</span>
                                     </div>
                                     <div style={{ height: 6, borderRadius: 3, background: 'var(--bg-elevated)', overflow: 'hidden' }}>
@@ -1046,7 +1053,7 @@ function ContractCard({ contract: c, planConfig, allAddons, expanded, onToggle, 
                 ) : (
                     <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', marginTop: '4px' }}>
                         <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 500 }}>
-                            ✅ Todas as gravações realizadas
+                            Todas as gravações realizadas
                         </span>
                     </div>
                 )}
@@ -1057,7 +1064,7 @@ function ContractCard({ contract: c, planConfig, allAddons, expanded, onToggle, 
                 <div style={{ borderTop: '1px solid var(--border-subtle)', padding: '20px 24px', background: 'var(--bg-secondary)' }}>
                     {planConfig?.description && (
                         <div style={{ padding: '12px 16px', borderRadius: 'var(--radius-md)', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', fontSize: '0.8125rem', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', marginBottom: '16px' }}>
-                            <div style={{ fontWeight: 700, fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>📖 Regras do Plano</div>
+                            <div style={{ fontWeight: 700, fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Regras do Plano</div>
                             {planConfig.description}
                         </div>
                     )}
@@ -1066,7 +1073,7 @@ function ContractCard({ contract: c, planConfig, allAddons, expanded, onToggle, 
                     {!isCancelled && (
                         <div style={{ marginBottom: '16px' }}>
                             <h4 style={{ fontSize: '0.8125rem', fontWeight: 700, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                ⏳ Agendamentos Realizados <span className="badge badge-reserved" style={{ fontSize: '0.65rem' }}>{pendingBookings.length}</span>
+                                Agendamentos Realizados <span className="badge badge-reserved" style={{ fontSize: '0.65rem' }}>{pendingBookings.length}</span>
                             </h4>
                             {pendingBookings.length === 0 ? (
                                 <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', padding: '8px 0' }}>Nenhum agendamento pendente.</div>
@@ -1091,7 +1098,7 @@ function ContractCard({ contract: c, planConfig, allAddons, expanded, onToggle, 
                                                 <span style={{ color: 'var(--text-secondary)' }}>{b.startTime} — {b.endTime}</span>
                                             </div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                {canModify(b) && c.status !== 'PAUSED' && <span style={{ fontSize: '0.65rem', color: 'var(--tier-audiencia)' }}>✏️ Gerenciar</span>}
+                                                {canModify(b) && c.status !== 'PAUSED' && <span style={{ fontSize: '0.65rem', color: 'var(--tier-audiencia)' }}>Gerenciar</span>}
                                                 <span style={{ fontSize: '0.75rem' }}>{statusLabel(b.status)}</span>
                                             </div>
                                         </div>
@@ -1104,7 +1111,7 @@ function ContractCard({ contract: c, planConfig, allAddons, expanded, onToggle, 
                     {/* Completed */}
                     <div>
                         <h4 style={{ fontSize: '0.8125rem', fontWeight: 700, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            ✅ Gravações Realizadas <span className="badge badge-confirmed" style={{ fontSize: '0.65rem' }}>{completedBookings.length}</span>
+                            Gravações Realizadas <span className="badge badge-confirmed" style={{ fontSize: '0.65rem' }}>{completedBookings.length}</span>
                         </h4>
                         {completedBookings.length === 0 ? (
                             <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', padding: '8px 0' }}>Nenhuma gravação realizada ainda.</div>
@@ -1140,19 +1147,19 @@ function ContractCard({ contract: c, planConfig, allAddons, expanded, onToggle, 
                             {isExpiring && onRenewContract && (
                                 <button className="btn btn-primary" style={{ fontSize: '0.75rem', padding: '6px 12px', background: 'var(--tier-comercial)', borderColor: 'var(--tier-comercial)', boxShadow: '0 4px 12px rgba(109, 40, 217, 0.3)' }}
                                     onClick={(e) => { e.stopPropagation(); onRenewContract(); }}>
-                                    🔄 Renovar Contrato
+                                    Renovar Contrato
                                 </button>
                             )}
                             {!isAvulso && c.status === 'ACTIVE' && onSubscribeContract && (
                                 <button className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '6px 12px' }}
                                     onClick={(e) => { e.stopPropagation(); onSubscribeContract(); }}>
-                                    🔄 Ativar Recorrência (Stripe)
+                                    Ativar Recorrência (Stripe)
                                 </button>
                             )}
                             {c.type === 'FLEX' && (c.flexCreditsRemaining || 0) > 0 && onBulkBooking && (
                                 <button className="btn btn-primary" style={{ fontSize: '0.75rem', padding: '6px 12px' }}
                                     onClick={(e) => { e.stopPropagation(); onBulkBooking(); }}>
-                                    ✨ Agendar Gravações Pendentes
+                                    Agendar Gravações Pendentes
                                 </button>
                             )}
                             {onRequestCancel && (

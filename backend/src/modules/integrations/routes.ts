@@ -8,6 +8,7 @@ import { prisma } from '../../lib/prisma';
 import { authenticate, authorize } from '../../middleware/auth';
 import { coraTestConnection } from '../../lib/coraService';
 import { stripeTestConnection, stripeGetPublishableKey } from '../../lib/stripeService';
+import { encryptCredentials, decryptConfigSafe } from '../../utils/crypto';
 
 const router = Router();
 
@@ -61,7 +62,10 @@ router.get('/', authenticate, authorize('ADMIN'), async (_req: Request, res: Res
 
             if (existing) {
                 let parsedConfig: Record<string, any> = {};
-                try { parsedConfig = JSON.parse(existing.config); } catch { /* empty */ }
+                try {
+                    const decrypted = decryptConfigSafe(existing.config);
+                    parsedConfig = JSON.parse(decrypted);
+                } catch { /* empty */ }
 
                 return {
                     provider: existing.provider,
@@ -127,7 +131,10 @@ router.get('/:provider', authenticate, authorize('ADMIN'), async (req: Request, 
     }
 
     let parsedConfig: Record<string, any> = {};
-    try { parsedConfig = JSON.parse(integration.config); } catch { /* empty */ }
+    try {
+        const decrypted = decryptConfigSafe(integration.config);
+        parsedConfig = JSON.parse(decrypted);
+    } catch { /* empty */ }
 
     res.json({
         integration: {
@@ -166,7 +173,8 @@ router.put('/:provider', authenticate, authorize('ADMIN'), async (req: Request, 
         let mergedConfig = data.config;
         if (existing) {
             try {
-                const existingConfig = JSON.parse(existing.config);
+                const decryptedExisting = decryptConfigSafe(existing.config);
+                const existingConfig = JSON.parse(decryptedExisting);
                 // For each key in existing config, if new config doesn't have it or it's empty, keep existing
                 mergedConfig = { ...existingConfig };
                 for (const [key, value] of Object.entries(data.config)) {
@@ -177,19 +185,21 @@ router.put('/:provider', authenticate, authorize('ADMIN'), async (req: Request, 
             } catch { /* existing config parse failed, use new config */ }
         }
 
+        const encryptedConfig = encryptCredentials(JSON.stringify(mergedConfig));
+
         const result = await prisma.integrationConfig.upsert({
             where: { provider },
             create: {
                 provider,
                 enabled: data.enabled ?? false,
                 environment: data.environment,
-                config: JSON.stringify(mergedConfig),
+                config: encryptedConfig,
                 webhookUrl,
             },
             update: {
                 enabled: data.enabled ?? undefined,
                 environment: data.environment,
-                config: JSON.stringify(mergedConfig),
+                config: encryptedConfig,
                 webhookUrl,
                 // Reset test status when config changes
                 testStatus: null,
@@ -199,7 +209,10 @@ router.put('/:provider', authenticate, authorize('ADMIN'), async (req: Request, 
         });
 
         let parsedConfig: Record<string, any> = {};
-        try { parsedConfig = JSON.parse(result.config); } catch { /* empty */ }
+        try {
+            const decrypted = decryptConfigSafe(result.config);
+            parsedConfig = JSON.parse(decrypted);
+        } catch { /* empty */ }
 
         res.json({
             integration: {

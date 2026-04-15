@@ -4,6 +4,7 @@
 
 import Stripe from 'stripe';
 import { prisma } from './prisma';
+import { getErrorMessage } from '../utils/errors';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -32,11 +33,20 @@ export interface StripeCheckoutResult {
 
 // ─── Helpers ─────────────────────────────────────────────
 
+import { decryptConfigSafe } from '../utils/crypto';
+
+// Stripe client cache (TTL-based to pick up config changes)
+let cachedStripeClient: Stripe | null = null;
+let cachedStripeConfigHash: string | null = null;
+let cacheTimestamp = 0;
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
 async function getStripeConfig(): Promise<{ config: StripeConfig; environment: string } | null> {
     const integration = await prisma.integrationConfig.findUnique({ where: { provider: 'STRIPE' } });
     if (!integration || !integration.enabled) return null;
     try {
-        const config = JSON.parse(integration.config) as StripeConfig;
+        const decrypted = decryptConfigSafe(integration.config);
+        const config = JSON.parse(decrypted) as StripeConfig;
         return { config, environment: integration.environment };
     } catch {
         return null;
@@ -44,12 +54,30 @@ async function getStripeConfig(): Promise<{ config: StripeConfig; environment: s
 }
 
 async function getStripeClient(): Promise<Stripe> {
+    const now = Date.now();
+
+    // Return cached client if still valid
+    if (cachedStripeClient && (now - cacheTimestamp) < CACHE_TTL_MS) {
+        return cachedStripeClient;
+    }
+
     const setup = await getStripeConfig();
     if (!setup) throw new Error('Stripe integration not configured or disabled');
 
-    return new Stripe(setup.config.secretKey, {
-        apiVersion: '2026-03-25.dahlia' as any,
+    // Check if config changed (invalidate cache on key rotation)
+    const configHash = setup.config.secretKey.slice(-8);
+    if (cachedStripeClient && configHash === cachedStripeConfigHash) {
+        cacheTimestamp = now;
+        return cachedStripeClient;
+    }
+
+    cachedStripeClient = new Stripe(setup.config.secretKey, {
+        apiVersion: '2026-03-25.dahlia' as Stripe.LatestApiVersion,
     });
+    cachedStripeConfigHash = configHash;
+    cacheTimestamp = now;
+
+    return cachedStripeClient;
 }
 
 // ─── Public API ──────────────────────────────────────────
@@ -125,7 +153,7 @@ export async function stripeVerifyWebhook(body: string | Buffer, signature: stri
     if (!setup) throw new Error('Stripe not configured');
 
     const stripe = new Stripe(setup.config.secretKey, {
-        apiVersion: '2026-03-25.dahlia' as any,
+        apiVersion: '2026-03-25.dahlia' as Stripe.LatestApiVersion,
     });
 
     return stripe.webhooks.constructEvent(body, signature, setup.config.webhookSecret);
@@ -143,10 +171,10 @@ export async function stripeTestConnection(): Promise<{ success: boolean; messag
             success: true,
             message: `Conexão Stripe OK! Saldo disponível: ${amountStr}`,
         };
-    } catch (err: any) {
-        const msg = err instanceof Error ? err.message : 'Erro desconhecido';
+    } catch (err: unknown) {
+        const msg = getErrorMessage(err);
         // Provide more helpful error messages
-        if (msg.includes('Invalid API Key') || err.type === 'StripeAuthenticationError') {
+        if (msg.includes('Invalid API Key') || (err instanceof Stripe.errors.StripeAuthenticationError)) {
             return { success: false, message: 'Secret Key inválida. Verifique se a chave começa com sk_test_ ou sk_live_.' };
         }
         if (msg.includes('network') || msg.includes('ECONNREFUSED')) {
@@ -183,8 +211,8 @@ export async function stripeGetOrCreateCustomer(userId: string): Promise<string>
                 return user.stripeCustomerId;
             }
             console.warn(`[Stripe] Customer ${user.stripeCustomerId} was deleted. Creating a new one.`);
-        } catch (err: any) {
-            console.warn(`[Stripe] Error retrieving customer ${user.stripeCustomerId} (e.g. absent in test mode). Creating a new one.`, err.message);
+        } catch (err: unknown) {
+            console.warn(`[Stripe] Error retrieving customer ${user.stripeCustomerId} (e.g. absent in test mode). Creating a new one.`, getErrorMessage(err));
         }
     }
 
@@ -215,6 +243,7 @@ export interface CreatePaymentIntentOpts {
     savedPaymentMethodId?: string; // if paying with saved card
     offSession?: boolean;
     paymentMethodTypes?: string[];
+    savePaymentMethod?: boolean; // save card for future use
 }
 
 export interface PaymentIntentResult {
@@ -232,6 +261,8 @@ export async function stripeCreatePaymentIntent(opts: CreatePaymentIntentOpts): 
         currency: 'brl',
         customer: opts.customerId,
         description: opts.description,
+        // Save card for future use when customer opts in
+        ...(opts.savePaymentMethod && { setup_future_usage: 'on_session' as const }),
         metadata: {
             paymentId: opts.paymentId,
             userId: opts.userId,
@@ -254,16 +285,18 @@ export async function stripeCreatePaymentIntent(opts: CreatePaymentIntentOpts): 
         };
     }
 
-    // If using a saved payment method, attach it and optionally confirm off-session
+    // If using a saved payment method, attach and confirm (on-session or off-session)
     if (opts.savedPaymentMethodId) {
         params.payment_method = opts.savedPaymentMethodId;
+        params.confirm = true; // Always confirm when using a saved PM
         if (opts.offSession) {
             params.off_session = true;
-            params.confirm = true;
         }
     }
 
-    const intent = await stripe.paymentIntents.create(params);
+    const intent = await stripe.paymentIntents.create(params, {
+        idempotencyKey: `pi-${opts.paymentId}-${opts.amount}`,
+    });
 
     return {
         clientSecret: intent.client_secret || '',
@@ -298,6 +331,7 @@ export interface StripeCardInfo {
     last4: string;
     expMonth: number;
     expYear: number;
+    funding: string; // 'credit' | 'debit' | 'prepaid' | 'unknown'
 }
 
 /** List all card payment methods for a Stripe Customer */
@@ -314,6 +348,7 @@ export async function stripeListPaymentMethods(customerId: string): Promise<Stri
         last4: pm.card?.last4 || '0000',
         expMonth: pm.card?.exp_month || 0,
         expYear: pm.card?.exp_year || 0,
+        funding: pm.card?.funding || 'unknown',
     }));
 }
 
@@ -399,9 +434,10 @@ export async function stripeCreateSubscription(opts: CreateSubscriptionOpts): Pr
     let clientSecret: string | undefined;
     const latestInvoice = subscription.latest_invoice;
     if (latestInvoice && typeof latestInvoice !== 'string') {
-        const pi = (latestInvoice as any).payment_intent;
-        if (pi && typeof pi !== 'string') {
-            clientSecret = pi.client_secret || undefined;
+        // payment_intent exists at runtime but isn't exposed in all SDK type versions
+        const pi = (latestInvoice as unknown as Record<string, unknown>).payment_intent;
+        if (pi && typeof pi === 'object' && pi !== null && 'client_secret' in pi) {
+            clientSecret = (pi as { client_secret?: string }).client_secret || undefined;
         }
     }
 

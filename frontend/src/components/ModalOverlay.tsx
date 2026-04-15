@@ -1,8 +1,9 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useEffect } from 'react';
 
 /**
- * ModalOverlay – wraps modal content and only closes when
- * BOTH mousedown AND mouseup happen on the overlay (outside the modal).
+ * ModalOverlay – wraps modal content and closes when:
+ *  1. BOTH mousedown AND mouseup happen on the overlay (outside the modal)
+ *  2. User presses Escape key
  *
  * This prevents the common UX issue where selecting text inside
  * a form field and accidentally releasing the mouse outside the
@@ -19,6 +20,17 @@ interface ModalOverlayProps {
 
 export default function ModalOverlay({ onClose, children, className = 'modal-overlay', style, preventClose }: ModalOverlayProps) {
     const mouseDownOnOverlay = useRef(false);
+
+    // Escape key handler
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && !preventClose) {
+                onClose();
+            }
+        };
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [onClose, preventClose]);
 
     const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
         // Record that the press started on the overlay itself (not a child)
@@ -44,3 +56,4 @@ export default function ModalOverlay({ onClose, children, className = 'modal-ove
         </div>
     );
 }
+

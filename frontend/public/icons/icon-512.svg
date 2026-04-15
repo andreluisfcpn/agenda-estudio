@@ -1,0 +1,8 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#001e26" rx="96"/>
+  <circle cx="256" cy="200" r="60" fill="none" stroke="#11819B" stroke-width="8"/>
+  <rect x="248" y="260" width="16" height="80" rx="8" fill="#11819B"/>
+  <rect x="228" y="340" width="56" height="12" rx="6" fill="#11819B"/>
+  <text x="256" y="430" font-family="system-ui,-apple-system,sans-serif" font-size="48" font-weight="800" fill="white" text-anchor="middle" letter-spacing="-1">BÚZIOS</text>
+  <text x="256" y="468" font-family="system-ui,-apple-system,sans-serif" font-size="32" font-weight="600" fill="#11819B" text-anchor="middle" letter-spacing="4">DIGITAL</text>
+</svg>

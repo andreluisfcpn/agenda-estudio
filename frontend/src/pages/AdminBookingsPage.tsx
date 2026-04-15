@@ -1,4 +1,5 @@
-﻿import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { getErrorMessage } from '../utils/errors';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { bookingsApi, usersApi, contractsApi, BookingWithUser, UserSummary, Contract, Slot } from '../api/client';
 import { useNavigate } from 'react-router-dom';
 import { useUI } from '../context/UIContext';
@@ -8,7 +9,7 @@ function formatBRL(cents: number): string {
     return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
 }
 
-const TIER_EMOJI: Record<string, string> = { COMERCIAL: '🏢', AUDIENCIA: '🎤', SABADO: '🌟' };
+const TIER_EMOJI: Record<string, string> = { COMERCIAL: '??', AUDIENCIA: '??', SABADO: '??' };
 const TIER_COLORS: Record<string, { color: string; bg: string }> = {
     COMERCIAL: { color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
     AUDIENCIA: { color: '#2dd4bf', bg: 'rgba(45,212,191,0.12)' },
@@ -16,12 +17,12 @@ const TIER_COLORS: Record<string, { color: string; bg: string }> = {
 };
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: string }> = {
-    COMPLETED:     { label: 'Concluído',      color: '#10b981', bg: 'rgba(16,185,129,0.12)',  icon: '✓' },
-    CONFIRMED:     { label: 'Confirmado',     color: '#3b82f6', bg: 'rgba(59,130,246,0.12)',  icon: '✓' },
-    RESERVED:      { label: 'Reservado',      color: '#f59e0b', bg: 'rgba(245,158,11,0.12)',  icon: '⏳' },
-    CANCELLED:     { label: 'Cancelado',      color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   icon: '✕' },
-    FALTA:         { label: 'Falta',          color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   icon: '✕' },
-    NAO_REALIZADO: { label: 'Não Realizado',  color: '#14b8a6', bg: 'rgba(45,212,191,0.12)',  icon: '↩' },
+    COMPLETED:     { label: 'Conclu�do',      color: '#10b981', bg: 'rgba(16,185,129,0.12)',  icon: '?' },
+    CONFIRMED:     { label: 'Confirmado',     color: '#3b82f6', bg: 'rgba(59,130,246,0.12)',  icon: '?' },
+    RESERVED:      { label: 'Reservado',      color: '#f59e0b', bg: 'rgba(245,158,11,0.12)',  icon: '?' },
+    CANCELLED:     { label: 'Cancelado',      color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   icon: '?' },
+    FALTA:         { label: 'Falta',          color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   icon: '?' },
+    NAO_REALIZADO: { label: 'N�o Realizado',  color: '#14b8a6', bg: 'rgba(45,212,191,0.12)',  icon: '?' },
 };
 
 export default function AdminBookingsPage() {
@@ -77,7 +78,7 @@ export default function AdminBookingsPage() {
             resetCreateModal();
             showToast('Agendamento criado com sucesso!');
             await loadData();
-        } catch (err: any) { setCreateError(err.message); }
+        } catch (err: unknown) { setCreateError(getErrorMessage(err)); }
         finally { setCreating(false); }
     };
 
@@ -122,23 +123,23 @@ export default function AdminBookingsPage() {
             await bookingsApi.update(editBooking.id, data);
             setEditBooking(null);
             await loadData();
-        } catch (err: any) { setEditError(err.message); }
+        } catch (err: unknown) { setEditError(getErrorMessage(err)); }
     };
 
     const handleHardDelete = async (b: BookingWithUser) => {
         const hasContract = b.contractId && b.contract;
         const creditWarning = hasContract && b.status !== 'CANCELLED'
-            ? `\n\n⚠️ O crédito consumido do contrato "${b.contract?.name}" será devolvido.`
+            ? `\n\n?? O cr�dito consumido do contrato "${b.contract?.name}" ser� devolvido.`
             : '';
         showConfirm({
-            title: '🗑️ Excluir Agendamento Permanentemente',
-            message: `Tem certeza que deseja excluir este agendamento?\n\nCliente: ${b.user.name}\nData: ${new Date(b.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}\nHorário: ${b.startTime}\n\nEsta ação é irreversível — o agendamento será removido como se nunca tivesse existido.${creditWarning}`,
+            title: '??? Excluir Agendamento Permanentemente',
+            message: `Tem certeza que deseja excluir este agendamento?\n\nCliente: ${b.user.name}\nData: ${new Date(b.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}\nHor�rio: ${b.startTime}\n\nEsta a��o � irrevers�vel � o agendamento ser� removido como se nunca tivesse existido.${creditWarning}`,
             onConfirm: async () => {
                 try {
                     const res = await bookingsApi.hardDelete(b.id);
                     showToast(res.message);
                     await loadData();
-                } catch (err: any) { showAlert({ message: err.message, type: 'error' }); }
+                } catch (err: unknown) { showAlert({ message: getErrorMessage(err), type: 'error' }); }
             }
         });
     };
@@ -147,7 +148,7 @@ export default function AdminBookingsPage() {
         try {
             await bookingsApi.update(id, { status: newStatus });
             setBookings(prev => prev.map(b => b.id === id ? { ...b, status: newStatus as any } : b));
-        } catch (err: any) { showAlert({ message: err.message, type: 'error' }); }
+        } catch (err: unknown) { showAlert({ message: getErrorMessage(err), type: 'error' }); }
     };
 
     const filtered = useMemo(() => {
@@ -169,14 +170,14 @@ export default function AdminBookingsPage() {
 
     return (
         <div>
-            {/* ─── HEADER ─── */}
+            {/* --- HEADER --- */}
             <div style={{ marginBottom: '28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
                 <div>
                     <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontSize: '1.75rem' }}>📅</span> Agendamentos
+                        <span style={{ fontSize: '1.75rem' }}>??</span> Agendamentos
                     </h1>
                     <p className="page-subtitle" style={{ marginTop: '4px' }}>
-                        Gerencie todos os agendamentos do estúdio
+                        Gerencie todos os agendamentos do est�dio
                     </p>
                 </div>
                 <button className="btn btn-primary" onClick={() => setShowCreate(true)}
@@ -185,7 +186,7 @@ export default function AdminBookingsPage() {
                 </button>
             </div>
 
-            {/* ─── KPI CARDS ─── */}
+            {/* --- KPI CARDS --- */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginBottom: '24px' }}>
                 <div style={{
                     padding: '20px', borderRadius: '14px',
@@ -208,7 +209,7 @@ export default function AdminBookingsPage() {
                     padding: '20px', borderRadius: '14px',
                     background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
                 }}>
-                    <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Concluídos</div>
+                    <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Conclu�dos</div>
                     <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)' }}>{kpis.completed}</div>
                     <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>realizados</div>
                 </div>
@@ -228,11 +229,11 @@ export default function AdminBookingsPage() {
                 }}>
                     <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Receita</div>
                     <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>{formatBRL(kpis.revenue)}</div>
-                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>confirmados + concluídos</div>
+                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>confirmados + conclu�dos</div>
                 </div>
             </div>
 
-            {/* ─── SEARCH + FILTERS ─── */}
+            {/* --- SEARCH + FILTERS --- */}
             <div style={{
                 padding: '12px 16px', borderRadius: '12px', marginBottom: '16px',
                 background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
@@ -250,7 +251,7 @@ export default function AdminBookingsPage() {
                         onFocus={e => (e.currentTarget.style.borderColor = '#10b981')}
                         onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
                     />
-                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🔍</span>
+                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>??</span>
                 </div>
 
                 {/* Date filter */}
@@ -267,7 +268,7 @@ export default function AdminBookingsPage() {
                     {[
                         { key: '', label: 'Todos' },
                         { key: 'CONFIRMED', label: 'Confirmados' },
-                        { key: 'COMPLETED', label: 'Concluídos' },
+                        { key: 'COMPLETED', label: 'Conclu�dos' },
                         { key: 'RESERVED', label: 'Reservados' },
                         { key: 'CANCELLED', label: 'Cancelados' },
                     ].map(s => (
@@ -294,7 +295,7 @@ export default function AdminBookingsPage() {
                             color: '#ef4444', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer',
                             fontSize: '0.6875rem', fontWeight: 600
                         }}>
-                        ✕ Limpar
+                        ? Limpar
                     </button>
                 )}
 
@@ -306,16 +307,16 @@ export default function AdminBookingsPage() {
                 </span>
             </div>
 
-            {/* ─── BOOKINGS TABLE ─── */}
+            {/* --- BOOKINGS TABLE --- */}
             {loading ? (
                 <div className="loading-spinner"><div className="spinner" /></div>
             ) : (
                 <div style={{ borderRadius: '16px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', overflow: 'hidden' }}>
                     {filtered.length === 0 ? (
                         <div style={{ padding: '48px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                            <div style={{ fontSize: '2.5rem', marginBottom: '12px', opacity: 0.4 }}>📅</div>
+                            <div style={{ fontSize: '2.5rem', marginBottom: '12px', opacity: 0.4 }}>??</div>
                             <div style={{ fontWeight: 600 }}>Nenhum agendamento encontrado</div>
-                            <div style={{ fontSize: '0.8125rem', marginTop: '4px' }}>Tente ajustar os filtros ou período</div>
+                            <div style={{ fontSize: '0.8125rem', marginTop: '4px' }}>Tente ajustar os filtros ou per�odo</div>
                         </div>
                     ) : (
                         <div className="table-container" style={{ margin: 0 }}>
@@ -323,12 +324,12 @@ export default function AdminBookingsPage() {
                                 <thead>
                                     <tr>
                                         <th style={{ paddingLeft: '20px' }}>Cliente</th>
-                                        <th>Data / Horário</th>
+                                        <th>Data / Hor�rio</th>
                                         <th>Contrato</th>
                                         <th>Agendado em</th>
                                         <th style={{ textAlign: 'right' }}>Valor</th>
                                         <th style={{ textAlign: 'center' }}>Status</th>
-                                        <th style={{ textAlign: 'center' }}>Ações</th>
+                                        <th style={{ textAlign: 'center' }}>A��es</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -336,7 +337,7 @@ export default function AdminBookingsPage() {
                                         const sc = STATUS_CONFIG[b.status] || STATUS_CONFIG.RESERVED;
                                         const dateObj = new Date(b.date);
                                         const dayStr = dateObj.toLocaleDateString('pt-BR', { timeZone: 'UTC', weekday: 'short', day: '2-digit', month: '2-digit' });
-                                        const createdStr = b.createdAt ? new Date(b.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+                                        const createdStr = b.createdAt ? new Date(b.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '�';
                                         return (
                                             <tr key={b.id}
                                                 style={{
@@ -373,8 +374,8 @@ export default function AdminBookingsPage() {
                                                 <td>
                                                     <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{dayStr}</div>
                                                     <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                        <span style={{ fontSize: '0.6875rem' }}>🕐</span>
-                                                        {b.startTime} – {b.endTime}
+                                                        <span style={{ fontSize: '0.6875rem' }}>??</span>
+                                                        {b.startTime} � {b.endTime}
                                                     </div>
                                                 </td>
 
@@ -392,7 +393,7 @@ export default function AdminBookingsPage() {
                                                             </span>
                                                         </div>
                                                     ) : (
-                                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>—</span>
+                                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>�</span>
                                                     )}
                                                 </td>
 
@@ -459,7 +460,7 @@ export default function AdminBookingsPage() {
                                                         onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-color)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
                                                         title="Editar"
                                                         onClick={() => { setEditBooking(b); setEditForm({ date: b.date.split('T')[0], startTime: b.startTime, status: b.status }); setEditError(''); }}>
-                                                            ✏️
+                                                            ??
                                                         </button>
 
                                                         <button style={{
@@ -471,7 +472,7 @@ export default function AdminBookingsPage() {
                                                         onMouseLeave={e => (e.currentTarget.style.opacity = '0.7')}
                                                         title="Excluir permanentemente"
                                                         onClick={() => handleHardDelete(b)}>
-                                                            🗑️
+                                                            ???
                                                         </button>
                                                     </div>
                                                 </td>
@@ -485,9 +486,9 @@ export default function AdminBookingsPage() {
                 </div>
             )}
 
-            {/* ═══════════════════════════════════════════════════════
+            {/* -------------------------------------------------------
                MODALS (preserved from original)
-            ═══════════════════════════════════════════════════════ */}
+            ------------------------------------------------------- */}
 
             {/* Create Modal */}
             {showCreate && (() => {
@@ -501,18 +502,18 @@ export default function AdminBookingsPage() {
                 });
                 const tc = (tier: string) => TIER_COLORS[tier] || TIER_COLORS.COMERCIAL;
 
-                const stepLabels = ['Cliente', 'Horário', 'Confirmar'];
+                const stepLabels = ['Cliente', 'Hor�rio', 'Confirmar'];
 
                 return (
                     <ModalOverlay onClose={resetCreateModal}>
                         <div className="modal" style={{ maxWidth: 580, maxHeight: '92vh', overflowY: 'auto', padding: 0 }}>
-                            {/* ─── HEADER ─── */}
+                            {/* --- HEADER --- */}
                             <div style={{ padding: '28px 32px 0', borderBottom: 'none' }}>
                                 <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
                                     <span style={{
                                         width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
                                         background: 'linear-gradient(135deg, #10b981, #11819B)', fontSize: '1rem'
-                                    }}>📅</span>
+                                    }}>??</span>
                                     Novo Agendamento
                                 </h2>
 
@@ -536,7 +537,7 @@ export default function AdminBookingsPage() {
                                                         border: `2px solid ${isActive ? '#10b981' : isDone ? 'rgba(16,185,129,0.3)' : 'var(--border-default)'}`,
                                                         transition: 'all 0.3s',
                                                     }}>
-                                                        {isDone ? '✓' : step}
+                                                        {isDone ? '?' : step}
                                                     </div>
                                                     <span style={{
                                                         fontSize: '0.6875rem', fontWeight: isActive ? 700 : 500,
@@ -552,7 +553,7 @@ export default function AdminBookingsPage() {
                             <div style={{ padding: '20px 32px 28px' }}>
                                 {createError && <div className="error-message" style={{ marginBottom: '16px', padding: '10px 14px', borderRadius: '10px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)', color: '#ef4444', fontSize: '0.8125rem', fontWeight: 600 }}>{createError}</div>}
 
-                                {/* ════════ STEP 1: Select Client ════════ */}
+                                {/* -------- STEP 1: Select Client -------- */}
                                 {createStep === 1 && (
                                     <div>
                                         <div style={{ position: 'relative', marginBottom: '14px' }}>
@@ -567,7 +568,7 @@ export default function AdminBookingsPage() {
                                                 onFocus={e => (e.currentTarget.style.borderColor = '#10b981')}
                                                 onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-default)')}
                                             />
-                                            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.8125rem', opacity: 0.5 }}>🔍</span>
+                                            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.8125rem', opacity: 0.5 }}>??</span>
                                         </div>
 
                                         <div style={{ maxHeight: '340px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -613,7 +614,7 @@ export default function AdminBookingsPage() {
                                                                     background: 'rgba(16,185,129,0.12)', color: '#10b981',
                                                                 }}>{u._count.contracts} contrato{u._count.contracts > 1 ? 's' : ''}</span>
                                                             )}
-                                                            {isSelected && <span style={{ color: '#10b981', fontSize: '1rem' }}>✓</span>}
+                                                            {isSelected && <span style={{ color: '#10b981', fontSize: '1rem' }}>?</span>}
                                                         </div>
                                                     </div>
                                                 );
@@ -633,16 +634,16 @@ export default function AdminBookingsPage() {
                                                     color: createForm.userId ? '#fff' : 'var(--text-muted)',
                                                     opacity: createForm.userId ? 1 : 0.5,
                                                 }}>
-                                                Próximo →
+                                                Pr�ximo ?
                                             </button>
                                         </div>
                                     </div>
                                 )}
 
-                                {/* ════════ STEP 2: Contract, Date, Slot ════════ */}
+                                {/* -------- STEP 2: Contract, Date, Slot -------- */}
                                 {createStep === 2 && (() => {
-                                    const TIER_LABEL: Record<string, string> = { COMERCIAL: 'Comercial', AUDIENCIA: 'Audiência', SABADO: 'Sábado' };
-                                    const DAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+                                    const TIER_LABEL: Record<string, string> = { COMERCIAL: 'Comercial', AUDIENCIA: 'Audi�ncia', SABADO: 'S�bado' };
+                                    const DAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'S�b'];
 
                                     // Determine selected contract and its tier for slot filtering
                                     const activeContract = clientContracts.find(c => c.id === createForm.contractId);
@@ -659,10 +660,10 @@ export default function AdminBookingsPage() {
 
                                     return (
                                     <div>
-                                        {/* ── Contract Selector (always shown) ── */}
+                                        {/* -- Contract Selector (always shown) -- */}
                                         <div style={{ marginBottom: '20px' }}>
                                             <label style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                📋 Vincular a Contrato
+                                                ?? Vincular a Contrato
                                                 {clientContracts.length > 0 && <span style={{ fontSize: '0.5625rem', fontWeight: 600, padding: '1px 6px', borderRadius: '4px', background: 'rgba(16,185,129,0.1)', color: '#10b981' }}>{clientContracts.length} ativo{clientContracts.length > 1 ? 's' : ''}</span>}
                                             </label>
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -685,13 +686,13 @@ export default function AdminBookingsPage() {
                                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                         fontSize: '1.1rem',
                                                     }}>
-                                                        🎯
+                                                        ??
                                                     </div>
                                                     <div style={{ flex: 1, minWidth: 0 }}>
                                                         <div style={{ fontWeight: 700, fontSize: '0.8125rem', color: !createForm.contractId ? '#818cf8' : 'var(--text-primary)' }}>Agendamento Avulso</div>
-                                                        <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '2px' }}>Cria contrato automático · Todos os horários</div>
+                                                        <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '2px' }}>Cria contrato autom�tico � Todos os hor�rios</div>
                                                     </div>
-                                                    {!createForm.contractId && <span style={{ color: '#818cf8', fontSize: '1.1rem', fontWeight: 700 }}>✓</span>}
+                                                    {!createForm.contractId && <span style={{ color: '#818cf8', fontSize: '1.1rem', fontWeight: 700 }}>?</span>}
                                                 </div>
 
                                                 {/* Active contract cards */}
@@ -741,22 +742,22 @@ export default function AdminBookingsPage() {
                                                                         fontSize: '0.5625rem', fontWeight: 600, padding: '1px 6px', borderRadius: '4px',
                                                                         background: c.type === 'FIXO' ? 'rgba(245,158,11,0.1)' : 'rgba(59,130,246,0.1)',
                                                                         color: c.type === 'FIXO' ? '#f59e0b' : '#3b82f6',
-                                                                    }}>{c.type === 'FIXO' ? '📌 Fixo' : '🔄 Flex'}</span>
+                                                                    }}>{c.type === 'FIXO' ? '?? Fixo' : '?? Flex'}</span>
                                                                 </div>
                                                                 <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                                                                     {c.type === 'FIXO' && c.fixedDayOfWeek != null && (
-                                                                        <span>📅 {DAY_NAMES[c.fixedDayOfWeek]} {c.fixedTime ? `às ${c.fixedTime}` : ''}</span>
+                                                                        <span>?? {DAY_NAMES[c.fixedDayOfWeek]} {c.fixedTime ? `�s ${c.fixedTime}` : ''}</span>
                                                                     )}
                                                                     {c.type === 'FLEX' && c.flexCreditsRemaining != null && (
                                                                         <span style={{ color: c.flexCreditsRemaining > 0 ? '#10b981' : '#ef4444', fontWeight: 600 }}>
-                                                                            {c.flexCreditsRemaining > 0 ? `✓ ${c.flexCreditsRemaining} crédito${c.flexCreditsRemaining > 1 ? 's' : ''} restante${c.flexCreditsRemaining > 1 ? 's' : ''}` : '✕ Sem créditos'}
+                                                                            {c.flexCreditsRemaining > 0 ? `? ${c.flexCreditsRemaining} cr�dito${c.flexCreditsRemaining > 1 ? 's' : ''} restante${c.flexCreditsRemaining > 1 ? 's' : ''}` : '? Sem cr�ditos'}
                                                                         </span>
                                                                     )}
-                                                                    {!hasCredits && <span style={{ color: '#ef4444', fontWeight: 600 }}>Créditos esgotados</span>}
+                                                                    {!hasCredits && <span style={{ color: '#ef4444', fontWeight: 600 }}>Cr�ditos esgotados</span>}
                                                                 </div>
                                                             </div>
 
-                                                            {isSelected && <span style={{ color: ct.color, fontSize: '1.1rem', fontWeight: 700 }}>✓</span>}
+                                                            {isSelected && <span style={{ color: ct.color, fontSize: '1.1rem', fontWeight: 700 }}>?</span>}
                                                         </div>
                                                     );
                                                 })}
@@ -767,16 +768,16 @@ export default function AdminBookingsPage() {
                                                         background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.15)',
                                                         color: '#f59e0b', fontSize: '0.8125rem', fontWeight: 600,
                                                     }}>
-                                                        ⚠️ Cliente sem contratos ativos · Será criado contrato avulso
+                                                        ?? Cliente sem contratos ativos � Ser� criado contrato avulso
                                                     </div>
                                                 )}
                                             </div>
                                         </div>
 
-                                        {/* ── Date ── */}
+                                        {/* -- Date -- */}
                                         <div style={{ marginBottom: '18px' }}>
                                             <label style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px', display: 'block' }}>
-                                                📆 Data da gravação
+                                                ?? Data da grava��o
                                             </label>
                                             <input type="date" value={createForm.date}
                                                 min={new Date().toISOString().split('T')[0]}
@@ -799,16 +800,16 @@ export default function AdminBookingsPage() {
                                                     fontSize: '0.75rem', color: '#f59e0b', fontWeight: 600,
                                                     display: 'flex', alignItems: 'center', gap: '6px',
                                                 }}>
-                                                    ⚠️ Contrato {activeContract?.name} é fixo em <strong>{DAY_NAMES[activeContract!.fixedDayOfWeek!]}</strong>. A data selecionada é {DAY_NAMES[selectedDateDOW!]}.
+                                                    ?? Contrato {activeContract?.name} � fixo em <strong>{DAY_NAMES[activeContract!.fixedDayOfWeek!]}</strong>. A data selecionada � {DAY_NAMES[selectedDateDOW!]}.
                                                 </div>
                                             )}
                                         </div>
 
-                                        {/* ── Filtered Slot Grid ── */}
+                                        {/* -- Filtered Slot Grid -- */}
                                         {createForm.date && (
                                             <div>
                                                 <label style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                    🕐 Horário disponível
+                                                    ?? Hor�rio dispon�vel
                                                     {filterTier && (
                                                         <span style={{
                                                             fontSize: '0.5625rem', fontWeight: 700, padding: '1px 8px', borderRadius: '4px',
@@ -823,8 +824,8 @@ export default function AdminBookingsPage() {
                                                 ) : filteredSlots.filter(s => s.available).length === 0 ? (
                                                     <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8125rem', background: 'var(--bg-elevated)', borderRadius: 10 }}>
                                                         {filterTier
-                                                            ? `Nenhum horário ${TIER_LABEL[filterTier]} disponível nesta data`
-                                                            : 'Nenhum horário disponível nesta data'}
+                                                            ? `Nenhum hor�rio ${TIER_LABEL[filterTier]} dispon�vel nesta data`
+                                                            : 'Nenhum hor�rio dispon�vel nesta data'}
                                                     </div>
                                                 ) : (
                                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '6px' }}>
@@ -865,7 +866,7 @@ export default function AdminBookingsPage() {
                                         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '20px' }}>
                                             <button onClick={() => setCreateStep(1)}
                                                 style={{ padding: '9px 18px', borderRadius: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer' }}>
-                                                ← Voltar
+                                                ? Voltar
                                             </button>
                                             <button disabled={!createForm.date || !createForm.startTime}
                                                 onClick={() => setCreateStep(3)}
@@ -875,14 +876,14 @@ export default function AdminBookingsPage() {
                                                     color: createForm.date && createForm.startTime ? '#fff' : 'var(--text-muted)',
                                                     opacity: createForm.date && createForm.startTime ? 1 : 0.5,
                                                 }}>
-                                                Próximo →
+                                                Pr�ximo ?
                                             </button>
                                         </div>
                                     </div>
                                     );
                                 })()}
 
-                                {/* ════════ STEP 3: Confirm ════════ */}
+                                {/* -------- STEP 3: Confirm -------- */}
                                 {createStep === 3 && (
                                     <div>
                                         {/* Summary card */}
@@ -908,12 +909,12 @@ export default function AdminBookingsPage() {
                                                 <div>
                                                     <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '3px' }}>Data</div>
                                                     <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>
-                                                        {createForm.date ? new Date(createForm.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                                                        {createForm.date ? new Date(createForm.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }) : '�'}
                                                     </div>
                                                 </div>
                                                 <div>
-                                                    <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '3px' }}>Horário</div>
-                                                    <div style={{ fontWeight: 700, fontSize: '1rem' }}>{createForm.startTime || '—'}</div>
+                                                    <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '3px' }}>Hor�rio</div>
+                                                    <div style={{ fontWeight: 700, fontSize: '1rem' }}>{createForm.startTime || '�'}</div>
                                                 </div>
                                                 <div>
                                                     <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '3px' }}>Faixa</div>
@@ -925,18 +926,18 @@ export default function AdminBookingsPage() {
                                                         }}>
                                                             {TIER_EMOJI[selectedSlot.tier]} {selectedSlot.tier}
                                                         </span>
-                                                    ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                                                    ) : <span style={{ color: 'var(--text-muted)' }}>�</span>}
                                                 </div>
                                                 <div style={{ gridColumn: '1 / -1' }}>
                                                     <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '3px' }}>Contrato</div>
                                                     <div style={{ fontWeight: 600, fontSize: '0.8125rem' }}>
-                                                        {selectedContract ? `${TIER_EMOJI[selectedContract.tier]} ${selectedContract.name}` : '📋 Avulso (contrato automático)'}
+                                                        {selectedContract ? `${TIER_EMOJI[selectedContract.tier]} ${selectedContract.name}` : '?? Avulso (contrato autom�tico)'}
                                                     </div>
                                                 </div>
                                                 {/* Editable price for Avulso */}
                                                 {!createForm.contractId && (
                                                     <div style={{ gridColumn: '1 / -1', marginTop: '4px' }}>
-                                                        <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '6px' }}>💰 Valor do Agendamento</div>
+                                                        <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '6px' }}>?? Valor do Agendamento</div>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                                             <div style={{ position: 'relative', flex: 1, maxWidth: '200px' }}>
                                                                 <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8125rem', fontWeight: 700, color: '#10b981' }}>R$</span>
@@ -965,7 +966,7 @@ export default function AdminBookingsPage() {
                                                                 />
                                                             </div>
                                                             <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                                                                Editável · Apenas para este agendamento
+                                                                Edit�vel � Apenas para este agendamento
                                                             </span>
                                                         </div>
                                                     </div>
@@ -977,7 +978,7 @@ export default function AdminBookingsPage() {
                                         <div style={{ marginBottom: '14px' }}>
                                             <label style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px', display: 'block' }}>Status inicial</label>
                                             <div style={{ display: 'flex', gap: '6px' }}>
-                                                {[{ key: 'CONFIRMED', label: '✅ Confirmado' }, { key: 'RESERVED', label: '⏳ Reservado' }].map(s => (
+                                                {[{ key: 'CONFIRMED', label: '? Confirmado' }, { key: 'RESERVED', label: '? Reservado' }].map(s => (
                                                     <button key={s.key}
                                                         onClick={() => setCreateForm({ ...createForm, status: s.key })}
                                                         style={{
@@ -995,12 +996,12 @@ export default function AdminBookingsPage() {
                                         {/* Admin notes */}
                                         <div style={{ marginBottom: '14px' }}>
                                             <label style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px', display: 'block' }}>
-                                                📝 Notas internas (opcional)
+                                                ?? Notas internas (opcional)
                                             </label>
                                             <textarea
                                                 value={createForm.adminNotes}
                                                 onChange={e => setCreateForm({ ...createForm, adminNotes: e.target.value })}
-                                                placeholder="Observações internas sobre esta gravação..."
+                                                placeholder="Observa��es internas sobre esta grava��o..."
                                                 rows={3}
                                                 style={{
                                                     width: '100%', padding: '10px 14px', borderRadius: '10px', fontSize: '0.8125rem',
@@ -1013,7 +1014,7 @@ export default function AdminBookingsPage() {
                                         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '20px' }}>
                                             <button onClick={() => setCreateStep(2)}
                                                 style={{ padding: '9px 18px', borderRadius: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer' }}>
-                                                ← Voltar
+                                                ? Voltar
                                             </button>
                                             <button onClick={handleCreate} disabled={creating}
                                                 style={{
@@ -1021,7 +1022,7 @@ export default function AdminBookingsPage() {
                                                     background: 'linear-gradient(135deg, #10b981, #11819B)', color: '#fff',
                                                     opacity: creating ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '8px',
                                                 }}>
-                                                {creating ? '⏳ Criando...' : '🚀 Agendar'}
+                                                {creating ? '? Criando...' : '?? Agendar'}
                                             </button>
                                         </div>
                                     </div>
@@ -1032,7 +1033,7 @@ export default function AdminBookingsPage() {
                 );
             })()}
 
-            {/* Edit Modal — Redesigned */}
+            {/* Edit Modal � Redesigned */}
             {editBooking && (
                 <ModalOverlay onClose={() => setEditBooking(null)}>
                     <div className="modal" style={{ maxWidth: 520, padding: 0, overflow: 'hidden' }}>
@@ -1042,7 +1043,7 @@ export default function AdminBookingsPage() {
                                 <span style={{
                                     width: 34, height: 34, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
                                     background: 'linear-gradient(135deg, #10b981, #11819B)', fontSize: '0.9rem'
-                                }}>✏️</span>
+                                }}>??</span>
                                 Editar Agendamento
                             </h2>
                             {/* Client info bar */}
@@ -1081,7 +1082,7 @@ export default function AdminBookingsPage() {
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '16px' }}>
                                 {/* Date */}
                                 <div>
-                                    <label style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px', display: 'block' }}>📆 Data</label>
+                                    <label style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px', display: 'block' }}>?? Data</label>
                                     <input type="date" value={editForm.date}
                                         min={new Date().toISOString().split('T')[0]}
                                         onChange={e => setEditForm({ ...editForm, date: e.target.value })}
@@ -1094,7 +1095,7 @@ export default function AdminBookingsPage() {
                                 </div>
                                 {/* Time */}
                                 <div>
-                                    <label style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px', display: 'block' }}>🕐 Horário</label>
+                                    <label style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px', display: 'block' }}>?? Hor�rio</label>
                                     <input type="time" step="1800" value={editForm.startTime}
                                         onChange={e => setEditForm({ ...editForm, startTime: e.target.value })}
                                         style={{
@@ -1134,7 +1135,7 @@ export default function AdminBookingsPage() {
                                 fontSize: '0.75rem', color: 'var(--text-muted)',
                                 display: 'flex', justifyContent: 'space-between',
                             }}>
-                                <span>💰 Valor: <strong style={{ color: '#10b981' }}>{formatBRL(editBooking.price)}</strong></span>
+                                <span>?? Valor: <strong style={{ color: '#10b981' }}>{formatBRL(editBooking.price)}</strong></span>
                                 <span>{TIER_EMOJI[editBooking.tierApplied]} {editBooking.tierApplied}</span>
                             </div>
 
@@ -1150,7 +1151,7 @@ export default function AdminBookingsPage() {
                                         background: 'linear-gradient(135deg, #10b981, #11819B)', color: '#fff',
                                         display: 'flex', alignItems: 'center', gap: '8px',
                                     }}>
-                                    💾 Salvar Alterações
+                                    ?? Salvar Altera��es
                                 </button>
                             </div>
                         </div>

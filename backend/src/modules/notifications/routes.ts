@@ -50,7 +50,7 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
                 title: '📋 Contrato Expirando',
                 message: userRole === 'ADMIN' ? `${c.user.name} — "${c.name}" expira em ${daysLeft} dia${daysLeft !== 1 ? 's' : ''}` : `Seu contrato "${c.name}" expira em ${daysLeft} dia${daysLeft !== 1 ? 's' : ''}`,
                 entityType: 'CONTRACT', entityId: c.id,
-                actionUrl: `/admin/clients/${c.userId}`,
+                actionUrl: userRole === 'ADMIN' ? `/admin/clients/${c.userId}` : '/my-contracts',
                 createdAt: now.toISOString(),
             });
         }
@@ -74,7 +74,7 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
                 title: '💰 Pagamento Vencido',
                 message: userRole === 'ADMIN' ? `${p.user.name} — R$ ${(p.amount / 100).toFixed(2).replace('.', ',')} vencido há ${daysOverdue} dia${daysOverdue !== 1 ? 's' : ''}` : `Você possui uma fatura atrasada (vencida há ${daysOverdue} dias)`,
                 entityType: 'PAYMENT', entityId: p.id,
-                actionUrl: userRole === 'ADMIN' ? '/admin/finance' : '/',
+                actionUrl: userRole === 'ADMIN' ? '/admin/finance' : '/meus-pagamentos',
                 createdAt: now.toISOString(),
             });
         }
@@ -121,7 +121,7 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
                 title: '⏳ Sessão Não Confirmada',
                 message: userRole === 'ADMIN' ? `${b.user.name} — ${isToday ? 'HOJE' : 'Amanhã'} às ${b.startTime}` : `Sua sessão de ${isToday ? 'HOJE' : 'Amanhã'} às ${b.startTime} precisa ser confirmada`,
                 entityType: 'BOOKING', entityId: b.id,
-                actionUrl: userRole === 'ADMIN' ? '/admin/today' : '/',
+                actionUrl: userRole === 'ADMIN' ? '/admin/today' : '/dashboard',
                 createdAt: now.toISOString(),
             });
         }
@@ -163,7 +163,7 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
                     ? `${c.user.name} — "${c.name}" aguardando pagamento`
                     : `Seu contrato "${c.name}" está aguardando pagamento para ser ativado.`,
                 entityType: 'CONTRACT', entityId: c.id,
-                actionUrl: userRole === 'ADMIN' ? `/admin/clients/${c.userId}` : '/meus-contratos',
+                actionUrl: userRole === 'ADMIN' ? `/admin/clients/${c.userId}` : '/my-contracts',
                 createdAt: now.toISOString(),
             });
         }

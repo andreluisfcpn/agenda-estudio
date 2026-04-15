@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { config } from '../config';
 
 export function errorHandler(err: Error, _req: Request, res: Response, _next: NextFunction): void {
     console.error('Unhandled error:', err);
@@ -13,6 +14,6 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
 
     res.status(500).json({
         error: 'Erro interno do servidor.',
-        ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+        ...(config.nodeEnv === 'development' && { stack: err.stack }),
     });
 }

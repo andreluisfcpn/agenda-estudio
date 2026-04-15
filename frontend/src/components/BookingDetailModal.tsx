@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react';
+import { getErrorMessage } from '../utils/errors';
+import { useState, useEffect, useCallback } from 'react';
 import { bookingsApi, AddOnConfig } from '../api/client';
 import { useUI } from '../context/UIContext';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
@@ -34,6 +35,7 @@ export interface BookingDetailData {
     peakViewers?: number | null;
     chatMessages?: number | null;
     audienceOrigin?: string | null;
+    holdExpiresAt?: string | null;
 }
 
 interface BookingDetailModalProps {
@@ -46,6 +48,65 @@ interface BookingDetailModalProps {
     contractDiscountPct?: number;
     /** Add-ons included at the contract level */
     contractAddOns?: string[];
+}
+
+function HoldBanner({ expiresAt, onExpire }: { expiresAt: string; onExpire: () => void }) {
+    const [remaining, setRemaining] = useState(() => {
+        const diff = new Date(expiresAt).getTime() - Date.now();
+        return Math.max(0, Math.floor(diff / 1000));
+    });
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            const diff = new Date(expiresAt).getTime() - Date.now();
+            const secs = Math.max(0, Math.floor(diff / 1000));
+            setRemaining(secs);
+            if (secs <= 0) { clearInterval(timer); onExpire(); }
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [expiresAt, onExpire]);
+
+    const mins = Math.floor(remaining / 60);
+    const secs = remaining % 60;
+    const pct = Math.max(0, (remaining / 600) * 100);
+    const color = remaining <= 60 ? '#ef4444' : remaining <= 180 ? '#f59e0b' : '#d97706';
+
+    return (
+        <div style={{
+            background: 'rgba(217, 119, 6, 0.1)', border: '1px solid rgba(217, 119, 6, 0.2)',
+            borderLeft: '3px solid #d97706', padding: '14px 16px', borderRadius: 'var(--radius-sm)',
+            marginBottom: '16px',
+        }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                <div style={{ flex: 1 }}>
+                    <h4 style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#d97706', marginBottom: '4px' }}>
+                        ⏳ Aguardando Pagamento
+                    </h4>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: 0 }}>
+                        Complete o pagamento para confirmar. Se o tempo esgotar, o horário volta a ficar disponível.
+                    </p>
+                </div>
+                <div style={{
+                    display: 'flex', alignItems: 'baseline', gap: '2px',
+                    fontSize: '1.5rem', fontWeight: 800, fontVariantNumeric: 'tabular-nums',
+                    color, minWidth: '65px', justifyContent: 'center',
+                }}>
+                    <span>{String(mins).padStart(2, '0')}</span>
+                    <span style={{ opacity: 0.5, fontSize: '1.25rem' }}>:</span>
+                    <span>{String(secs).padStart(2, '0')}</span>
+                </div>
+            </div>
+            <div style={{
+                height: 4, borderRadius: 2, background: 'var(--bg-elevated)',
+                marginTop: '8px', overflow: 'hidden',
+            }}>
+                <div style={{
+                    height: '100%', borderRadius: 2, background: color,
+                    width: `${pct}%`, transition: 'width 1s linear, background 0.3s ease',
+                }} />
+            </div>
+        </div>
+    );
 }
 
 export default function BookingDetailModal({
@@ -111,8 +172,8 @@ export default function BookingDetailModal({
             });
             showToast('Gravação atualizada!');
             onSaved();
-        } catch (err: any) {
-            showAlert({ message: err.message, type: 'error' });
+        } catch (err: unknown) {
+            showAlert({ message: getErrorMessage(err), type: 'error' });
         } finally {
             setSaving(false);
         }
@@ -125,8 +186,8 @@ export default function BookingDetailModal({
             await bookingsApi.reschedule(booking.id, { date: rescheduleDate, startTime: rescheduleTime });
             showToast('Reagendado com sucesso!');
             onSaved();
-        } catch (err: any) {
-            setRescheduleError(err.message);
+        } catch (err: unknown) {
+            setRescheduleError(getErrorMessage(err));
         } finally {
             setRescheduling(false);
         }
@@ -139,8 +200,8 @@ export default function BookingDetailModal({
             showToast(res.message);
             setLocalAddOns(prev => [...prev, addonKey]);
             onSaved();
-        } catch (err: any) {
-            showAlert({ message: err.message, type: 'error' });
+        } catch (err: unknown) {
+            showAlert({ message: getErrorMessage(err), type: 'error' });
         } finally {
             setSaving(false);
         }
@@ -151,37 +212,29 @@ export default function BookingDetailModal({
     return (
         <ModalOverlay onClose={onClose}>
             <div className="modal" style={{ maxWidth: 540 }}>
-                <h2 className="modal-title">📌 Detalhes do Agendamento</h2>
-
-                {/* Summary rows */}
-                <div style={{ display: 'grid', gap: '10px', marginBottom: '16px' }}>
-                    {[
-                        ['📅 Data', displayDate],
-                        ['🕐 Horário', `${booking.startTime} — ${booking.endTime}`],
-                    ].map(([label, val]) => (
-                        <div key={label} style={{
-                            display: 'flex', justifyContent: 'space-between', padding: '10px 14px',
-                            background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)',
-                        }}>
-                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem' }}>{label}</span>
-                            <span style={{ fontWeight: 600 }}>{val}</span>
-                        </div>
-                    ))}
-                    <div style={{
-                        display: 'flex', justifyContent: 'space-between', padding: '10px 14px',
-                        background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)',
-                    }}>
-                        <span style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem' }}>🏷️ Faixa</span>
-                        <span className={`badge badge-${booking.tierApplied.toLowerCase()}`}>{booking.tierApplied}</span>
+                {/* Header */}
+                <div style={{
+                    textAlign: 'center', padding: '20px 0 16px',
+                    borderBottom: '1px solid var(--border-subtle)', marginBottom: '20px',
+                }}>
+                    <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                        Detalhes do Agendamento
                     </div>
-                    <div style={{
-                        display: 'flex', justifyContent: 'space-between', padding: '10px 14px',
-                        background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)',
-                    }}>
-                        <span style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem' }}>📊 Status</span>
-                        <span style={{ fontWeight: 600, fontSize: '0.8125rem' }}>{statusLabel(booking.status)}</span>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 800 }}>
+                        📅 {displayDate} às {booking.startTime}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+                        <span className={`badge badge-${booking.tierApplied.toLowerCase()}`}>{booking.tierApplied}</span>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>· {booking.startTime} — {booking.endTime}</span>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>·</span>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{statusLabel(booking.status)}</span>
                     </div>
                 </div>
+
+                {/* Hold countdown banner for avulso bookings awaiting payment */}
+                {booking.holdExpiresAt && new Date(booking.holdExpiresAt).getTime() > Date.now() && (
+                    <HoldBanner expiresAt={booking.holdExpiresAt} onExpire={onSaved} />
+                )}
 
                 {/* TABS */}
                 <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>

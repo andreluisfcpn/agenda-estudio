@@ -1,3 +1,4 @@
+import { getErrorMessage } from '../utils/errors';
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -81,8 +82,8 @@ export default function PublicCalendarGrid({ onSlotSelect }: { onSlotSelect?: (d
                 }
             }
             setSelectedIdx(firstAvailIdx);
-        } catch (err: any) {
-            setError(err.message || 'Erro ao carregar disponibilidade');
+        } catch (err: unknown) {
+            setError(getErrorMessage(err) || 'Erro ao carregar disponibilidade');
         } finally {
             setLoading(false);
         }
@@ -112,8 +113,8 @@ export default function PublicCalendarGrid({ onSlotSelect }: { onSlotSelect?: (d
     return (
         <div style={{
             background: 'rgba(255,255,255,0.02)',
-            borderRadius: '32px',
-            padding: '40px',
+            borderRadius: 'clamp(20px, 4vw, 32px)',
+            padding: 'clamp(16px, 4vw, 40px)',
             border: '1px solid rgba(255,255,255,0.05)',
             position: 'relative',
             minHeight: '380px',
@@ -148,7 +149,8 @@ export default function PublicCalendarGrid({ onSlotSelect }: { onSlotSelect?: (d
                                 padding: '10px 14px', borderRadius: '14px', border: 'none', cursor: isClosed ? 'default' : 'pointer',
                                 background: isSelected ? COLORS.primary : 'rgba(255,255,255,0.04)',
                                 color: isClosed ? 'rgba(255,255,255,0.2)' : isSelected ? '#fff' : 'rgba(255,255,255,0.7)',
-                                fontFamily: 'inherit', transition: 'all 0.2s', flexShrink: 0, minWidth: '52px',
+                                fontFamily: 'inherit', transition: 'all 0.2s', flexShrink: 0, minWidth: '48px', minHeight: '56px',
+                                WebkitTapHighlightColor: 'transparent',
                             }}
                         >
                             <span style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
@@ -215,6 +217,8 @@ export default function PublicCalendarGrid({ onSlotSelect }: { onSlotSelect?: (d
                                         opacity: isActuallyAvailable ? 1 : 0.35,
                                         cursor: isActuallyAvailable ? 'pointer' : 'default',
                                         transition: 'all 0.2s',
+                                        minHeight: '56px',
+                                        WebkitTapHighlightColor: 'transparent',
                                     }}
                                     onClick={() => isActuallyAvailable && onSlotSelect && onSlotSelect(selectedDay.date, slot)}
                                 >
@@ -245,8 +249,9 @@ export default function PublicCalendarGrid({ onSlotSelect }: { onSlotSelect?: (d
 }
 
 const navBtnStyle: React.CSSProperties = {
-    width: '36px', height: '36px', borderRadius: '10px',
+    width: '44px', height: '44px', borderRadius: '12px',
     background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)',
     color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
     cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.2s',
+    WebkitTapHighlightColor: 'transparent',
 };

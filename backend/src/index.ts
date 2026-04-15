@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
 import path from 'path';
 import { config } from './config';
@@ -14,6 +16,12 @@ import blockedSlotRoutes from './modules/blocked-slots/routes';
 import pricingRoutes from './modules/pricing/routes';
 import paymentRoutes from './modules/payments/routes';
 import { financeRouter } from './modules/finance/routes';
+import notificationRoutes from './modules/notifications/routes';
+import reportRoutes from './modules/reports/routes';
+import integrationRoutes from './modules/integrations/routes';
+import webhookRoutes from './modules/webhooks/routes';
+import stripeRoutes from './modules/stripe/routes';
+import pushRoutes from './modules/push/routes';
 
 import { prisma } from './lib/prisma';
 
@@ -22,13 +30,47 @@ const app = express();
 
 // ─── Middleware ──────────────────────────────────────────
 
+// ─── Security ───────────────────────────────────────────
+
+app.use(helmet({
+    contentSecurityPolicy: config.nodeEnv === 'production' ? undefined : false,
+    crossOriginEmbedderPolicy: false,
+}));
+
 app.use(cors({
     origin: config.frontendUrl,
     credentials: true,
 }));
 
+// ─── Rate Limiting ──────────────────────────────────────
+
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 15,
+    message: { error: 'Muitas tentativas. Tente novamente em 15 minutos.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
+const otpLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    message: { error: 'Muitos códigos solicitados. Aguarde 15 minutos.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
+const apiLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // 1 minute
+    max: 300,
+    message: { error: 'Requisições excessivas. Aguarde 1 minuto.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
+// ─── Body Parsing ───────────────────────────────────────
+
 // Stripe webhooks need the raw body for signature verification.
-// Use express.raw() for the webhook path, express.json() for everything else.
 app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
 app.use(express.json({
     verify: (req: any, _res, buf) => {
@@ -51,6 +93,12 @@ app.get('/api/health', (_req, res) => {
 
 // ─── Routes ─────────────────────────────────────────────
 
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/otp', otpLimiter);
+app.use('/api/auth/register/send-code', otpLimiter);
+app.use('/api', apiLimiter);
+
 app.use('/api/auth', authRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/contracts', contractRoutes);
@@ -59,21 +107,12 @@ app.use('/api/blocked-slots', blockedSlotRoutes);
 app.use('/api/pricing', pricingRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/finance', financeRouter);
-
-import notificationRoutes from './modules/notifications/routes';
 app.use('/api/notifications', notificationRoutes);
-
-import reportRoutes from './modules/reports/routes';
 app.use('/api/reports', reportRoutes);
-
-import integrationRoutes from './modules/integrations/routes';
 app.use('/api/integrations', integrationRoutes);
-
-import webhookRoutes from './modules/webhooks/routes';
 app.use('/api/webhooks', webhookRoutes);
-
-import stripeRoutes from './modules/stripe/routes';
 app.use('/api/stripe', stripeRoutes);
+app.use('/api/push', pushRoutes);
 
 // ─── Serve Frontend (Production) ────────────────────────
 
@@ -99,7 +138,14 @@ app.listen(config.port, () => {
 
     // Phase 2 Auto-Completion Cronjob
     // This runs on startup and every 5 minutes, flagging past-due events as COMPLETED.
+    // Uses Redis lock to prevent duplicate execution across multiple instances.
+    const { redis } = require('./lib/redis');
+
     const runCron = async () => {
+        const lockKey = 'cron:auto-complete:lock';
+        const lockAcquired = await redis.set(lockKey, 'running', 'EX', 240, 'NX');
+        if (lockAcquired !== 'OK') return; // Another instance is running this job
+
         try {
             console.log(`[Cron] Checking for finished bookings to auto-complete...`);
             const now = new Date();
@@ -110,7 +156,7 @@ app.listen(config.port, () => {
             const toComplete = bookings.filter(b => {
                 const [h, m] = b.endTime.split(':').map(Number);
                 const endDateTime = new Date(b.date);
-                endDateTime.setUTCHours(h, m, 0, 0); // Event timezone
+                endDateTime.setUTCHours(h, m, 0, 0);
                 return endDateTime.getTime() < now.getTime();
             });
 
@@ -123,17 +169,44 @@ app.listen(config.port, () => {
             }
         } catch (err) {
             console.error(`[Cron Error] Failed to process auto-completions:`, err);
+        } finally {
+            await redis.del(lockKey);
         }
     };
 
-    // runCron(); // Temporarily disabled on startup to prevent sync block on typescript compilation errors during dev
     setInterval(runCron, 5 * 60 * 1000);
 
     // Hold Expiration Cronjob — clean expired HELD bookings & AWAITING_PAYMENT contracts every 60s
     import('./jobs/cleanExpiredHolds').then(({ cleanExpiredHolds }) => {
-        setInterval(cleanExpiredHolds, 60 * 1000);
+        const runHoldCleanup = async () => {
+            const holdLockKey = 'cron:hold-cleanup:lock';
+            const lockAcquired = await redis.set(holdLockKey, 'running', 'EX', 50, 'NX');
+            if (lockAcquired !== 'OK') return;
+            try {
+                await cleanExpiredHolds();
+            } finally {
+                await redis.del(holdLockKey);
+            }
+        };
+        setInterval(runHoldCleanup, 60 * 1000);
         console.log('   ⏰ Hold cleanup job registered (every 60s)');
     }).catch(err => console.error('[HOLD-CLEANUP] Failed to load job:', err));
+
+    // Push Notification Cronjob — checks & sends push every 15 minutes
+    import('./jobs/pushNotificationJob').then(({ runPushNotificationJob }) => {
+        const runPushJob = async () => {
+            const pushLockKey = 'cron:push-notif:lock';
+            const lockAcquired = await redis.set(pushLockKey, 'running', 'EX', 840, 'NX');
+            if (lockAcquired !== 'OK') return;
+            try {
+                await runPushNotificationJob();
+            } finally {
+                await redis.del(pushLockKey);
+            }
+        };
+        setInterval(runPushJob, 15 * 60 * 1000);
+        console.log('   📱 Push notification job registered (every 15min)');
+    }).catch(err => console.error('[PUSH-JOB] Failed to load:', err));
 });
 
 export default app;

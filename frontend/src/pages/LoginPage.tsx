@@ -1,6 +1,8 @@
+import { getErrorMessage } from '../utils/errors';
 import React, { useState, useEffect, FormEvent } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { pricingApi } from '../api/client';
+import { Loader2, LogIn, UserPlus, ShieldCheck, User } from 'lucide-react';
 
 export default function LoginPage() {
     const { login, register } = useAuth();
@@ -31,8 +33,8 @@ export default function LoginPage() {
             } else {
                 await login(email, password);
             }
-        } catch (err: any) {
-            setError(err.message || 'Erro ao fazer login');
+        } catch (err: unknown) {
+            setError(getErrorMessage(err) || 'Erro ao fazer login');
         } finally {
             setLoading(false);
         }
@@ -108,8 +110,8 @@ export default function LoginPage() {
                         />
                     </div>
 
-                    <button className="btn btn-primary" type="submit" disabled={loading}>
-                        {loading ? '⏳ Aguarde...' : isRegister ? '🚀 Criar Conta' : '🔓 Entrar'}
+                    <button className="btn btn-primary" type="submit" disabled={loading} style={{ minHeight: '48px' }}>
+                        {loading ? <><Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> Aguarde...</> : isRegister ? <><UserPlus size={18} /> Criar Conta</> : <><LogIn size={18} /> Entrar</>}
                     </button>
                 </form>
 
@@ -126,10 +128,10 @@ export default function LoginPage() {
                 </div>
 
                 <div style={{ marginTop: '24px', padding: '16px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    <strong style={{ color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>🧪 Login Rápido (Contas de Teste):</strong>
+                    <strong style={{ color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}><ShieldCheck size={14} /> Login Rápido (Teste):</strong>
                     <div style={{ display: 'grid', gap: '6px' }}>
-                        <button type="button" className="btn btn-ghost btn-sm" style={{ justifyContent: 'flex-start', fontSize: '0.75rem' }} onClick={() => { setEmail('admin@studio.com'); setPassword('admin123'); }}>🛡️ Admin [admin@studio.com] (admin123)</button>
-                        <button type="button" className="btn btn-ghost btn-sm" style={{ justifyContent: 'flex-start', fontSize: '0.75rem' }} onClick={() => { setEmail('cliente@teste.com'); setPassword('cliente123'); }}>👤 Cliente Principal [cliente@teste.com] (cliente123)</button>
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ justifyContent: 'flex-start', fontSize: '0.75rem', minHeight: '36px' }} onClick={() => { setEmail('admin@studio.com'); setPassword('admin123'); }}><ShieldCheck size={13} /> Admin [admin@studio.com]</button>
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ justifyContent: 'flex-start', fontSize: '0.75rem', minHeight: '36px' }} onClick={() => { setEmail('cliente@teste.com'); setPassword('cliente123'); }}><User size={13} /> Cliente [cliente@teste.com]</button>
                     </div>
                 </div>
             </div>

@@ -1,14 +1,15 @@
+import { getErrorMessage } from '../utils/errors';
 // ─── InlineCheckout — Unified Payment Component ─────────
-// Reusable component that embeds Cartão (Stripe), PIX (Cora), Boleto (Cora)
-// inline within any modal. Drop-in replacement for scattered payment logic.
-//
-// Gateway routing: Cartão → Stripe | PIX/Boleto → Cora
+// Reusable component: Cartão (Stripe) + PIX (Cora)
+// Gateway routing: Cartão → Stripe | PIX → Cora
+// Boleto removed from client UI (kept in backend for admin)
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import QRCodeLib from 'qrcode';
 import StripeCardForm from './StripeCardForm';
-import { stripeApi, paymentsApi } from '../api/client';
-import { getPaymentMethods, type PaymentMethodKey } from '../constants/paymentMethods';
-import { Copy, Check, ExternalLink, Lock, QrCode, FileText, CreditCard } from 'lucide-react';
+import { stripeApi, paymentsApi, type SavedCard } from '../api/client';
+import { getClientPaymentMethods, getPaymentMethods, type PaymentMethodKey } from '../constants/paymentMethods';
+import { Copy, Check, Lock, QrCode, CreditCard, Plus, ShieldCheck } from 'lucide-react';
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -29,7 +30,9 @@ interface InlineCheckoutProps {
     onCancel?: () => void;
     /** Which methods to show. Default: ['CARTAO', 'PIX'] */
     allowedMethods?: PaymentMethodKey[];
-    /** Function to create the Payment record on-the-fly (for modals that don't have one yet) */
+    /** If true, show all methods including BOLETO (admin mode) */
+    isAdmin?: boolean;
+    /** Function to create the Payment record on-the-fly */
     createPaymentFn?: (method: 'CARTAO' | 'PIX' | 'BOLETO') => Promise<{
         paymentId: string;
         clientSecret?: string;
@@ -41,10 +44,22 @@ interface InlineCheckoutProps {
     }>;
 }
 
-type ActiveTab = 'CARTAO' | 'PIX' | 'BOLETO';
+type ActiveTab = 'CARTAO' | 'PIX';
 
 function formatBRL(cents: number): string {
     return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
+}
+
+function getBrandIcon(brand: string): string {
+    const brands: Record<string, string> = {
+        visa: 'Visa',
+        mastercard: 'MC',
+        amex: 'Amex',
+        elo: 'Elo',
+        hipercard: 'Hiper',
+        discover: 'Disc',
+    };
+    return brands[brand.toLowerCase()] || brand.charAt(0).toUpperCase();
 }
 
 // ─── Component ──────────────────────────────────────────
@@ -58,17 +73,20 @@ export default function InlineCheckout({
     onError,
     onCancel,
     allowedMethods = ['CARTAO', 'PIX'],
+    isAdmin = false,
     createPaymentFn,
 }: InlineCheckoutProps) {
-    const allMethods = getPaymentMethods();
+    const allMethods = isAdmin ? getPaymentMethods() : getClientPaymentMethods();
     const availableMethods = allMethods.filter(m => allowedMethods.includes(m.key));
-    const [activeTab, setActiveTab] = useState<ActiveTab>(availableMethods[0]?.key || 'CARTAO');
+    const [activeTab, setActiveTab] = useState<ActiveTab>(
+        (availableMethods[0]?.key as ActiveTab) || 'CARTAO'
+    );
 
     // Shared state
     const [processing, setProcessing] = useState(false);
     const [error, setError] = useState('');
 
-    // Cartão state
+    // Card state
     const [clientSecret, setClientSecret] = useState<string | null>(null);
     const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
     const [paymentId, setPaymentId] = useState<string | null>(externalPaymentId || null);
@@ -76,23 +94,49 @@ export default function InlineCheckout({
     const [installments, setInstallments] = useState(1);
     const [installmentPlans, setInstallmentPlans] = useState<{ count: number; perInstallment: number; total: number; feePercent: number; freeOfCharge: boolean }[]>([]);
 
+    // Saved cards state
+    const [savedCards, setSavedCards] = useState<SavedCard[]>([]);
+    const [selectedCard, setSelectedCard] = useState<string | null>('new');
+    const [loadingCards, setLoadingCards] = useState(true);
+    const [payingSavedCard, setPayingSavedCard] = useState(false);
+
     // PIX state
     const [pixString, setPixString] = useState<string | null>(null);
     const [pixQrBase64, setPixQrBase64] = useState<string | null>(null);
     const [pixCopied, setPixCopied] = useState(false);
     const pollIntervalRef = useRef<number | null>(null);
 
-    // Boleto state
-    const [boletoUrl, setBoletoUrl] = useState<string | null>(null);
-    const [barcode, setBarcode] = useState<string | null>(null);
-    const [barcodeCopied, setBarcodeCopied] = useState(false);
-
-    // Load installment plans when tab is CARTAO
+    // Generate QR Code locally from pixString
     useEffect(() => {
-        if (activeTab === 'CARTAO' && amount > 0) {
-            stripeApi.getInstallmentPlans({ amount, contractDurationMonths: contractDuration })
-                .then(res => setInstallmentPlans(res.plans))
-                .catch(() => {}); // Non-critical
+        if (!pixString) return;
+        QRCodeLib.toDataURL(pixString, {
+            width: 280,
+            margin: 2,
+            color: { dark: '#000000', light: '#ffffff' },
+            errorCorrectionLevel: 'M',
+        }).then(dataUrl => {
+            const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
+            setPixQrBase64(base64);
+        }).catch(() => {});
+    }, [pixString]);
+
+    // Load saved cards + installment plans when tab is CARTAO
+    useEffect(() => {
+        if (activeTab === 'CARTAO') {
+            setLoadingCards(true);
+            stripeApi.listPaymentMethods()
+                .then(res => {
+                    setSavedCards(res.paymentMethods || []);
+                    setSelectedCard('new');
+                })
+                .catch(() => setSavedCards([]))
+                .finally(() => setLoadingCards(false));
+
+            if (amount > 0) {
+                stripeApi.getInstallmentPlans({ amount, contractDurationMonths: contractDuration })
+                    .then(res => setInstallmentPlans(res.plans))
+                    .catch(() => {});
+            }
         }
     }, [activeTab, amount, contractDuration]);
 
@@ -107,26 +151,66 @@ export default function InlineCheckout({
 
     const startPolling = useCallback((pid: string) => {
         if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-
+        let attempts = 0;
+        const MAX_ATTEMPTS = 180; // 15 minutos (180 × 5s)
         pollIntervalRef.current = window.setInterval(async () => {
+            attempts++;
+            if (attempts >= MAX_ATTEMPTS) {
+                if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+                onError('Tempo de espera expirado. Verifique o status do seu pagamento.');
+                return;
+            }
             try {
                 const res = await paymentsApi.getStatus(pid);
                 if (res.status === 'PAID') {
                     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
                     onSuccess();
+                } else if (res.status === 'FAILED') {
+                    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+                    onError('Pagamento falhou. Tente novamente.');
                 }
-            } catch {
-                // Silently continue polling
-            }
+            } catch {}
         }, 5000);
-    }, [onSuccess]);
+    }, [onSuccess, onError]);
 
-    // ─── Tab: CARTÃO (Stripe) ───────────────────────────
+    // ─── CARD ───────────────────────────────────────────
 
     const initCardPayment = async () => {
         setProcessing(true);
         setError('');
         try {
+            // Saved card: charge directly
+            if (selectedCard && selectedCard !== 'new') {
+                setPayingSavedCard(true);
+                let pid = paymentId;
+                if (createPaymentFn) {
+                    const result = await createPaymentFn('CARTAO');
+                    pid = result.paymentId;
+                    setPaymentId(pid);
+                }
+                if (pid) {
+                    const result = await stripeApi.createPayment({
+                        paymentId: pid,
+                        installments,
+                        paymentMethod: 'cartao',
+                        savedPaymentMethodId: selectedCard,
+                    });
+                    setPaymentIntentId(result.paymentIntentId || null);
+                    // Verify payment was actually processed by Stripe
+                    if (result.paymentIntentId && pid) {
+                        const verifyResult = await stripeApi.verifyPayment({ paymentId: pid, paymentIntentId: result.paymentIntentId });
+                        if (verifyResult.status !== 'PAID') {
+                            throw new Error('Pagamento não confirmado pelo Stripe.');
+                        }
+                    }
+                    setPayingSavedCard(false);
+                    onSuccess();
+                    return;
+                }
+                setPayingSavedCard(false);
+            }
+
+            // New card flow: get clientSecret to show PaymentElement
             if (createPaymentFn) {
                 const result = await createPaymentFn('CARTAO');
                 setPaymentId(result.paymentId);
@@ -141,9 +225,11 @@ export default function InlineCheckout({
                 setClientSecret(result.clientSecret || null);
                 setPaymentIntentId(result.paymentIntentId || null);
             }
-        } catch (err: any) {
-            setError(err.message || 'Erro ao iniciar pagamento com cartão.');
-            onError(err.message || 'Erro ao iniciar pagamento com cartão.');
+        } catch (err: unknown) {
+            setPayingSavedCard(false);
+            const msg = getErrorMessage(err) || 'Erro ao iniciar pagamento com cartao.';
+            setError(msg);
+            onError(msg);
         } finally {
             setProcessing(false);
         }
@@ -156,33 +242,38 @@ export default function InlineCheckout({
             }
             onSuccess();
         } catch {
-            // Payment went through even if verify fails
-            onSuccess();
+            // Verify failed — payment may not have been processed
+            onError('Pagamento não pôde ser verificado. Verifique seu extrato antes de tentar novamente.');
         }
     };
 
-    // ─── Tab: PIX (Cora) ────────────────────────────────
+    // ─── PIX ────────────────────────────────────────────
 
     const initPixPayment = async () => {
         setProcessing(true);
         setError('');
         try {
-            let result: any;
+            let pid = paymentId;
             if (createPaymentFn) {
-                result = await createPaymentFn('PIX');
-                setPaymentId(result.paymentId);
-            } else if (paymentId) {
-                result = await stripeApi.createPayment({ paymentId, paymentMethod: 'pix' });
-            }
-            if (result) {
-                setPixString(result.pixString || null);
-                setPixQrBase64(result.qrCodeBase64 || null);
-                const pid = result.paymentId || paymentId;
+                const result = await createPaymentFn('PIX');
+                pid = result.paymentId;
+                setPaymentId(pid);
+                if (result.pixString) setPixString(result.pixString);
+                if (result.qrCodeBase64) setPixQrBase64(result.qrCodeBase64);
                 if (pid) startPolling(pid);
+            } else if (pid) {
+                const result = await stripeApi.createPayment({
+                    paymentId: pid,
+                    paymentMethod: 'pix',
+                });
+                if (result.pixString) setPixString(result.pixString);
+                if (result.qrCodeBase64) setPixQrBase64(result.qrCodeBase64);
+                startPolling(pid);
             }
-        } catch (err: any) {
-            setError(err.message || 'Erro ao gerar PIX.');
-            onError(err.message || 'Erro ao gerar PIX.');
+        } catch (err: unknown) {
+            const msg = getErrorMessage(err) || 'Erro ao gerar PIX.';
+            setError(msg);
+            onError(msg);
         } finally {
             setProcessing(false);
         }
@@ -196,92 +287,49 @@ export default function InlineCheckout({
         }
     };
 
-    // ─── Tab: BOLETO (Cora) ─────────────────────────────
-
-    const initBoletoPayment = async () => {
-        setProcessing(true);
-        setError('');
-        try {
-            let result: any;
-            if (createPaymentFn) {
-                result = await createPaymentFn('BOLETO');
-                setPaymentId(result.paymentId);
-            } else if (paymentId) {
-                result = await stripeApi.createPayment({ paymentId, paymentMethod: 'boleto' });
-            }
-            if (result) {
-                setBoletoUrl(result.boletoUrl || null);
-                setBarcode(result.barcode || null);
-                const pid = result.paymentId || paymentId;
-                if (pid) startPolling(pid);
-            }
-        } catch (err: any) {
-            setError(err.message || 'Erro ao gerar boleto.');
-            onError(err.message || 'Erro ao gerar boleto.');
-        } finally {
-            setProcessing(false);
-        }
-    };
-
-    const copyBarcode = () => {
-        if (barcode) {
-            navigator.clipboard.writeText(barcode);
-            setBarcodeCopied(true);
-            setTimeout(() => setBarcodeCopied(false), 3000);
-        }
-    };
-
     // ─── Render ──────────────────────────────────────────
-
-    const TAB_ICONS: Record<string, React.ReactNode> = {
-        CARTAO: <CreditCard size={16} />,
-        PIX: <QrCode size={16} />,
-        BOLETO: <FileText size={16} />,
-    };
 
     return (
         <div style={{ width: '100%' }}>
+            {/* Security Badge */}
+            <div className="checkout-security-top">
+                <ShieldCheck size={14} />
+                Pagamento seguro - Criptografia SSL
+            </div>
+
             {/* Amount Header */}
-            <div style={{
-                textAlign: 'center', padding: '16px', marginBottom: '16px',
-                background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--border-color)',
-            }}>
-                <div style={{ fontSize: '0.6875rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                    Total a Pagar
-                </div>
-                <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                    {formatBRL(amount)}
-                </div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                    {description}
-                </div>
+            <div className="checkout-amount">
+                <div className="checkout-amount-label">Total a Pagar</div>
+                <div className="checkout-amount-value">{formatBRL(amount)}</div>
+                <div className="checkout-amount-desc">{description}</div>
             </div>
 
             {/* Tab Navigation */}
             {availableMethods.length > 1 && (
-                <div style={{
-                    display: 'flex', gap: '4px', marginBottom: '16px',
-                    background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', padding: '4px',
-                }}>
-                    {availableMethods.map(pm => {
+                <div className="checkout-tabs">
+                    {availableMethods.filter(m => m.key === 'CARTAO' || m.key === 'PIX').map(pm => {
                         const isActive = activeTab === pm.key;
+                        const tabClass = pm.key === 'PIX' ? 'checkout-tab--pix' : 'checkout-tab--card';
                         return (
                             <button
                                 key={pm.key}
-                                onClick={() => { setActiveTab(pm.key); setError(''); }}
-                                style={{
-                                    flex: 1, padding: '10px 8px', border: 'none',
-                                    borderRadius: 'var(--radius-sm)', cursor: 'pointer',
-                                    background: isActive ? pm.color : 'transparent',
-                                    color: isActive ? '#fff' : 'var(--text-secondary)',
-                                    fontWeight: isActive ? 700 : 500,
-                                    fontSize: '0.8125rem',
-                                    transition: 'all 0.2s ease',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                                onClick={() => {
+                                    setActiveTab(pm.key as ActiveTab);
+                                    setError('');
+                                    if (pm.key === 'CARTAO') {
+                                        if (pollIntervalRef.current) {
+                                            clearInterval(pollIntervalRef.current);
+                                            pollIntervalRef.current = null;
+                                        }
+                                    } else {
+                                        setClientSecret(null);
+                                        setPaymentIntentId(null);
+                                    }
                                 }}
+                                className={`checkout-tab ${tabClass} ${isActive ? 'checkout-tab--active' : ''}`}
                             >
-                                {TAB_ICONS[pm.key]} {pm.shortLabel}
+                                {pm.key === 'CARTAO' ? <CreditCard size={16} /> : <QrCode size={16} />}
+                                {pm.key === 'CARTAO' ? 'Cartao' : 'PIX'}
                             </button>
                         );
                     })}
@@ -289,103 +337,121 @@ export default function InlineCheckout({
             )}
 
             {/* Error */}
-            {error && (
-                <div style={{
-                    padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: '12px',
-                    background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)',
-                    color: '#ef4444', fontSize: '0.8125rem', fontWeight: 600,
-                }}>
-                    ⚠️ {error}
-                </div>
-            )}
+            {error && <div className="checkout-error">{error}</div>}
 
-            {/* ══════════ TAB: CARTÃO ══════════ */}
+            {/* ═══════ TAB: CARTAO ═══════ */}
             {activeTab === 'CARTAO' && (
                 <div>
-                    {!clientSecret ? (
-                        <>
-                            {/* Payment type toggle */}
-                            <div style={{ fontWeight: 700, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                                Tipo de Cartão
-                            </div>
-                            <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
-                                {(['CREDIT', 'DEBIT'] as const).map(type => (
-                                    <button key={type}
-                                        onClick={() => { setPaymentType(type); if (type === 'DEBIT') setInstallments(1); }}
-                                        style={{
-                                            flex: 1, padding: '10px', borderRadius: 'var(--radius-sm)',
-                                            background: paymentType === type ? 'rgba(99, 91, 255, 0.1)' : 'var(--bg-secondary)',
-                                            border: `2px solid ${paymentType === type ? '#635BFF' : 'var(--border-subtle)'}`,
-                                            color: paymentType === type ? '#635BFF' : 'var(--text-secondary)',
-                                            fontWeight: 700, fontSize: '0.8125rem', cursor: 'pointer',
-                                            transition: 'all 0.2s ease',
-                                        }}
-                                    >
-                                        {type === 'CREDIT' ? '💳 Crédito' : '🏧 Débito'}
-                                    </button>
-                                ))}
-                            </div>
-
-                            {/* Installments (credit only) */}
-                            {paymentType === 'CREDIT' && installmentPlans.length > 0 && (
-                                <>
-                                    <div style={{ fontWeight: 700, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                                        Parcelamento
-                                    </div>
-                                    <div style={{ display: 'flex', gap: '6px', marginBottom: '14px', flexWrap: 'wrap' }}>
-                                        {installmentPlans.map(plan => (
-                                            <button key={plan.count}
-                                                onClick={() => setInstallments(plan.count)}
-                                                style={{
-                                                    flex: '1 0 calc(33% - 4px)', padding: '8px 6px', borderRadius: 'var(--radius-sm)',
-                                                    background: installments === plan.count ? 'rgba(99, 91, 255, 0.1)' : 'var(--bg-secondary)',
-                                                    border: `2px solid ${installments === plan.count ? '#635BFF' : 'var(--border-subtle)'}`,
-                                                    color: installments === plan.count ? '#635BFF' : 'var(--text-secondary)',
-                                                    fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer',
-                                                    transition: 'all 0.2s ease',
-                                                }}
-                                            >
-                                                {plan.count}x {formatBRL(plan.perInstallment)}
-                                                {plan.freeOfCharge && <span style={{ display: 'block', fontSize: '0.5625rem', opacity: 0.7 }}>s/ juros</span>}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </>
-                            )}
-
-                            {/* Proceed to Stripe */}
+                    {/* Step 1: Card Type */}
+                    <div className="checkout-section-label">Tipo de Cartao</div>
+                    <div className="checkout-type-toggle">
+                        {(['CREDIT', 'DEBIT'] as const).map(type => (
                             <button
-                                className="btn btn-primary"
-                                onClick={initCardPayment}
-                                disabled={processing}
-                                style={{
-                                    width: '100%', padding: '12px', fontWeight: 700,
-                                    background: '#635BFF', borderColor: '#635BFF',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                                key={type}
+                                onClick={() => {
+                                    setPaymentType(type);
+                                    if (type === 'DEBIT') setInstallments(1);
+                                    setSelectedCard('new');
+                                    setClientSecret(null);
                                 }}
+                                className={`checkout-type-btn ${paymentType === type ? 'checkout-type-btn--active' : ''}`}
                             >
-                                {processing ? (
-                                    <><span className="spinner" style={{ width: 16, height: 16 }} /> Preparando...</>
-                                ) : (
+                                <CreditCard size={16} />
+                                {type === 'CREDIT' ? 'Credito' : 'Debito'}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Step 2: Installments (credit only, dropdown) */}
+                    {paymentType === 'CREDIT' && installmentPlans.length > 0 && (
+                        <>
+                            <div className="checkout-section-label">Parcelamento</div>
+                            <select
+                                value={installments}
+                                onChange={(e) => setInstallments(Number(e.target.value))}
+                                className="checkout-installment-select"
+                            >
+                                {installmentPlans.map(plan => (
+                                    <option key={plan.count} value={plan.count}>
+                                        {plan.count}x de {formatBRL(plan.perInstallment)}
+                                        {plan.freeOfCharge ? ' (sem juros)' : plan.feePercent > 0 ? ` (${plan.feePercent}% juros)` : ''}
+                                        {' — Total: '}{formatBRL(plan.total)}
+                                    </option>
+                                ))}
+                            </select>
+                        </>
+                    )}
+
+                    {/* Step 3: Filtered Saved Cards + New Card */}
+                    {loadingCards ? (
+                        <div className="checkout-cards-loading">
+                            <span className="spinner" style={{ width: 16, height: 16 }} />
+                            Carregando cartoes...
+                        </div>
+                    ) : (() => {
+                        const fundingFilter = paymentType === 'CREDIT' ? 'credit' : 'debit';
+                        const filteredCards = savedCards.filter(c => c.funding === fundingFilter);
+                        return (
+                            <>
+                                {filteredCards.length > 0 && (
                                     <>
-                                        <Lock size={14} />
-                                        Pagar {installments > 1 ? `${installments}x ${formatBRL(Math.ceil(amount / installments))}` : formatBRL(amount)}
+                                        <div className="checkout-section-label">
+                                            {paymentType === 'CREDIT' ? 'Cartoes de Credito' : 'Cartoes de Debito'}
+                                        </div>
+                                        <div className="checkout-saved-cards">
+                                            {filteredCards.map(card => (
+                                                <button
+                                                    key={card.stripePaymentMethodId}
+                                                    onClick={() => { setSelectedCard(card.stripePaymentMethodId); setClientSecret(null); }}
+                                                    className={`checkout-saved-card ${selectedCard === card.stripePaymentMethodId ? 'checkout-saved-card--active' : ''}`}
+                                                >
+                                                    <div className="checkout-saved-card-info">
+                                                        <span className="checkout-saved-card-brand">{getBrandIcon(card.brand)}</span>
+                                                        <span className="checkout-saved-card-number">{'****'} {card.last4}</span>
+                                                        <span className="checkout-saved-card-exp">{String(card.expMonth).padStart(2, '0')}/{String(card.expYear).slice(-2)}</span>
+                                                        <span className={`checkout-saved-card-funding checkout-saved-card-funding--${card.funding}`}>
+                                                            {card.funding === 'credit' ? 'Credito' : 'Debito'}
+                                                        </span>
+                                                    </div>
+                                                    <div className={`checkout-saved-card-radio ${selectedCard === card.stripePaymentMethodId ? 'checkout-saved-card-radio--active' : ''}`}>
+                                                        {selectedCard === card.stripePaymentMethodId && <Check size={12} />}
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
                                     </>
                                 )}
-                            </button>
-                        </>
-                    ) : (
-                        /* Stripe Card Form */
-                        <div>
-                            <div style={{
-                                padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: '16px',
-                                background: 'rgba(99, 91, 255, 0.06)', border: '1px solid rgba(99, 91, 255, 0.2)',
-                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                            }}>
-                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                    {paymentType === 'DEBIT' ? '🏧 Débito' : `💳 Crédito ${installments > 1 ? `${installments}x` : ''}`}
+
+                                {/* New Card Option */}
+                                <div className="checkout-saved-cards" style={filteredCards.length > 0 ? { marginTop: 0 } : undefined}>
+                                    <button
+                                        onClick={() => setSelectedCard('new')}
+                                        className={`checkout-saved-card checkout-saved-card--new ${selectedCard === 'new' ? 'checkout-saved-card--active' : ''}`}
+                                    >
+                                        <div className="checkout-saved-card-info">
+                                            <span className="checkout-saved-card-brand"><Plus size={16} /></span>
+                                            <span className="checkout-saved-card-number">
+                                                {filteredCards.length > 0 ? 'Usar Outro Cartao' : `Cadastrar Cartao de ${paymentType === 'CREDIT' ? 'Credito' : 'Debito'}`}
+                                            </span>
+                                        </div>
+                                        <div className={`checkout-saved-card-radio ${selectedCard === 'new' ? 'checkout-saved-card-radio--active' : ''}`}>
+                                            {selectedCard === 'new' && <Check size={12} />}
+                                        </div>
+                                    </button>
+                                </div>
+                            </>
+                        );
+                    })()}
+
+                    {/* Inline Stripe Form (when "new" selected and clientSecret ready) */}
+                    {selectedCard === 'new' && clientSecret && (
+                        <div className="checkout-inline-form">
+                            <div className="checkout-stripe-summary">
+                                <span className="checkout-stripe-summary-label">
+                                    <CreditCard size={14} />
+                                    {paymentType === 'DEBIT' ? 'Debito' : `Credito ${installments > 1 ? `${installments}x` : ''}`}
                                 </span>
-                                <span style={{ fontWeight: 800, fontSize: '1rem', color: '#635BFF' }}>
+                                <span className="checkout-stripe-summary-value">
                                     {installments > 1 ? `${installments}x ${formatBRL(Math.ceil(amount / installments))}` : formatBRL(amount)}
                                 </span>
                             </div>
@@ -395,84 +461,88 @@ export default function InlineCheckout({
                                 onSuccess={handleCardSuccess}
                                 onError={(msg) => { setError(msg); setClientSecret(null); }}
                                 onCancel={() => setClientSecret(null)}
-                                submitLabel={`Pagar ${formatBRL(amount)}`}
+                                submitLabel={installments > 1
+                                    ? `Pagar ${installments}x ${formatBRL(Math.ceil(amount / installments))}`
+                                    : `Pagar ${formatBRL(amount)}`
+                                }
+                                showSaveCard={true}
                             />
                         </div>
+                    )}
+
+                    {/* Pay Button (saved card or initiate new card flow) */}
+                    {!(selectedCard === 'new' && clientSecret) && (
+                        <button
+                            onClick={initCardPayment}
+                            disabled={processing || payingSavedCard}
+                            className="checkout-pay-btn checkout-pay-btn--card"
+                        >
+                            {processing || payingSavedCard ? (
+                                <><span className="spinner" style={{ width: 16, height: 16 }} /> {payingSavedCard ? 'Processando...' : 'Preparando...'}</>
+                            ) : (
+                                <>
+                                    <Lock size={14} />
+                                    {selectedCard && selectedCard !== 'new'
+                                        ? `Pagar com **** ${savedCards.find(c => c.stripePaymentMethodId === selectedCard)?.last4 || ''} - ${
+                                            installments > 1 ? `${installments}x ${formatBRL(Math.ceil(amount / installments))}` : formatBRL(amount)
+                                        }`
+                                        : selectedCard === 'new'
+                                            ? 'Continuar com Novo Cartao'
+                                            : `Pagar ${formatBRL(amount)}`
+                                    }
+                                </>
+                            )}
+                        </button>
                     )}
                 </div>
             )}
 
-            {/* ══════════ TAB: PIX ══════════ */}
+            {/* ═══════ TAB: PIX ═══════ */}
             {activeTab === 'PIX' && (
                 <div>
                     {!pixString ? (
-                        <div style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: '3rem', marginBottom: '8px' }}>⚡</div>
-                            <p style={{ color: 'var(--text-muted)', fontSize: '0.8125rem', marginBottom: '16px' }}>
-                                Gere o QR Code PIX para pagamento instantâneo via Cora.
-                            </p>
+                        <div className="checkout-pix-intro">
+                            <div className="checkout-pix-icon">
+                                <QrCode size={24} />
+                            </div>
+                            <p>Gere o QR Code PIX para pagamento instantaneo.</p>
                             <button
-                                className="btn btn-primary"
                                 onClick={initPixPayment}
                                 disabled={processing}
-                                style={{
-                                    width: '100%', padding: '12px', fontWeight: 700,
-                                    background: '#22c55e', borderColor: '#22c55e',
-                                }}
+                                className="checkout-pay-btn checkout-pay-btn--pix"
                             >
                                 {processing ? (
-                                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                                        <span className="spinner" style={{ width: 16, height: 16 }} /> Gerando PIX...
-                                    </span>
+                                    <><span className="spinner" style={{ width: 16, height: 16 }} /> Gerando PIX...</>
                                 ) : (
-                                    `⚡ Gerar PIX — ${formatBRL(amount)}`
+                                    <>
+                                        <QrCode size={16} />
+                                        Gerar PIX - {formatBRL(amount)}
+                                    </>
                                 )}
                             </button>
                         </div>
                     ) : (
-                        <div style={{ textAlign: 'center' }}>
-                            {/* QR Code */}
+                        <div className="checkout-pix-result">
                             {pixQrBase64 ? (
-                                <div style={{
-                                    display: 'inline-block', padding: '16px', background: '#fff',
-                                    borderRadius: 'var(--radius-md)', marginBottom: '16px',
-                                }}>
-                                    <img src={`data:image/png;base64,${pixQrBase64}`} alt="QR Code PIX" style={{ width: 200, height: 200 }} />
+                                <div className="checkout-qr-wrapper">
+                                    <img src={`data:image/png;base64,${pixQrBase64}`} alt="QR Code PIX" />
                                 </div>
                             ) : (
-                                <div style={{
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    width: 200, height: 200, margin: '0 auto 16px', borderRadius: 'var(--radius-md)',
-                                    background: 'var(--bg-secondary)', border: '2px dashed var(--border-color)',
-                                }}>
-                                    <QrCode size={48} style={{ color: 'var(--text-muted)' }} />
+                                <div className="checkout-qr-loading">
+                                    <span className="spinner" style={{ width: 28, height: 28, borderColor: '#22c55e', borderTopColor: 'transparent' }} />
+                                    <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Gerando QR Code...</span>
                                 </div>
                             )}
 
-                            {/* Copia e Cola */}
-                            <div style={{
-                                padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: '12px',
-                                background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
-                                fontSize: '0.6875rem', color: 'var(--text-muted)', wordBreak: 'break-all',
-                                maxHeight: '60px', overflow: 'hidden',
-                            }}>
-                                {pixString}
-                            </div>
+                            <div className="checkout-pix-code">{pixString}</div>
                             <button
-                                className="btn btn-secondary btn-sm"
                                 onClick={copyPixString}
-                                style={{ width: '100%', marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                                className={`checkout-copy-btn ${pixCopied ? 'checkout-copy-btn--copied' : ''}`}
                             >
-                                {pixCopied ? <><Check size={14} /> Copiado!</> : <><Copy size={14} /> Copiar Código PIX</>}
+                                {pixCopied ? <><Check size={14} /> Copiado!</> : <><Copy size={14} /> Copiar Codigo PIX</>}
                             </button>
 
-                            {/* Polling indicator */}
-                            <div style={{
-                                padding: '12px', borderRadius: 'var(--radius-sm)',
-                                background: 'rgba(34, 197, 94, 0.06)', border: '1px solid rgba(34, 197, 94, 0.2)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                                fontSize: '0.8125rem', color: '#22c55e', fontWeight: 600,
-                            }}>
+                            <div className="checkout-polling checkout-polling--pix">
                                 <span className="spinner" style={{ width: 14, height: 14, borderColor: '#22c55e', borderTopColor: 'transparent' }} />
                                 Aguardando pagamento...
                             </div>
@@ -481,109 +551,9 @@ export default function InlineCheckout({
                 </div>
             )}
 
-            {/* ══════════ TAB: BOLETO ══════════ */}
-            {activeTab === 'BOLETO' && (
-                <div>
-                    {!boletoUrl ? (
-                        <div style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: '3rem', marginBottom: '8px' }}>📄</div>
-                            <p style={{ color: 'var(--text-muted)', fontSize: '0.8125rem', marginBottom: '16px' }}>
-                                Gere o boleto bancário via Cora. Compensação em até 3 dias úteis.
-                            </p>
-                            <button
-                                className="btn btn-primary"
-                                onClick={initBoletoPayment}
-                                disabled={processing}
-                                style={{
-                                    width: '100%', padding: '12px', fontWeight: 700,
-                                    background: '#f59e0b', borderColor: '#f59e0b', color: '#000',
-                                }}
-                            >
-                                {processing ? (
-                                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                                        <span className="spinner" style={{ width: 16, height: 16 }} /> Gerando Boleto...
-                                    </span>
-                                ) : (
-                                    `📄 Gerar Boleto — ${formatBRL(amount)}`
-                                )}
-                            </button>
-                        </div>
-                    ) : (
-                        <div>
-                            {/* Success State */}
-                            <div style={{
-                                padding: '20px', borderRadius: 'var(--radius-md)', marginBottom: '16px',
-                                background: 'rgba(245, 158, 11, 0.06)', border: '1px solid rgba(245, 158, 11, 0.2)',
-                                textAlign: 'center',
-                            }}>
-                                <div style={{ fontSize: '2rem', marginBottom: '8px' }}>✅</div>
-                                <div style={{ fontWeight: 700, fontSize: '0.9375rem', marginBottom: '4px' }}>
-                                    Boleto Gerado com Sucesso!
-                                </div>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                    Compensação em até 3 dias úteis após pagamento.
-                                </div>
-                            </div>
-
-                            {/* Barcode */}
-                            {barcode && (
-                                <>
-                                    <div style={{
-                                        padding: '10px 14px', borderRadius: 'var(--radius-sm)', marginBottom: '8px',
-                                        background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
-                                        fontSize: '0.75rem', color: 'var(--text-secondary)', fontFamily: 'monospace',
-                                        letterSpacing: '0.05em', textAlign: 'center',
-                                    }}>
-                                        {barcode}
-                                    </div>
-                                    <button
-                                        className="btn btn-secondary btn-sm"
-                                        onClick={copyBarcode}
-                                        style={{ width: '100%', marginBottom: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
-                                    >
-                                        {barcodeCopied ? <><Check size={14} /> Copiado!</> : <><Copy size={14} /> Copiar Código de Barras</>}
-                                    </button>
-                                </>
-                            )}
-
-                            {/* Open PDF */}
-                            <a
-                                href={boletoUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="btn btn-primary"
-                                style={{
-                                    width: '100%', padding: '12px', fontWeight: 700,
-                                    background: '#f59e0b', borderColor: '#f59e0b', color: '#000',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                                    textDecoration: 'none',
-                                }}
-                            >
-                                <ExternalLink size={14} /> Abrir Boleto (PDF)
-                            </a>
-
-                            {/* Polling */}
-                            <div style={{
-                                marginTop: '12px', padding: '10px', borderRadius: 'var(--radius-sm)',
-                                background: 'rgba(245, 158, 11, 0.06)', border: '1px solid rgba(245, 158, 11, 0.15)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                                fontSize: '0.75rem', color: '#f59e0b', fontWeight: 600,
-                            }}>
-                                <span className="spinner" style={{ width: 12, height: 12, borderColor: '#f59e0b', borderTopColor: 'transparent' }} />
-                                Aguardando compensação...
-                            </div>
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {/* Cancel Button */}
+            {/* Cancel */}
             {onCancel && (
-                <button
-                    className="btn btn-ghost btn-sm"
-                    onClick={onCancel}
-                    style={{ width: '100%', marginTop: '12px', fontSize: '0.75rem', color: 'var(--text-muted)' }}
-                >
+                <button onClick={onCancel} className="checkout-cancel-btn">
                     Cancelar
                 </button>
             )}

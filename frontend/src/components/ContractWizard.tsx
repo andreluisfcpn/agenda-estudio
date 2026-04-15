@@ -1,8 +1,9 @@
+import { getErrorMessage } from '../utils/errors';
 import React, { useState, useEffect } from 'react';
 import ModalOverlay from './ModalOverlay';
 import { PricingConfig, AddOnConfig, bookingsApi, contractsApi, Slot, pricingApi, stripeApi } from '../api/client';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
-import { getPaymentMethods, type PaymentMethodKey } from '../constants/paymentMethods';
+import { getClientPaymentMethods, type PaymentMethodKey } from '../constants/paymentMethods';
 import InlineCheckout from './InlineCheckout';
 import StripeCardForm from './StripeCardForm';
 
@@ -44,7 +45,7 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
 
     // Step 3: Terms + Payment
     const [acceptedTerms, setAcceptedTerms] = useState(false);
-    const [paymentMethod, setPaymentMethod] = useState<'CARTAO' | 'PIX' | 'BOLETO' | null>(null);
+    const [paymentMethod, setPaymentMethod] = useState<'CARTAO' | 'PIX' | null>(null);
     const [addons, setAddons] = useState<AddOnConfig[]>([]);
     const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
 
@@ -135,14 +136,14 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
             if (res.clientSecret && paymentMethod === 'CARTAO') {
                 setCardClientSecret(res.clientSecret);
                 setStep(8);
-            } else if (paymentMethod === 'PIX' || paymentMethod === 'BOLETO') {
-                // Route to step 8 where InlineCheckout handles PIX/Boleto via Cora
+            } else if (paymentMethod === 'PIX') {
+                // Route to step 8 where InlineCheckout handles PIX via Cora
                 setStep(8);
             } else {
                 setStep(6);
             }
-        } catch (err: any) {
-            setError(err.message || 'Erro ao processar criação do contrato');
+        } catch (err: unknown) {
+            setError(getErrorMessage(err) || 'Erro ao processar criação do contrato');
             setStep(conflicts.length > 0 ? 7 : 4);
         } finally {
             setSubmitting(false);
@@ -187,8 +188,8 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
 
             // Normal empty conflicts flow
             await executeCreation([]);
-        } catch (err: any) {
-            setError(err.message || 'Erro ao validar agenda');
+        } catch (err: unknown) {
+            setError(getErrorMessage(err) || 'Erro ao validar agenda');
             setStep(4);
             setSubmitting(false);
         }
@@ -273,12 +274,12 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                                 />
                             </>
                         ) : (
-                            /* PIX/Boleto: use InlineCheckout */
+                            /* PIX: use InlineCheckout */
                             <InlineCheckout
                                 amount={monthlyTotal}
                                 description={`1ª parcela - Contrato ${duration} meses`}
                                 contractDuration={duration}
-                                allowedMethods={paymentMethod === 'PIX' ? ['PIX'] : paymentMethod === 'BOLETO' ? ['BOLETO'] : ['CARTAO', 'PIX']}
+                                allowedMethods={paymentMethod === 'PIX' ? ['PIX'] : ['CARTAO', 'PIX']}
                                 onSuccess={() => setStep(6)}
                                 onError={(msg) => { setError(msg); setStep(4); }}
                                 onCancel={() => setStep(6)}
@@ -681,7 +682,7 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                             <div style={{ fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '14px' }}>Opções de Pagamento (Formato Final)</div>
 
                             {/* Payment Method Cards */}
-                            {getPaymentMethods().map(pm => {
+                            {getClientPaymentMethods().map(pm => {
                                 const isSelected = paymentMethod === pm.key;
                                 let displayPrice = '';
                                 let subPrice = '';
@@ -705,7 +706,7 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                                 }
 
                                 return (
-                                    <div key={pm.key} onClick={() => setPaymentMethod(pm.key as 'CARTAO' | 'PIX' | 'BOLETO')}
+                                    <div key={pm.key} onClick={() => setPaymentMethod(pm.key as 'CARTAO' | 'PIX')}
                                         style={{
                                             padding: '12px 14px', borderRadius: 'var(--radius-sm)', marginBottom: '10px', cursor: 'pointer',
                                             background: isSelected ? pm.bgActive : pm.bgInactive,
