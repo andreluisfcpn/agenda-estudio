@@ -36,7 +36,7 @@ FROM deps AS backend-build
 WORKDIR /app
 
 # Copy Prisma schema + config first (needed for prisma generate)
-COPY backend/prisma/         ./backend/prisma/
+COPY backend/prisma/          ./backend/prisma/
 COPY backend/prisma.config.ts ./backend/
 
 # Generate Prisma client (outputs to backend/src/generated/prisma/)
@@ -63,16 +63,22 @@ COPY frontend/package.json ./frontend/
 RUN npm ci --omit=dev --workspace=backend && \
     npm cache clean --force
 
-# ── 4.2  Install Prisma CLI (needed for migrate deploy at startup)
-#    prisma is in devDeps, so we install it globally for the CLI only
-RUN npm install -g prisma@7
+# ── 4.2  Prisma CLI — copy from build stage (avoids 1GB+ global install)
+#    prisma is a devDep so it's not installed by --omit=dev.
+#    We copy only the prisma CLI + its @prisma/* peer packages from deps.
+COPY --from=deps /app/node_modules/prisma/   ./node_modules/prisma/
+COPY --from=deps /app/node_modules/.package-lock.json ./node_modules/.package-lock.json
+
+# Copy all @prisma scoped packages that prisma CLI needs
+# (engines, config, internals, etc. — package names vary by version)
+RUN mkdir -p ./node_modules/@prisma
+COPY --from=deps /app/node_modules/@prisma/ ./node_modules/@prisma/
 
 # ── 4.3  Prisma schema, migrations & config ──────────────────
 COPY backend/prisma/          ./backend/prisma/
 COPY backend/prisma.config.ts ./backend/
 
 # ── 4.4  Copy generated Prisma Client from build stage ───────
-#    This avoids running prisma generate in production
 COPY --from=backend-build /app/backend/src/generated/ ./backend/src/generated/
 
 # ── 4.5  Copy compiled backend JS ────────────────────────────
@@ -102,4 +108,4 @@ HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
     CMD wget -qO- http://localhost:3001/api/health || exit 1
 
 # ── 4.11 Start: migrate then serve ──────────────────────────
-CMD sh -c "cd backend && prisma migrate deploy && node dist/index.js"
+CMD ["sh", "-c", "cd backend && npx prisma migrate deploy && node dist/index.js"]
