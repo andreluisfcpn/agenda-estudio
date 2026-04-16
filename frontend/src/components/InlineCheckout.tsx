@@ -127,8 +127,11 @@ export default function InlineCheckout({
             setLoadingCards(true);
             stripeApi.listPaymentMethods()
                 .then(res => {
-                    setSavedCards(res.paymentMethods || []);
-                    setSelectedCard('new');
+                    const methods = res.paymentMethods || [];
+                    setSavedCards(methods);
+                    // Auto-select the default card, or 'new' if none
+                    const defaultCard = methods.find(c => c.isDefault);
+                    setSelectedCard(defaultCard ? defaultCard.stripePaymentMethodId : 'new');
                 })
                 .catch(() => setSavedCards([]))
                 .finally(() => setLoadingCards(false));
@@ -407,14 +410,23 @@ export default function InlineCheckout({
                                                     key={card.stripePaymentMethodId}
                                                     onClick={() => { setSelectedCard(card.stripePaymentMethodId); setClientSecret(null); }}
                                                     className={`checkout-saved-card ${selectedCard === card.stripePaymentMethodId ? 'checkout-saved-card--active' : ''}`}
+                                                    style={card.isDefault ? { borderColor: 'rgba(16, 185, 129, 0.5)', background: 'rgba(16, 185, 129, 0.06)' } : undefined}
                                                 >
                                                     <div className="checkout-saved-card-info">
                                                         <span className="checkout-saved-card-brand">{getBrandIcon(card.brand)}</span>
                                                         <span className="checkout-saved-card-number">{'****'} {card.last4}</span>
                                                         <span className="checkout-saved-card-exp">{String(card.expMonth).padStart(2, '0')}/{String(card.expYear).slice(-2)}</span>
-                                                        <span className={`checkout-saved-card-funding checkout-saved-card-funding--${card.funding}`}>
-                                                            {card.funding === 'credit' ? 'Credito' : 'Debito'}
-                                                        </span>
+                                                        {card.isDefault ? (
+                                                            <span style={{
+                                                                fontSize: '0.6rem', fontWeight: 800, letterSpacing: '0.04em',
+                                                                background: 'linear-gradient(135deg, #10b981, #059669)',
+                                                                color: '#fff', padding: '2px 7px', borderRadius: '6px',
+                                                            }}>PADRÃO</span>
+                                                        ) : (
+                                                            <span className={`checkout-saved-card-funding checkout-saved-card-funding--${card.funding}`}>
+                                                                {card.funding === 'credit' ? 'Credito' : 'Debito'}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                     <div className={`checkout-saved-card-radio ${selectedCard === card.stripePaymentMethodId ? 'checkout-saved-card-radio--active' : ''}`}>
                                                         {selectedCard === card.stripePaymentMethodId && <Check size={12} />}

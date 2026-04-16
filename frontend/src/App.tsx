@@ -83,6 +83,7 @@ function Layout({ children }: { children: React.ReactNode }) {
             <AmbientBackground />
             <Topbar
                 onToggleSidebar={toggleSidebar}
+                onProfileClick={() => setShowProfile(true)}
             />
             <Sidebar 
                 collapsed={sidebarCollapsed} 

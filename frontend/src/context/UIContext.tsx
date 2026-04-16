@@ -94,12 +94,13 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
 
             {/* Global Toast Render */}
             {toast && (
-                <div style={{
+                <div className="global-toast" style={{
                     position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 10001,
                     padding: '12px 24px', borderRadius: 'var(--radius-md)',
                     background: toast.type === 'error' ? 'var(--status-blocked)' : 'var(--tier-comercial)',
                     color: '#fff', fontWeight: 600, boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-                    animation: 'slideUp 0.3s ease-out', display: 'flex', alignItems: 'center', gap: '10px'
+                    animation: 'slideUp 0.3s ease-out', display: 'flex', alignItems: 'center', gap: '10px',
+                    maxWidth: 'calc(100vw - 32px)',
                 }}>
                     {toast.type === 'error' ? '❌' : '✅'} {toast.message}
                 </div>

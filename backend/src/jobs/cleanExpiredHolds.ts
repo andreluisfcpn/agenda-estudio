@@ -80,6 +80,13 @@ export async function cleanExpiredHolds() {
 
     for (const c of orphanedContracts) {
         try {
+            // Re-verify status to prevent race condition with payment webhook
+            const fresh = await prisma.contract.findUnique({ where: { id: c.id } });
+            if (!fresh || fresh.status !== 'AWAITING_PAYMENT') {
+                console.log(`[HOLD-CLEANUP] Contract ${c.id} status changed (now ${fresh?.status}), skipping cleanup`);
+                continue;
+            }
+
             // Delete the payment(s)
             await prisma.payment.deleteMany({ where: { contractId: c.id } });
             // Delete the booking(s)

@@ -1,15 +1,41 @@
+# ─── Build artifacts (rebuilt in Docker) ─────────────────
 node_modules
-dist
+**/node_modules
+backend/dist
+frontend/dist
+frontend/dev-dist
+
+# ─── Generated files (rebuilt in Docker) ─────────────────
+backend/src/generated
+
+# ─── Version control ─────────────────────────────────────
 .git
 .gitignore
+
+# ─── Secrets (injected via Railway env vars) ─────────────
 .env
-.env.example
+.env.*
+!.env.example
+
+# ─── Logs & temp files ───────────────────────────────────
 *.log
-*.md
-docs
+npm-debug.log*
 .DS_Store
+
+# ─── IDE & tooling ───────────────────────────────────────
+.vscode
+.idea
 .gemini
+.agent
+
+# ─── Test & dev files ────────────────────────────────────
 tmp_update.js
 test_api.js
 test_zod.js
+tsc_errors.txt
+tsc_output.txt
+tsc_output_utf8.txt
+
+# ─── Docker (prevent recursive copy) ─────────────────────
 docker-compose.yml
+Dockerfile

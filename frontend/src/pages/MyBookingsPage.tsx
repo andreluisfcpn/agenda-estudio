@@ -5,6 +5,8 @@ import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
 import StatusBadge from '../components/ui/StatusBadge';
 import { Clapperboard, Building2, Mic, Star, RefreshCw, Loader2, CheckCircle } from 'lucide-react';
+import { formatBRL } from '../utils/format';
+import { DashboardSkeleton } from '../components/ui/SkeletonLoader';
 
 const PLATFORMS = [
     { key: 'YOUTUBE', label: 'YouTube', color: '#FF0000' },
@@ -13,9 +15,7 @@ const PLATFORMS = [
     { key: 'FACEBOOK', label: 'Facebook', color: '#1877F2' },
 ];
 
-function formatBRL(cents: number): string {
-    return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
-}
+// formatBRL imported from utils/format
 
 export default function MyBookingsPage() {
     const { user } = useAuth();
@@ -124,7 +124,7 @@ export default function MyBookingsPage() {
     };
 
     if (loading) {
-        return <div className="loading-spinner"><div className="spinner" /></div>;
+        return <DashboardSkeleton />;
     }
 
     return (

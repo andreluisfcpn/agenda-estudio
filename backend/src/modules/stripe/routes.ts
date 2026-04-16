@@ -139,7 +139,7 @@ router.put('/payment-methods/:pmId/default', authenticate, async (req: Request, 
         const customerId = await stripeGetOrCreateCustomer(userId);
 
         // Find the Stripe PM ID
-        const saved = await prisma.savedPaymentMethod.findFirst({
+        let saved = await prisma.savedPaymentMethod.findFirst({
             where: { userId, OR: [{ id: pmId }, { stripePaymentMethodId: pmId }] },
         });
         const stripePmId = saved?.stripePaymentMethodId || pmId;
@@ -158,6 +158,48 @@ router.put('/payment-methods/:pmId/default', authenticate, async (req: Request, 
                 where: { id: saved.id },
                 data: { isDefault: true },
             });
+        } else {
+            // Card exists in Stripe but not in our DB — sync it now
+            const cards = await stripeListPaymentMethods(customerId);
+            const card = cards.find(c => c.paymentMethodId === stripePmId);
+            if (card) {
+                saved = await prisma.savedPaymentMethod.create({
+                    data: {
+                        userId,
+                        stripePaymentMethodId: stripePmId,
+                        brand: card.brand,
+                        last4: card.last4,
+                        expMonth: card.expMonth,
+                        expYear: card.expYear,
+                        isDefault: true,
+                    },
+                });
+                console.log(`[Stripe] Synced + set default: ${card.brand} ****${card.last4}`);
+            }
+        }
+
+        // Also sync any other Stripe cards that are missing from our DB
+        const allStripeCards = await stripeListPaymentMethods(customerId);
+        const existingPmIds = (await prisma.savedPaymentMethod.findMany({
+            where: { userId },
+            select: { stripePaymentMethodId: true },
+        })).map(s => s.stripePaymentMethodId);
+
+        for (const sc of allStripeCards) {
+            if (!existingPmIds.includes(sc.paymentMethodId)) {
+                await prisma.savedPaymentMethod.create({
+                    data: {
+                        userId,
+                        stripePaymentMethodId: sc.paymentMethodId,
+                        brand: sc.brand,
+                        last4: sc.last4,
+                        expMonth: sc.expMonth,
+                        expYear: sc.expYear,
+                        isDefault: false,
+                    },
+                });
+                console.log(`[Stripe] Synced missing card: ${sc.brand} ****${sc.last4}`);
+            }
         }
 
         res.json({ message: 'Cartão padrão definido.' });
@@ -237,6 +279,32 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
             const dueDate = new Date();
             dueDate.setDate(dueDate.getDate() + 1); // PIX expires tomorrow
             
+            // Parse user address from JSON profile field
+            let addressData: any = undefined;
+            if (user.address) {
+                try {
+                    const addr = JSON.parse(user.address);
+                    addressData = {
+                        street: addr.street || 'N/A',
+                        number: addr.number || 'S/N',
+                        district: addr.district || 'Centro',
+                        city: addr.city || user.city || 'Cidade',
+                        state: addr.state || user.state || 'RJ',
+                        zipCode: (addr.zipCode || addr.cep || '00000000').replace(/\D/g, ''),
+                    };
+                } catch { /* use fallback */ }
+            }
+            if (!addressData) {
+                addressData = {
+                    street: 'N/A',
+                    number: 'S/N',
+                    district: 'Centro',
+                    city: user.city || 'Cidade',
+                    state: user.state || 'RJ',
+                    zipCode: '00000000',
+                };
+            }
+            
             const result = await coraCreateBoleto({
                 amount: payment.amount,
                 dueDate: dueDate.toISOString().split('T')[0],
@@ -246,15 +314,7 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
                     name: user.name,
                     email: user.email || 'cliente@estudio.com',
                     document: { type: docType, identity: docStr },
-                    // Cora requires address for boletos, for standalone PIX it is ignored
-                    address: {
-                        street: 'Rua Principal',
-                        number: '123',
-                        district: 'Centro',
-                        city: user.city || 'Cidade',
-                        state: user.state || 'SP',
-                        zipCode: '01000000'
-                    }
+                    address: addressData
                 }
             });
             
@@ -290,12 +350,39 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
 
             let docStr = user.cpfCnpj ? user.cpfCnpj.replace(/\D/g, '') : "";
             if (docStr.length !== 11 && docStr.length !== 14) {
-                docStr = "12345678909";
+                res.status(400).json({ error: 'CPF/CNPJ não cadastrado ou inválido. Atualize o perfil do cliente antes de emitir boleto.' });
+                return;
             }
             let docType: 'CPF' | 'CNPJ' = docStr.length === 14 ? 'CNPJ' : 'CPF';
 
             const dueDate = new Date();
             dueDate.setDate(dueDate.getDate() + 3); // Boleto vence em 3 dias
+
+            // Parse user address from JSON profile field
+            let addressData: any = undefined;
+            if (user.address) {
+                try {
+                    const addr = JSON.parse(user.address);
+                    addressData = {
+                        street: addr.street || 'N/A',
+                        number: addr.number || 'S/N',
+                        district: addr.district || 'Centro',
+                        city: addr.city || user.city || 'Cidade',
+                        state: addr.state || user.state || 'RJ',
+                        zipCode: (addr.zipCode || addr.cep || '00000000').replace(/\D/g, ''),
+                    };
+                } catch { /* use fallback */ }
+            }
+            if (!addressData) {
+                addressData = {
+                    street: 'N/A',
+                    number: 'S/N',
+                    district: 'Centro',
+                    city: user.city || 'Cidade',
+                    state: user.state || 'RJ',
+                    zipCode: '00000000',
+                };
+            }
 
             const result = await coraCreateBoleto({
                 amount: payment.amount,
@@ -306,14 +393,7 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
                     name: user.name,
                     email: user.email || 'cliente@estudio.com',
                     document: { type: docType, identity: docStr },
-                    address: {
-                        street: 'Rua Principal',
-                        number: '123',
-                        district: 'Centro',
-                        city: user.city || 'Cidade',
-                        state: user.state || 'SP',
-                        zipCode: '01000000'
-                    }
+                    address: addressData
                 }
             });
 

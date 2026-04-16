@@ -10,6 +10,8 @@ import PaymentModal from '../components/PaymentModal';
 import { getClientPaymentMethods } from '../constants/paymentMethods';
 import ToggleSwitch from '../components/ui/ToggleSwitch';
 import StatusBadge from '../components/ui/StatusBadge';
+import { formatBRL, formatDate } from '../utils/format';
+import { PaymentsSkeleton } from '../components/ui/SkeletonLoader';
 
 const BRAND_LABELS: Record<string, string> = {
     visa: 'Visa',
@@ -29,16 +31,7 @@ const STATUS_CONFIG: Record<string, { icon: React.ReactNode; label: string; colo
     REFUNDED: { icon: <AlertTriangle size={14} />, label: 'Estornado', color: '#8b5cf6', bg: 'rgba(139,92,246,0.1)' },
 };
 
-function formatBRL(cents: number): string {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(cents / 100);
-}
-
-function formatDate(dateStr: string | null | undefined): string {
-    if (!dateStr) return '—';
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime()) || d.getFullYear() < 2000) return '—';
-    return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }).format(d);
-}
+// formatBRL and formatDate imported from utils/format
 
 export default function MyPaymentsPage() {
     const { showToast, showConfirm } = useUI();
@@ -191,7 +184,7 @@ export default function MyPaymentsPage() {
 
 
     if (loading && contracts.length === 0) {
-        return <div className="loading-spinner"><div className="spinner" /></div>;
+        return <PaymentsSkeleton />;
     }
 
     return (
@@ -206,18 +199,18 @@ export default function MyPaymentsPage() {
             {/* ─── 🔥 PENDENTES (HIERARQUIA #1) ──────────────────────────────────────────────── */}
             
             <div style={{ marginBottom: '48px' }}>
-                <h2 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}>
-                    <Zap className="text-warning" size={24} color="#f59e0b" />
+                <h2 className="section-heading">
+                    <Zap size={24} color="#f59e0b" />
                     Pagamentos Pendentes
                 </h2>
 
                 {pendingPayments.length === 0 ? (
-                    <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                    <div className="empty-state--nice">
                         <CheckCircle size={32} style={{ margin: '0 auto 12px', color: '#10b981', opacity: 0.8 }} />
                         <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>Tudo em dia! Você não tem cobranças pendentes.</span>
                     </div>
                 ) : (
-                    <div style={{ display: 'grid', gap: '16px' }}>
+                    <div className="stagger-enter" style={{ display: 'grid', gap: '16px' }}>
                         {pendingPayments.map(p => {
                             const isOverdue = new Date(p.dueDate).getTime() < Date.now();
                             const isFailed = p.status === 'FAILED';
@@ -227,38 +220,25 @@ export default function MyPaymentsPage() {
                             const cardEnabled = availableMethods.some(m => m.key === 'CARTAO');
 
                             return (
-                                <div key={p.id} style={{
-                                    background: 'var(--bg-primary)',
-                                    border: `2px solid ${isFailed || isOverdue ? '#ef4444' : 'var(--border-color)'}`,
-                                    borderRadius: 'var(--radius-lg)',
-                                    padding: '24px',
-                                    position: 'relative',
-                                    boxShadow: (isFailed || isOverdue) ? '0 4px 12px rgba(239, 68, 68, 0.1)' : 'var(--shadow-sm)'
-                                }}>
+                                <div key={p.id} className={`payment-card ${(isFailed || isOverdue) ? 'payment-card--urgent' : ''}`}>
                                     {(isFailed || isOverdue) && (
-                                        <div style={{ position: 'absolute', top: -12, left: 24, background: '#ef4444', color: '#fff', fontSize: '0.6875rem', fontWeight: 800, padding: '4px 12px', borderRadius: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                        <div className="payment-card__badge">
                                             {isFailed ? 'Falha no Cartão' : 'Em Atraso'}
                                         </div>
                                     )}
 
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                         <div>
-                                            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '8px' }}>
-                                                {formatBRL(p.amount)}
-                                            </div>
-                                            <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                                                {p.contractName}
-                                            </div>
-                                            <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                                                Vence(u) em {formatDate(p.dueDate)}
-                                            </div>
+                                            <div className="payment-card__amount">{formatBRL(p.amount)}</div>
+                                            <div className="payment-card__info">{p.contractName}</div>
+                                            <div className="payment-card__date">Vence(u) em {formatDate(p.dueDate)}</div>
                                         </div>
 
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                             <button 
                                                 onClick={() => setPayingPayment(p)}
-                                                className="btn btn-primary"
-                                                style={{ padding: '14px 20px', borderRadius: 'var(--radius-full)', minHeight: '48px', width: '100%', justifyContent: 'center' }}>
+                                                className="btn btn-primary btn-cta"
+                                                aria-label={`Pagar ${formatBRL(p.amount)}`}>
                                                 <CreditCard size={18} />
                                                 Pagar Agora
                                             </button>
@@ -275,12 +255,7 @@ export default function MyPaymentsPage() {
             
             {(cards.length > 0 || autoCharge) && (
                 <div style={{ marginBottom: '48px', position: 'relative' }}>
-                    <div style={{
-                        background: autoCharge ? 'linear-gradient(135deg, rgba(16,185,129,0.15), rgba(16,185,129,0.05))' : 'var(--bg-secondary)',
-                        border: `1px solid ${autoCharge ? '#10b981' : 'var(--border-subtle)'}`,
-                        borderRadius: 'var(--radius-lg)', padding: '24px',
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '24px', flexWrap: 'wrap'
-                    }}>
+                    <div className={`auto-charge-banner ${autoCharge ? 'auto-charge-banner--active' : 'auto-charge-banner--inactive'}`}>
                         <div>
                             <h3 style={{ fontSize: '1.25rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px', color: autoCharge ? '#10b981' : 'var(--text-primary)', marginBottom: '8px' }}>
                                 <Shield size={20} />
@@ -307,22 +282,18 @@ export default function MyPaymentsPage() {
             
             {paidPayments.length > 0 && (
                 <div style={{ marginBottom: '48px' }}>
-                    <h2 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '16px', color: 'var(--text-primary)' }}>
+                    <h2 className="section-heading--sm">
                         Histórico de Pagamentos
                     </h2>
                     <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
                         {paidPayments.slice(0, showAllHistory ? undefined : 5).map((p, i, arr) => (
-                            <div key={p.id} style={{
-                                padding: '16px 20px', 
-                                borderBottom: i < arr.length - 1 ? '1px solid var(--border-subtle)' : 'none',
-                                display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-                            }}>
+                            <div key={p.id} className="history-row">
                                 <div>
-                                    <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{p.contractName}</div>
-                                    <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '4px' }}>Pago em {formatDate(p.dueDate)}</div>
+                                    <div className="history-row__name">{p.contractName}</div>
+                                    <div className="history-row__date">Pago em {formatDate(p.dueDate)}</div>
                                 </div>
-                                <div style={{ textAlign: 'right' }}>
-                                    <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{formatBRL(p.amount)}</div>
+                                <div className="history-row__amount">
+                                    <div>{formatBRL(p.amount)}</div>
                                     <StatusBadge status="PAID" label={p.provider === 'STRIPE' ? 'Automático' : 'Pago'} />
                                 </div>
                             </div>
@@ -343,34 +314,41 @@ export default function MyPaymentsPage() {
             {/* ─── 💳 CARTÕES SALVOS (HIERARQUIA #4) ───────────────────────────────────────── */}
             
             <div>
-                <h2 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Wallet size={20} className="text-secondary" />
+                <h2 className="section-heading--sm" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Wallet size={20} style={{ color: 'var(--text-secondary)' }} />
                     Cartões Salvos
                 </h2>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
                     
                     {cards.map(card => (
-                        <div key={card.id} style={{
-                            background: 'var(--bg-primary)', padding: '20px', borderRadius: 'var(--radius-md)',
-                            border: `1px solid ${card.isDefault ? '#10b981' : 'var(--border-subtle)'}`,
-                            position: 'relative'
-                        }}>
+                        <div key={card.id} className={`saved-card ${card.isDefault ? 'saved-card--default' : ''}`}>
                             {card.isDefault && (
-                                <div style={{ position: 'absolute', top: -10, right: 16, background: '#10b981', color: '#fff', fontSize: '0.625rem', fontWeight: 800, padding: '4px 10px', borderRadius: '12px' }}>
-                                    PADRÃO
+                                <div className="saved-card__badge">
+                                    <Shield size={10} fill="#fff" />
+                                    CARTÃO PADRÃO
                                 </div>
                             )}
                             
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                <CreditCard size={32} style={{ color: 'var(--text-secondary)' }} />
+                                <div className="saved-card__icon">
+                                    <CreditCard size={22} style={{ color: card.isDefault ? '#10b981' : 'var(--text-secondary)' }} />
+                                </div>
                                 <div style={{ flex: 1 }}>
-                                    <div style={{ fontWeight: 800, fontSize: '0.925rem' }}>{BRAND_LABELS[card.brand] || card.brand} <span style={{ color: 'var(--text-secondary)' }}>•••• {card.last4}</span></div>
-                                    <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Vence {card.expMonth.toString().padStart(2, '0')}/{card.expYear}</div>
+                                    <div style={{ fontWeight: 800, fontSize: '0.925rem' }}>
+                                        {BRAND_LABELS[card.brand] || card.brand}{' '}
+                                        <span style={{ color: 'var(--text-secondary)' }}>•••• {card.last4}</span>
+                                    </div>
+                                    <div style={{
+                                        fontSize: '0.8125rem',
+                                        color: card.isDefault ? 'rgba(16, 185, 129, 0.8)' : 'var(--text-muted)',
+                                    }}>
+                                        {card.isDefault ? '✓ Cobrança automática ativa' : `Vence ${card.expMonth.toString().padStart(2, '0')}/${card.expYear}`}
+                                    </div>
                                 </div>
                             </div>
 
-                            <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
+                            <div className="saved-card__actions">
                                 {!card.isDefault && (
                                     <button
                                         onClick={() => handleSetDefault(card)}
@@ -379,6 +357,18 @@ export default function MyPaymentsPage() {
                                     >
                                         {settingDefaultId === card.id ? '...' : 'Tornar Padrão'}
                                     </button>
+                                )}
+                                {card.isDefault && (
+                                    <div style={{
+                                        flex: 1, padding: '10px 12px', borderRadius: '8px',
+                                        fontSize: '0.75rem', fontWeight: 600, minHeight: '44px',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        color: 'rgba(16, 185, 129, 0.7)',
+                                        background: 'rgba(16, 185, 129, 0.06)',
+                                        border: '1px solid rgba(16, 185, 129, 0.15)',
+                                    }}>
+                                        Vence {card.expMonth.toString().padStart(2, '0')}/{card.expYear}
+                                    </div>
                                 )}
                                 <button
                                     onClick={() => handleRemoveCard(card)}

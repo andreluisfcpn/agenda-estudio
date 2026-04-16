@@ -206,8 +206,8 @@ model Booking {
   contract Contract  @relation(fields: [contractId], references: [id])
   payments Payment[]
 
-  // Prevent double booking: unique on date + start_time for non-cancelled
-  @@unique([date, startTime, status], name: "unique_active_booking")
+  // Prevent double booking: Redis lock is primary protection, this index aids queries
+  @@index([date, startTime, status], name: "idx_booking_date_time_status")
   @@index([userId])
   @@index([contractId])
   @@index([date])
