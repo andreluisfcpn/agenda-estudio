@@ -35,14 +35,15 @@ export async function sendPush(
         );
         return true;
     } catch (err: any) {
-        // 410 Gone or 404 = subscription expired/invalid
-        if (err.statusCode === 410 || err.statusCode === 404) {
+        const gone = [401, 403, 404, 410].includes(err.statusCode);
+        if (gone) {
+            // Subscription expired, revoked, or permanently invalid — clean up
             await prisma.pushSubscription.delete({
                 where: { endpoint: subscription.endpoint },
             }).catch(() => {}); // ignore if already deleted
-            return false;
+        } else {
+            console.error(`[PUSH] Failed to send to ${subscription.endpoint.slice(0, 50)}:`, err.message);
         }
-        console.error(`[PUSH] Failed to send to ${subscription.endpoint.slice(0, 50)}:`, err.message);
         return false;
     }
 }

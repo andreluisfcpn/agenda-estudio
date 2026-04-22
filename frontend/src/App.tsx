@@ -98,7 +98,7 @@ function Layout({ children }: { children: React.ReactNode }) {
             {/* Transition overlay — shown BEFORE route change */}
             {isTransitioning && <PageTransitionLoader exiting={isExiting} />}
 
-            <main className="main-content">
+            <main className={`main-content${isTransitioning ? ' main-content--frozen' : ''}`}>
                 <Suspense fallback={<PageTransitionLoader />}>
                     {children}
                 </Suspense>

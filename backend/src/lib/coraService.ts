@@ -551,7 +551,7 @@ export async function coraListWebhookEndpoints(): Promise<CoraWebhookEndpoint[]>
     const { config, environment } = setup;
     const urls = CORA_URLS[environment as keyof typeof CORA_URLS] || CORA_URLS.sandbox;
 
-    const response = await httpsRequestWithToken(`${urls.api}/webhooks/endpoints`, {
+    const response = await httpsRequestWithToken(`${urls.api}/endpoints/`, {
         method: 'GET',
         headers: { 'Authorization': `Bearer ${token}` },
         cert: config.certificatePem,
@@ -582,7 +582,7 @@ export async function coraRegisterWebhookEndpoint(
 
     const body = JSON.stringify({ url: webhookUrl, events });
 
-    const response = await httpsRequestWithToken(`${urls.api}/webhooks/endpoints`, {
+    const response = await httpsRequestWithToken(`${urls.api}/endpoints/`, {
         method: 'POST',
         headers: {
             'Authorization': `Bearer ${token}`,
@@ -610,7 +610,7 @@ export async function coraDeleteWebhookEndpoint(endpointId: string): Promise<voi
     const { config, environment } = setup;
     const urls = CORA_URLS[environment as keyof typeof CORA_URLS] || CORA_URLS.sandbox;
 
-    const response = await httpsRequestWithToken(`${urls.api}/webhooks/endpoints/${endpointId}`, {
+    const response = await httpsRequestWithToken(`${urls.api}/endpoints/${endpointId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` },
         cert: config.certificatePem,
