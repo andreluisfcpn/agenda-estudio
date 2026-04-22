@@ -452,6 +452,13 @@ router.post('/verify-payment', authenticate, async (req: Request, res: Response)
         const pi = await stripeGetPaymentIntent(data.paymentIntentId);
         
         if (pi.status === 'succeeded') {
+            // VULN-07 FIX: Verify amount matches before accepting
+            if (pi.amount !== payment.amount) {
+                console.error(`[Stripe:Verify] Amount mismatch: PI=${pi.amount}, DB=${payment.amount} for payment ${payment.id}`);
+                res.status(400).json({ error: 'Valor do PaymentIntent não confere com o pagamento.' });
+                return;
+            }
+
             // Atomic update: only update if still PENDING to prevent race with webhooks
             const updated = await prisma.payment.updateMany({
                 where: { id: payment.id, status: 'PENDING' },

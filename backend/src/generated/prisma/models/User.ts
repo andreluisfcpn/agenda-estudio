@@ -304,6 +304,7 @@ export type UserWhereInput = {
   blockedSlots?: Prisma.BlockedSlotListRelationFilter
   savedPaymentMethods?: Prisma.SavedPaymentMethodListRelationFilter
   pushSubscriptions?: Prisma.PushSubscriptionListRelationFilter
+  notifications?: Prisma.NotificationListRelationFilter
 }
 
 export type UserOrderByWithRelationInput = {
@@ -333,6 +334,7 @@ export type UserOrderByWithRelationInput = {
   blockedSlots?: Prisma.BlockedSlotOrderByRelationAggregateInput
   savedPaymentMethods?: Prisma.SavedPaymentMethodOrderByRelationAggregateInput
   pushSubscriptions?: Prisma.PushSubscriptionOrderByRelationAggregateInput
+  notifications?: Prisma.NotificationOrderByRelationAggregateInput
 }
 
 export type UserWhereUniqueInput = Prisma.AtLeast<{
@@ -365,6 +367,7 @@ export type UserWhereUniqueInput = Prisma.AtLeast<{
   blockedSlots?: Prisma.BlockedSlotListRelationFilter
   savedPaymentMethods?: Prisma.SavedPaymentMethodListRelationFilter
   pushSubscriptions?: Prisma.PushSubscriptionListRelationFilter
+  notifications?: Prisma.NotificationListRelationFilter
 }, "id" | "email" | "phone" | "googleId" | "cpfCnpj" | "stripeCustomerId">
 
 export type UserOrderByWithAggregationInput = {
@@ -446,6 +449,7 @@ export type UserCreateInput = {
   blockedSlots?: Prisma.BlockedSlotCreateNestedManyWithoutCreatorInput
   savedPaymentMethods?: Prisma.SavedPaymentMethodCreateNestedManyWithoutUserInput
   pushSubscriptions?: Prisma.PushSubscriptionCreateNestedManyWithoutUserInput
+  notifications?: Prisma.NotificationCreateNestedManyWithoutUserInput
 }
 
 export type UserUncheckedCreateInput = {
@@ -475,6 +479,7 @@ export type UserUncheckedCreateInput = {
   blockedSlots?: Prisma.BlockedSlotUncheckedCreateNestedManyWithoutCreatorInput
   savedPaymentMethods?: Prisma.SavedPaymentMethodUncheckedCreateNestedManyWithoutUserInput
   pushSubscriptions?: Prisma.PushSubscriptionUncheckedCreateNestedManyWithoutUserInput
+  notifications?: Prisma.NotificationUncheckedCreateNestedManyWithoutUserInput
 }
 
 export type UserUpdateInput = {
@@ -504,6 +509,7 @@ export type UserUpdateInput = {
   blockedSlots?: Prisma.BlockedSlotUpdateManyWithoutCreatorNestedInput
   savedPaymentMethods?: Prisma.SavedPaymentMethodUpdateManyWithoutUserNestedInput
   pushSubscriptions?: Prisma.PushSubscriptionUpdateManyWithoutUserNestedInput
+  notifications?: Prisma.NotificationUpdateManyWithoutUserNestedInput
 }
 
 export type UserUncheckedUpdateInput = {
@@ -533,6 +539,7 @@ export type UserUncheckedUpdateInput = {
   blockedSlots?: Prisma.BlockedSlotUncheckedUpdateManyWithoutCreatorNestedInput
   savedPaymentMethods?: Prisma.SavedPaymentMethodUncheckedUpdateManyWithoutUserNestedInput
   pushSubscriptions?: Prisma.PushSubscriptionUncheckedUpdateManyWithoutUserNestedInput
+  notifications?: Prisma.NotificationUncheckedUpdateManyWithoutUserNestedInput
 }
 
 export type UserCreateManyInput = {
@@ -797,6 +804,20 @@ export type UserUpdateOneRequiredWithoutBlockedSlotsNestedInput = {
   update?: Prisma.XOR<Prisma.XOR<Prisma.UserUpdateToOneWithWhereWithoutBlockedSlotsInput, Prisma.UserUpdateWithoutBlockedSlotsInput>, Prisma.UserUncheckedUpdateWithoutBlockedSlotsInput>
 }
 
+export type UserCreateNestedOneWithoutNotificationsInput = {
+  create?: Prisma.XOR<Prisma.UserCreateWithoutNotificationsInput, Prisma.UserUncheckedCreateWithoutNotificationsInput>
+  connectOrCreate?: Prisma.UserCreateOrConnectWithoutNotificationsInput
+  connect?: Prisma.UserWhereUniqueInput
+}
+
+export type UserUpdateOneRequiredWithoutNotificationsNestedInput = {
+  create?: Prisma.XOR<Prisma.UserCreateWithoutNotificationsInput, Prisma.UserUncheckedCreateWithoutNotificationsInput>
+  connectOrCreate?: Prisma.UserCreateOrConnectWithoutNotificationsInput
+  upsert?: Prisma.UserUpsertWithoutNotificationsInput
+  connect?: Prisma.UserWhereUniqueInput
+  update?: Prisma.XOR<Prisma.XOR<Prisma.UserUpdateToOneWithWhereWithoutNotificationsInput, Prisma.UserUpdateWithoutNotificationsInput>, Prisma.UserUncheckedUpdateWithoutNotificationsInput>
+}
+
 export type UserCreateWithoutPushSubscriptionsInput = {
   id?: string
   email?: string | null
@@ -823,6 +844,7 @@ export type UserCreateWithoutPushSubscriptionsInput = {
   payments?: Prisma.PaymentCreateNestedManyWithoutUserInput
   blockedSlots?: Prisma.BlockedSlotCreateNestedManyWithoutCreatorInput
   savedPaymentMethods?: Prisma.SavedPaymentMethodCreateNestedManyWithoutUserInput
+  notifications?: Prisma.NotificationCreateNestedManyWithoutUserInput
 }
 
 export type UserUncheckedCreateWithoutPushSubscriptionsInput = {
@@ -851,6 +873,7 @@ export type UserUncheckedCreateWithoutPushSubscriptionsInput = {
   payments?: Prisma.PaymentUncheckedCreateNestedManyWithoutUserInput
   blockedSlots?: Prisma.BlockedSlotUncheckedCreateNestedManyWithoutCreatorInput
   savedPaymentMethods?: Prisma.SavedPaymentMethodUncheckedCreateNestedManyWithoutUserInput
+  notifications?: Prisma.NotificationUncheckedCreateNestedManyWithoutUserInput
 }
 
 export type UserCreateOrConnectWithoutPushSubscriptionsInput = {
@@ -895,6 +918,7 @@ export type UserUpdateWithoutPushSubscriptionsInput = {
   payments?: Prisma.PaymentUpdateManyWithoutUserNestedInput
   blockedSlots?: Prisma.BlockedSlotUpdateManyWithoutCreatorNestedInput
   savedPaymentMethods?: Prisma.SavedPaymentMethodUpdateManyWithoutUserNestedInput
+  notifications?: Prisma.NotificationUpdateManyWithoutUserNestedInput
 }
 
 export type UserUncheckedUpdateWithoutPushSubscriptionsInput = {
@@ -923,6 +947,7 @@ export type UserUncheckedUpdateWithoutPushSubscriptionsInput = {
   payments?: Prisma.PaymentUncheckedUpdateManyWithoutUserNestedInput
   blockedSlots?: Prisma.BlockedSlotUncheckedUpdateManyWithoutCreatorNestedInput
   savedPaymentMethods?: Prisma.SavedPaymentMethodUncheckedUpdateManyWithoutUserNestedInput
+  notifications?: Prisma.NotificationUncheckedUpdateManyWithoutUserNestedInput
 }
 
 export type UserCreateWithoutContractsInput = {
@@ -951,6 +976,7 @@ export type UserCreateWithoutContractsInput = {
   blockedSlots?: Prisma.BlockedSlotCreateNestedManyWithoutCreatorInput
   savedPaymentMethods?: Prisma.SavedPaymentMethodCreateNestedManyWithoutUserInput
   pushSubscriptions?: Prisma.PushSubscriptionCreateNestedManyWithoutUserInput
+  notifications?: Prisma.NotificationCreateNestedManyWithoutUserInput
 }
 
 export type UserUncheckedCreateWithoutContractsInput = {
@@ -979,6 +1005,7 @@ export type UserUncheckedCreateWithoutContractsInput = {
   blockedSlots?: Prisma.BlockedSlotUncheckedCreateNestedManyWithoutCreatorInput
   savedPaymentMethods?: Prisma.SavedPaymentMethodUncheckedCreateNestedManyWithoutUserInput
   pushSubscriptions?: Prisma.PushSubscriptionUncheckedCreateNestedManyWithoutUserInput
+  notifications?: Prisma.NotificationUncheckedCreateNestedManyWithoutUserInput
 }
 
 export type UserCreateOrConnectWithoutContractsInput = {
@@ -1023,6 +1050,7 @@ export type UserUpdateWithoutContractsInput = {
   blockedSlots?: Prisma.BlockedSlotUpdateManyWithoutCreatorNestedInput
   savedPaymentMethods?: Prisma.SavedPaymentMethodUpdateManyWithoutUserNestedInput
   pushSubscriptions?: Prisma.PushSubscriptionUpdateManyWithoutUserNestedInput
+  notifications?: Prisma.NotificationUpdateManyWithoutUserNestedInput
 }
 
 export type UserUncheckedUpdateWithoutContractsInput = {
@@ -1051,6 +1079,7 @@ export type UserUncheckedUpdateWithoutContractsInput = {
   blockedSlots?: Prisma.BlockedSlotUncheckedUpdateManyWithoutCreatorNestedInput
   savedPaymentMethods?: Prisma.SavedPaymentMethodUncheckedUpdateManyWithoutUserNestedInput
   pushSubscriptions?: Prisma.PushSubscriptionUncheckedUpdateManyWithoutUserNestedInput
+  notifications?: Prisma.NotificationUncheckedUpdateManyWithoutUserNestedInput
 }
 
 export type UserCreateWithoutBookingsInput = {
@@ -1079,6 +1108,7 @@ export type UserCreateWithoutBookingsInput = {
   blockedSlots?: Prisma.BlockedSlotCreateNestedManyWithoutCreatorInput
   savedPaymentMethods?: Prisma.SavedPaymentMethodCreateNestedManyWithoutUserInput
   pushSubscriptions?: Prisma.PushSubscriptionCreateNestedManyWithoutUserInput
+  notifications?: Prisma.NotificationCreateNestedManyWithoutUserInput
 }
 
 export type UserUncheckedCreateWithoutBookingsInput = {
@@ -1107,6 +1137,7 @@ export type UserUncheckedCreateWithoutBookingsInput = {
   blockedSlots?: Prisma.BlockedSlotUncheckedCreateNestedManyWithoutCreatorInput
   savedPaymentMethods?: Prisma.SavedPaymentMethodUncheckedCreateNestedManyWithoutUserInput
   pushSubscriptions?: Prisma.PushSubscriptionUncheckedCreateNestedManyWithoutUserInput
+  notifications?: Prisma.NotificationUncheckedCreateNestedManyWithoutUserInput
 }
 
 export type UserCreateOrConnectWithoutBookingsInput = {
@@ -1151,6 +1182,7 @@ export type UserUpdateWithoutBookingsInput = {
   blockedSlots?: Prisma.BlockedSlotUpdateManyWithoutCreatorNestedInput
   savedPaymentMethods?: Prisma.SavedPaymentMethodUpdateManyWithoutUserNestedInput
   pushSubscriptions?: Prisma.PushSubscriptionUpdateManyWithoutUserNestedInput
+  notifications?: Prisma.NotificationUpdateManyWithoutUserNestedInput
 }
 
 export type UserUncheckedUpdateWithoutBookingsInput = {
@@ -1179,6 +1211,7 @@ export type UserUncheckedUpdateWithoutBookingsInput = {
   blockedSlots?: Prisma.BlockedSlotUncheckedUpdateManyWithoutCreatorNestedInput
   savedPaymentMethods?: Prisma.SavedPaymentMethodUncheckedUpdateManyWithoutUserNestedInput
   pushSubscriptions?: Prisma.PushSubscriptionUncheckedUpdateManyWithoutUserNestedInput
+  notifications?: Prisma.NotificationUncheckedUpdateManyWithoutUserNestedInput
 }
 
 export type UserCreateWithoutPaymentsInput = {
@@ -1207,6 +1240,7 @@ export type UserCreateWithoutPaymentsInput = {
   blockedSlots?: Prisma.BlockedSlotCreateNestedManyWithoutCreatorInput
   savedPaymentMethods?: Prisma.SavedPaymentMethodCreateNestedManyWithoutUserInput
   pushSubscriptions?: Prisma.PushSubscriptionCreateNestedManyWithoutUserInput
+  notifications?: Prisma.NotificationCreateNestedManyWithoutUserInput
 }
 
 export type UserUncheckedCreateWithoutPaymentsInput = {
@@ -1235,6 +1269,7 @@ export type UserUncheckedCreateWithoutPaymentsInput = {
   blockedSlots?: Prisma.BlockedSlotUncheckedCreateNestedManyWithoutCreatorInput
   savedPaymentMethods?: Prisma.SavedPaymentMethodUncheckedCreateNestedManyWithoutUserInput
   pushSubscriptions?: Prisma.PushSubscriptionUncheckedCreateNestedManyWithoutUserInput
+  notifications?: Prisma.NotificationUncheckedCreateNestedManyWithoutUserInput
 }
 
 export type UserCreateOrConnectWithoutPaymentsInput = {
@@ -1279,6 +1314,7 @@ export type UserUpdateWithoutPaymentsInput = {
   blockedSlots?: Prisma.BlockedSlotUpdateManyWithoutCreatorNestedInput
   savedPaymentMethods?: Prisma.SavedPaymentMethodUpdateManyWithoutUserNestedInput
   pushSubscriptions?: Prisma.PushSubscriptionUpdateManyWithoutUserNestedInput
+  notifications?: Prisma.NotificationUpdateManyWithoutUserNestedInput
 }
 
 export type UserUncheckedUpdateWithoutPaymentsInput = {
@@ -1307,6 +1343,7 @@ export type UserUncheckedUpdateWithoutPaymentsInput = {
   blockedSlots?: Prisma.BlockedSlotUncheckedUpdateManyWithoutCreatorNestedInput
   savedPaymentMethods?: Prisma.SavedPaymentMethodUncheckedUpdateManyWithoutUserNestedInput
   pushSubscriptions?: Prisma.PushSubscriptionUncheckedUpdateManyWithoutUserNestedInput
+  notifications?: Prisma.NotificationUncheckedUpdateManyWithoutUserNestedInput
 }
 
 export type UserCreateWithoutSavedPaymentMethodsInput = {
@@ -1335,6 +1372,7 @@ export type UserCreateWithoutSavedPaymentMethodsInput = {
   payments?: Prisma.PaymentCreateNestedManyWithoutUserInput
   blockedSlots?: Prisma.BlockedSlotCreateNestedManyWithoutCreatorInput
   pushSubscriptions?: Prisma.PushSubscriptionCreateNestedManyWithoutUserInput
+  notifications?: Prisma.NotificationCreateNestedManyWithoutUserInput
 }
 
 export type UserUncheckedCreateWithoutSavedPaymentMethodsInput = {
@@ -1363,6 +1401,7 @@ export type UserUncheckedCreateWithoutSavedPaymentMethodsInput = {
   payments?: Prisma.PaymentUncheckedCreateNestedManyWithoutUserInput
   blockedSlots?: Prisma.BlockedSlotUncheckedCreateNestedManyWithoutCreatorInput
   pushSubscriptions?: Prisma.PushSubscriptionUncheckedCreateNestedManyWithoutUserInput
+  notifications?: Prisma.NotificationUncheckedCreateNestedManyWithoutUserInput
 }
 
 export type UserCreateOrConnectWithoutSavedPaymentMethodsInput = {
@@ -1407,6 +1446,7 @@ export type UserUpdateWithoutSavedPaymentMethodsInput = {
   payments?: Prisma.PaymentUpdateManyWithoutUserNestedInput
   blockedSlots?: Prisma.BlockedSlotUpdateManyWithoutCreatorNestedInput
   pushSubscriptions?: Prisma.PushSubscriptionUpdateManyWithoutUserNestedInput
+  notifications?: Prisma.NotificationUpdateManyWithoutUserNestedInput
 }
 
 export type UserUncheckedUpdateWithoutSavedPaymentMethodsInput = {
@@ -1435,6 +1475,7 @@ export type UserUncheckedUpdateWithoutSavedPaymentMethodsInput = {
   payments?: Prisma.PaymentUncheckedUpdateManyWithoutUserNestedInput
   blockedSlots?: Prisma.BlockedSlotUncheckedUpdateManyWithoutCreatorNestedInput
   pushSubscriptions?: Prisma.PushSubscriptionUncheckedUpdateManyWithoutUserNestedInput
+  notifications?: Prisma.NotificationUncheckedUpdateManyWithoutUserNestedInput
 }
 
 export type UserCreateWithoutBlockedSlotsInput = {
@@ -1463,6 +1504,7 @@ export type UserCreateWithoutBlockedSlotsInput = {
   payments?: Prisma.PaymentCreateNestedManyWithoutUserInput
   savedPaymentMethods?: Prisma.SavedPaymentMethodCreateNestedManyWithoutUserInput
   pushSubscriptions?: Prisma.PushSubscriptionCreateNestedManyWithoutUserInput
+  notifications?: Prisma.NotificationCreateNestedManyWithoutUserInput
 }
 
 export type UserUncheckedCreateWithoutBlockedSlotsInput = {
@@ -1491,6 +1533,7 @@ export type UserUncheckedCreateWithoutBlockedSlotsInput = {
   payments?: Prisma.PaymentUncheckedCreateNestedManyWithoutUserInput
   savedPaymentMethods?: Prisma.SavedPaymentMethodUncheckedCreateNestedManyWithoutUserInput
   pushSubscriptions?: Prisma.PushSubscriptionUncheckedCreateNestedManyWithoutUserInput
+  notifications?: Prisma.NotificationUncheckedCreateNestedManyWithoutUserInput
 }
 
 export type UserCreateOrConnectWithoutBlockedSlotsInput = {
@@ -1535,6 +1578,7 @@ export type UserUpdateWithoutBlockedSlotsInput = {
   payments?: Prisma.PaymentUpdateManyWithoutUserNestedInput
   savedPaymentMethods?: Prisma.SavedPaymentMethodUpdateManyWithoutUserNestedInput
   pushSubscriptions?: Prisma.PushSubscriptionUpdateManyWithoutUserNestedInput
+  notifications?: Prisma.NotificationUpdateManyWithoutUserNestedInput
 }
 
 export type UserUncheckedUpdateWithoutBlockedSlotsInput = {
@@ -1563,6 +1607,139 @@ export type UserUncheckedUpdateWithoutBlockedSlotsInput = {
   payments?: Prisma.PaymentUncheckedUpdateManyWithoutUserNestedInput
   savedPaymentMethods?: Prisma.SavedPaymentMethodUncheckedUpdateManyWithoutUserNestedInput
   pushSubscriptions?: Prisma.PushSubscriptionUncheckedUpdateManyWithoutUserNestedInput
+  notifications?: Prisma.NotificationUncheckedUpdateManyWithoutUserNestedInput
+}
+
+export type UserCreateWithoutNotificationsInput = {
+  id?: string
+  email?: string | null
+  passwordHash?: string | null
+  name: string
+  phone?: string | null
+  googleId?: string | null
+  role?: $Enums.Role
+  photoUrl?: string | null
+  notes?: string | null
+  cpfCnpj?: string | null
+  address?: string | null
+  city?: string | null
+  state?: string | null
+  tags?: Prisma.UserCreatetagsInput | string[]
+  socialLinks?: string | null
+  clientStatus?: string
+  stripeCustomerId?: string | null
+  autoChargeEnabled?: boolean
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  bookings?: Prisma.BookingCreateNestedManyWithoutUserInput
+  contracts?: Prisma.ContractCreateNestedManyWithoutUserInput
+  payments?: Prisma.PaymentCreateNestedManyWithoutUserInput
+  blockedSlots?: Prisma.BlockedSlotCreateNestedManyWithoutCreatorInput
+  savedPaymentMethods?: Prisma.SavedPaymentMethodCreateNestedManyWithoutUserInput
+  pushSubscriptions?: Prisma.PushSubscriptionCreateNestedManyWithoutUserInput
+}
+
+export type UserUncheckedCreateWithoutNotificationsInput = {
+  id?: string
+  email?: string | null
+  passwordHash?: string | null
+  name: string
+  phone?: string | null
+  googleId?: string | null
+  role?: $Enums.Role
+  photoUrl?: string | null
+  notes?: string | null
+  cpfCnpj?: string | null
+  address?: string | null
+  city?: string | null
+  state?: string | null
+  tags?: Prisma.UserCreatetagsInput | string[]
+  socialLinks?: string | null
+  clientStatus?: string
+  stripeCustomerId?: string | null
+  autoChargeEnabled?: boolean
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  bookings?: Prisma.BookingUncheckedCreateNestedManyWithoutUserInput
+  contracts?: Prisma.ContractUncheckedCreateNestedManyWithoutUserInput
+  payments?: Prisma.PaymentUncheckedCreateNestedManyWithoutUserInput
+  blockedSlots?: Prisma.BlockedSlotUncheckedCreateNestedManyWithoutCreatorInput
+  savedPaymentMethods?: Prisma.SavedPaymentMethodUncheckedCreateNestedManyWithoutUserInput
+  pushSubscriptions?: Prisma.PushSubscriptionUncheckedCreateNestedManyWithoutUserInput
+}
+
+export type UserCreateOrConnectWithoutNotificationsInput = {
+  where: Prisma.UserWhereUniqueInput
+  create: Prisma.XOR<Prisma.UserCreateWithoutNotificationsInput, Prisma.UserUncheckedCreateWithoutNotificationsInput>
+}
+
+export type UserUpsertWithoutNotificationsInput = {
+  update: Prisma.XOR<Prisma.UserUpdateWithoutNotificationsInput, Prisma.UserUncheckedUpdateWithoutNotificationsInput>
+  create: Prisma.XOR<Prisma.UserCreateWithoutNotificationsInput, Prisma.UserUncheckedCreateWithoutNotificationsInput>
+  where?: Prisma.UserWhereInput
+}
+
+export type UserUpdateToOneWithWhereWithoutNotificationsInput = {
+  where?: Prisma.UserWhereInput
+  data: Prisma.XOR<Prisma.UserUpdateWithoutNotificationsInput, Prisma.UserUncheckedUpdateWithoutNotificationsInput>
+}
+
+export type UserUpdateWithoutNotificationsInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  email?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  passwordHash?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  name?: Prisma.StringFieldUpdateOperationsInput | string
+  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  googleId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  role?: Prisma.EnumRoleFieldUpdateOperationsInput | $Enums.Role
+  photoUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  cpfCnpj?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  tags?: Prisma.UserUpdatetagsInput | string[]
+  socialLinks?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  autoChargeEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  bookings?: Prisma.BookingUpdateManyWithoutUserNestedInput
+  contracts?: Prisma.ContractUpdateManyWithoutUserNestedInput
+  payments?: Prisma.PaymentUpdateManyWithoutUserNestedInput
+  blockedSlots?: Prisma.BlockedSlotUpdateManyWithoutCreatorNestedInput
+  savedPaymentMethods?: Prisma.SavedPaymentMethodUpdateManyWithoutUserNestedInput
+  pushSubscriptions?: Prisma.PushSubscriptionUpdateManyWithoutUserNestedInput
+}
+
+export type UserUncheckedUpdateWithoutNotificationsInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  email?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  passwordHash?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  name?: Prisma.StringFieldUpdateOperationsInput | string
+  phone?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  googleId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  role?: Prisma.EnumRoleFieldUpdateOperationsInput | $Enums.Role
+  photoUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  cpfCnpj?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  tags?: Prisma.UserUpdatetagsInput | string[]
+  socialLinks?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  autoChargeEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  bookings?: Prisma.BookingUncheckedUpdateManyWithoutUserNestedInput
+  contracts?: Prisma.ContractUncheckedUpdateManyWithoutUserNestedInput
+  payments?: Prisma.PaymentUncheckedUpdateManyWithoutUserNestedInput
+  blockedSlots?: Prisma.BlockedSlotUncheckedUpdateManyWithoutCreatorNestedInput
+  savedPaymentMethods?: Prisma.SavedPaymentMethodUncheckedUpdateManyWithoutUserNestedInput
+  pushSubscriptions?: Prisma.PushSubscriptionUncheckedUpdateManyWithoutUserNestedInput
 }
 
 
@@ -1577,6 +1754,7 @@ export type UserCountOutputType = {
   blockedSlots: number
   savedPaymentMethods: number
   pushSubscriptions: number
+  notifications: number
 }
 
 export type UserCountOutputTypeSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
@@ -1586,6 +1764,7 @@ export type UserCountOutputTypeSelect<ExtArgs extends runtime.Types.Extensions.I
   blockedSlots?: boolean | UserCountOutputTypeCountBlockedSlotsArgs
   savedPaymentMethods?: boolean | UserCountOutputTypeCountSavedPaymentMethodsArgs
   pushSubscriptions?: boolean | UserCountOutputTypeCountPushSubscriptionsArgs
+  notifications?: boolean | UserCountOutputTypeCountNotificationsArgs
 }
 
 /**
@@ -1640,6 +1819,13 @@ export type UserCountOutputTypeCountPushSubscriptionsArgs<ExtArgs extends runtim
   where?: Prisma.PushSubscriptionWhereInput
 }
 
+/**
+ * UserCountOutputType without action
+ */
+export type UserCountOutputTypeCountNotificationsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  where?: Prisma.NotificationWhereInput
+}
+
 
 export type UserSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
   id?: boolean
@@ -1668,6 +1854,7 @@ export type UserSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = r
   blockedSlots?: boolean | Prisma.User$blockedSlotsArgs<ExtArgs>
   savedPaymentMethods?: boolean | Prisma.User$savedPaymentMethodsArgs<ExtArgs>
   pushSubscriptions?: boolean | Prisma.User$pushSubscriptionsArgs<ExtArgs>
+  notifications?: boolean | Prisma.User$notificationsArgs<ExtArgs>
   _count?: boolean | Prisma.UserCountOutputTypeDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["user"]>
 
@@ -1748,6 +1935,7 @@ export type UserInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = 
   blockedSlots?: boolean | Prisma.User$blockedSlotsArgs<ExtArgs>
   savedPaymentMethods?: boolean | Prisma.User$savedPaymentMethodsArgs<ExtArgs>
   pushSubscriptions?: boolean | Prisma.User$pushSubscriptionsArgs<ExtArgs>
+  notifications?: boolean | Prisma.User$notificationsArgs<ExtArgs>
   _count?: boolean | Prisma.UserCountOutputTypeDefaultArgs<ExtArgs>
 }
 export type UserIncludeCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {}
@@ -1762,6 +1950,7 @@ export type $UserPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs =
     blockedSlots: Prisma.$BlockedSlotPayload<ExtArgs>[]
     savedPaymentMethods: Prisma.$SavedPaymentMethodPayload<ExtArgs>[]
     pushSubscriptions: Prisma.$PushSubscriptionPayload<ExtArgs>[]
+    notifications: Prisma.$NotificationPayload<ExtArgs>[]
   }
   scalars: runtime.Types.Extensions.GetPayloadResult<{
     id: string
@@ -2184,6 +2373,7 @@ export interface Prisma__UserClient<T, Null = never, ExtArgs extends runtime.Typ
   blockedSlots<T extends Prisma.User$blockedSlotsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$blockedSlotsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$BlockedSlotPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   savedPaymentMethods<T extends Prisma.User$savedPaymentMethodsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$savedPaymentMethodsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$SavedPaymentMethodPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   pushSubscriptions<T extends Prisma.User$pushSubscriptionsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$pushSubscriptionsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$PushSubscriptionPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
+  notifications<T extends Prisma.User$notificationsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$notificationsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$NotificationPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   /**
    * Attaches callbacks for the resolution and/or rejection of the Promise.
    * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -2767,6 +2957,30 @@ export type User$pushSubscriptionsArgs<ExtArgs extends runtime.Types.Extensions.
   take?: number
   skip?: number
   distinct?: Prisma.PushSubscriptionScalarFieldEnum | Prisma.PushSubscriptionScalarFieldEnum[]
+}
+
+/**
+ * User.notifications
+ */
+export type User$notificationsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the Notification
+   */
+  select?: Prisma.NotificationSelect<ExtArgs> | null
+  /**
+   * Omit specific fields from the Notification
+   */
+  omit?: Prisma.NotificationOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.NotificationInclude<ExtArgs> | null
+  where?: Prisma.NotificationWhereInput
+  orderBy?: Prisma.NotificationOrderByWithRelationInput | Prisma.NotificationOrderByWithRelationInput[]
+  cursor?: Prisma.NotificationWhereUniqueInput
+  take?: number
+  skip?: number
+  distinct?: Prisma.NotificationScalarFieldEnum | Prisma.NotificationScalarFieldEnum[]
 }
 
 /**

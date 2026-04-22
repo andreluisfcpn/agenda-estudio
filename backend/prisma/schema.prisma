@@ -65,6 +65,24 @@ enum PaymentMethod {
   BOLETO
 }
 
+enum NotificationType {
+  CONTRACT_EXPIRING
+  PAYMENT_OVERDUE
+  PAYMENT_CONFIRMED
+  PAYMENT_FAILED
+  BOOKING_UNCONFIRMED
+  BOOKING_REMINDER
+  BOOKING_CONFIRMED
+  BOOKING_CANCELLED
+  CONTRACT_ACTIVATED
+  CONTRACT_RENEWED
+  CANCELLATION_PENDING
+  FLEX_CREDITS_LOW
+  CLIENT_INACTIVE
+  CONTRACT_AWAITING_PAYMENT
+  SYSTEM
+}
+
 // ─── Models ─────────────────────────────────────────────
 
 model User {
@@ -95,6 +113,7 @@ model User {
   blockedSlots        BlockedSlot[]
   savedPaymentMethods SavedPaymentMethod[]
   pushSubscriptions   PushSubscription[]
+  notifications       Notification[]
 
   @@map("users")
 }
@@ -356,5 +375,26 @@ model IntegrationConfig {
   updatedAt    DateTime  @updatedAt        @map("updated_at")
 
   @@map("integration_configs")
+}
+
+model Notification {
+  id          String           @id @default(uuid())
+  userId      String           @map("user_id")
+  type        NotificationType
+  severity    String           @default("info") // critical, warning, info
+  title       String
+  message     String           @db.Text
+  entityType  String?          @map("entity_type")
+  entityId    String?          @map("entity_id")
+  actionUrl   String?          @map("action_url")
+  read        Boolean          @default(false)
+  pushSent    Boolean          @default(false) @map("push_sent")
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@index([createdAt])
+  @@map("notifications")
 }
 

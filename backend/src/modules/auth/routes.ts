@@ -98,7 +98,7 @@ function setTokenCookies(res: Response, accessToken: string, refreshToken: strin
         httpOnly: true,
         secure: config.nodeEnv === 'production',
         sameSite: 'lax',
-        maxAge: 365 * 24 * 60 * 60 * 1000, // 1 year
+        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days (VULN-06 fix: was 365 days)
         path: '/api/auth/refresh',
     });
 }
@@ -173,11 +173,16 @@ router.post('/register', async (req: Request, res: Response) => {
             return;
         }
 
-        // Verify OTP
+        // Verify OTP (VULN-05 fix: require explicit flag instead of trusting NODE_ENV)
+        // PAY-08 FIX: Double-check NODE_ENV — bypass NEVER works in production
         const target = data.method === 'email' ? data.email : data.phone;
-        let isValid = process.env.NODE_ENV === 'development' && data.code === '999999';
+        const canBypass = process.env.ALLOW_OTP_BYPASS === 'true' && process.env.NODE_ENV !== 'production';
+        let isValid = canBypass && data.code === '999999';
         if (!isValid) {
             isValid = await otpService.verify(target, data.code);
+        }
+        if (isValid && canBypass && data.code === '999999') {
+            console.warn(`[AUTH] OTP bypass used for ${target} (dev mode)`);
         }
 
         if (!isValid) {
@@ -382,9 +387,15 @@ router.post('/otp/verify', async (req: Request, res: Response) => {
     try {
         const { phone, code, name, email, password } = otpVerifySchema.parse(req.body);
 
-        let isValid = process.env.NODE_ENV === 'development' && code === '999999';
+        // VULN-05 fix: require explicit flag for OTP bypass
+        // PAY-08 FIX: Double-check NODE_ENV — bypass NEVER works in production
+        const canBypass = process.env.ALLOW_OTP_BYPASS === 'true' && process.env.NODE_ENV !== 'production';
+        let isValid = canBypass && code === '999999';
         if (!isValid) {
             isValid = await otpService.verify(phone, code);
+        }
+        if (isValid && canBypass && code === '999999') {
+            console.warn(`[AUTH] OTP bypass used for ${phone} (dev mode)`);
         }
 
         if (!isValid) {

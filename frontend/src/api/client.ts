@@ -391,12 +391,17 @@ export interface NotificationItem {
     entityId: string;
     actionUrl?: string;
     createdAt: string;
+    read: boolean;
+    source: 'computed' | 'persisted';
 }
 export interface NotificationSummary {
-    total: number; critical: number; warning: number; info: number;
+    total: number; unread: number; critical: number; warning: number; info: number;
 }
 export const notificationsApi = {
     getAll: () => request<{ notifications: NotificationItem[]; summary: NotificationSummary }>('/notifications'),
+    markAsRead: (id: string) => request<{ message: string }>(`/notifications/${id}/read`, { method: 'PATCH' }),
+    markAllAsRead: () => request<{ message: string; count: number }>('/notifications/read-all', { method: 'PATCH' }),
+    remove: (id: string) => request<{ message: string }>(`/notifications/${id}`, { method: 'DELETE' }),
 };
 
 // ─── Reports ────────────────────────────────────────────

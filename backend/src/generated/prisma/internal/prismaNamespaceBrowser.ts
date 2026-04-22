@@ -63,7 +63,8 @@ export const ModelName = {
   BusinessConfig: 'BusinessConfig',
   PaymentMethodConfig: 'PaymentMethodConfig',
   AuditLog: 'AuditLog',
-  IntegrationConfig: 'IntegrationConfig'
+  IntegrationConfig: 'IntegrationConfig',
+  Notification: 'Notification'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -319,6 +320,24 @@ export const IntegrationConfigScalarFieldEnum = {
 } as const
 
 export type IntegrationConfigScalarFieldEnum = (typeof IntegrationConfigScalarFieldEnum)[keyof typeof IntegrationConfigScalarFieldEnum]
+
+
+export const NotificationScalarFieldEnum = {
+  id: 'id',
+  userId: 'userId',
+  type: 'type',
+  severity: 'severity',
+  title: 'title',
+  message: 'message',
+  entityType: 'entityType',
+  entityId: 'entityId',
+  actionUrl: 'actionUrl',
+  read: 'read',
+  pushSent: 'pushSent',
+  createdAt: 'createdAt'
+} as const
+
+export type NotificationScalarFieldEnum = (typeof NotificationScalarFieldEnum)[keyof typeof NotificationScalarFieldEnum]
 
 
 export const SortOrder = {

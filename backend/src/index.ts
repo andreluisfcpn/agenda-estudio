@@ -46,7 +46,7 @@ app.use(helmet({
     contentSecurityPolicy: config.nodeEnv === 'production' ? {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'"],
+            scriptSrc: ["'self'"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
             fontSrc: ["'self'", "https://fonts.gstatic.com"],
             imgSrc: ["'self'", "data:", "blob:", "https://buzios.digital", "https://agenda.buzios.digital", "https://*.stripe.com"],
@@ -101,6 +101,15 @@ const apiLimiter = rateLimit({
     legacyHeaders: false,
 });
 
+// PAY-04 FIX: Stricter limiter for financial endpoints
+const paymentLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 20, // max 20 payment operations in 15 min per IP
+    message: { error: 'Muitas tentativas de pagamento. Aguarde 15 minutos.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
 // ─── Body Parsing ───────────────────────────────────────
 
 // Stripe webhooks need the raw body for signature verification.
@@ -120,7 +129,6 @@ app.get('/api/health', (_req, res) => {
     res.json({
         status: 'ok',
         timestamp: new Date().toISOString(),
-        env: config.nodeEnv,
     });
 });
 
@@ -130,6 +138,8 @@ app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 app.use('/api/auth/otp', otpLimiter);
 app.use('/api/auth/register/send-code', otpLimiter);
+app.use('/api/stripe/create-payment', paymentLimiter);
+app.use('/api/stripe/verify-payment', paymentLimiter);
 app.use('/api', apiLimiter);
 
 app.use('/api/auth', authRoutes);
@@ -169,45 +179,7 @@ app.listen(config.port, async () => {
     console.log(`🎙️  Studio Scheduler API running on http://localhost:${config.port}`);
     console.log(`   Environment: ${config.nodeEnv}`);
 
-    // Phase 2 Auto-Completion Cronjob
-    // This runs on startup and every 5 minutes, flagging past-due events as COMPLETED.
-    // Uses Redis lock to prevent duplicate execution across multiple instances.
     const { redis } = await import('./lib/redis.js');
-
-    const runCron = async () => {
-        const lockKey = 'cron:auto-complete:lock';
-        const lockAcquired = await redis.set(lockKey, 'running', 'EX', 240, 'NX');
-        if (lockAcquired !== 'OK') return; // Another instance is running this job
-
-        try {
-            console.log(`[Cron] Checking for finished bookings to auto-complete...`);
-            const now = new Date();
-            const bookings = await prisma.booking.findMany({
-                where: { status: { in: ['CONFIRMED', 'RESERVED'] } }
-            });
-
-            const toComplete = bookings.filter(b => {
-                const [h, m] = b.endTime.split(':').map(Number);
-                const endDateTime = new Date(b.date);
-                endDateTime.setUTCHours(h, m, 0, 0);
-                return endDateTime.getTime() < now.getTime();
-            });
-
-            if (toComplete.length > 0) {
-                const updated = await prisma.booking.updateMany({
-                    where: { id: { in: toComplete.map(x => x.id) } },
-                    data: { status: 'COMPLETED' }
-                });
-                console.log(`[Cron] Auto-completed ${updated.count} bookings.`);
-            }
-        } catch (err) {
-            console.error(`[Cron Error] Failed to process auto-completions:`, err);
-        } finally {
-            await redis.del(lockKey);
-        }
-    };
-
-    setInterval(runCron, 5 * 60 * 1000);
 
     // Hold Expiration Cronjob — clean expired HELD bookings & AWAITING_PAYMENT contracts every 60s
     import('./jobs/cleanExpiredHolds.js').then(({ cleanExpiredHolds }) => {
@@ -225,11 +197,11 @@ app.listen(config.port, async () => {
         console.log('   ⏰ Hold cleanup job registered (every 60s)');
     }).catch(err => console.error('[HOLD-CLEANUP] Failed to load job:', err));
 
-    // Push Notification Cronjob — checks & sends push every 15 minutes
+    // Push Notification Cronjob — checks & sends push every 5 minutes
     import('./jobs/pushNotificationJob.js').then(({ runPushNotificationJob }) => {
         const runPushJob = async () => {
             const pushLockKey = 'cron:push-notif:lock';
-            const lockAcquired = await redis.set(pushLockKey, 'running', 'EX', 840, 'NX');
+            const lockAcquired = await redis.set(pushLockKey, 'running', 'EX', 280, 'NX');
             if (lockAcquired !== 'OK') return;
             try {
                 await runPushNotificationJob();
@@ -237,9 +209,43 @@ app.listen(config.port, async () => {
                 await redis.del(pushLockKey);
             }
         };
-        setInterval(runPushJob, 15 * 60 * 1000);
-        console.log('   📱 Push notification job registered (every 15min)');
+        setInterval(runPushJob, 5 * 60 * 1000);
+        console.log('   📱 Push notification job registered (every 5min)');
     }).catch(err => console.error('[PUSH-JOB] Failed to load:', err));
+
+    // Booking Reminder Cronjob — sends reminders 24h and 2h before sessions
+    import('./jobs/bookingReminderJob.js').then(({ runBookingReminderJob }) => {
+        const runReminderJob = async () => {
+            const reminderLockKey = 'cron:booking-reminder:lock';
+            const lockAcquired = await redis.set(reminderLockKey, 'running', 'EX', 1500, 'NX');
+            if (lockAcquired !== 'OK') return;
+            try {
+                await runBookingReminderJob();
+            } finally {
+                await redis.del(reminderLockKey);
+            }
+        };
+        setInterval(runReminderJob, 30 * 60 * 1000);
+        setTimeout(runReminderJob, 5000); // run once on boot
+        console.log('   🔔 Booking reminder job registered (every 30min)');
+    }).catch(err => console.error('[REMINDER-JOB] Failed to load:', err));
+
+    // Notification Cleanup Cronjob — removes old read/unread notifications daily
+    import('./jobs/notificationCleanupJob.js').then(({ runNotificationCleanupJob }) => {
+        const runCleanupJob = async () => {
+            const cleanupLockKey = 'cron:notif-cleanup:lock';
+            const lockAcquired = await redis.set(cleanupLockKey, 'running', 'EX', 3600, 'NX');
+            if (lockAcquired !== 'OK') return;
+            try {
+                await runNotificationCleanupJob();
+            } finally {
+                await redis.del(cleanupLockKey);
+            }
+        };
+        setInterval(runCleanupJob, 24 * 60 * 60 * 1000);
+        setTimeout(runCleanupJob, 10000); // run once on boot
+        console.log('   🧹 Notification cleanup job registered (daily)');
+    }).catch(err => console.error('[NOTIF-CLEANUP] Failed to load:', err));
 });
 
 export default app;

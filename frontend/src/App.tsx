@@ -11,6 +11,9 @@ import Topbar from './components/Topbar';
 import ProfileModal from './components/ProfileModal';
 import BottomTabBar from './components/BottomTabBar';
 import { PageTransitionLoader } from './components/PageTransitionLoader';
+import OfflineIndicator from './components/OfflineIndicator';
+import UpdateBanner from './components/UpdateBanner';
+import { usePushSubscription } from './hooks/usePushSubscription';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { loadPaymentMethods } from './constants/paymentMethods';
 
@@ -59,6 +62,7 @@ function Layout({ children }: { children: React.ReactNode }) {
     const [showProfile, setShowProfile] = useState(false);
     const [toast, setToast] = useState('');
     const { isTransitioning, isExiting } = useNavigation();
+    usePushSubscription();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
         try { return localStorage.getItem('sidebar-collapsed') === 'true'; } catch { return false; }
     });
@@ -85,6 +89,7 @@ function Layout({ children }: { children: React.ReactNode }) {
 
     return (
         <div className={`app-layout ${sidebarCollapsed ? 'app-layout--sidebar-collapsed' : ''}`}>
+            <OfflineIndicator />
             <AmbientBackground />
             <Topbar
                 onToggleSidebar={toggleSidebar}
@@ -98,7 +103,7 @@ function Layout({ children }: { children: React.ReactNode }) {
             {/* Transition overlay — shown BEFORE route change */}
             {isTransitioning && <PageTransitionLoader exiting={isExiting} />}
 
-            <main className={`main-content${isTransitioning ? ' main-content--frozen' : ''}`}>
+            <main className="main-content">
                 <Suspense fallback={<PageTransitionLoader />}>
                     {children}
                 </Suspense>
@@ -112,6 +117,7 @@ function Layout({ children }: { children: React.ReactNode }) {
 
             {toast && <SuccessToast message={toast} onDone={() => setToast('')} />}
 
+            <UpdateBanner />
             <BottomTabBar />
         </div>
     );

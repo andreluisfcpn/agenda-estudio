@@ -160,22 +160,54 @@ router.post('/:id/confirm-payment', authenticate, async (req: Request, res: Resp
             return;
         }
 
-        // Activate contract
-        await prisma.contract.update({
-            where: { id: contractId },
+        // VULN-02 FIX: Verify payment with Stripe before activating
+        if (paymentIntentId) {
+            const { stripeGetPaymentIntent } = await import('../../lib/stripeService.js');
+            const pi = await stripeGetPaymentIntent(paymentIntentId);
+
+            if (pi.status !== 'succeeded') {
+                res.status(402).json({ error: 'Pagamento ainda não confirmado pelo Stripe.' });
+                return;
+            }
+
+            // Verify the payment belongs to this contract
+            const payment = await prisma.payment.findFirst({
+                where: { contractId, providerRef: paymentIntentId, status: 'PENDING' },
+            });
+
+            if (!payment) {
+                res.status(400).json({ error: 'Nenhum pagamento pendente encontrado para este contrato com este PaymentIntent.' });
+                return;
+            }
+
+            // VULN-07 FIX: Verify amount matches
+            if (pi.amount !== payment.amount) {
+                console.error(`[CONTRACT-CONFIRM] Amount mismatch: PI=${pi.amount}, DB=${payment.amount}`);
+                res.status(400).json({ error: 'Valor do pagamento não confere.' });
+                return;
+            }
+
+            // Mark payment as PAID atomically (VULN-09 fix)
+            await prisma.payment.updateMany({
+                where: { contractId, providerRef: paymentIntentId, status: 'PENDING' },
+                data: { status: 'PAID', paidAt: new Date() },
+            });
+        } else {
+            // No paymentIntentId provided — cannot confirm without proof
+            res.status(400).json({ error: 'paymentIntentId é obrigatório para confirmar pagamento.' });
+            return;
+        }
+
+        // Activate contract atomically (VULN-09 fix)
+        const activated = await prisma.contract.updateMany({
+            where: { id: contractId, status: 'AWAITING_PAYMENT' },
             data: { status: 'ACTIVE', paymentDeadline: null },
         });
 
-        // Mark payment as PAID
-        if (paymentIntentId) {
-            await prisma.payment.updateMany({
-                where: {
-                    contractId,
-                    providerRef: paymentIntentId,
-                    status: 'PENDING',
-                },
-                data: { status: 'PAID', paidAt: new Date() },
-            });
+        if (activated.count === 0) {
+            // Contract was already activated (race condition with webhook)
+            res.json({ contract: { id: contractId, status: 'ACTIVE' }, message: 'Contrato já ativado.' });
+            return;
         }
 
         res.json({
@@ -270,12 +302,18 @@ router.post('/:id/subscribe', authenticate, async (req: Request, res: Response) 
             });
         }
 
-        // Activate the contract if it wasn't already
+        // PAY-01 FIX: Only activate if subscription is fully active (first payment confirmed)
         if (contract.status === 'AWAITING_PAYMENT') {
-            await prisma.contract.update({
-                where: { id: contract.id },
-                data: { status: 'ACTIVE', paymentDeadline: null, durationMonths: duration },
-            });
+            if (subResult.status === 'active') {
+                await prisma.contract.updateMany({
+                    where: { id: contract.id, status: 'AWAITING_PAYMENT' },
+                    data: { status: 'ACTIVE', paymentDeadline: null, durationMonths: duration },
+                });
+            } else {
+                // Subscription is 'incomplete' (3DS pending, insufficient funds, etc.)
+                // Keep contract as AWAITING_PAYMENT — webhook will activate when paid
+                console.log(`[SUBSCRIBE] Subscription ${subResult.subscriptionId} status=${subResult.status} — contract stays AWAITING_PAYMENT`);
+            }
         } else if (data.durationMonths && data.durationMonths !== contract.durationMonths) {
             await prisma.contract.update({
                 where: { id: contract.id },

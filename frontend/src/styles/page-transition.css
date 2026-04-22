@@ -269,16 +269,7 @@
   100% { transform: translateX(350%); }
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   Freeze all content animations during page transition.
-   Pages render in their final state behind the loader.
-   ═══════════════════════════════════════════════════════════════ */
-.main-content--frozen * {
-  animation-duration: 0s !important;
-  animation-delay: 0s !important;
-  transition-duration: 0s !important;
-  transition-delay: 0s !important;
-}
+
 
 /* ═══════════════════════════════════════════════════════════════
    Reduced Motion — Simplified fallback

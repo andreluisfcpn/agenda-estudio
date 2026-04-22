@@ -9,10 +9,26 @@ const IV_LENGTH = 16;
 const TAG_LENGTH = 16;
 
 function getEncryptionKey(): Buffer {
+    // VULN-03 FIX: Use dedicated ENCRYPTION_KEY, fallback to JWT_SECRET for backward compat
+    const dedicatedKey = process.env.ENCRYPTION_KEY;
+    if (dedicatedKey) {
+        // If ENCRYPTION_KEY is a 64-char hex string (32 bytes), use directly
+        if (/^[0-9a-fA-F]{64}$/.test(dedicatedKey)) {
+            return Buffer.from(dedicatedKey, 'hex');
+        }
+        // Otherwise derive 32 bytes via SHA-256
+        return crypto.createHash('sha256').update(dedicatedKey).digest();
+    }
+
+    // Backward compatibility: fall back to JWT_SECRET with a startup warning
     const secret = process.env.JWT_SECRET || '';
-    // Derive a 32-byte key from the JWT secret using SHA-256
+    if (process.env.NODE_ENV === 'production' && !_encryptionKeyWarned) {
+        console.warn('[SECURITY] ENCRYPTION_KEY not set — falling back to JWT_SECRET. Set a dedicated ENCRYPTION_KEY for production.');
+        _encryptionKeyWarned = true;
+    }
     return crypto.createHash('sha256').update(secret).digest();
 }
+let _encryptionKeyWarned = false;
 
 /**
  * Encrypt a plaintext string.

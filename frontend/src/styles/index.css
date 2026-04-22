@@ -1285,15 +1285,11 @@ tr:hover td {
   border: 0;
 }
 
-/* ─── Mobile-First Animations ────────────────────────────── */
-@keyframes cardEnter {
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
+/* ─── Mobile-First Animations (entry animations removed — loader handles transitions) */
 
 .animate-card-enter {
-  animation: cardEnter 0.35s cubic-bezier(0.16, 1, 0.3, 1) backwards;
-  animation-delay: calc(var(--i, 0) * 60ms);
+  /* Entry animation removed: page transition loader already provides visual feedback.
+     Class kept in markup for future use if needed. */
 }
 
 /* Hover (desktop only — no hover on touch devices) */

@@ -6,6 +6,7 @@ import { stripeGetPaymentIntent } from '../../lib/stripeService.js';
 import { getPackageSlots } from '../../utils/pricing.js';
 import { BookingStatus } from '../../generated/prisma/client.js';
 import { restoreCredit } from './booking.service.js';
+import { createNotification } from '../notifications/notificationService.js';
 
 export function registerStatusRoutes(router: Router) {
 
@@ -39,18 +40,32 @@ router.post('/:id/complete-payment', authenticate, async (req: Request, res: Res
             return;
         }
 
+        // PAY-02 FIX: paymentIntentId is REQUIRED — never allow free confirmations
+        if (!paymentIntentId) {
+            res.status(400).json({ error: 'paymentIntentId é obrigatório para confirmar pagamento.' });
+            return;
+        }
+
         // Security: verify the PaymentIntent with Stripe BEFORE updating booking
-        if (paymentIntentId) {
-            try {
-                const pi = await stripeGetPaymentIntent(paymentIntentId);
-                if (pi.status !== 'succeeded') {
-                    res.status(400).json({ error: 'Pagamento ainda não confirmado pelo Stripe.' });
-                    return;
-                }
-            } catch {
-                res.status(400).json({ error: 'Não foi possível verificar o pagamento no Stripe.' });
+        try {
+            const pi = await stripeGetPaymentIntent(paymentIntentId);
+            if (pi.status !== 'succeeded') {
+                res.status(400).json({ error: 'Pagamento ainda não confirmado pelo Stripe.' });
                 return;
             }
+
+            // PAY-03 FIX: Verify amount matches the booking payment
+            const bookingPayment = await prisma.payment.findFirst({
+                where: { bookingId, providerRef: paymentIntentId, status: 'PENDING' },
+            });
+            if (bookingPayment && pi.amount !== bookingPayment.amount) {
+                console.error(`[BOOKING] Amount mismatch: PI=${pi.amount}, DB=${bookingPayment.amount}`);
+                res.status(400).json({ error: 'Valor do pagamento não confere.' });
+                return;
+            }
+        } catch {
+            res.status(400).json({ error: 'Não foi possível verificar o pagamento no Stripe.' });
+            return;
         }
 
         // Update booking to CONFIRMED (AFTER payment verification)
@@ -62,30 +77,20 @@ router.post('/:id/complete-payment', authenticate, async (req: Request, res: Res
             },
         });
 
-        // Update Payment record to PAID
-        if (paymentIntentId) {
-            await prisma.payment.updateMany({
-                where: {
-                    bookingId,
-                    providerRef: paymentIntentId,
-                    status: 'PENDING',
-                },
-                data: { status: 'PAID', paidAt: new Date() },
-            });
-        } else {
-            await prisma.payment.updateMany({
-                where: {
-                    bookingId,
-                    status: 'PENDING',
-                },
-                data: { status: 'PAID', paidAt: new Date() },
-            });
-        }
+        // Update Payment record to PAID (atomic — only if still PENDING)
+        await prisma.payment.updateMany({
+            where: {
+                bookingId,
+                providerRef: paymentIntentId,
+                status: 'PENDING',
+            },
+            data: { status: 'PAID', paidAt: new Date() },
+        });
 
-        // If avulso micro-contract, activate it
+        // If avulso micro-contract, activate it (PAY-07 FIX: atomic guard)
         if (booking.contract?.status === 'AWAITING_PAYMENT') {
-            await prisma.contract.update({
-                where: { id: booking.contractId },
+            await prisma.contract.updateMany({
+                where: { id: booking.contractId!, status: 'AWAITING_PAYMENT' },
                 data: { status: 'ACTIVE', paymentDeadline: null },
             });
         }
@@ -149,6 +154,23 @@ router.patch('/:id/confirm', authenticate, async (req: Request, res: Response) =
         },
         message: 'Agendamento confirmado com sucesso!',
     });
+
+    // Instant push: notify admin that a booking was confirmed
+    const admins = await prisma.user.findMany({ where: { role: 'ADMIN' }, select: { id: true } });
+    const bookingDate = booking.date.toISOString().split('T')[0];
+    const [dd, mm] = [bookingDate.slice(8, 10), bookingDate.slice(5, 7)];
+    for (const admin of admins) {
+        createNotification({
+            userId: admin.id,
+            type: 'BOOKING_CONFIRMED',
+            severity: 'info',
+            title: '✅ Sessão Confirmada',
+            message: `Cliente confirmou sessão de ${dd}/${mm} às ${booking.startTime}`,
+            entityType: 'BOOKING',
+            entityId: booking.id,
+            actionUrl: '/admin/today',
+        }).catch(() => {});
+    }
 });
 
 // ─── PUT /api/bookings/:id/client-cancel ────────────────
@@ -182,6 +204,24 @@ router.put('/:id/client-cancel', authenticate, async (req: Request, res: Respons
         if (booking.contractId) {
             await restoreCredit(booking.contractId);
         }
+
+        // Instant push: notify admin of cancellation
+        const admins = await prisma.user.findMany({ where: { role: 'ADMIN' }, select: { id: true } });
+        const cancelDate = booking.date.toISOString().split('T')[0];
+        const [cdd, cmm] = [cancelDate.slice(8, 10), cancelDate.slice(5, 7)];
+        for (const admin of admins) {
+            createNotification({
+                userId: admin.id,
+                type: 'BOOKING_CANCELLED',
+                severity: 'warning',
+                title: '🚫 Sessão Cancelada',
+                message: `Cliente cancelou sessão de ${cdd}/${cmm} às ${booking.startTime}`,
+                entityType: 'BOOKING',
+                entityId: booking.id,
+                actionUrl: '/admin/today',
+            }).catch(() => {});
+        }
+
         res.json({ message: 'Agendamento cancelado com sucesso. O crédito retornou ao seu plano.' });
     } else {
         // Cancel without refund (Late cancellation)

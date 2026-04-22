@@ -7,6 +7,7 @@ import { prisma } from '../../lib/prisma.js';
 import { stripeVerifyWebhook } from '../../lib/stripeService.js';
 import { decryptConfigSafe } from '../../utils/crypto.js';
 import crypto from 'node:crypto';
+import { createNotification } from '../notifications/notificationService.js';
 
 const router = Router();
 
@@ -43,7 +44,7 @@ async function verifyCoraSignature(req: Request): Promise<boolean> {
 
             if (!webhookSecret) {
                 console.warn(`[Webhook:Cora] Signature present but no webhookSecret configured for "${environment}"`);
-                return process.env.NODE_ENV !== 'production';
+                return false;
             }
 
             const rawBody = (req as any).rawBody || JSON.stringify(req.body);
@@ -52,24 +53,33 @@ async function verifyCoraSignature(req: Request): Promise<boolean> {
                 .update(rawBody)
                 .digest('hex');
 
-            return crypto.timingSafeEqual(
-                Buffer.from(signature),
-                Buffer.from(expectedSignature)
-            );
-        } catch {
+            // Prevent timing attacks with constant-time comparison
+            const sigBuf = Buffer.from(signature);
+            const expectedBuf = Buffer.from(expectedSignature);
+            if (sigBuf.length !== expectedBuf.length) return false;
+
+            return crypto.timingSafeEqual(sigBuf, expectedBuf);
+        } catch (err) {
+            console.error('[Webhook:Cora] Signature verification error:', err);
             return false;
         }
     }
 
-    // Fallback: verify Cora identity via user-agent + event-id headers
-    if (userAgent?.includes('Cora-Webhook') && eventId) {
+    // No HMAC signature — reject in production (VULN-01 fix)
+    // User-Agent spoofing is trivial; never trust it for authentication
+    if (process.env.NODE_ENV === 'production') {
+        console.error('[Webhook:Cora] No signature — rejecting in production');
+        return false;
+    }
+
+    // Dev-only: accept unsigned webhooks ONLY with explicit opt-in flag
+    if (process.env.ALLOW_UNVERIFIED_WEBHOOKS === 'true') {
+        console.warn('[Webhook:Cora] Accepting unverified webhook (dev + ALLOW_UNVERIFIED_WEBHOOKS)');
         return true;
     }
 
-    // No signature and no Cora headers — reject in production
-    if (process.env.NODE_ENV === 'production') return false;
-    console.warn('[Webhook:Cora] No signature/Cora headers — accepting in dev mode');
-    return true;
+    console.warn('[Webhook:Cora] No signature and ALLOW_UNVERIFIED_WEBHOOKS not set — rejecting');
+    return false;
 }
 
 // ─── POST /api/webhooks/cora ────────────────────────────
@@ -127,6 +137,18 @@ router.post('/cora', async (req: Request, res: Response) => {
                 if (updated.count > 0) {
                     console.log(`[Webhook:Cora] Payment ${payment.id} marked as PAID (invoice: ${invoiceId})`);
 
+                    // Instant push: payment confirmed
+                    createNotification({
+                        userId: payment.userId,
+                        type: 'PAYMENT_CONFIRMED',
+                        severity: 'info',
+                        title: '✅ Pagamento Confirmado',
+                        message: `Seu pagamento de R$ ${(payment.amount / 100).toFixed(2).replace('.', ',')} foi confirmado!`,
+                        entityType: 'PAYMENT',
+                        entityId: payment.id,
+                        actionUrl: '/meus-pagamentos',
+                    }).catch(() => {});
+
                     if (payment.contractId) {
                         await unlockNextCycleBookings(payment.contractId);
                     }
@@ -149,6 +171,18 @@ router.post('/cora', async (req: Request, res: Response) => {
                     data: { status: 'FAILED' },
                 });
                 console.log(`[Webhook:Cora] Payment ${payment.id} marked as FAILED (invoice: ${invoiceId})`);
+
+                // Instant push: Cora boleto cancelled/expired
+                createNotification({
+                    userId: payment.userId,
+                    type: 'PAYMENT_FAILED',
+                    severity: 'critical',
+                    title: '❌ Boleto Cancelado/Expirado',
+                    message: 'Seu boleto foi cancelado ou expirou. Gere um novo em Meus Pagamentos.',
+                    entityType: 'PAYMENT',
+                    entityId: payment.id,
+                    actionUrl: '/meus-pagamentos',
+                }).catch(() => {});
             }
         }
 
@@ -183,11 +217,14 @@ router.post('/stripe', async (req: Request, res: Response) => {
             // In production, NEVER accept unsigned webhooks
             res.status(400).json({ error: 'Missing stripe-signature header' });
             return;
-        } else {
-            // No signature (dev mode only) — accept raw body
+        } else if (process.env.ALLOW_UNVERIFIED_WEBHOOKS === 'true') {
+            // Dev-only: accept unsigned webhooks with explicit opt-in (VULN-08 fix)
             const body = Buffer.isBuffer(req.body) ? JSON.parse(req.body.toString()) : req.body;
             event = body;
-            console.log('[Webhook:Stripe] No signature — dev mode');
+            console.warn('[Webhook:Stripe] Accepting unverified webhook (dev + ALLOW_UNVERIFIED_WEBHOOKS)');
+        } else {
+            res.status(400).json({ error: 'Missing stripe-signature header. Set ALLOW_UNVERIFIED_WEBHOOKS=true for dev.' });
+            return;
         }
 
         console.log('[Webhook:Stripe] Received event:', event.type);
@@ -213,6 +250,19 @@ router.post('/stripe', async (req: Request, res: Response) => {
 
                     if (updated.count > 0) {
                         console.log(`[Webhook:Stripe] Payment ${paymentId} marked as PAID`);
+
+                        // Instant push: payment confirmed
+                        createNotification({
+                            userId: payment.userId,
+                            type: 'PAYMENT_CONFIRMED',
+                            severity: 'info',
+                            title: '✅ Pagamento Confirmado',
+                            message: `Seu pagamento de R$ ${(payment.amount / 100).toFixed(2).replace('.', ',')} foi confirmado!`,
+                            entityType: 'PAYMENT',
+                            entityId: payment.id,
+                            actionUrl: '/meus-pagamentos',
+                        }).catch(() => {});
+
                         if (payment.contractId) {
                             await unlockNextCycleBookings(payment.contractId);
                         }
@@ -227,11 +277,28 @@ router.post('/stripe', async (req: Request, res: Response) => {
             const paymentId = paymentIntent.metadata?.paymentId;
 
             if (paymentId) {
-                await prisma.payment.update({
-                    where: { id: paymentId },
-                    data: { status: 'FAILED' },
-                });
-                console.log(`[Webhook:Stripe] Payment ${paymentId} marked as FAILED`);
+                const payment = await prisma.payment.findUnique({ where: { id: paymentId } });
+                if (payment) {
+                    // PAY-05 FIX: Atomic update — only mark as FAILED if still PENDING
+                    // Prevents overwriting PAID status if a retry succeeded before this webhook
+                    await prisma.payment.updateMany({
+                        where: { id: paymentId, status: 'PENDING' },
+                        data: { status: 'FAILED' },
+                    });
+                    console.log(`[Webhook:Stripe] Payment ${paymentId} marked as FAILED`);
+
+                    // Instant push: payment failed
+                    createNotification({
+                        userId: payment.userId,
+                        type: 'PAYMENT_FAILED',
+                        severity: 'critical',
+                        title: '❌ Pagamento Recusado',
+                        message: 'Seu pagamento foi recusado. Tente novamente em Meus Pagamentos.',
+                        entityType: 'PAYMENT',
+                        entityId: payment.id,
+                        actionUrl: '/meus-pagamentos',
+                    }).catch(() => {});
+                }
             }
         }
 
@@ -422,8 +489,10 @@ router.post('/stripe', async (req: Request, res: Response) => {
                 });
 
                 if (payment) {
-                    await prisma.payment.update({
-                        where: { id: payment.id },
+                    // PAY-06 FIX: Atomic update — only mark FAILED if still PENDING
+                    // Prevents overwriting PAID if a retry succeeded before this webhook
+                    await prisma.payment.updateMany({
+                        where: { id: payment.id, status: 'PENDING' },
                         data: { status: 'FAILED' },
                     });
                     console.log(`[Webhook:Stripe] Subscription payment ${payment.id} marked as FAILED`);

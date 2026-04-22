@@ -25,10 +25,22 @@ export const config = {
     },
 
     jwt: {
-        secret: process.env.JWT_SECRET || 'dev-secret',
-        refreshSecret: process.env.JWT_REFRESH_SECRET || 'dev-refresh-secret',
+        secret: (() => {
+            const s = process.env.JWT_SECRET;
+            if (!s && process.env.NODE_ENV === 'production') throw new Error('JWT_SECRET is required in production');
+            return s || 'dev-secret';
+        })(),
+        refreshSecret: (() => {
+            const s = process.env.JWT_REFRESH_SECRET;
+            if (!s && process.env.NODE_ENV === 'production') throw new Error('JWT_REFRESH_SECRET is required in production');
+            return s || 'dev-refresh-secret';
+        })(),
         accessExpiry: process.env.JWT_ACCESS_EXPIRY || '1h',
-        refreshExpiry: process.env.JWT_REFRESH_EXPIRY || '365d',
+        refreshExpiry: process.env.JWT_REFRESH_EXPIRY || '30d',
+    },
+
+    encryption: {
+        key: process.env.ENCRYPTION_KEY || '',
     },
 
     stripe: {

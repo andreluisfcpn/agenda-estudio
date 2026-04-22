@@ -1,24 +1,17 @@
 import { prisma } from '../lib/prisma.js';
-import { redis } from '../lib/redis.js';
-import { sendPushToUser, PushPayload } from '../modules/push/pushService.js';
-
-// Redis TTL per severity (deduplication)
-const SEVERITY_TTL: Record<string, number> = {
-    critical: 6 * 60 * 60,   // 6 hours
-    warning: 24 * 60 * 60,   // 24 hours
-    info: 72 * 60 * 60,      // 72 hours
-};
+import { createNotification } from '../modules/notifications/notificationService.js';
+import { NotificationType } from '../generated/prisma/client.js';
 
 /**
- * Push Notification Job — runs every 15 minutes.
+ * Push Notification Job — runs every 5 minutes.
  * Computes notifications for each user with active push subscriptions,
- * deduplicates via Redis TTL, and sends push notifications.
+ * persists them in DB, and sends push notifications.
  */
 export async function runPushNotificationJob(): Promise<void> {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    // 1. Get all users with active push subscriptions
+    // Get all users with active push subscriptions
     const usersWithSubs = await prisma.pushSubscription.findMany({
         select: { userId: true },
         distinct: ['userId'],
@@ -33,23 +26,22 @@ export async function runPushNotificationJob(): Promise<void> {
             const notifications = await computeUserNotifications(userId, now, today);
 
             for (const notif of notifications) {
-                const redisKey = `push:sent:${userId}:${notif.id}`;
-                const alreadySent = await redis.get(redisKey);
-                if (alreadySent) continue;
-
-                const payload: PushPayload = {
-                    title: notif.title,
-                    message: notif.message,
-                    tag: notif.id,
-                    actionUrl: notif.actionUrl,
-                    severity: notif.severity,
-                };
-
-                const sent = await sendPushToUser(userId, payload);
-                if (sent > 0) {
-                    const ttl = SEVERITY_TTL[notif.severity] || SEVERITY_TTL.info;
-                    await redis.set(redisKey, '1', 'EX', ttl);
+                // Use createNotification for dedup + persistence + push
+                try {
+                    await createNotification({
+                        userId,
+                        type: notif.type,
+                        severity: notif.severity,
+                        title: notif.title,
+                        message: notif.message,
+                        entityType: notif.entityType,
+                        entityId: notif.entityId,
+                        actionUrl: notif.actionUrl,
+                        sendPush: true,
+                    });
                     totalSent++;
+                } catch {
+                    // Dedup or other error — skip silently
                 }
             }
         } catch (err) {
@@ -58,19 +50,21 @@ export async function runPushNotificationJob(): Promise<void> {
     }
 
     if (totalSent > 0) {
-        console.log(`[PUSH-JOB] Sent ${totalSent} push notifications.`);
+        console.log(`[PUSH-JOB] Processed ${totalSent} push notifications.`);
     }
 }
 
 interface ComputedNotification {
-    id: string;
+    type: NotificationType;
     severity: 'critical' | 'warning' | 'info';
     title: string;
     message: string;
+    entityType: string;
+    entityId: string;
     actionUrl: string;
 }
 
-/** Compute notifications for a specific user (reuses logic from notifications module). */
+/** Compute notifications for a specific user. */
 async function computeUserNotifications(
     userId: string,
     now: Date,
@@ -95,12 +89,14 @@ async function computeUserNotifications(
     for (const p of overduePayments) {
         const daysOverdue = Math.ceil((today.getTime() - new Date(p.dueDate!).getTime()) / (1000 * 60 * 60 * 24));
         notifications.push({
-            id: `payment-overdue-${p.id}`,
+            type: 'PAYMENT_OVERDUE',
             severity: daysOverdue > 7 ? 'critical' : 'warning',
             title: '💰 Pagamento Vencido',
             message: isAdmin
                 ? `${p.user.name} — R$ ${(p.amount / 100).toFixed(2).replace('.', ',')} vencido há ${daysOverdue} dia(s)`
                 : `Você possui uma fatura atrasada (vencida há ${daysOverdue} dias)`,
+            entityType: 'PAYMENT',
+            entityId: p.id,
             actionUrl: isAdmin ? '/admin/finance' : '/meus-pagamentos',
         });
     }
@@ -118,12 +114,14 @@ async function computeUserNotifications(
     for (const b of unconfirmedBookings) {
         const isToday = new Date(b.date).toISOString().split('T')[0] === today.toISOString().split('T')[0];
         notifications.push({
-            id: `booking-unconfirmed-${b.id}`,
+            type: 'BOOKING_UNCONFIRMED',
             severity: isToday ? 'critical' : 'warning',
             title: '⏳ Sessão Não Confirmada',
             message: isAdmin
                 ? `${b.user.name} — ${isToday ? 'HOJE' : 'Amanhã'} às ${b.startTime}`
                 : `Sua sessão de ${isToday ? 'HOJE' : 'Amanhã'} às ${b.startTime} precisa ser confirmada`,
+            entityType: 'BOOKING',
+            entityId: b.id,
             actionUrl: isAdmin ? '/admin/today' : '/dashboard',
         });
     }
@@ -138,17 +136,19 @@ async function computeUserNotifications(
     for (const c of expiringContracts) {
         const daysLeft = Math.ceil((new Date(c.endDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
         notifications.push({
-            id: `contract-expiring-${c.id}`,
+            type: 'CONTRACT_EXPIRING',
             severity: daysLeft <= 2 ? 'critical' : 'warning',
             title: '📋 Contrato Expirando',
             message: isAdmin
                 ? `${c.user.name} — "${c.name}" expira em ${daysLeft} dia(s)`
                 : `Seu contrato "${c.name}" expira em ${daysLeft} dia(s)`,
+            entityType: 'CONTRACT',
+            entityId: c.id,
             actionUrl: isAdmin ? `/admin/clients/${c.userId}` : '/my-contracts',
         });
     }
 
-    // Low flex credits
+    // Low flex credits (client only)
     if (!isAdmin) {
         const lowCredits = await prisma.contract.findMany({
             where: { status: 'ACTIVE', type: 'FLEX', flexCreditsRemaining: { lte: 2, gt: 0 }, userId },
@@ -157,10 +157,12 @@ async function computeUserNotifications(
 
         for (const c of lowCredits) {
             notifications.push({
-                id: `flex-credits-low-${c.id}`,
+                type: 'FLEX_CREDITS_LOW',
                 severity: 'info',
                 title: '🔄 Créditos Flex Baixos',
                 message: `Seu plano Flex tem apenas ${c.flexCreditsRemaining} crédito(s) restante(s).`,
+                entityType: 'CONTRACT',
+                entityId: c.id,
                 actionUrl: '/my-contracts',
             });
         }

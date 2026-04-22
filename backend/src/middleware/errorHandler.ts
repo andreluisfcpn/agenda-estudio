@@ -12,8 +12,10 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
         return;
     }
 
+    // VULN-11 fix: Only expose stack in explicit development mode
+    const isDev = config.nodeEnv === 'development';
     res.status(500).json({
         error: 'Erro interno do servidor.',
-        ...(config.nodeEnv === 'development' && { stack: err.stack }),
+        ...(isDev && { stack: err.stack }),
     });
 }

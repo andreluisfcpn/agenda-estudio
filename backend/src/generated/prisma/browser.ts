@@ -82,3 +82,8 @@ export type AuditLog = Prisma.AuditLogModel
  * 
  */
 export type IntegrationConfig = Prisma.IntegrationConfigModel
+/**
+ * Model Notification
+ * 
+ */
+export type Notification = Prisma.NotificationModel
