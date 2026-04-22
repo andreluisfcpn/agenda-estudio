@@ -17,8 +17,8 @@
         "stripe:trigger": "stripe trigger payment_intent.succeeded"
     },
     "dependencies": {
-        "@prisma/adapter-pg": "^7.6.0",
-        "@prisma/client": "^7.6.0",
+        "@prisma/adapter-pg": "^7.8.0",
+        "@prisma/client": "^7.8.0",
         "@types/multer": "^2.0.0",
         "@types/sharp": "^0.31.1",
         "bcryptjs": "^2.4.3",
@@ -52,7 +52,7 @@
         "@types/pg": "^8.20.0",
         "@types/qrcode": "^1.5.6",
         "@types/web-push": "^3.6.4",
-        "prisma": "^7.6.0",
+        "prisma": "^7.8.0",
         "tsx": "^4.19.3",
         "typescript": "^5.7.3",
         "vitest": "^3.0.7"
