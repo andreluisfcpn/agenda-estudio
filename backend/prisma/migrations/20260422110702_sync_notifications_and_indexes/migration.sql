@@ -1,21 +1,26 @@
--- CreateEnum
-CREATE TYPE "NotificationType" AS ENUM (
-    'CONTRACT_EXPIRING',
-    'PAYMENT_OVERDUE',
-    'PAYMENT_CONFIRMED',
-    'PAYMENT_FAILED',
-    'BOOKING_UNCONFIRMED',
-    'BOOKING_REMINDER',
-    'BOOKING_CONFIRMED',
-    'BOOKING_CANCELLED',
-    'CONTRACT_ACTIVATED',
-    'CONTRACT_RENEWED',
-    'CANCELLATION_PENDING',
-    'FLEX_CREDITS_LOW',
-    'CLIENT_INACTIVE',
-    'CONTRACT_AWAITING_PAYMENT',
-    'SYSTEM'
-);
+-- CreateEnum (safe: skip if already exists)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'NotificationType') THEN
+        CREATE TYPE "NotificationType" AS ENUM (
+            'CONTRACT_EXPIRING',
+            'PAYMENT_OVERDUE',
+            'PAYMENT_CONFIRMED',
+            'PAYMENT_FAILED',
+            'BOOKING_UNCONFIRMED',
+            'BOOKING_REMINDER',
+            'BOOKING_CONFIRMED',
+            'BOOKING_CANCELLED',
+            'CONTRACT_ACTIVATED',
+            'CONTRACT_RENEWED',
+            'CANCELLATION_PENDING',
+            'FLEX_CREDITS_LOW',
+            'CLIENT_INACTIVE',
+            'CONTRACT_AWAITING_PAYMENT',
+            'SYSTEM'
+        );
+    END IF;
+END$$;
 
 -- AlterEnum
 ALTER TYPE "BookingStatus" ADD VALUE IF NOT EXISTS 'HELD';
@@ -97,8 +102,18 @@ CREATE INDEX IF NOT EXISTS "bookings_date_start_time_status_idx" ON "bookings"("
 ALTER TABLE "saved_payment_methods" DROP CONSTRAINT IF EXISTS "saved_payment_methods_user_id_fkey";
 ALTER TABLE "saved_payment_methods" ADD CONSTRAINT "saved_payment_methods_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
--- AddForeignKey: push_subscriptions
-ALTER TABLE "push_subscriptions" ADD CONSTRAINT "push_subscriptions_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- AddForeignKey: push_subscriptions (safe: skip if exists)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'push_subscriptions_user_id_fkey') THEN
+        ALTER TABLE "push_subscriptions" ADD CONSTRAINT "push_subscriptions_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+END$$;
 
--- AddForeignKey: notifications
-ALTER TABLE "notifications" ADD CONSTRAINT "notifications_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- AddForeignKey: notifications (safe: skip if exists)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'notifications_user_id_fkey') THEN
+        ALTER TABLE "notifications" ADD CONSTRAINT "notifications_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+END$$;
