@@ -1,5 +1,6 @@
-import { NavLink } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useNavigation } from '../context/NavigationContext';
 import {
     LayoutDashboard,
     CalendarDays,
@@ -45,10 +46,16 @@ const ADMIN_MORE_TABS: TabItem[] = [
 
 export default function BottomTabBar() {
     const { user } = useAuth();
+    const { navigateTo } = useNavigation();
+    const location = useLocation();
     const isAdmin = user?.role === 'ADMIN';
     const [showMore, setShowMore] = useState(false);
 
     const primaryTabs = isAdmin ? ADMIN_PRIMARY_TABS : CLIENT_TABS;
+
+    const handleTabClick = (path: string) => {
+        navigateTo(path);
+    };
 
     return (
         <>
@@ -57,35 +64,44 @@ export default function BottomTabBar() {
                 <div className="btb-sheet-backdrop" onClick={() => setShowMore(false)}>
                     <div className="btb-sheet" onClick={e => e.stopPropagation()}>
                         <div className="btb-sheet-handle" />
-                        {ADMIN_MORE_TABS.map(tab => (
-                            <NavLink
-                                key={tab.to}
-                                to={tab.to}
-                                className={({ isActive }) => `btb-sheet-item ${isActive ? 'active' : ''}`}
-                                onClick={() => setShowMore(false)}
-                            >
-                                <tab.icon size={20} strokeWidth={1.8} />
-                                <span>{tab.label}</span>
-                            </NavLink>
-                        ))}
+                        {ADMIN_MORE_TABS.map(tab => {
+                            const isActive = location.pathname === tab.to;
+                            return (
+                                <button
+                                    key={tab.to}
+                                    className={`btb-sheet-item ${isActive ? 'active' : ''}`}
+                                    onClick={() => {
+                                        setShowMore(false);
+                                        handleTabClick(tab.to);
+                                    }}
+                                >
+                                    <tab.icon size={20} strokeWidth={1.8} />
+                                    <span>{tab.label}</span>
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
             )}
 
             {/* Tab bar */}
             <nav className="bottom-tab-bar" role="tablist" aria-label="Navegação principal">
-                {primaryTabs.map(tab => (
-                    <NavLink
-                        key={tab.to}
-                        to={tab.to}
-                        className={({ isActive }) => `btb-tab ${isActive ? 'btb-tab--active' : ''}`}
-                        role="tab"
-                        aria-label={tab.label}
-                    >
-                        <tab.icon size={22} strokeWidth={1.8} className="btb-tab-icon" />
-                        <span className="btb-tab-label">{tab.label}</span>
-                    </NavLink>
-                ))}
+                {primaryTabs.map(tab => {
+                    const isActive = location.pathname === tab.to;
+                    return (
+                        <button
+                            key={tab.to}
+                            className={`btb-tab ${isActive ? 'btb-tab--active' : ''}`}
+                            role="tab"
+                            aria-label={tab.label}
+                            aria-selected={isActive}
+                            onClick={() => handleTabClick(tab.to)}
+                        >
+                            <tab.icon size={22} strokeWidth={1.8} className="btb-tab-icon" />
+                            <span className="btb-tab-label">{tab.label}</span>
+                        </button>
+                    );
+                })}
 
                 {isAdmin && (
                     <button

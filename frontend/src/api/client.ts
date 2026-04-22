@@ -133,7 +133,7 @@ export const contractsApi = {
     renew: (id: string, data?: { durationMonths?: number; tier?: string; type?: string; startDate?: string }) => request<{ contract: Contract; message: string }>(`/contracts/${id}/renew`, { method: 'POST', body: JSON.stringify(data || {}) }),
     clientRenew: (id: string, data: { durationMonths: number; paymentMethod?: 'PIX' | 'CARTAO' | 'BOLETO'; installments?: number }) => request<{ contract: Contract; message: string }>(`/contracts/${id}/client-renew`, { method: 'POST', body: JSON.stringify(data) }),
     subscribe: (id: string, data: { paymentMethodId: string; durationMonths?: number }) => request<{ success: boolean; subscriptionId: string; status: string; message: string }>(`/contracts/${id}/subscribe`, { method: 'POST', body: JSON.stringify(data) }),
-    pay: (id: string, data?: { paymentType?: 'CREDIT' | 'DEBIT'; installments?: number }) => request<{ clientSecret: string; paymentId: string; amount: number; maxInstallments: number; message: string }>(`/contracts/${id}/pay`, { method: 'POST', body: JSON.stringify(data || {}) }),
+    pay: (id: string, data?: { paymentMethod?: 'CARTAO' | 'PIX'; paymentType?: 'CREDIT' | 'DEBIT'; installments?: number }) => request<{ provider?: 'STRIPE' | 'CORA'; clientSecret?: string; paymentId: string; amount: number; maxInstallments?: number; pixString?: string; qrCodeBase64?: string; message: string }>(`/contracts/${id}/pay`, { method: 'POST', body: JSON.stringify(data || {}) }),
     confirmPayment: (id: string, data: { paymentIntentId?: string }) => request<{ contract: { id: string; status: string }; message: string }>(`/contracts/${id}/confirm-payment`, { method: 'POST', body: JSON.stringify(data) }),
     pause: (id: string, data?: { reason?: string; resumeDate?: string }) => request<{ contract: Contract; message: string }>(`/contracts/${id}/pause`, { method: 'PATCH', body: JSON.stringify(data || {}) }),
     resume: (id: string) => request<{ contract: Contract; message: string }>(`/contracts/${id}/resume`, { method: 'PATCH' }),
@@ -487,6 +487,13 @@ export const integrationsApi = {
         request<{ success: boolean; message: string }>(`/integrations/${provider}/test`, { method: 'POST' }),
     toggle: (provider: string, enabled: boolean) =>
         request<{ message: string }>(`/integrations/${provider}/toggle`, { method: 'POST', body: JSON.stringify({ enabled }) }),
+    // Cora webhook management (via Cora API)
+    listCoraWebhooks: () =>
+        request<{ endpoints: { id: string; url: string; events?: string[]; created_at?: string }[] }>('/integrations/cora/webhooks'),
+    registerCoraWebhook: (url: string) =>
+        request<{ message: string; endpoint: any }>('/integrations/cora/webhooks', { method: 'POST', body: JSON.stringify({ url }) }),
+    deleteCoraWebhook: (id: string) =>
+        request<{ message: string }>(`/integrations/cora/webhooks/${id}`, { method: 'DELETE' }),
 };
 
 function buildQS(params?: Record<string, string | number | undefined>): string {
@@ -516,19 +523,40 @@ export interface InstallmentPlan {
     freeOfCharge: boolean;
 }
 
+// Short-lived cache for listPaymentMethods (avoids hitting Stripe on every navigation)
+const _pmCache: {
+    data: { paymentMethods: SavedCard[]; autoChargeEnabled: boolean } | null;
+    promise: Promise<{ paymentMethods: SavedCard[]; autoChargeEnabled: boolean }> | null;
+    ts: number;
+} = { data: null, promise: null, ts: 0 };
+const PM_CACHE_TTL = 30_000; // 30 seconds
+
+function invalidatePmCache() { _pmCache.data = null; _pmCache.promise = null; _pmCache.ts = 0; }
+
 export const stripeApi = {
     getPublishableKey: () => request<{ publishableKey: string }>('/stripe/publishable-key'),
     createSetupIntent: () => request<{ clientSecret: string; setupIntentId: string }>('/stripe/setup-intent', { method: 'POST' }),
-    listPaymentMethods: () => request<{ paymentMethods: SavedCard[]; autoChargeEnabled: boolean }>('/stripe/payment-methods'),
-    removePaymentMethod: (pmId: string) => request<{ message: string }>(`/stripe/payment-methods/${pmId}`, { method: 'DELETE' }),
-    setDefaultPaymentMethod: (pmId: string) => request<{ message: string }>(`/stripe/payment-methods/${pmId}/default`, { method: 'PUT' }),
-    createPayment: (data: { paymentId: string; installments?: number; savedPaymentMethodId?: string; savePaymentMethod?: boolean; paymentMethod?: 'cartao' | 'pix' | 'boleto' }) =>
+    listPaymentMethods: (): Promise<{ paymentMethods: SavedCard[]; autoChargeEnabled: boolean }> => {
+        const now = Date.now();
+        // Return cached data if still fresh
+        if (_pmCache.data && (now - _pmCache.ts) < PM_CACHE_TTL) return Promise.resolve(_pmCache.data);
+        // Deduplicate in-flight requests
+        if (_pmCache.promise) return _pmCache.promise;
+        _pmCache.promise = request<{ paymentMethods: SavedCard[]; autoChargeEnabled: boolean }>('/stripe/payment-methods')
+            .then(res => { _pmCache.data = res; _pmCache.ts = Date.now(); _pmCache.promise = null; return res; })
+            .catch(err => { _pmCache.promise = null; throw err; });
+        return _pmCache.promise;
+    },
+    invalidateCache: invalidatePmCache,
+    removePaymentMethod: (pmId: string) => { invalidatePmCache(); return request<{ message: string }>(`/stripe/payment-methods/${pmId}`, { method: 'DELETE' }); },
+    setDefaultPaymentMethod: (pmId: string) => { invalidatePmCache(); return request<{ message: string }>(`/stripe/payment-methods/${pmId}/default`, { method: 'PUT' }); },
+    createPayment: (data: { paymentId: string; installments?: number; savedPaymentMethodId?: string; savePaymentMethod?: boolean; paymentMethod?: 'cartao' | 'pix' }) =>
         request<{ provider: 'STRIPE' | 'CORA'; clientSecret?: string; paymentIntentId?: string; pixString?: string; qrCodeBase64?: string; boletoUrl?: string; barcode?: string; paymentId?: string }>('/stripe/create-payment', { method: 'POST', body: JSON.stringify(data) }),
     verifyPayment: (data: { paymentId: string; paymentIntentId: string }) =>
         request<{ status: string; message: string }>('/stripe/verify-payment', { method: 'POST', body: JSON.stringify(data) }),
     getInstallmentPlans: (data: { paymentId?: string; amount?: number; contractDurationMonths?: number }) =>
         request<{ plans: InstallmentPlan[] }>('/stripe/installment-plans', { method: 'POST', body: JSON.stringify(data) }),
-    setAutoCharge: (enabled: boolean) => request<{ message: string }>('/stripe/auto-charge', { method: 'PUT', body: JSON.stringify({ enabled }) }),
+    setAutoCharge: (enabled: boolean) => { invalidatePmCache(); return request<{ message: string }>('/stripe/auto-charge', { method: 'PUT', body: JSON.stringify({ enabled }) }); },
 };
 
 

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import ModalOverlay from '../components/ModalOverlay';
+import BottomSheetModal from '../components/BottomSheetModal';
 
 type ModalType = 'info' | 'error' | 'success' | 'warning';
 
@@ -68,29 +68,32 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
             {children}
             
             {/* Global Modal Render */}
-            {modal && (
-                <ModalOverlay onClose={closeModal} style={{ zIndex: 10000 }}>
-                    <div className="modal" style={{ maxWidth: 400, textAlign: 'center' }}>
-                        <div style={{ fontSize: '3rem', marginBottom: '16px' }}>
-                            {modal.type === 'error' ? '❌' : modal.type === 'success' ? '✅' : modal.type === 'warning' ? '⚠️' : 'ℹ️'}
-                        </div>
-                        {modal.title && <h2 className="modal-title" style={{ marginBottom: '8px' }}>{modal.title}</h2>}
-                        <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', lineHeight: 1.5 }}>
-                            {modal.message}
-                        </p>
-                        <div style={{ display: 'flex', gap: '12px' }}>
-                            {modal.isConfirm && (
-                                <button className="btn btn-secondary" style={{ flex: 1 }} onClick={handleCancel}>
-                                    Cancelar
-                                </button>
-                            )}
-                            <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleConfirm}>
-                                {modal.isConfirm ? 'Confirmar' : 'Entendido'}
-                            </button>
-                        </div>
+            <BottomSheetModal
+                isOpen={!!modal}
+                onClose={closeModal}
+                title={modal?.title || (modal?.type === 'error' ? 'Erro' : modal?.type === 'success' ? 'Sucesso' : modal?.type === 'warning' ? 'Atenção' : 'Aviso')}
+                maxWidth="400px"
+                zIndex={10000}
+            >
+                <div style={{ textAlign: 'center', padding: '0 4px' }}>
+                    <div style={{ fontSize: '3rem', marginBottom: '16px' }}>
+                        {modal?.type === 'error' ? '❌' : modal?.type === 'success' ? '✅' : modal?.type === 'warning' ? '⚠️' : 'ℹ️'}
                     </div>
-                </ModalOverlay>
-            )}
+                    <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', lineHeight: 1.5 }}>
+                        {modal?.message}
+                    </p>
+                    <div style={{ display: 'flex', gap: '12px' }}>
+                        {modal?.isConfirm && (
+                            <button className="btn btn-secondary" style={{ flex: 1 }} onClick={handleCancel}>
+                                Cancelar
+                            </button>
+                        )}
+                        <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleConfirm}>
+                            {modal?.isConfirm ? 'Confirmar' : 'Entendido'}
+                        </button>
+                    </div>
+                </div>
+            </BottomSheetModal>
 
             {/* Global Toast Render */}
             {toast && (

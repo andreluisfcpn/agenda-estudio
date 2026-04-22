@@ -3,7 +3,7 @@
  * Run with: npx tsx src/scripts/seedPaymentMethods.ts
  */
 import 'dotenv/config';
-import { prisma } from '../lib/prisma';
+import { prisma } from '../lib/prisma.js';
 
 
 

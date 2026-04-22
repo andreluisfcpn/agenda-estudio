@@ -1,30 +1,34 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { UIProvider } from './context/UIContext';
+import { NavigationProvider, useNavigation } from './context/NavigationContext';
 import LoginPage from './pages/LoginPage';
-import DashboardPage from './pages/DashboardPage';
-import CalendarPage from './pages/CalendarPage';
-import MyBookingsPage from './pages/MyBookingsPage';
-import MyContractsPage from './pages/MyContractsPage';
-import MyPaymentsPage from './pages/MyPaymentsPage';
-import AdminClientsPage from './pages/AdminClientsPage';
-import AdminBookingsPage from './pages/AdminBookingsPage';
-import AdminContractsPage from './pages/AdminContractsPage';
-import AdminPricingPage from './pages/AdminPricingPage';
-import AdminServicesPage from './pages/AdminServicesPage';
-import AdminTodayPage from './pages/AdminTodayPage';
-import AdminFinancePage from './pages/AdminFinancePage';
-import AdminReportsPage from './pages/AdminReportsPage';
+import LandingPage from './pages/LandingPage';
 import AmbientBackground from './components/AmbientBackground';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
 import ProfileModal from './components/ProfileModal';
 import BottomTabBar from './components/BottomTabBar';
-import ClientProfilePage from './pages/ClientProfilePage';
-import LandingPage from './pages/LandingPage';
+import { PageTransitionLoader } from './components/PageTransitionLoader';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { loadPaymentMethods } from './constants/paymentMethods';
+
+// Lazy-loaded pages (code-split for faster navigation)
+const DashboardPage = React.lazy(() => import('./pages/DashboardPage'));
+const CalendarPage = React.lazy(() => import('./pages/CalendarPage'));
+const MyBookingsPage = React.lazy(() => import('./pages/MyBookingsPage'));
+const MyContractsPage = React.lazy(() => import('./pages/MyContractsPage'));
+const MyPaymentsPage = React.lazy(() => import('./pages/MyPaymentsPage'));
+const AdminClientsPage = React.lazy(() => import('./pages/AdminClientsPage'));
+const AdminBookingsPage = React.lazy(() => import('./pages/AdminBookingsPage'));
+const AdminContractsPage = React.lazy(() => import('./pages/AdminContractsPage'));
+const AdminPricingPage = React.lazy(() => import('./pages/AdminPricingPage'));
+const AdminServicesPage = React.lazy(() => import('./pages/AdminServicesPage'));
+const AdminTodayPage = React.lazy(() => import('./pages/AdminTodayPage'));
+const AdminFinancePage = React.lazy(() => import('./pages/AdminFinancePage'));
+const AdminReportsPage = React.lazy(() => import('./pages/AdminReportsPage'));
+const ClientProfilePage = React.lazy(() => import('./pages/ClientProfilePage'));
 
 // ─── Success Toast ──────────────────────────────────────
 
@@ -54,6 +58,7 @@ function SuccessToast({ message, onDone }: { message: string; onDone: () => void
 function Layout({ children }: { children: React.ReactNode }) {
     const [showProfile, setShowProfile] = useState(false);
     const [toast, setToast] = useState('');
+    const { isTransitioning, isExiting } = useNavigation();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
         try { return localStorage.getItem('sidebar-collapsed') === 'true'; } catch { return false; }
     });
@@ -90,16 +95,20 @@ function Layout({ children }: { children: React.ReactNode }) {
                 onProfileClick={() => setShowProfile(true)}
             />
 
+            {/* Transition overlay — shown BEFORE route change */}
+            {isTransitioning && <PageTransitionLoader exiting={isExiting} />}
+
             <main className="main-content">
-                {children}
+                <Suspense fallback={<PageTransitionLoader />}>
+                    {children}
+                </Suspense>
             </main>
 
-            {showProfile && (
-                <ProfileModal
+            <ProfileModal
+                    isOpen={showProfile}
                     onClose={() => setShowProfile(false)}
                     onSuccess={(msg) => { setShowProfile(false); setToast(msg); }}
                 />
-            )}
 
             {toast && <SuccessToast message={toast} onDone={() => setToast('')} />}
 
@@ -182,7 +191,9 @@ export default function App() {
             <UIProvider>
                 <BrowserRouter>
                     <AuthProvider>
-                        <AppRoutes />
+                        <NavigationProvider>
+                            <AppRoutes />
+                        </NavigationProvider>
                     </AuthProvider>
                 </BrowserRouter>
             </UIProvider>

@@ -1,0 +1,694 @@
+/* ═══════════════════════════════════════════════════════════════
+   contract-wizard.css — Contract Wizard & Custom Contract Wizard
+   Shared CSS for both wizard flows (Mobile-First)
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── Wizard Modal ─────────────────────────────────────────── */
+.wizard-modal {
+  max-width: 720px;
+  width: 95%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.wizard-modal__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.wizard-modal__title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  margin: 0;
+}
+
+/* ─── Wizard Step Title ────────────────────────────────────── */
+.wizard-step__title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.wizard-step__subtitle {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin-bottom: 24px;
+}
+
+/* ─── Tier Description Box ─────────────────────────────────── */
+.wizard-tier-desc {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wizard-tier-desc__hours {
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+/* ─── Price Card (3 Meses / 6 Meses) ──────────────────────── */
+.wizard-price-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.wizard-price-grid--3col {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+@media (max-width: 400px) {
+  .wizard-price-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.wizard-price-card {
+  padding: 20px 16px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  border: 2px solid var(--border-subtle);
+  background: var(--bg-card);
+  text-align: center;
+  transition: all 0.2s ease;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 200px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.wizard-price-card--selected {
+  border-color: var(--accent-primary);
+  background: rgba(17, 129, 155, 0.06);
+}
+
+.wizard-price-card__badge {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #fff;
+  font-size: 0.625rem;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.wizard-price-card__label {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.wizard-price-card__original {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.wizard-price-card__price {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.wizard-price-card__per {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* ─── Custom Plan Shortcut ─────────────────────────────────── */
+.wizard-custom-cta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  background: linear-gradient(
+    135deg,
+    rgba(17, 129, 155, 0.06) 0%,
+    rgba(34, 197, 94, 0.06) 100%
+  );
+  border: 1px dashed rgba(17, 129, 155, 0.35);
+  margin-bottom: 20px;
+  transition: all 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.wizard-custom-cta:hover {
+  border-color: var(--accent-primary);
+  background: linear-gradient(
+    135deg,
+    rgba(17, 129, 155, 0.12) 0%,
+    rgba(34, 197, 94, 0.1) 100%
+  );
+}
+
+.wizard-custom-cta__icon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.wizard-custom-cta__title {
+  font-weight: 700;
+  font-size: 0.8125rem;
+  color: var(--accent-primary);
+  margin-bottom: 2px;
+}
+
+.wizard-custom-cta__desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.wizard-custom-cta__arrow {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--accent-primary);
+  white-space: nowrap;
+}
+
+/* ─── Time Slot ────────────────────────────────────────────── */
+.wizard-slot {
+  padding: 16px;
+  border-radius: var(--radius-md);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 2px solid var(--border-subtle);
+  background: var(--bg-card);
+  transition: all 0.2s;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.wizard-slot--disabled {
+  cursor: not-allowed;
+  background: var(--bg-secondary);
+}
+
+.wizard-slot--selected {
+  border-color: var(--accent-primary);
+  background: rgba(17, 129, 155, 0.06);
+}
+
+.wizard-slot__time {
+  font-weight: 800;
+  font-size: 1rem;
+}
+
+.wizard-slot__time--selected {
+  color: var(--accent-primary);
+}
+
+.wizard-slot__tier {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.wizard-slot__status {
+  font-size: 0.8125rem;
+  color: var(--status-blocked);
+  font-weight: 600;
+}
+
+/* ─── Addon Row (Step 3) ───────────────────────────────────── */
+.wizard-addon {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border-subtle);
+  transition: all 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.wizard-addon--selected {
+  background: rgba(17, 129, 155, 0.06);
+  border-color: var(--accent-primary);
+}
+
+.wizard-addon__left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.wizard-addon__checkbox {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--accent-primary);
+  pointer-events: none;
+}
+
+.wizard-addon__name {
+  font-weight: 800;
+  font-size: 1rem;
+}
+
+.wizard-addon__name--selected {
+  color: var(--accent-primary);
+}
+
+.wizard-addon__desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.wizard-addon__right {
+  text-align: right;
+  min-width: 120px;
+}
+
+.wizard-addon__price {
+  font-weight: 800;
+  font-size: 1.125rem;
+}
+
+.wizard-addon__price--selected {
+  color: var(--accent-primary);
+}
+
+.wizard-addon__price-unit {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.wizard-addon__original {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.wizard-addon__discount {
+  display: inline-block;
+  font-size: 0.6875rem;
+  background: var(--tier-comercial);
+  color: #fff;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+/* ─── Summary Box (Step 4) ─────────────────────────────────── */
+.wizard-summary {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.wizard-summary__label {
+  font-weight: 700;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+}
+
+.wizard-summary__row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.wizard-summary__item-name {
+  font-weight: 700;
+  font-size: 0.875rem;
+}
+
+.wizard-summary__item-desc {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.wizard-summary__item-price {
+  font-weight: 700;
+  font-size: 0.875rem;
+  text-align: right;
+}
+
+.wizard-summary__discount-note {
+  font-size: 0.6875rem;
+  color: var(--tier-comercial);
+  font-weight: 600;
+}
+
+.wizard-summary__addons {
+  border-top: 1px dashed var(--border-subtle);
+  padding-top: 10px;
+  margin-top: 4px;
+  margin-bottom: 10px;
+}
+
+.wizard-summary__addons-label {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.wizard-summary__addon-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  padding-left: 8px;
+}
+
+.wizard-summary__addon-name {
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+}
+
+.wizard-summary__addon-price {
+  font-weight: 600;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.wizard-summary__total {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  margin-top: 14px;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 14px;
+}
+
+.wizard-summary__total-label {
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.wizard-summary__total-value {
+  font-weight: 800;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.wizard-summary__full-total {
+  display: flex;
+  justify-content: space-between;
+}
+
+.wizard-summary__full-total-label {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.wizard-summary__full-total-value {
+  font-weight: 600;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* ─── Payment Method Card ──────────────────────────────────── */
+.wizard-payment-card {
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.wizard-payment-card__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.wizard-payment-card__name {
+  font-weight: 700;
+  font-size: 0.875rem;
+}
+
+.wizard-payment-card__desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.wizard-payment-card__badge {
+  font-size: 0.5625rem;
+  padding: 2px 6px;
+  border-radius: 6px;
+  margin-left: 6px;
+  font-weight: 700;
+}
+
+.wizard-payment-card__price {
+  font-weight: 800;
+  font-size: 1rem;
+  text-align: right;
+}
+
+.wizard-payment-card__sub-price {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+/* ─── Terms Box ────────────────────────────────────────────── */
+.wizard-terms {
+  padding: 16px;
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  margin-bottom: 20px;
+}
+
+.wizard-terms__title {
+  font-weight: 700;
+  font-size: 0.8125rem;
+  margin-bottom: 10px;
+  color: var(--text-secondary);
+}
+
+.wizard-terms__list {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  padding-left: 18px;
+  margin: 0 0 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wizard-terms__accept {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.wizard-terms__checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent-primary);
+}
+
+/* ─── State Screens (Loading/Success) ──────────────────────── */
+.wizard-state-screen {
+  text-align: center;
+  padding: 48px 0;
+}
+
+.wizard-state-screen__icon {
+  font-size: 3.5rem;
+  margin-bottom: 16px;
+}
+
+.wizard-state-screen__title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.wizard-state-screen__desc {
+  color: var(--text-muted);
+  margin-bottom: 28px;
+}
+
+/* ─── Conflict Card ────────────────────────────────────────── */
+.wizard-conflict {
+  padding: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.wizard-conflict__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.wizard-conflict__date {
+  font-weight: 600;
+}
+
+.wizard-conflict__badge {
+  font-size: 0.75rem;
+  color: #ef4444;
+  font-weight: 600;
+  background: rgba(239, 68, 68, 0.1);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.wizard-conflict__suggestion {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wizard-conflict__alt {
+  background: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.wizard-conflict__warning {
+  font-size: 0.8125rem;
+  color: #f59e0b;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ─── Wizard Footer / Actions ──────────────────────────────── */
+.wizard-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.wizard-actions--stack {
+  flex-direction: column;
+}
+
+@media (max-width: 480px) {
+  .wizard-actions {
+    flex-direction: column;
+  }
+
+  .wizard-actions .btn {
+    width: 100%;
+  }
+}
+
+/* ─── Inline Payment Step ──────────────────────────────────── */
+.wizard-payment-step {
+  padding: 20px 0;
+}
+
+.wizard-payment-step__header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.wizard-payment-step__icon {
+  font-size: 2.5rem;
+  margin-bottom: 8px;
+}
+
+.wizard-payment-step__title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.wizard-payment-step__desc {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.wizard-payment-step__skip {
+  width: 100%;
+  margin-top: 12px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* ─── Mobile Overrides ─────────────────────────────────────── */
+@media (max-width: 767px) {
+  .wizard-modal {
+    max-width: 100% !important;
+    width: 100% !important;
+    max-height: 100vh !important;
+    border-radius: 0 !important;
+  }
+
+  /* Ensure the modal-tabs don't overflow */
+  .wizard-modal .modal-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .wizard-modal .modal-tab {
+    flex: 1 0 auto;
+    min-width: fit-content;
+    padding: 10px 8px;
+    font-size: 0.75rem;
+  }
+
+  /* Stack addon rows vertically on small screens */
+  .wizard-addon {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .wizard-addon__right {
+    text-align: left;
+    min-width: unset;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  /* Stack price cards single column */
+  .wizard-price-grid,
+  .wizard-price-grid--3col {
+    grid-template-columns: 1fr;
+  }
+
+  /* Full-width price card button */
+  .wizard-price-card {
+    min-height: auto; /* Remove fixed min-height on mobile */
+  }
+}

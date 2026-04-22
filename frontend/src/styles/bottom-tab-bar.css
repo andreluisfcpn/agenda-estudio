@@ -149,3 +149,19 @@
   background: rgba(17, 129, 155, 0.08);
   font-weight: 600;
 }
+
+/* ─── Narrow Screens (iPhone SE, 320px devices) ─── */
+@media (max-width: 359px) {
+  .btb-tab-label {
+    font-size: 0.5rem;
+    letter-spacing: 0;
+  }
+
+  .btb-tab {
+    gap: 2px;
+  }
+
+  .bottom-tab-bar {
+    height: 58px;
+  }
+}

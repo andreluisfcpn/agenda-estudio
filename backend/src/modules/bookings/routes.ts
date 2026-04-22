@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import { registerAvailabilityRoutes } from './booking.availability';
-import { registerCreationRoutes } from './booking.creation';
-import { registerStatusRoutes } from './booking.status';
-import { registerManagementRoutes } from './booking.management';
+import { registerAvailabilityRoutes } from './booking.availability.js';
+import { registerCreationRoutes } from './booking.creation.js';
+import { registerStatusRoutes } from './booking.status.js';
+import { registerManagementRoutes } from './booking.management.js';
 
 const router = Router();
 

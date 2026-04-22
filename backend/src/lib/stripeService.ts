@@ -3,15 +3,26 @@
 // Docs: https://docs.stripe.com/api
 
 import Stripe from 'stripe';
-import { prisma } from './prisma';
-import { getErrorMessage } from '../utils/errors';
+import { prisma } from './prisma.js';
+import { getErrorMessage } from '../utils/errors.js';
 
 // ─── Types ───────────────────────────────────────────────
 
-interface StripeConfig {
+/** Credentials for a single Stripe environment (sandbox or production) */
+interface StripeCredentials {
     secretKey: string;
     publishableKey: string;
     webhookSecret: string;
+}
+
+/**
+ * Dual-environment config stored in IntegrationConfig.config (encrypted JSON).
+ * Both sandbox and production credentials are stored together.
+ * The admin selects which environment is active via IntegrationConfig.environment.
+ */
+interface StripeConfigDual {
+    sandbox?: StripeCredentials;
+    production?: StripeCredentials;
 }
 
 export interface StripeCheckoutPayload {
@@ -33,21 +44,45 @@ export interface StripeCheckoutResult {
 
 // ─── Helpers ─────────────────────────────────────────────
 
-import { decryptConfigSafe } from '../utils/crypto';
+import { decryptConfigSafe } from '../utils/crypto.js';
 
 // Stripe client cache (TTL-based to pick up config changes)
 let cachedStripeClient: Stripe | null = null;
 let cachedStripeConfigHash: string | null = null;
+let cachedStripeEnvironment: string | null = null;
 let cacheTimestamp = 0;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-async function getStripeConfig(): Promise<{ config: StripeConfig; environment: string } | null> {
+function isDualConfig(parsed: any): parsed is StripeConfigDual {
+    return parsed && (typeof parsed.sandbox === 'object' || typeof parsed.production === 'object');
+}
+
+async function getStripeConfig(): Promise<{ config: StripeCredentials; environment: string } | null> {
     const integration = await prisma.integrationConfig.findUnique({ where: { provider: 'STRIPE' } });
     if (!integration || !integration.enabled) return null;
     try {
         const decrypted = decryptConfigSafe(integration.config);
-        const config = JSON.parse(decrypted) as StripeConfig;
-        return { config, environment: integration.environment };
+        const parsed = JSON.parse(decrypted);
+
+        const environment = (integration.environment === 'production' ? 'production' : 'sandbox') as 'sandbox' | 'production';
+
+        let credentials: StripeCredentials | undefined;
+
+        if (isDualConfig(parsed)) {
+            credentials = parsed[environment];
+            if (!credentials?.secretKey) {
+                console.warn(`[Stripe] No credentials configured for environment "${environment}"`);
+                return null;
+            }
+        } else {
+            // Legacy flat format → treat as sandbox credentials
+            credentials = parsed as StripeCredentials;
+            if (environment === 'production') {
+                console.warn('[Stripe] Legacy flat config detected but environment is "production". Using flat credentials anyway.');
+            }
+        }
+
+        return { config: credentials, environment };
     } catch {
         return null;
     }
@@ -55,19 +90,17 @@ async function getStripeConfig(): Promise<{ config: StripeConfig; environment: s
 
 async function getStripeClient(): Promise<Stripe> {
     const now = Date.now();
-
-    // Return cached client if still valid
-    if (cachedStripeClient && (now - cacheTimestamp) < CACHE_TTL_MS) {
-        return cachedStripeClient;
-    }
-
     const setup = await getStripeConfig();
     if (!setup) throw new Error('Stripe integration not configured or disabled');
 
-    // Check if config changed (invalidate cache on key rotation)
+    // Return cached client if still valid AND environment hasn't changed
     const configHash = setup.config.secretKey.slice(-8);
-    if (cachedStripeClient && configHash === cachedStripeConfigHash) {
-        cacheTimestamp = now;
+    if (
+        cachedStripeClient &&
+        (now - cacheTimestamp) < CACHE_TTL_MS &&
+        configHash === cachedStripeConfigHash &&
+        setup.environment === cachedStripeEnvironment
+    ) {
         return cachedStripeClient;
     }
 
@@ -75,6 +108,7 @@ async function getStripeClient(): Promise<Stripe> {
         apiVersion: '2026-03-25.dahlia' as Stripe.LatestApiVersion,
     });
     cachedStripeConfigHash = configHash;
+    cachedStripeEnvironment = setup.environment;
     cacheTimestamp = now;
 
     return cachedStripeClient;
@@ -163,13 +197,15 @@ export async function stripeVerifyWebhook(body: string | Buffer, signature: stri
 export async function stripeTestConnection(): Promise<{ success: boolean; message: string }> {
     try {
         const stripe = await getStripeClient();
+        const setup = await getStripeConfig();
+        const env = setup?.environment || 'unknown';
         // Simple API call to verify credentials
         const balance = await stripe.balance.retrieve();
         const available = balance.available.find(b => b.currency === 'brl');
         const amountStr = available ? `R$ ${(available.amount / 100).toFixed(2)}` : 'N/A';
         return {
             success: true,
-            message: `Conexão Stripe OK! Saldo disponível: ${amountStr}`,
+            message: `Conexão Stripe OK! Saldo: ${amountStr} (ambiente: ${env})`,
         };
     } catch (err: unknown) {
         const msg = getErrorMessage(err);

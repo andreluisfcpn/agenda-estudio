@@ -1,6 +1,6 @@
-import { Tier } from '../generated/prisma/client';
-import { prisma } from '../lib/prisma';
-import { getConfig, getConfigString, getAllConfigs } from '../lib/businessConfig';
+import { Tier } from '../generated/prisma/client.js';
+import { prisma } from '../lib/prisma.js';
+import { getConfig, getConfigString, getAllConfigs } from '../lib/businessConfig.js';
 
 // ─── Tier Detection ─────────────────────────────────────
 

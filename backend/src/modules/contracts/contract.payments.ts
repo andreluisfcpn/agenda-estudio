@@ -1,10 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { prisma } from '../../lib/prisma';
-import { authenticate } from '../../middleware/auth';
-import { getBasePriceDynamic, applyDiscount } from '../../utils/pricing';
-import { getConfig } from '../../lib/businessConfig';
-import { contractPaySchema, subscribeSchema, clientRenewSchema } from './validators';
+import { prisma } from '../../lib/prisma.js';
+import { authenticate } from '../../middleware/auth.js';
+import { getBasePriceDynamic, applyDiscount } from '../../utils/pricing.js';
+import { getConfig } from '../../lib/businessConfig.js';
+import { contractPaySchema, subscribeSchema, clientRenewSchema } from './validators.js';
 
 export function registerPaymentRoutes(router: Router) {
 
@@ -32,13 +32,61 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
         const sessionsPerMonth = await getConfig('sessions_per_month');
         const monthlyAmount = sessionsPerMonth * discountedPrice;
 
+        // ─── PIX: Cora ───────────────────────────────────────
+        if (data.paymentMethod === 'PIX') {
+            const { createCoraPayment } = await import('../../lib/coraPaymentHelper.js');
+
+            // Create Payment record
+            const payment = await prisma.payment.create({
+                data: {
+                    userId,
+                    contractId,
+                    provider: 'CORA',
+                    amount: monthlyAmount,
+                    status: 'PENDING',
+                    dueDate: new Date(),
+                    installments: 1,
+                },
+            });
+
+            try {
+                const coraRes = await createCoraPayment({
+                    userId,
+                    amount: monthlyAmount,
+                    description: `PIX - Contrato "${contract.name}" - ${contract.tier}`,
+                    withPixQrCode: true,
+                });
+
+                await prisma.payment.update({
+                    where: { id: payment.id },
+                    data: {
+                        providerRef: coraRes.result.id,
+                        pixString: coraRes.pixString,
+                    },
+                });
+
+                res.json({
+                    provider: 'CORA',
+                    paymentId: payment.id,
+                    pixString: coraRes.pixString,
+                    qrCodeBase64: coraRes.qrCodeBase64,
+                    amount: monthlyAmount,
+                    message: 'QR Code PIX gerado. Escaneie para ativar o contrato.',
+                });
+            } catch (e: unknown) {
+                const msg = e instanceof Error ? e.message : 'Erro ao gerar PIX.';
+                res.status(400).json({ error: msg });
+            }
+            return;
+        }
+
+        // ─── CARTÃO: Stripe ──────────────────────────────────
         // Max installments = durationMonths (exception: avulso = 3x)
         const isAvulso = contract.durationMonths === 1;
         const maxInstallments = isAvulso ? 3 : contract.durationMonths;
         const installments = Math.min(data.installments || 1, maxInstallments);
 
-        // Import Stripe functions
-        const { stripeCreatePaymentIntent, stripeGetOrCreateCustomer, isStripeEnabled } = await import('../../lib/stripeService');
+        const { stripeCreatePaymentIntent, stripeGetOrCreateCustomer, isStripeEnabled } = await import('../../lib/stripeService.js');
 
         if (!(await isStripeEnabled())) {
             res.status(503).json({ error: 'Stripe não está habilitado.' });
@@ -77,6 +125,7 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
         });
 
         res.json({
+            provider: 'STRIPE',
             clientSecret: piResult.clientSecret,
             paymentId: payment.id,
             amount: monthlyAmount,
@@ -187,7 +236,7 @@ router.post('/:id/subscribe', authenticate, async (req: Request, res: Response) 
         // Convert to cents — applyDiscount already returns cents, no extra multiplication
         const amountCents = finalAmount;
 
-        const { stripeCreateSubscription } = await import('../../lib/stripeService');
+        const { stripeCreateSubscription } = await import('../../lib/stripeService.js');
         
         // Create initial payment record
         const payment = await prisma.payment.create({
@@ -312,7 +361,7 @@ router.post('/:id/client-renew', authenticate, async (req: Request, res: Respons
         });
 
         // Audit log
-        const { logAudit } = await import('../../lib/audit');
+        const { logAudit } = await import('../../lib/audit.js');
         await logAudit('CONTRACT', renewed.id, 'RENEWAL_REQUESTED', userId, { fromContractId: original.id, durationMonths: data.durationMonths });
 
         res.status(201).json({ contract: renewed, message: 'Renovação iniciada com sucesso. Realize o pagamento.' });

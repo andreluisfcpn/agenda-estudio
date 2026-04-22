@@ -6,22 +6,36 @@
 // Uses node:https directly for mTLS (client certificate auth).
 // Node's native fetch (undici) does NOT support https.Agent for mTLS.
 
-import { prisma } from './prisma';
+import { prisma } from './prisma.js';
 import https from 'https';
-import { URL } from 'url';
-import { randomUUID } from 'crypto';
+import { URL } from 'node:url';
+import { randomUUID } from 'node:crypto';
 import QRCode from 'qrcode';
-import { decryptConfigSafe } from '../utils/crypto';
+import { decryptConfigSafe } from '../utils/crypto.js';
 
 // ─── Types ───────────────────────────────────────────────
 
-interface CoraConfig {
+/** Credentials for a single Cora environment (sandbox or production) */
+interface CoraCredentials {
     clientId: string;
     certificatePem: string;
     privateKeyPem: string;
     pixKey: string;
     webhookSecret?: string;
 }
+
+/**
+ * Dual-environment config stored in IntegrationConfig.config (encrypted JSON).
+ * Both sandbox and production credentials are stored together.
+ * The admin selects which environment is active via IntegrationConfig.environment.
+ */
+interface CoraConfigDual {
+    sandbox?: CoraCredentials;
+    production?: CoraCredentials;
+}
+
+/** Legacy flat format (backward-compat — treated as sandbox credentials) */
+interface CoraConfigLegacy extends CoraCredentials {}
 
 interface CoraToken {
     access_token: string;
@@ -64,7 +78,7 @@ export interface CoraBoletoResult {
 
 // ─── Token Cache ─────────────────────────────────────────
 
-let _tokenCache: { token: string; expiresAt: number } | null = null;
+let _tokenCache: { token: string; expiresAt: number; environment: string } | null = null;
 
 // ─── API URLs ────────────────────────────────────────────
 
@@ -79,20 +93,52 @@ const CORA_URLS = {
     },
 };
 
+// ─── Config Parser ───────────────────────────────────────
+// Supports two config formats:
+//   1. Dual (new):  { sandbox: { clientId, cert, key, pix }, production: { ... } }
+//   2. Legacy (flat): { clientId, cert, key, pix } → treated as sandbox
+//
+// The admin selects the active environment via IntegrationConfig.environment.
+
+function isDualConfig(parsed: any): parsed is CoraConfigDual {
+    return parsed && (typeof parsed.sandbox === 'object' || typeof parsed.production === 'object');
+}
+
+function fixNewlines(creds: CoraCredentials): CoraCredentials {
+    if (creds.certificatePem) creds.certificatePem = creds.certificatePem.replace(/\\n/g, '\n');
+    if (creds.privateKeyPem)  creds.privateKeyPem  = creds.privateKeyPem.replace(/\\n/g, '\n');
+    return creds;
+}
+
 // ─── Helpers ─────────────────────────────────────────────
 
-async function getCoraConfig(): Promise<{ config: CoraConfig; environment: string } | null> {
+async function getCoraConfig(): Promise<{ config: CoraCredentials; environment: string } | null> {
     const integration = await prisma.integrationConfig.findUnique({ where: { provider: 'CORA' } });
     if (!integration || !integration.enabled) return null;
     try {
         const decrypted = decryptConfigSafe(integration.config);
-        const config = JSON.parse(decrypted) as CoraConfig;
-        
-        // Fix potential escaped newlines from JSON DB serialization
-        if (config.certificatePem) config.certificatePem = config.certificatePem.replace(/\\n/g, '\n');
-        if (config.privateKeyPem)  config.privateKeyPem  = config.privateKeyPem.replace(/\\n/g, '\n');
+        const parsed = JSON.parse(decrypted);
 
-        return { config, environment: integration.environment };
+        const environment = (integration.environment === 'production' ? 'production' : 'sandbox') as 'sandbox' | 'production';
+
+        let credentials: CoraCredentials | undefined;
+
+        if (isDualConfig(parsed)) {
+            // New format: pick credentials for the active environment
+            credentials = parsed[environment];
+            if (!credentials?.clientId) {
+                console.warn(`[Cora] No credentials configured for environment "${environment}"`);
+                return null;
+            }
+        } else {
+            // Legacy flat format → treat as sandbox credentials
+            credentials = parsed as CoraConfigLegacy;
+            if (environment === 'production') {
+                console.warn('[Cora] Legacy flat config detected but environment is "production". Using flat credentials anyway.');
+            }
+        }
+
+        return { config: fixNewlines(credentials), environment };
     } catch {
         return null;
     }
@@ -152,9 +198,9 @@ function httpsRequest(
 }
 
 /**
- * Makes an HTTPS request WITHOUT mTLS (for non-auth endpoints when
- * cert is not required after obtaining the token).
- * Still uses node:https for consistency.
+ * Makes an HTTPS request with optional mTLS.
+ * Cora Integração Direta requires mTLS (cert+key) on ALL endpoints,
+ * so cert/key should always be provided.
  */
 function httpsRequestWithToken(
     url: string,
@@ -213,12 +259,13 @@ export async function coraAuthenticate(): Promise<string> {
     const setup = await getCoraConfig();
     if (!setup) throw new Error('Cora integration not configured or disabled');
 
-    // Check cache
-    if (_tokenCache && _tokenCache.expiresAt > Date.now() + 60_000) {
+    const { config, environment } = setup;
+
+    // Check cache — invalidate if environment changed (admin switched via panel)
+    if (_tokenCache && _tokenCache.expiresAt > Date.now() + 60_000 && _tokenCache.environment === environment) {
         return _tokenCache.token;
     }
 
-    const { config, environment } = setup;
     const urls = CORA_URLS[environment as keyof typeof CORA_URLS] || CORA_URLS.sandbox;
 
     const body = new URLSearchParams({
@@ -242,6 +289,7 @@ export async function coraAuthenticate(): Promise<string> {
     _tokenCache = {
         token: data.access_token,
         expiresAt: Date.now() + (data.expires_in * 1000),
+        environment,
     };
 
     return data.access_token;
@@ -321,12 +369,12 @@ export async function coraCreateBoleto(payload: CoraBoletoPayload): Promise<Cora
     };
 }
 
-/** PIX QR Code via Cora Invoices: POST /v2/invoices */
+/** PIX QR Code (somente PIX, sem boleto) via Cora Invoices: POST /v2/invoices */
 async function coraCreatePixQrCode(
     payload: CoraBoletoPayload,
     token: string,
     urls: { auth: string; api: string },
-    config: CoraConfig
+    config: CoraCredentials
 ): Promise<CoraBoletoResult> {
     // Use existing cached token (no need to force-clear)
     const freshToken = token;
@@ -385,12 +433,11 @@ async function coraCreatePixQrCode(
 
     const result = JSON.parse(response.body);
 
-    // Cora v2 response structure:
+    // Cora v2 response structure (PIX-only, sem BANK_SLIP):
     //   result.pix.emv — PIX "Copia e Cola" string (BRCode)
-    //   result.payment_options.bank_slip — only if BANK_SLIP was included
     //   Cora does NOT return qr_code_base64 — we generate it from EMV
+    //   bank_slip data is NOT present because payment_forms is ['PIX'] only
     const emv = result.pix?.emv || '';
-    const bankSlip = result.payment_options?.bank_slip;
 
     // Generate QR code base64 from EMV string (Cora only returns the text)
     let qrCodeBase64: string | undefined;
@@ -406,8 +453,8 @@ async function coraCreatePixQrCode(
 
     return {
         id: result.id,
-        barcode: bankSlip?.digitable || bankSlip?.barcode || '',
-        boletoUrl: bankSlip?.url || '',
+        barcode: '',
+        boletoUrl: '',
         pixString: emv,
         qrCodeBase64,
         status: result.status || 'PENDING',
@@ -461,7 +508,9 @@ export async function coraTestConnection(): Promise<{ success: boolean; message:
     try {
         await coraAuthenticate();
         _tokenCache = null; // Clear cache after test
-        return { success: true, message: 'Autenticação Cora realizada com sucesso! (mTLS OK)' };
+        const setup = await getCoraConfig();
+        const env = setup?.environment || 'unknown';
+        return { success: true, message: `Autenticação Cora realizada com sucesso! (mTLS OK, ambiente: ${env})` };
     } catch (err) {
         const msg = err instanceof Error ? err.message : 'Erro desconhecido';
         // Provide more helpful error messages
@@ -482,4 +531,93 @@ export async function coraTestConnection(): Promise<{ success: boolean; message:
 export async function isCoraEnabled(): Promise<boolean> {
     const setup = await getCoraConfig();
     return setup !== null;
+}
+
+// ─── Webhook Management (via Cora API) ──────────────────
+
+export interface CoraWebhookEndpoint {
+    id: string;
+    url: string;
+    events?: string[];
+    created_at?: string;
+}
+
+/** List all registered webhook endpoints */
+export async function coraListWebhookEndpoints(): Promise<CoraWebhookEndpoint[]> {
+    const setup = await getCoraConfig();
+    if (!setup) throw new Error('Cora integration not configured');
+
+    const token = await coraAuthenticate();
+    const { config, environment } = setup;
+    const urls = CORA_URLS[environment as keyof typeof CORA_URLS] || CORA_URLS.sandbox;
+
+    const response = await httpsRequestWithToken(`${urls.api}/webhooks/endpoints`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${token}` },
+        cert: config.certificatePem,
+        key: config.privateKeyPem,
+    });
+
+    if (response.status >= 400) {
+        throw new Error(`Cora list webhooks failed (${response.status}): ${response.body}`);
+    }
+
+    const data = JSON.parse(response.body);
+    return Array.isArray(data) ? data : (data.items || data.endpoints || []);
+}
+
+/** Register a new webhook endpoint on Cora */
+export async function coraRegisterWebhookEndpoint(
+    webhookUrl: string,
+    events: string[] = ['INVOICE.PAID', 'INVOICE.CANCELLED', 'INVOICE.OVERDUE'],
+): Promise<CoraWebhookEndpoint> {
+    const setup = await getCoraConfig();
+    if (!setup) throw new Error('Cora integration not configured');
+
+    const token = await coraAuthenticate();
+    const { config, environment } = setup;
+    const urls = CORA_URLS[environment as keyof typeof CORA_URLS] || CORA_URLS.sandbox;
+
+    const { randomUUID } = await import('crypto');
+
+    const body = JSON.stringify({ url: webhookUrl, events });
+
+    const response = await httpsRequestWithToken(`${urls.api}/webhooks/endpoints`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Idempotency-Key': randomUUID(),
+        },
+        cert: config.certificatePem,
+        key: config.privateKeyPem,
+        body,
+    });
+
+    if (response.status >= 400) {
+        throw new Error(`Cora register webhook failed (${response.status}): ${response.body}`);
+    }
+
+    return JSON.parse(response.body);
+}
+
+/** Delete a webhook endpoint from Cora */
+export async function coraDeleteWebhookEndpoint(endpointId: string): Promise<void> {
+    const setup = await getCoraConfig();
+    if (!setup) throw new Error('Cora integration not configured');
+
+    const token = await coraAuthenticate();
+    const { config, environment } = setup;
+    const urls = CORA_URLS[environment as keyof typeof CORA_URLS] || CORA_URLS.sandbox;
+
+    const response = await httpsRequestWithToken(`${urls.api}/webhooks/endpoints/${endpointId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+        cert: config.certificatePem,
+        key: config.privateKeyPem,
+    });
+
+    if (response.status >= 400) {
+        throw new Error(`Cora delete webhook failed (${response.status}): ${response.body}`);
+    }
 }

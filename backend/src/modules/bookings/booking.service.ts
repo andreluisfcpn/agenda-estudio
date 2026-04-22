@@ -2,9 +2,9 @@
 // Extracted from routes.ts — handles credit management,
 // conflict detection, and booking lifecycle operations.
 
-import { prisma } from '../../lib/prisma';
-import { BookingStatus, Tier } from '../../generated/prisma/client';
-import { getPackageSlots } from '../../utils/pricing';
+import { prisma } from '../../lib/prisma.js';
+import { BookingStatus, Tier } from '../../generated/prisma/client.js';
+import { getPackageSlots } from '../../utils/pricing.js';
 
 // ─── Credit Management ─────────────────────────────────
 

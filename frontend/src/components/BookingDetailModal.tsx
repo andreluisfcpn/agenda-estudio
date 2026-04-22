@@ -3,7 +3,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { bookingsApi, AddOnConfig } from '../api/client';
 import { useUI } from '../context/UIContext';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
-import ModalOverlay from './ModalOverlay';
+import BottomSheetModal from './BottomSheetModal';
+import { CalendarDays } from 'lucide-react';
 
 const PLATFORMS = [
     { key: 'YOUTUBE', label: '▶️ YouTube', color: '#FF0000' },
@@ -39,6 +40,7 @@ export interface BookingDetailData {
 }
 
 interface BookingDetailModalProps {
+    isOpen?: boolean;
     booking: BookingDetailData;
     onClose: () => void;
     onSaved: () => void;
@@ -72,46 +74,35 @@ function HoldBanner({ expiresAt, onExpire }: { expiresAt: string; onExpire: () =
     const color = remaining <= 60 ? '#ef4444' : remaining <= 180 ? '#f59e0b' : '#d97706';
 
     return (
-        <div style={{
-            background: 'rgba(217, 119, 6, 0.1)', border: '1px solid rgba(217, 119, 6, 0.2)',
-            borderLeft: '3px solid #d97706', padding: '14px 16px', borderRadius: 'var(--radius-sm)',
-            marginBottom: '16px',
-        }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+        <div className="hold-banner">
+            <div className="hold-banner__content">
                 <div style={{ flex: 1 }}>
-                    <h4 style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#d97706', marginBottom: '4px' }}>
-                        ⏳ Aguardando Pagamento
-                    </h4>
-                    <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: 0 }}>
+                    <div className="hold-banner__title">⏳ Aguardando Pagamento</div>
+                    <p className="hold-banner__desc">
                         Complete o pagamento para confirmar. Se o tempo esgotar, o horário volta a ficar disponível.
                     </p>
                 </div>
-                <div style={{
-                    display: 'flex', alignItems: 'baseline', gap: '2px',
-                    fontSize: '1.5rem', fontWeight: 800, fontVariantNumeric: 'tabular-nums',
-                    color, minWidth: '65px', justifyContent: 'center',
-                }}>
+                <div className="hold-banner__timer" style={{ color }}>
                     <span>{String(mins).padStart(2, '0')}</span>
-                    <span style={{ opacity: 0.5, fontSize: '1.25rem' }}>:</span>
+                    <span className="hold-banner__timer-sep">:</span>
                     <span>{String(secs).padStart(2, '0')}</span>
                 </div>
             </div>
-            <div style={{
-                height: 4, borderRadius: 2, background: 'var(--bg-elevated)',
-                marginTop: '8px', overflow: 'hidden',
-            }}>
-                <div style={{
-                    height: '100%', borderRadius: 2, background: color,
-                    width: `${pct}%`, transition: 'width 1s linear, background 0.3s ease',
-                }} />
+            <div className="hold-banner__progress">
+                <div className="hold-banner__progress-fill" style={{ width: `${pct}%`, background: color }} />
             </div>
         </div>
     );
 }
 
 export default function BookingDetailModal({
-    booking, onClose, onSaved,
-    allAddons = [], contractDiscountPct = 0, contractAddOns = [],
+    isOpen = true,
+    booking,
+    onClose,
+    onSaved,
+    allAddons = [],
+    contractDiscountPct = 0,
+    contractAddOns = [],
 }: BookingDetailModalProps) {
     const { showAlert, showToast } = useUI();
     const { get: getRule } = useBusinessConfig();
@@ -210,25 +201,18 @@ export default function BookingDetailModal({
     const displayDate = dateStr.split('-').reverse().join('/');
 
     return (
-        <ModalOverlay onClose={onClose}>
-            <div className="modal" style={{ maxWidth: 540 }}>
-                {/* Header */}
-                <div style={{
-                    textAlign: 'center', padding: '20px 0 16px',
-                    borderBottom: '1px solid var(--border-subtle)', marginBottom: '20px',
-                }}>
-                    <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                        Detalhes do Agendamento
-                    </div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 800 }}>
-                        📅 {displayDate} às {booking.startTime}
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
-                        <span className={`badge badge-${booking.tierApplied.toLowerCase()}`}>{booking.tierApplied}</span>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>· {booking.startTime} — {booking.endTime}</span>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>·</span>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{statusLabel(booking.status)}</span>
-                    </div>
+        <BottomSheetModal isOpen={isOpen} onClose={onClose} title="Detalhes do Agendamento">
+            <div className="booking-modal-content" style={{ padding: '0 20px 20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                {/* Info summary */}
+                <div className="booking-modal__date" style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--text-color)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <CalendarDays size={18} style={{ color: 'var(--primary-color)' }} />
+                    {displayDate} às {booking.startTime}
+                </div>
+                <div className="booking-modal__info" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                    <span className={`badge badge-${booking.tierApplied.toLowerCase()}`}>{booking.tierApplied}</span>
+                    <span className="booking-modal__meta" style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>· {booking.startTime} — {booking.endTime}</span>
+                    <span className="booking-modal__meta" style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>·</span>
+                    <span className="booking-modal__status" style={{ fontSize: '0.875rem', fontWeight: 600 }}>{statusLabel(booking.status)}</span>
                 </div>
 
                 {/* Hold countdown banner for avulso bookings awaiting payment */}
@@ -237,17 +221,17 @@ export default function BookingDetailModal({
                 )}
 
                 {/* TABS */}
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
-                    <button className={`btn btn-sm ${detailTab === 'preparativos' ? 'btn-primary' : 'btn-secondary'}`}
-                        onClick={() => setDetailTab('preparativos')} style={{ flex: 1 }}>
+                <div className="modal-tabs">
+                    <button className={`modal-tab ${detailTab === 'preparativos' ? 'modal-tab--active' : ''}`}
+                        onClick={() => setDetailTab('preparativos')}>
                         ⚙️ Preparativos
                     </button>
-                    <button className={`btn btn-sm ${detailTab === 'metricas' ? 'btn-primary' : 'btn-secondary'}`}
-                        onClick={() => setDetailTab('metricas')} style={{ flex: 1 }}>
+                    <button className={`modal-tab ${detailTab === 'metricas' ? 'modal-tab--active' : ''}`}
+                        onClick={() => setDetailTab('metricas')}>
                         📊 Métricas
                     </button>
-                    <button className={`btn btn-sm ${detailTab === 'servicos' ? 'btn-primary' : 'btn-secondary'}`}
-                        onClick={() => setDetailTab('servicos')} style={{ flex: 1 }}>
+                    <button className={`modal-tab ${detailTab === 'servicos' ? 'modal-tab--active' : ''}`}
+                        onClick={() => setDetailTab('servicos')}>
                         ✨ Serviços
                     </button>
                 </div>
@@ -255,9 +239,9 @@ export default function BookingDetailModal({
                 {/* TAB: PREPARATIVOS */}
                 {detailTab === 'preparativos' && (
                     <>
-                        <div style={{ marginBottom: '16px' }}>
-                            <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '4px' }}>Preparativos da Sessão</h3>
-                            <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                        <div className="modal-section">
+                            <h3 className="modal-section__title">Preparativos da Sessão</h3>
+                            <p className="modal-section__desc">
                                 Configure sua gravação livremente. Os dados são mantidos caso haja reagendamento.
                             </p>
                         </div>
@@ -272,11 +256,7 @@ export default function BookingDetailModal({
                         {booking.adminNotes && (
                             <div className="form-group">
                                 <label className="form-label">🔒 Observação do Admin</label>
-                                <div style={{
-                                    padding: '10px 14px', background: 'var(--bg-elevated)',
-                                    border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)',
-                                    fontSize: '0.875rem', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap',
-                                }}>
+                                <div className="booking-modal__admin-note">
                                     {booking.adminNotes}
                                 </div>
                             </div>
@@ -284,15 +264,14 @@ export default function BookingDetailModal({
 
                         <div className="form-group">
                             <label className="form-label">📡 Distribuição</label>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '4px' }}>
+                            <div className="booking-modal__platforms">
                                 {PLATFORMS.map(p => (
-                                    <label key={p.key} style={{
-                                        display: 'flex', alignItems: 'center', gap: '6px',
-                                        padding: '6px 12px', borderRadius: 'var(--radius-md)',
-                                        border: `1px solid ${platforms.includes(p.key) ? p.color : 'var(--border-default)'}`,
-                                        background: platforms.includes(p.key) ? `${p.color}15` : 'var(--bg-card)',
-                                        cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600,
-                                    }}>
+                                    <label key={p.key}
+                                        className={`platform-toggle ${platforms.includes(p.key) ? 'platform-toggle--active' : ''}`}
+                                        style={{
+                                            '--platform-color': p.color,
+                                            '--platform-bg': `${p.color}15`,
+                                        } as React.CSSProperties}>
                                         <input type="checkbox" checked={platforms.includes(p.key)}
                                             onChange={() => togglePlatform(p.key)} style={{ accentColor: p.color }} />
                                         {p.label}
@@ -302,7 +281,7 @@ export default function BookingDetailModal({
                         </div>
 
                         {platforms.length > 0 && (
-                            <div style={{ display: 'grid', gap: '10px', marginBottom: '16px' }}>
+                            <div className="booking-modal__links">
                                 {platforms.map(pk => {
                                     const plat = PLATFORMS.find(p => p.key === pk);
                                     return (
@@ -322,9 +301,9 @@ export default function BookingDetailModal({
                 {/* TAB: MÉTRICAS */}
                 {detailTab === 'metricas' && (
                     <>
-                        <div style={{ marginBottom: '16px' }}>
-                            <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '4px' }}>Métricas de Audiência</h3>
-                            <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                        <div className="modal-section">
+                            <h3 className="modal-section__title">Métricas de Audiência</h3>
+                            <p className="modal-section__desc">
                                 Visualize os resultados alcançados pelo seu episódio após a gravação.
                             </p>
                         </div>
@@ -335,11 +314,7 @@ export default function BookingDetailModal({
 
                             if (!isPast) {
                                 return (
-                                    <div style={{
-                                        padding: '16px', background: 'var(--bg-secondary)',
-                                        border: '1px dashed var(--border-subtle)', borderRadius: 'var(--radius-md)',
-                                        textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '16px',
-                                    }}>
+                                    <div className="info-box info-box--neutral">
                                         🔒 As métricas não estão disponíveis pois o evento ainda não aconteceu.
                                     </div>
                                 );
@@ -347,36 +322,29 @@ export default function BookingDetailModal({
 
                             if (booking.status !== 'COMPLETED') {
                                 return (
-                                    <div style={{
-                                        padding: '16px', background: 'var(--bg-secondary)',
-                                        border: '1px dashed var(--border-subtle)', borderRadius: 'var(--radius-md)',
-                                        textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '16px',
-                                    }}>
+                                    <div className="info-box info-box--neutral">
                                         🔒 Métricas disponíveis para edição e visualização apenas após o status ser alterado para REALIZADA (COMPLETED).
                                     </div>
                                 );
                             }
 
                             return (
-                                <div style={{
-                                    display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-                                    gap: '12px', marginBottom: '16px',
-                                }}>
-                                    <div className="card" style={{ background: 'var(--bg-card)', padding: '12px', border: '1px solid var(--border-default)' }}>
-                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Duração Real</div>
-                                        <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>{booking.durationMinutes ? `${booking.durationMinutes} min` : '--'}</div>
+                                <div className="metrics-grid">
+                                    <div className="metric-card">
+                                        <div className="metric-card__label">Duração Real</div>
+                                        <div className="metric-card__value">{booking.durationMinutes ? `${booking.durationMinutes} min` : '--'}</div>
                                     </div>
-                                    <div className="card" style={{ background: 'var(--bg-card)', padding: '12px', border: '1px solid var(--border-default)' }}>
-                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Pico ao Vivo</div>
-                                        <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>{booking.peakViewers ? `${booking.peakViewers}` : '--'}</div>
+                                    <div className="metric-card">
+                                        <div className="metric-card__label">Pico ao Vivo</div>
+                                        <div className="metric-card__value">{booking.peakViewers ? `${booking.peakViewers}` : '--'}</div>
                                     </div>
-                                    <div className="card" style={{ background: 'var(--bg-card)', padding: '12px', border: '1px solid var(--border-default)' }}>
-                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Chat</div>
-                                        <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>{booking.chatMessages ? `${booking.chatMessages}` : '--'}</div>
+                                    <div className="metric-card">
+                                        <div className="metric-card__label">Chat</div>
+                                        <div className="metric-card__value">{booking.chatMessages ? `${booking.chatMessages}` : '--'}</div>
                                     </div>
-                                    <div className="card" style={{ background: 'var(--bg-card)', padding: '12px', border: '1px solid var(--border-default)' }}>
-                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Origem</div>
-                                        <div style={{ fontSize: '1rem', fontWeight: 700, marginTop: '4px' }}>{booking.audienceOrigin || '--'}</div>
+                                    <div className="metric-card">
+                                        <div className="metric-card__label">Origem</div>
+                                        <div className="metric-card__value" style={{ fontSize: '1rem' }}>{booking.audienceOrigin || '--'}</div>
                                     </div>
                                 </div>
                             );
@@ -387,14 +355,14 @@ export default function BookingDetailModal({
                 {/* TAB: SERVIÇOS EXTRAS */}
                 {detailTab === 'servicos' && (
                     <>
-                        <div style={{ marginBottom: '16px' }}>
-                            <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '4px' }}>Serviços Extras (Episódio)</h3>
-                            <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                        <div className="modal-section">
+                            <h3 className="modal-section__title">Serviços Extras (Episódio)</h3>
+                            <p className="modal-section__desc">
                                 Melhore a entrega e distribuição deste episódio com nossos serviços especializados.
                             </p>
                         </div>
 
-                        <div style={{ display: 'grid', gap: '12px', marginBottom: '16px' }}>
+                        <div className="booking-modal__addons">
                             {allAddons.filter(a => !a.monthly && a.key !== 'GESTAO_SOCIAL').map(addon => {
                                 const isInContract = contractAddOns.includes(addon.key);
                                 const isInBooking = localAddOns.includes(addon.key);
@@ -402,20 +370,10 @@ export default function BookingDetailModal({
                                 const finalPrice = Math.round(addon.price * (1 - contractDiscountPct / 100));
 
                                 return (
-                                    <div key={addon.key} style={{
-                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                        padding: '12px 14px', borderRadius: 'var(--radius-md)',
-                                        border: `2px solid ${isActive ? 'var(--accent-primary)' : 'var(--border-subtle)'}`,
-                                        background: isActive ? 'rgba(139, 92, 246, 0.08)' : 'var(--bg-secondary)',
-                                    }}>
+                                    <div key={addon.key} className={`addon-card ${isActive ? 'addon-card--active' : ''}`}>
                                         <div>
-                                            <div style={{
-                                                fontWeight: 700, fontSize: '0.875rem',
-                                                color: isActive ? 'var(--accent-primary)' : 'var(--text-primary)',
-                                            }}>
-                                                {addon.name}
-                                            </div>
-                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                                            <div className="addon-card__name">{addon.name}</div>
+                                            <div className="addon-card__desc">
                                                 {isActive && isInContract
                                                     ? '✅ Incluso no seu Plano'
                                                     : isActive
@@ -424,10 +382,7 @@ export default function BookingDetailModal({
                                             </div>
                                         </div>
                                         {isActive ? (
-                                            <span style={{
-                                                fontSize: '0.8125rem', fontWeight: 700, color: 'var(--accent-primary)',
-                                                padding: '4px 8px', background: 'rgba(139, 92, 246, 0.15)', borderRadius: '4px',
-                                            }}>ATIVO</span>
+                                            <span className="addon-card__badge">ATIVO</span>
                                         ) : (
                                             <button className="btn btn-sm btn-secondary"
                                                 onClick={() => handlePurchaseAddon(addon.key)}
@@ -444,15 +399,12 @@ export default function BookingDetailModal({
 
                 {/* Reschedule Panel */}
                 {showReschedule && (
-                    <div style={{
-                        padding: '14px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)',
-                        border: '1px solid var(--border-default)', marginBottom: '16px',
-                    }}>
-                        <h4 style={{ fontSize: '0.875rem', fontWeight: 700, marginBottom: '10px' }}>🔄 Reagendar</h4>
-                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '12px' }}>
+                    <div className="reschedule-panel">
+                        <h4 className="reschedule-panel__title">🔄 Reagendar</h4>
+                        <p className="reschedule-panel__note">
                             Máx. {getRule('reschedule_max_days') || '7'} dias · Mesma faixa ({booking.tierApplied})
                         </p>
-                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <div className="reschedule-panel__form">
                             <input type="date" className="form-input" value={rescheduleDate}
                                 onChange={e => setRescheduleDate(e.target.value)}
                                 min={new Date().toISOString().split('T')[0]}
@@ -465,27 +417,26 @@ export default function BookingDetailModal({
                                 {rescheduling ? '⏳' : '✅'} Confirmar
                             </button>
                         </div>
-                        {rescheduleError && <div className="error-message" style={{ marginTop: '8px' }}>{rescheduleError}</div>}
+                        {rescheduleError && <div className="error-message" style={{ marginTop: 8 }}>{rescheduleError}</div>}
                     </div>
                 )}
 
                 {/* Actions */}
-                <div className="modal-actions" style={{ justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                <div className="modal-footer">
+                    <div className="modal-footer__secondary">
                         {canModify() && (
                             <button className="btn btn-secondary btn-sm" onClick={() => setShowReschedule(!showReschedule)}>
                                 🔄 Reagendar
                             </button>
                         )}
                     </div>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                        <button className="btn btn-secondary" onClick={onClose}>Fechar</button>
+                    <div className="modal-footer__primary">
                         <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
                             {saving ? '⏳ Salvando...' : '💾 Salvar'}
                         </button>
                     </div>
                 </div>
             </div>
-        </ModalOverlay>
+        </BottomSheetModal>
     );
 }

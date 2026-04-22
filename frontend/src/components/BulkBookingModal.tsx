@@ -1,6 +1,6 @@
 import { getErrorMessage } from '../utils/errors';
 import React, { useState, useEffect } from 'react';
-import ModalOverlay from './ModalOverlay';
+import BottomSheetModal from './BottomSheetModal';
 import { bookingsApi, Slot } from '../api/client';
 
 const DAY_NAMES_FULL = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -109,15 +109,7 @@ export default function BulkBookingModal({ contract, onClose, onComplete }: Bulk
     };
 
     return (
-        <ModalOverlay onClose={onClose}>
-            <div className="modal" style={{ maxWidth: 640 }}>
-                {/* Header always visible */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                    <h2 className="modal-title" style={{ margin: 0 }}>Agendamento em Lote</h2>
-                    <span className={`badge badge-${contract.tier.toLowerCase()}`}>
-                        Plano {contract.tier}
-                    </span>
-                </div>
+        <BottomSheetModal isOpen={true} onClose={onClose} title="Agendamento em Lote" preventClose={submitting} maxWidth="640px">
 
                 <div style={{ background: 'var(--bg-secondary)', padding: '16px', borderRadius: 'var(--radius-md)', marginBottom: '24px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
@@ -287,7 +279,6 @@ export default function BulkBookingModal({ contract, onClose, onComplete }: Bulk
                         </div>
                     </>
                 )}
-            </div>
-        </ModalOverlay>
+            </BottomSheetModal>
     );
 }

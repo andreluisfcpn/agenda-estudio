@@ -3,10 +3,10 @@
 // These endpoints are PUBLIC (no auth) but verify signatures
 
 import { Router, Request, Response } from 'express';
-import { prisma } from '../../lib/prisma';
-import { stripeVerifyWebhook } from '../../lib/stripeService';
-import { decryptConfigSafe } from '../../utils/crypto';
-import crypto from 'crypto';
+import { prisma } from '../../lib/prisma.js';
+import { stripeVerifyWebhook } from '../../lib/stripeService.js';
+import { decryptConfigSafe } from '../../utils/crypto.js';
+import crypto from 'node:crypto';
 
 const router = Router();
 
@@ -30,10 +30,19 @@ async function verifyCoraSignature(req: Request): Promise<boolean> {
             if (!integration) return false;
 
             const decrypted = decryptConfigSafe(integration.config);
-            const config = JSON.parse(decrypted);
-            const webhookSecret = config.webhookSecret;
+            const parsed = JSON.parse(decrypted);
+
+            // Resolve dual-config: pick webhookSecret from active environment
+            const environment = integration.environment === 'production' ? 'production' : 'sandbox';
+            let webhookSecret: string | undefined;
+            if (parsed.sandbox || parsed.production) {
+                webhookSecret = parsed[environment]?.webhookSecret;
+            } else {
+                webhookSecret = parsed.webhookSecret; // legacy flat format
+            }
+
             if (!webhookSecret) {
-                console.warn('[Webhook:Cora] Signature present but no webhookSecret configured');
+                console.warn(`[Webhook:Cora] Signature present but no webhookSecret configured for "${environment}"`);
                 return process.env.NODE_ENV !== 'production';
             }
 
@@ -93,14 +102,16 @@ router.post('/cora', async (req: Request, res: Response) => {
         console.log(`[Webhook:Cora] Event: ${eventType}, Invoice: ${invoiceId}`);
 
         // Handle payment confirmation events
+        // Cora may send event types in different casing — normalize to lowercase
+        const normalizedEventType = eventType?.toLowerCase() || '';
         const confirmationEvents = [
             'invoice.paid',
             'invoice.payment_confirmed',
-            'PAYMENT_RECEIVED',
-            'BOLETO_PAID',
+            'payment_received',
+            'boleto_paid',
         ];
 
-        if (confirmationEvents.includes(eventType)) {
+        if (confirmationEvents.includes(normalizedEventType)) {
             // Find payment by providerRef (Cora invoice ID)
             const payment = await prisma.payment.findFirst({
                 where: { providerRef: invoiceId },
@@ -127,7 +138,7 @@ router.post('/cora', async (req: Request, res: Response) => {
 
         // Handle cancellation events
         const cancellationEvents = ['invoice.cancelled', 'invoice.expired'];
-        if (cancellationEvents.includes(eventType)) {
+        if (cancellationEvents.includes(normalizedEventType)) {
             const payment = await prisma.payment.findFirst({
                 where: { providerRef: invoiceId },
             });
@@ -285,7 +296,7 @@ router.post('/stripe', async (req: Request, res: Response) => {
                             where: { stripePaymentMethodId: pmId },
                         });
                         if (!existing) {
-                            const { stripeListPaymentMethods } = await import('../../lib/stripeService');
+                            const { stripeListPaymentMethods } = await import('../../lib/stripeService.js');
                             const cards = await stripeListPaymentMethods(String(custId));
                             const card = cards.find(c => c.paymentMethodId === pmId);
                             if (card) {
@@ -326,7 +337,7 @@ router.post('/stripe', async (req: Request, res: Response) => {
                 if (user && typeof paymentMethodId === 'string') {
                     // Get card details from Stripe
                     try {
-                        const { stripeListPaymentMethods } = await import('../../lib/stripeService');
+                        const { stripeListPaymentMethods } = await import('../../lib/stripeService.js');
                         const cards = await stripeListPaymentMethods(String(customerId));
                         const card = cards.find(c => c.paymentMethodId === paymentMethodId);
 

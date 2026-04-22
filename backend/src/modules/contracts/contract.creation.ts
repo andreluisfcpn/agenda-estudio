@@ -1,12 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { prisma } from '../../lib/prisma';
-import { authenticate, authorize } from '../../middleware/auth';
-import { ContractStatus, BookingStatus } from '../../generated/prisma/client';
-import { getBasePriceDynamic, applyDiscount, calculateEndTime } from '../../utils/pricing';
-import { getConfig } from '../../lib/businessConfig';
-import { createPayment as gatewayCreatePayment, updatePaymentWithGatewayResult, validatePaymentMethod, getProviderForMethod, PaymentMethodDisabledError } from '../../lib/paymentGateway';
-import { createContractSchema, selfContractSchema, customContractSchema } from './validators';
+import { prisma } from '../../lib/prisma.js';
+import { authenticate, authorize } from '../../middleware/auth.js';
+import { ContractStatus, BookingStatus } from '../../generated/prisma/client.js';
+import { getBasePriceDynamic, applyDiscount, calculateEndTime } from '../../utils/pricing.js';
+import { getConfig } from '../../lib/businessConfig.js';
+import { createPayment as gatewayCreatePayment, updatePaymentWithGatewayResult, validatePaymentMethod, getProviderForMethod, PaymentMethodDisabledError } from '../../lib/paymentGateway.js';
+import { createContractSchema, selfContractSchema, customContractSchema } from './validators.js';
 
 export function registerCreationRoutes(router: Router) {
 

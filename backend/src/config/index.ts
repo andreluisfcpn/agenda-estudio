@@ -1,5 +1,9 @@
 import dotenv from 'dotenv';
-import path from 'path';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // In production (Docker/Railway), env vars are injected directly.
 // In development, load from ../.env
@@ -29,11 +33,6 @@ export const config = {
 
     stripe: {
         secretKey: process.env.STRIPE_SECRET_KEY || '',
-    },
-
-    cora: {
-        apiKey: process.env.CORA_API_KEY || '',
-        apiUrl: process.env.CORA_API_URL || 'https://api.cora.com.br',
     },
 
     // Business constants

@@ -1,0 +1,784 @@
+/* ═══════════════════════════════════════════════════════════════
+   client-area.css — Mobile-First Design System for Client Pages
+   Dashboard · Bookings · Contracts · Payments
+   Base = Mobile (< 768px) → min-width for desktop
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Hero Banner ─────────────────────────────────────────────── */
+.client-hero {
+  border-radius: var(--radius-lg);
+  padding: 24px 20px;
+  margin-bottom: 24px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.client-hero::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-image: radial-gradient(circle at top right, rgba(255,255,255,0.08), transparent 60%);
+  pointer-events: none;
+}
+
+.client-hero--default {
+  background: linear-gradient(135deg, rgba(17, 129, 155, 0.25), rgba(16, 185, 129, 0.08));
+  border: 1px solid rgba(17, 129, 155, 0.2);
+}
+
+.client-hero--alert {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(239, 68, 68, 0.08));
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+/* Premium Hero (Pro Max) */
+.client-hero--premium {
+  background: linear-gradient(145deg, rgba(30, 41, 59, 0.6), rgba(15, 23, 42, 0.8));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 24px 20px;
+}
+
+.client-hero--premium::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-image: 
+    radial-gradient(circle at 80% 0%, rgba(16, 185, 129, 0.15) 0%, transparent 50%),
+    radial-gradient(circle at 20% 100%, rgba(59, 130, 246, 0.1) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.client-hero__header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.client-hero__icon-wrapper {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(16, 185, 129, 0.05));
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #10b981;
+  flex-shrink: 0;
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.1);
+  transition: box-shadow 0.3s ease, transform 0.2s ease;
+}
+
+.client-hero:hover .client-hero__icon-wrapper {
+  transform: scale(1.05);
+}
+
+.client-hero__title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #fff;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.client-hero__subtitle {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin: 4px 0 0 0;
+  font-weight: 500;
+}
+
+/* Hero header without bottom margin (standalone headers) */
+.client-hero__header--standalone {
+  margin-bottom: 0;
+}
+
+/* Hero actions slot (for buttons inside header) */
+.client-hero__actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.client-hero__greeting {
+  font-size: 1.375rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-bottom: 4px;
+  color: var(--text-primary);
+}
+
+.client-hero__message {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+/* ── CTA Stack (Full-width mobile, row on desktop) ───────── */
+.client-cta-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.client-cta-stack .btn {
+  justify-content: center;
+}
+
+@media (min-width: 480px) {
+  .client-cta-stack {
+    flex-direction: row;
+  }
+}
+
+/* ── Stats Grid (2-col mobile, auto-fit desktop) ─────────── */
+.client-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+@media (min-width: 600px) {
+  .client-stats-grid {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+}
+
+/* ── Section Heading ─────────────────────────────────────── */
+.client-section {
+  margin-bottom: 20px;
+}
+
+.client-section__heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+  letter-spacing: -0.01em;
+}
+
+/* Fix the missing class referenced throughout codebase */
+.section-heading--sm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+  letter-spacing: -0.01em;
+}
+
+.client-section__heading-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+}
+
+.client-section__heading-icon--warning {
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+}
+
+.client-section__heading-icon--accent {
+  background: rgba(17, 129, 155, 0.1);
+  color: var(--accent-primary);
+}
+
+.client-section__heading-icon--muted {
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--text-muted);
+}
+
+/* ── Booking Card (Upcoming / History) ───────────────────── */
+.client-booking-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: border-color var(--transition-fast);
+  -webkit-tap-highlight-color: transparent;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Scroll-section variant — slight extra breathing room */
+.client-booking-card--scroll {
+  padding: 20px 20px;
+  min-height: 100px;
+  border-radius: var(--radius-xl, 18px);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.18s ease;
+}
+
+/* Watermark mic icon */
+.client-booking-card__watermark {
+  position: absolute;
+  right: -10px;
+  bottom: -14px;
+  pointer-events: none;
+  color: currentColor;
+  opacity: 0.045;
+  line-height: 0;
+  /* Slight rotate for a natural, hand-held mic feel */
+  transform: rotate(-15deg);
+  transition: opacity 0.3s ease;
+}
+
+.client-booking-card--today .client-booking-card__watermark {
+  opacity: 0.07; /* Slightly more visible on highlighted card */
+  color: var(--accent-primary);
+}
+
+.client-booking-card--today {
+  background: linear-gradient(135deg, rgba(17, 129, 155, 0.1), rgba(16, 185, 129, 0.05));
+  border-color: rgba(17, 129, 155, 0.2);
+}
+
+.client-booking-card__date-badge {
+  min-width: 48px;
+  text-align: center;
+  padding: 6px 4px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+}
+
+.client-booking-card__day-name {
+  font-size: 0.625rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.client-booking-card__day-number {
+  font-size: 0.875rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.client-booking-card__day-number--today {
+  color: var(--accent-primary);
+}
+
+.client-booking-card__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* Contract/project name — primary element */
+.client-booking-card__contract-name {
+  font-weight: 800;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.client-booking-card__time {
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.client-booking-card__origin {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.client-booking-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.client-booking-card__cancel-btn {
+  background: rgba(239, 68, 68, 0.08);
+  border: none;
+  border-radius: 8px;
+  padding: 8px;
+  cursor: pointer;
+  color: #ef4444;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  -webkit-tap-highlight-color: transparent;
+  transition: background var(--transition-fast);
+}
+
+.client-booking-card__cancel-btn:active {
+  background: rgba(239, 68, 68, 0.16);
+  transform: scale(0.95);
+}
+
+/* ── Payment / Invoice Card ──────────────────────────────── */
+.client-invoice-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color var(--transition-fast), transform 50ms ease;
+}
+
+.client-invoice-card--overdue {
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.client-invoice-card:active {
+  transform: scale(0.985);
+}
+
+.client-invoice-card__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.client-invoice-card__amount {
+  font-weight: 800;
+  font-size: 1.0625rem;
+  color: var(--text-primary);
+}
+
+.client-invoice-card__due {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.client-invoice-card__right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ── Addon Progress Bar ──────────────────────────────────── */
+.client-addon-section {
+  margin-bottom: 20px;
+}
+
+.client-addon-card {
+  border-left: 3px solid var(--accent-primary);
+}
+
+.client-addon-card .card-header {
+  padding-bottom: 10px;
+}
+
+.client-addon-card__title {
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.client-addon-card__body {
+  padding: 0 16px 16px;
+}
+
+.client-addon-item {
+  margin-bottom: 14px;
+}
+
+.client-addon-item:last-child {
+  margin-bottom: 0;
+}
+
+.client-addon-item__header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+
+.client-addon-item__name {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.client-addon-item__count {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.client-progress-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  overflow: hidden;
+}
+
+.client-progress-bar__fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+.client-progress-bar__fill--normal {
+  background: linear-gradient(90deg, var(--accent-primary), #2dd4bf);
+}
+
+.client-progress-bar__fill--exceeded {
+  background: var(--tier-audiencia);
+}
+
+.client-addon-item__cycle {
+  font-size: 0.625rem;
+  color: var(--text-muted);
+  margin-top: 3px;
+  text-align: right;
+}
+
+/* ── Horizontal Scroll Container (Upcoming Bookings) ─────── */
+.client-scroll-section {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 8px;
+  /* Hide scrollbar on mobile but allow scroll */
+  scrollbar-width: none;
+  
+  /* Full bleed on mobile */
+  margin-left: -16px;
+  margin-right: -16px;
+  padding-left: 16px;
+  padding-right: 16px;
+
+  /* Fade-right edge masks to hint scrollability (no text needed) */
+  -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
+  mask-image: linear-gradient(to right, black 85%, transparent 100%);
+}
+
+.client-scroll-section::-webkit-scrollbar {
+  display: none;
+}
+
+.client-scroll-section > * {
+  scroll-snap-align: center;
+  flex: 0 0 auto;
+  width: calc(100vw - 48px);
+  max-width: 320px;
+}
+
+/* ── Enlarged booking cards inside the horizontal scroll ─── */
+.client-scroll-section .client-booking-card {
+  /* Extra specificity overrides handled by --scroll modifier class directly */
+}
+
+.client-scroll-section .client-booking-card--scroll:active {
+  transform: scale(0.975);
+}
+
+.client-scroll-section .client-booking-card--today {
+  box-shadow: 0 0 0 1px rgba(17, 129, 155, 0.25), 0 4px 20px rgba(17, 129, 155, 0.12);
+}
+
+/* Bigger date badge */
+.client-scroll-section .client-booking-card__date-badge {
+  min-width: 56px;
+  padding: 10px 6px;
+  border-radius: var(--radius-lg);
+  gap: 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* More prominent date text */
+.client-scroll-section .client-booking-card__day-name {
+  font-size: 0.6875rem;
+}
+
+.client-scroll-section .client-booking-card__day-number {
+  font-size: 1.0625rem;
+  letter-spacing: -0.03em;
+}
+
+/* Contract name larger in scroll section */
+.client-scroll-section .client-booking-card__contract-name {
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+}
+
+/* Time becomes a refined sub-label */
+.client-scroll-section .client-booking-card__time {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* ── Empty State ─────────────────────────────────────────── */
+.client-empty {
+  text-align: center;
+  padding: 28px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+/* Also define the missing class used in codebase */
+.empty-state--nice {
+  text-align: center;
+  padding: 28px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.client-empty__icon {
+  margin: 0 auto 10px;
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.client-empty__text {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.client-empty .btn {
+  margin-top: 14px;
+}
+
+/* ── Pull-to-Refresh ─────────────────────────────────────── */
+.ptr-indicator {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 0;
+  overflow: hidden;
+  transition: height 0.2s ease;
+}
+
+.ptr-indicator--active {
+  height: 48px;
+}
+
+.ptr-indicator__spinner {
+  width: 24px;
+  height: 24px;
+  border: 2.5px solid var(--border-default);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.ptr-indicator__arrow {
+  width: 24px;
+  height: 24px;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+
+.ptr-indicator__arrow--ready {
+  transform: rotate(180deg);
+  color: var(--accent-primary);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Desktop Enhancements (≥ 768px)
+   ═══════════════════════════════════════════════════════════════ */
+@media (min-width: 768px) {
+  .client-hero {
+    padding: 28px 24px;
+    margin-bottom: 24px;
+  }
+
+  .client-hero__greeting {
+    font-size: 1.5rem;
+  }
+
+  .client-hero__message {
+    margin-bottom: 20px;
+  }
+
+  .client-cta-stack {
+    flex-direction: row;
+    gap: 12px;
+  }
+
+  .client-cta-stack .btn {
+    width: auto;
+    flex: 0 0 auto;
+  }
+
+  .client-stats-grid {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .client-scroll-section {
+    /* Restore normal contained layout on desktop */
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 0;
+    padding-right: 0;
+    /* Remove the fade mask on desktop — cards have a natural end */
+    -webkit-mask-image: none;
+    mask-image: none;
+    gap: 16px;
+    flex-wrap: nowrap;
+  }
+
+  /* Desktop cards: auto width, no full-bleed, matches normal card layout */
+  .client-scroll-section > * {
+    width: auto;
+    flex: 0 0 280px;
+    max-width: 320px;
+  }
+
+  .client-section {
+    margin-bottom: 24px;
+  }
+
+  .client-section__heading {
+    margin-bottom: 14px;
+  }
+
+  .client-booking-card {
+    gap: 14px;
+  }
+
+  .client-booking-card__date-badge {
+    min-width: 52px;
+    padding: 8px 4px;
+  }
+
+  .client-booking-card__day-name {
+    font-size: 0.6875rem;
+  }
+
+  .client-booking-card__day-number {
+    font-size: 0.9375rem;
+  }
+
+  .client-booking-card__time {
+    font-size: 0.875rem;
+  }
+
+  .client-booking-card__origin {
+    font-size: 0.8125rem;
+  }
+
+  .client-invoice-card__amount {
+    font-size: 1.125rem;
+  }
+
+  .client-addon-card__body {
+    padding: 0 20px 20px;
+  }
+
+  /* Desktop: vertical list, no scroll */
+  .client-scroll-section {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    overflow: visible;
+    scroll-snap-type: none;
+  }
+
+  .client-scroll-section > * {
+    width: auto;
+    max-width: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Tablet / Wide mobile (≥ 640px, < 768px)
+   ═══════════════════════════════════════════════════════════════ */
+@media (min-width: 640px) and (max-width: 767px) {
+  .client-stats-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Small screens (≤ 359px — iPhone SE, etc.)
+   ═══════════════════════════════════════════════════════════════ */
+@media (max-width: 359px) {
+  .client-hero {
+    padding: 18px 14px;
+  }
+
+  .client-hero__greeting {
+    font-size: 1.25rem;
+  }
+
+  .client-stats-grid {
+    gap: 8px;
+  }
+
+  .client-booking-card {
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .client-booking-card__date-badge {
+    min-width: 42px;
+    padding: 5px 2px;
+  }
+
+  .client-scroll-section > * {
+    width: calc(100vw - 56px);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Motion Preferences
+   ═══════════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  .client-progress-bar__fill {
+    transition: none;
+  }
+
+  .client-booking-card__cancel-btn:active,
+  .client-invoice-card:active {
+    transform: none;
+  }
+
+  .ptr-indicator {
+    transition: none;
+  }
+}

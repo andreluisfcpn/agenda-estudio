@@ -1,5 +1,5 @@
 import { customAlphabet } from 'nanoid';
-import { redis } from './redis';
+import { redis } from './redis.js';
 
 const OTP_EXPIRY_SECONDS = 5 * 60; // 5 minutes
 const OTP_PREFIX = 'otp:';

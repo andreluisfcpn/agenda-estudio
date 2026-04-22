@@ -75,11 +75,11 @@
 }
 
 .checkout-tab--pix.checkout-tab--active {
-  background: #22c55e;
+  background: var(--status-available); /* #10b981 */
 }
 
 .checkout-tab--card.checkout-tab--active {
-  background: #635BFF;
+  background: var(--accent-primary);
 }
 
 /* ── Error Alert ── */
@@ -139,12 +139,12 @@
 }
 
 .checkout-saved-card:hover:not(.checkout-saved-card--active) {
-  border-color: rgba(99, 91, 255, 0.25);
+  border-color: rgba(17, 129, 155, 0.35);
 }
 
 .checkout-saved-card--active {
-  border-color: #635BFF;
-  background: rgba(99, 91, 255, 0.06);
+  border-color: var(--accent-primary);
+  background: rgba(17, 129, 155, 0.08);
 }
 
 .checkout-saved-card-info {
@@ -157,18 +157,18 @@
   width: 32px;
   height: 32px;
   border-radius: 6px;
-  background: rgba(99, 91, 255, 0.08);
+  background: rgba(17, 129, 155, 0.1);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 1rem;
   font-weight: 700;
-  color: #635BFF;
+  color: var(--accent-primary);
 }
 
 .checkout-saved-card--new .checkout-saved-card-brand {
-  background: rgba(34, 197, 94, 0.08);
-  color: #22c55e;
+  background: rgba(16, 185, 129, 0.08);
+  color: var(--status-available);
 }
 
 .checkout-saved-card-number {
@@ -194,13 +194,13 @@
 }
 
 .checkout-saved-card-funding--credit {
-  background: rgba(99, 91, 255, 0.1);
-  color: #635BFF;
+  background: rgba(17, 129, 155, 0.1);
+  color: var(--accent-primary);
 }
 
 .checkout-saved-card-funding--debit {
-  background: rgba(34, 197, 94, 0.1);
-  color: #22c55e;
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--status-available);
 }
 
 .checkout-saved-card-radio {
@@ -216,8 +216,8 @@
 }
 
 .checkout-saved-card-radio--active {
-  border-color: #635BFF;
-  background: #635BFF;
+  border-color: var(--accent-primary);
+  background: var(--accent-primary);
   color: #fff;
 }
 
@@ -249,13 +249,13 @@
 }
 
 .checkout-type-btn:hover:not(.checkout-type-btn--active) {
-  border-color: rgba(99, 91, 255, 0.3);
+  border-color: rgba(17, 129, 155, 0.3);
 }
 
 .checkout-type-btn--active {
-  background: rgba(99, 91, 255, 0.08);
-  border-color: #635BFF;
-  color: #635BFF;
+  background: rgba(17, 129, 155, 0.08);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
 }
 
 /* ── Installments Grid ── */
@@ -284,13 +284,13 @@
 }
 
 .checkout-installment-btn:hover:not(.checkout-installment-btn--active) {
-  border-color: rgba(99, 91, 255, 0.3);
+  border-color: rgba(17, 129, 155, 0.3);
 }
 
 .checkout-installment-btn--active {
-  background: rgba(99, 91, 255, 0.08);
-  border-color: #635BFF;
-  color: #635BFF;
+  background: rgba(17, 129, 155, 0.08);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
 }
 
 .checkout-installment-btn small {
@@ -327,23 +327,24 @@
 }
 
 .checkout-pay-btn--card {
-  background: #635BFF;
-  box-shadow: 0 4px 12px rgba(99, 91, 255, 0.25);
+  background: var(--accent-primary);
+  box-shadow: 0 4px 12px rgba(17, 129, 155, 0.25);
 }
 
 .checkout-pay-btn--card:hover:not(:disabled) {
-  background: #5851e0;
-  box-shadow: 0 6px 20px rgba(99, 91, 255, 0.35);
+  background: var(--accent-primary-hover);
+  box-shadow: 0 6px 20px rgba(17, 129, 155, 0.35);
 }
 
 .checkout-pay-btn--pix {
-  background: #22c55e;
-  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.25);
+  background: var(--status-available);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
 }
 
 .checkout-pay-btn--pix:hover:not(:disabled) {
-  background: #1dae51;
-  box-shadow: 0 6px 20px rgba(34, 197, 94, 0.35);
+  background: #0ea5e9; /* Light blue accent for hover alternative, or stick to darker green. Let's do darker green. */ /* Wait, darker green is --status-confirmed or just 059669 */
+  background: #059669;
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.35);
 }
 
 /* ── Stripe Summary Bar ── */
@@ -351,8 +352,8 @@
   padding: 12px 14px;
   border-radius: var(--radius-sm);
   margin-bottom: 16px;
-  background: rgba(99, 91, 255, 0.05);
-  border: 1px solid rgba(99, 91, 255, 0.15);
+  background: rgba(17, 129, 155, 0.05); /* Accent faint */
+  border: 1px solid rgba(17, 129, 155, 0.15);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -369,7 +370,7 @@
 .checkout-stripe-summary-value {
   font-weight: 800;
   font-size: 1rem;
-  color: #635BFF;
+  color: var(--accent-primary);
 }
 
 /* ── PIX Section ── */
@@ -382,13 +383,13 @@
   width: 56px;
   height: 56px;
   border-radius: 16px;
-  background: rgba(34, 197, 94, 0.08);
-  border: 1px solid rgba(34, 197, 94, 0.15);
+  background: rgba(16, 185, 129, 0.08); /* --status-available based */
+  border: 1px solid rgba(16, 185, 129, 0.15);
   display: flex;
   align-items: center;
   justify-content: center;
   margin: 0 auto 12px;
-  color: #22c55e;
+  color: var(--status-available);
 }
 
 .checkout-pix-intro p {
@@ -427,7 +428,7 @@
   margin: 0 auto 16px;
   border-radius: var(--radius-md);
   background: var(--bg-secondary);
-  border: 2px dashed rgba(34, 197, 94, 0.2);
+  border: 2px dashed rgba(16, 185, 129, 0.2);
   gap: 10px;
 }
 
@@ -468,12 +469,12 @@
 
 .checkout-copy-btn:hover {
   background: var(--bg-elevated, rgba(255, 255, 255, 0.06));
-  border-color: rgba(34, 197, 94, 0.3);
+  border-color: rgba(16, 185, 129, 0.3);
 }
 
 .checkout-copy-btn--copied {
-  color: #22c55e;
-  border-color: rgba(34, 197, 94, 0.3);
+  color: var(--status-available);
+  border-color: rgba(16, 185, 129, 0.3);
 }
 
 /* ── Polling Indicator ── */
@@ -489,9 +490,9 @@
 }
 
 .checkout-polling--pix {
-  background: rgba(34, 197, 94, 0.05);
-  border: 1px solid rgba(34, 197, 94, 0.15);
-  color: #22c55e;
+  background: rgba(16, 185, 129, 0.05);
+  border: 1px solid rgba(16, 185, 129, 0.15);
+  color: var(--status-available);
 }
 
 /* ── Cancel Button ── */
@@ -559,7 +560,7 @@
 
 .checkout-installment-select:focus {
   outline: none;
-  border-color: #635BFF;
+  border-color: var(--accent-primary);
 }
 
 .checkout-installment-select option {
@@ -613,7 +614,7 @@
 .stripe-save-card input[type="checkbox"] {
   width: 18px;
   height: 18px;
-  accent-color: #635BFF;
+  accent-color: var(--accent-primary);
   border-radius: 4px;
   cursor: pointer;
   flex-shrink: 0;
@@ -642,14 +643,14 @@
   margin: 12px 0;
   padding: 8px 12px;
   border-radius: var(--radius-sm);
-  background: rgba(99, 91, 255, 0.04);
-  border: 1px solid rgba(99, 91, 255, 0.1);
+  background: rgba(17, 129, 155, 0.04);
+  border: 1px solid rgba(17, 129, 155, 0.1);
   font-size: 0.6875rem;
   color: var(--text-muted);
 }
 
 .stripe-security-badge strong {
-  color: #635BFF;
+  color: var(--accent-primary);
   font-weight: 700;
 }
 
@@ -682,7 +683,7 @@
   padding: 12px 20px;
   border-radius: var(--radius-sm);
   border: none;
-  background: #635BFF;
+  background: var(--accent-primary);
   color: #fff;
   font-weight: 700;
   font-size: 0.9rem;
@@ -694,12 +695,12 @@
   justify-content: center;
   gap: 8px;
   transition: all 0.2s;
-  box-shadow: 0 4px 12px rgba(99, 91, 255, 0.25);
+  box-shadow: 0 4px 12px rgba(17, 129, 155, 0.25);
 }
 
 .stripe-submit-btn:hover:not(:disabled) {
-  background: #5851e0;
-  box-shadow: 0 6px 20px rgba(99, 91, 255, 0.35);
+  background: var(--accent-primary-hover);
+  box-shadow: 0 6px 20px rgba(17, 129, 155, 0.35);
 }
 
 .stripe-submit-btn:disabled {
@@ -744,7 +745,7 @@
 }
 
 .checkout-security-top svg {
-  color: #22c55e;
+  color: var(--status-available);
 }
 
 /* ── Desktop Enhancements ── */

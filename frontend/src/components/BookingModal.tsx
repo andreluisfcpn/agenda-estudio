@@ -1,11 +1,12 @@
 import { getErrorMessage } from '../utils/errors';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import ModalOverlay from './ModalOverlay';
+import BottomSheetModal from './BottomSheetModal';
 import { bookingsApi, contractsApi, pricingApi, stripeApi, ContractWithStats } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import InlineCheckout from './InlineCheckout';
 
 interface BookingModalProps {
+    isOpen?: boolean;
     date: string;
     time: string;
     tier: string;
@@ -77,7 +78,7 @@ function CountdownTimer({ expiresAt, onExpire }: { expiresAt: string; onExpire: 
     );
 }
 
-export default function BookingModal({ date, time, tier, price, onClose, onBooked, onNewContract }: BookingModalProps) {
+export default function BookingModal({ isOpen = true, date, time, tier, price, onClose, onBooked, onNewContract }: BookingModalProps) {
     const { user } = useAuth();
     const [step, setStep] = useState<Step>('choose');
     const [contracts, setContracts] = useState<ContractWithStats[]>([]);
@@ -192,8 +193,8 @@ export default function BookingModal({ date, time, tier, price, onClose, onBooke
     };
 
     return (
-        <ModalOverlay onClose={onClose}>
-            <div className="modal" style={{ maxWidth: 560 }}>
+        <BottomSheetModal isOpen={isOpen} onClose={onClose} title="Agendamento">
+            <div className="booking-modal-content" style={{ padding: '0 20px 20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
                 {/* ══════════ Step: CHOOSE ══════════ */}
                 {step === 'choose' && (
@@ -329,10 +330,6 @@ export default function BookingModal({ date, time, tier, price, onClose, onBooke
                                     </span>
                                 </button>
                             </div>
-                        </div>
-
-                        <div className="modal-actions" style={{ marginTop: '16px' }}>
-                            <button className="btn btn-secondary" onClick={onClose}>Fechar</button>
                         </div>
                     </>
                 )}
@@ -570,7 +567,7 @@ export default function BookingModal({ date, time, tier, price, onClose, onBooke
                             </p>
                         </div>
                         <div className="modal-actions" style={{ justifyContent: 'center' }}>
-                            <button className="btn btn-primary" onClick={onBooked}>Fechar</button>
+                            <button className="btn btn-primary" onClick={onBooked}>Concluir</button>
                         </div>
                     </>
                 )}
@@ -585,11 +582,10 @@ export default function BookingModal({ date, time, tier, price, onClose, onBooke
                         </div>
                         <div className="modal-actions" style={{ justifyContent: 'center' }}>
                             <button className="btn btn-secondary" onClick={() => setStep('choose')}>Tentar Novamente</button>
-                            <button className="btn btn-secondary" onClick={onClose}>Fechar</button>
                         </div>
                     </>
                 )}
             </div>
-        </ModalOverlay>
+        </BottomSheetModal>
     );
 }

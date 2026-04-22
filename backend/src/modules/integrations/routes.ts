@@ -4,11 +4,11 @@
 
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { prisma } from '../../lib/prisma';
-import { authenticate, authorize } from '../../middleware/auth';
-import { coraTestConnection } from '../../lib/coraService';
-import { stripeTestConnection, stripeGetPublishableKey } from '../../lib/stripeService';
-import { encryptCredentials, decryptConfigSafe } from '../../utils/crypto';
+import { prisma } from '../../lib/prisma.js';
+import { authenticate, authorize } from '../../middleware/auth.js';
+import { coraTestConnection, coraListWebhookEndpoints, coraRegisterWebhookEndpoint, coraDeleteWebhookEndpoint } from '../../lib/coraService.js';
+import { stripeTestConnection, stripeGetPublishableKey } from '../../lib/stripeService.js';
+import { encryptCredentials, decryptConfigSafe } from '../../utils/crypto.js';
 
 const router = Router();
 
@@ -24,19 +24,50 @@ const saveIntegrationSchema = z.object({
 
 // ─── Helper: Mask sensitive fields for GET responses ─────
 
+function maskCoraCredentials(creds: Record<string, any>): Record<string, any> {
+    const masked = { ...creds };
+    if (masked.clientId) masked.clientId = maskString(masked.clientId);
+    if (masked.certificatePem) masked.certificatePem = '***CERTIFICATE_CONFIGURED***';
+    if (masked.privateKeyPem) masked.privateKeyPem = '***PRIVATE_KEY_CONFIGURED***';
+    return masked;
+}
+
+function maskStripeCredentials(creds: Record<string, any>): Record<string, any> {
+    const masked = { ...creds };
+    if (masked.secretKey) masked.secretKey = maskString(masked.secretKey);
+    if (masked.webhookSecret) masked.webhookSecret = maskString(masked.webhookSecret);
+    // publishableKey is safe to show (it's public)
+    return masked;
+}
+
 function maskConfig(provider: string, config: Record<string, any>): Record<string, any> {
     const masked = { ...config };
 
     if (provider === 'CORA') {
+        // Dual format: { sandbox: {...}, production: {...} }
+        if (masked.sandbox && typeof masked.sandbox === 'object') {
+            masked.sandbox = maskCoraCredentials(masked.sandbox);
+        }
+        if (masked.production && typeof masked.production === 'object') {
+            masked.production = maskCoraCredentials(masked.production);
+        }
+        // Legacy flat format (backward-compat)
         if (masked.clientId) masked.clientId = maskString(masked.clientId);
         if (masked.certificatePem) masked.certificatePem = '***CERTIFICATE_CONFIGURED***';
         if (masked.privateKeyPem) masked.privateKeyPem = '***PRIVATE_KEY_CONFIGURED***';
     }
 
     if (provider === 'STRIPE') {
+        // Dual format: { sandbox: {...}, production: {...} }
+        if (masked.sandbox && typeof masked.sandbox === 'object') {
+            masked.sandbox = maskStripeCredentials(masked.sandbox);
+        }
+        if (masked.production && typeof masked.production === 'object') {
+            masked.production = maskStripeCredentials(masked.production);
+        }
+        // Legacy flat format (backward-compat)
         if (masked.secretKey) masked.secretKey = maskString(masked.secretKey);
         if (masked.webhookSecret) masked.webhookSecret = maskString(masked.webhookSecret);
-        // publishableKey is safe to show (it's public)
     }
 
     return masked;
@@ -175,11 +206,30 @@ router.put('/:provider', authenticate, authorize('ADMIN'), async (req: Request, 
             try {
                 const decryptedExisting = decryptConfigSafe(existing.config);
                 const existingConfig = JSON.parse(decryptedExisting);
-                // For each key in existing config, if new config doesn't have it or it's empty, keep existing
-                mergedConfig = { ...existingConfig };
-                for (const [key, value] of Object.entries(data.config)) {
-                    if (value !== undefined && value !== null && value !== '') {
-                        mergedConfig[key] = value;
+
+                const hasDualFormat = data.config.sandbox || data.config.production;
+                if (hasDualFormat) {
+                    // Dual format (Cora or Stripe): merge each environment sub-object individually
+                    mergedConfig = { ...existingConfig };
+                    for (const env of ['sandbox', 'production'] as const) {
+                        const incoming = data.config[env] as Record<string, any> | undefined;
+                        if (!incoming) continue;
+                        const existingSub = (existingConfig[env] || {}) as Record<string, any>;
+                        const merged: Record<string, any> = { ...existingSub };
+                        for (const [key, value] of Object.entries(incoming)) {
+                            if (value !== undefined && value !== null && value !== '') {
+                                merged[key] = value;
+                            }
+                        }
+                        mergedConfig[env] = merged;
+                    }
+                } else {
+                    // Flat format (legacy)
+                    mergedConfig = { ...existingConfig };
+                    for (const [key, value] of Object.entries(data.config)) {
+                        if (value !== undefined && value !== null && value !== '') {
+                            mergedConfig[key] = value;
+                        }
                     }
                 }
             } catch { /* existing config parse failed, use new config */ }
@@ -305,6 +355,46 @@ router.post('/:provider/toggle', authenticate, authorize('ADMIN'), async (req: R
     });
 
     res.json({ message: `Integração ${provider} ${enabled ? 'ativada' : 'desativada'}.` });
+});
+
+// ─── Cora Webhook Management ────────────────────────────
+
+/** GET /api/integrations/cora/webhooks — list registered webhooks */
+router.get('/cora/webhooks', authenticate, authorize('ADMIN'), async (_req: Request, res: Response) => {
+    try {
+        const endpoints = await coraListWebhookEndpoints();
+        res.json({ endpoints });
+    } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Erro desconhecido';
+        res.status(500).json({ error: `Falha ao listar webhooks Cora: ${msg}` });
+    }
+});
+
+/** POST /api/integrations/cora/webhooks — register a webhook */
+router.post('/cora/webhooks', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
+    try {
+        const { url } = req.body;
+        if (!url || typeof url !== 'string') {
+            res.status(400).json({ error: 'Campo "url" é obrigatório.' });
+            return;
+        }
+        const endpoint = await coraRegisterWebhookEndpoint(url);
+        res.json({ message: 'Webhook registrado com sucesso na Cora!', endpoint });
+    } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Erro desconhecido';
+        res.status(500).json({ error: `Falha ao registrar webhook Cora: ${msg}` });
+    }
+});
+
+/** DELETE /api/integrations/cora/webhooks/:id — delete a webhook */
+router.delete('/cora/webhooks/:id', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
+    try {
+        await coraDeleteWebhookEndpoint(req.params.id as string);
+        res.json({ message: 'Webhook removido da Cora.' });
+    } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Erro desconhecido';
+        res.status(500).json({ error: `Falha ao remover webhook Cora: ${msg}` });
+    }
 });
 
 export default router;

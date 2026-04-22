@@ -4,8 +4,8 @@
 
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { prisma } from '../../lib/prisma';
-import { authenticate } from '../../middleware/auth';
+import { prisma } from '../../lib/prisma.js';
+import { authenticate } from '../../middleware/auth.js';
 import {
     stripeGetPublishableKey,
     stripeGetOrCreateCustomer,
@@ -16,7 +16,7 @@ import {
     stripeCreatePaymentIntent,
     stripeGetInstallmentPlans,
     stripeGetPaymentIntent,
-} from '../../lib/stripeService';
+} from '../../lib/stripeService.js';
 
 const router = Router();
 
@@ -216,7 +216,7 @@ const createPaymentSchema = z.object({
     installments: z.number().min(1).max(12).optional(),
     savedPaymentMethodId: z.string().optional(),
     savePaymentMethod: z.boolean().optional(),
-    paymentMethod: z.enum(['cartao', 'pix', 'boleto']).optional().default('cartao'),
+    paymentMethod: z.enum(['cartao', 'pix']).optional().default('cartao'),
 });
 
 router.post('/create-payment', authenticate, async (req: Request, res: Response) => {
@@ -225,7 +225,7 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
         const userId = req.user!.userId;
 
         // Global guard: reject if the payment method is disabled by admin
-        const { validatePaymentMethod, PaymentMethodDisabledError } = await import('../../lib/paymentGateway');
+        const { validatePaymentMethod, PaymentMethodDisabledError } = await import('../../lib/paymentGateway.js');
         try {
             await validatePaymentMethod(data.paymentMethod);
         } catch (err) {
@@ -256,163 +256,37 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
         const customerId = await stripeGetOrCreateCustomer(userId);
 
         if (data.paymentMethod === 'pix') {
-            // Use Cora API for PIX instead of Stripe
-            const { coraCreateBoleto } = await import('../../lib/coraService');
-            
-            // Re-fetch user properly to ensure we have cpfCnpj, address, etc.
-            const user = await prisma.user.findUnique({ where: { id: userId } });
-            
-            if (!user) {
-                res.status(404).json({ error: 'Usuário não encontrado.' });
-                return;
-            }
-            
-            // Format CPF/CNPJ for Cora explicitly
-            let docStr = user.cpfCnpj ? user.cpfCnpj.replace(/\D/g, '') : "";
-            // Reject if CPF/CNPJ is not valid (must be 11 or 14 digits)
-            if (docStr.length !== 11 && docStr.length !== 14) {
-                res.status(400).json({ error: 'CPF/CNPJ não cadastrado ou inválido. Atualize seu perfil antes de pagar com PIX.' });
-                return;
-            }
-            let docType: 'CPF' | 'CNPJ' = docStr.length === 14 ? 'CNPJ' : 'CPF';
-            
-            const dueDate = new Date();
-            dueDate.setDate(dueDate.getDate() + 1); // PIX expires tomorrow
-            
-            // Parse user address from JSON profile field
-            let addressData: any = undefined;
-            if (user.address) {
-                try {
-                    const addr = JSON.parse(user.address);
-                    addressData = {
-                        street: addr.street || 'N/A',
-                        number: addr.number || 'S/N',
-                        district: addr.district || 'Centro',
-                        city: addr.city || user.city || 'Cidade',
-                        state: addr.state || user.state || 'RJ',
-                        zipCode: (addr.zipCode || addr.cep || '00000000').replace(/\D/g, ''),
-                    };
-                } catch { /* use fallback */ }
-            }
-            if (!addressData) {
-                addressData = {
-                    street: 'N/A',
-                    number: 'S/N',
-                    district: 'Centro',
-                    city: user.city || 'Cidade',
-                    state: user.state || 'RJ',
-                    zipCode: '00000000',
-                };
-            }
-            
-            const result = await coraCreateBoleto({
-                amount: payment.amount,
-                dueDate: dueDate.toISOString().split('T')[0],
-                description: `Pagamento PIX - ${payment.contract?.name || 'Avulso'}`,
-                withPixQrCode: true,
-                customer: {
-                    name: user.name,
-                    email: user.email || 'cliente@estudio.com',
-                    document: { type: docType, identity: docStr },
-                    address: addressData
-                }
-            });
-            
-            // Update our payment
-            await prisma.payment.update({
-                where: { id: payment.id },
-                data: {
-                    providerRef: result.id,
+            // Use centralized Cora helper for PIX
+            const { createCoraPayment } = await import('../../lib/coraPaymentHelper.js');
+
+            try {
+                const coraRes = await createCoraPayment({
+                    userId,
+                    amount: payment.amount,
+                    description: `Pagamento PIX - ${payment.contract?.name || 'Avulso'}`,
+                    withPixQrCode: true,
+                });
+
+                await prisma.payment.update({
+                    where: { id: payment.id },
+                    data: {
+                        providerRef: coraRes.result.id,
+                        provider: 'CORA',
+                        installments: 1,
+                        pixString: coraRes.pixString,
+                    },
+                });
+
+                res.json({
                     provider: 'CORA',
-                    installments: 1,
-                    pixString: result.pixString,
-                },
-            });
-            
-            res.json({
-                provider: 'CORA',
-                pixString: result.pixString,
-                qrCodeBase64: result.qrCodeBase64,
-                paymentId: payment.id // send back so frontend knows it's cora
-            });
-            return;
-        }
-
-        // ─── BOLETO: Cora boleto puro ────────────────────────
-        if (data.paymentMethod === 'boleto') {
-            const { coraCreateBoleto } = await import('../../lib/coraService');
-
-            const user = await prisma.user.findUnique({ where: { id: userId } });
-            if (!user) {
-                res.status(404).json({ error: 'Usuário não encontrado.' });
-                return;
+                    pixString: coraRes.pixString,
+                    qrCodeBase64: coraRes.qrCodeBase64,
+                    paymentId: payment.id,
+                });
+            } catch (e: unknown) {
+                const msg = e instanceof Error ? e.message : 'Erro ao gerar PIX.';
+                res.status(400).json({ error: msg });
             }
-
-            let docStr = user.cpfCnpj ? user.cpfCnpj.replace(/\D/g, '') : "";
-            if (docStr.length !== 11 && docStr.length !== 14) {
-                res.status(400).json({ error: 'CPF/CNPJ não cadastrado ou inválido. Atualize o perfil do cliente antes de emitir boleto.' });
-                return;
-            }
-            let docType: 'CPF' | 'CNPJ' = docStr.length === 14 ? 'CNPJ' : 'CPF';
-
-            const dueDate = new Date();
-            dueDate.setDate(dueDate.getDate() + 3); // Boleto vence em 3 dias
-
-            // Parse user address from JSON profile field
-            let addressData: any = undefined;
-            if (user.address) {
-                try {
-                    const addr = JSON.parse(user.address);
-                    addressData = {
-                        street: addr.street || 'N/A',
-                        number: addr.number || 'S/N',
-                        district: addr.district || 'Centro',
-                        city: addr.city || user.city || 'Cidade',
-                        state: addr.state || user.state || 'RJ',
-                        zipCode: (addr.zipCode || addr.cep || '00000000').replace(/\D/g, ''),
-                    };
-                } catch { /* use fallback */ }
-            }
-            if (!addressData) {
-                addressData = {
-                    street: 'N/A',
-                    number: 'S/N',
-                    district: 'Centro',
-                    city: user.city || 'Cidade',
-                    state: user.state || 'RJ',
-                    zipCode: '00000000',
-                };
-            }
-
-            const result = await coraCreateBoleto({
-                amount: payment.amount,
-                dueDate: dueDate.toISOString().split('T')[0],
-                description: `Boleto - ${payment.contract?.name || 'Avulso'}`,
-                withPixQrCode: false,
-                customer: {
-                    name: user.name,
-                    email: user.email || 'cliente@estudio.com',
-                    document: { type: docType, identity: docStr },
-                    address: addressData
-                }
-            });
-
-            await prisma.payment.update({
-                where: { id: payment.id },
-                data: {
-                    providerRef: result.id,
-                    provider: 'CORA',
-                    installments: 1,
-                    boletoUrl: result.boletoUrl,
-                },
-            });
-
-            res.json({
-                provider: 'CORA',
-                boletoUrl: result.boletoUrl,
-                barcode: result.barcode,
-                paymentId: payment.id
-            });
             return;
         }
 

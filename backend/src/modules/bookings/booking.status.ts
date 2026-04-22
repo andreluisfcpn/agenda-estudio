@@ -1,11 +1,11 @@
 import { Router, Request, Response } from 'express';
-import { prisma } from '../../lib/prisma';
-import { authenticate, authorize } from '../../middleware/auth';
-import { releaseMultiSlotLock } from '../../lib/redis';
-import { stripeGetPaymentIntent } from '../../lib/stripeService';
-import { getPackageSlots } from '../../utils/pricing';
-import { BookingStatus } from '../../generated/prisma/client';
-import { restoreCredit } from './booking.service';
+import { prisma } from '../../lib/prisma.js';
+import { authenticate, authorize } from '../../middleware/auth.js';
+import { releaseMultiSlotLock } from '../../lib/redis.js';
+import { stripeGetPaymentIntent } from '../../lib/stripeService.js';
+import { getPackageSlots } from '../../utils/pricing.js';
+import { BookingStatus } from '../../generated/prisma/client.js';
+import { restoreCredit } from './booking.service.js';
 
 export function registerStatusRoutes(router: Router) {
 

@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { config } from '../config';
+import { config } from '../config/index.js';
 
 export function errorHandler(err: Error, _req: Request, res: Response, _next: NextFunction): void {
     console.error('Unhandled error:', err);

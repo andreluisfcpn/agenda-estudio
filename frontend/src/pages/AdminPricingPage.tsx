@@ -37,9 +37,24 @@ export default function AdminPricingPage() {
     const [pmEdited, setPmEdited] = useState(false);
 
     const [integrations, setIntegrations] = useState<IntegrationSummary[]>([]);
-    const [coraForm, setCoraForm] = useState({ clientId: '', certificatePem: '', privateKeyPem: '', pixKey: '', environment: 'sandbox' });
-    const [stripeForm, setStripeForm] = useState({ secretKey: '', publishableKey: '', webhookSecret: '', environment: 'sandbox' });
+    const emptyCoraCreds = { clientId: '', certificatePem: '', privateKeyPem: '', pixKey: '' };
+    const [coraForm, setCoraForm] = useState({
+        sandbox: { ...emptyCoraCreds },
+        production: { ...emptyCoraCreds },
+        environment: 'sandbox',
+    });
+    const [coraConfigTab, setCoraConfigTab] = useState<'sandbox' | 'production'>('sandbox');
+    const emptyStripeCreds = { secretKey: '', publishableKey: '', webhookSecret: '' };
+    const [stripeForm, setStripeForm] = useState({
+        sandbox: { ...emptyStripeCreds },
+        production: { ...emptyStripeCreds },
+        environment: 'sandbox',
+    });
+    const [stripeConfigTab, setStripeConfigTab] = useState<'sandbox' | 'production'>('sandbox');
     const [testingProvider, setTestingProvider] = useState<string | null>(null);
+    const [coraWebhooks, setCoraWebhooks] = useState<{ id: string; url: string; events?: string[] }[]>([]);
+    const [loadingWebhooks, setLoadingWebhooks] = useState(false);
+    const [registeringWebhook, setRegisteringWebhook] = useState(false);
 
     const getCfg = (key: string) => Number(configs.find(c => c.key === key)?.value || 0);
 
@@ -73,22 +88,37 @@ export default function AdminPricingPage() {
             // Populate form fields from saved config (masked values serve as placeholders)
             const cora = res.integrations.find((i: IntegrationSummary) => i.provider === 'CORA');
             if (cora?.configured) {
+                const cfg = cora.config || {};
+                const parseCreds = (c: any) => ({
+                    clientId: c?.clientId || '',
+                    certificatePem: c?.certificatePem === '***CERTIFICATE_CONFIGURED***' ? '' : (c?.certificatePem || ''),
+                    privateKeyPem: c?.privateKeyPem === '***PRIVATE_KEY_CONFIGURED***' ? '' : (c?.privateKeyPem || ''),
+                    pixKey: c?.pixKey || '',
+                });
+                // Support dual format (sandbox/production sub-objects) and legacy flat
+                const hasDual = cfg.sandbox || cfg.production;
                 setCoraForm({
-                    clientId: cora.config.clientId || '',
-                    certificatePem: cora.config.certificatePem === '***CERTIFICATE_CONFIGURED***' ? '' : (cora.config.certificatePem || ''),
-                    privateKeyPem: cora.config.privateKeyPem === '***PRIVATE_KEY_CONFIGURED***' ? '' : (cora.config.privateKeyPem || ''),
-                    pixKey: cora.config.pixKey || '',
+                    sandbox: hasDual ? parseCreds(cfg.sandbox) : parseCreds(cfg),
+                    production: hasDual ? parseCreds(cfg.production) : { clientId: '', certificatePem: '', privateKeyPem: '', pixKey: '' },
                     environment: cora.environment || 'sandbox',
                 });
+                setCoraConfigTab((cora.environment || 'sandbox') as 'sandbox' | 'production');
             }
             const stripe = res.integrations.find((i: IntegrationSummary) => i.provider === 'STRIPE');
             if (stripe?.configured) {
+                const cfg = stripe.config || {};
+                const parseCreds = (c: any) => ({
+                    secretKey: c?.secretKey || '',
+                    publishableKey: c?.publishableKey || '',
+                    webhookSecret: c?.webhookSecret || '',
+                });
+                const hasDual = cfg.sandbox || cfg.production;
                 setStripeForm({
-                    secretKey: stripe.config.secretKey || '',
-                    publishableKey: stripe.config.publishableKey || '',
-                    webhookSecret: stripe.config.webhookSecret || '',
+                    sandbox: hasDual ? parseCreds(cfg.sandbox) : parseCreds(cfg),
+                    production: hasDual ? parseCreds(cfg.production) : { secretKey: '', publishableKey: '', webhookSecret: '' },
                     environment: stripe.environment || 'sandbox',
                 });
+                setStripeConfigTab((stripe.environment || 'sandbox') as 'sandbox' | 'production');
             }
         } catch (err) {
             console.error(err);
@@ -591,21 +621,36 @@ export default function AdminPricingPage() {
                     try {
                         let data;
                         if (provider === 'CORA') {
-                            const config: Record<string, string> = {
-                                clientId: coraForm.clientId,
-                                pixKey: coraForm.pixKey,
+                            // Build dual config: { sandbox: {...}, production: {...} }
+                            const buildCreds = (creds: typeof coraForm.sandbox) => {
+                                const c: Record<string, string> = {
+                                    clientId: creds.clientId,
+                                    pixKey: creds.pixKey,
+                                };
+                                // Only send cert/key if user typed new values (empty = keep existing)
+                                if (creds.certificatePem) c.certificatePem = creds.certificatePem;
+                                if (creds.privateKeyPem) c.privateKeyPem = creds.privateKeyPem;
+                                return c;
                             };
-                            // Only send cert/key if user typed new values (not empty = keep existing)
-                            if (coraForm.certificatePem) config.certificatePem = coraForm.certificatePem;
-                            if (coraForm.privateKeyPem) config.privateKeyPem = coraForm.privateKeyPem;
+                            const config: Record<string, any> = {
+                                sandbox: buildCreds(coraForm.sandbox),
+                                production: buildCreds(coraForm.production),
+                            };
                             data = { environment: coraForm.environment, config };
                         } else {
-                            const config: Record<string, string> = {
-                                publishableKey: stripeForm.publishableKey,
+                            // Build dual config: { sandbox: {...}, production: {...} }
+                            const buildCreds = (creds: typeof stripeForm.sandbox) => {
+                                const c: Record<string, string> = {
+                                    publishableKey: creds.publishableKey,
+                                };
+                                if (creds.secretKey && !creds.secretKey.includes('...')) c.secretKey = creds.secretKey;
+                                if (creds.webhookSecret && !creds.webhookSecret.includes('...')) c.webhookSecret = creds.webhookSecret;
+                                return c;
                             };
-                            // Only send secrets if user typed new values
-                            if (stripeForm.secretKey && !stripeForm.secretKey.includes('...')) config.secretKey = stripeForm.secretKey;
-                            if (stripeForm.webhookSecret && !stripeForm.webhookSecret.includes('...')) config.webhookSecret = stripeForm.webhookSecret;
+                            const config: Record<string, any> = {
+                                sandbox: buildCreds(stripeForm.sandbox),
+                                production: buildCreds(stripeForm.production),
+                            };
                             data = { environment: stripeForm.environment, config };
                         }
                         const res = await integrationsApi.save(provider, data);
@@ -757,54 +802,265 @@ export default function AdminPricingPage() {
                                     </div>
                                 </div>
 
-                                {/* Fields */}
-                                <label style={labelStyle}>Client ID</label>
-                                <input style={inputStyle} type="text"
-                                    placeholder={cora?.config?.clientId ? 'Já configurado (masked)' : 'Seu Client ID da Cora'}
-                                    value={coraForm.clientId}
-                                    onChange={e => setCoraForm(f => ({ ...f, clientId: e.target.value }))}
-                                    onFocus={e => (e.currentTarget.style.borderColor = '#f59e0b')}
-                                    onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
-                                />
+                                {/* ─── Active Environment Banner ─── */}
+                                <div style={{
+                                    padding: '10px 14px', borderRadius: '10px', marginBottom: '16px',
+                                    background: coraForm.environment === 'production'
+                                        ? 'rgba(239,68,68,0.06)' : 'rgba(59,130,246,0.06)',
+                                    border: `1px solid ${coraForm.environment === 'production'
+                                        ? 'rgba(239,68,68,0.15)' : 'rgba(59,130,246,0.15)'}`,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontSize: '1rem' }}>
+                                            {coraForm.environment === 'production' ? '🚀' : '🧪'}
+                                        </span>
+                                        <div>
+                                            <div style={{
+                                                fontSize: '0.75rem', fontWeight: 700,
+                                                color: coraForm.environment === 'production' ? '#ef4444' : '#3b82f6',
+                                            }}>
+                                                Ambiente ativo: {coraForm.environment === 'production' ? 'PRODUÇÃO' : 'SANDBOX'}
+                                            </div>
+                                            <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)' }}>
+                                                {coraForm.environment === 'production'
+                                                    ? 'Transações reais — usando API de produção da Cora'
+                                                    : 'Modo teste — usando API Stage da Cora'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <select style={{
+                                        ...inputStyle, width: 'auto', minWidth: '160px',
+                                        fontSize: '0.75rem', padding: '6px 10px',
+                                        borderColor: coraForm.environment === 'production' ? 'rgba(239,68,68,0.3)' : 'rgba(59,130,246,0.3)',
+                                    }}
+                                        value={coraForm.environment}
+                                        onChange={e => setCoraForm(f => ({ ...f, environment: e.target.value }))}
+                                    >
+                                        <option value="sandbox">🧪 Sandbox</option>
+                                        <option value="production">🚀 Produção</option>
+                                    </select>
+                                </div>
 
-                                <label style={labelStyle}>Chave PIX</label>
-                                <input style={inputStyle} type="text" placeholder="email@empresa.com ou CPF/CNPJ"
-                                    value={coraForm.pixKey}
-                                    onChange={e => setCoraForm(f => ({ ...f, pixKey: e.target.value }))}
-                                    onFocus={e => (e.currentTarget.style.borderColor = '#f59e0b')}
-                                    onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
-                                />
+                                {/* ─── Credential Tabs (Sandbox / Production) ─── */}
+                                <div style={{
+                                    display: 'flex', gap: '2px', padding: '3px', marginBottom: '16px',
+                                    background: 'var(--bg-elevated)', borderRadius: '8px', width: '100%',
+                                }}>
+                                    {(['sandbox', 'production'] as const).map(env => {
+                                        const isActive = coraConfigTab === env;
+                                        const isActiveEnv = coraForm.environment === env;
+                                        const hasCreds = coraForm[env].clientId !== '';
+                                        return (
+                                            <button key={env}
+                                                onClick={() => setCoraConfigTab(env)}
+                                                style={{
+                                                    flex: 1, padding: '8px 12px', borderRadius: '6px',
+                                                    fontSize: '0.6875rem', fontWeight: isActive ? 700 : 500,
+                                                    border: 'none', cursor: 'pointer',
+                                                    background: isActive ? 'var(--bg-secondary)' : 'transparent',
+                                                    color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
+                                                    boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.2)' : 'none',
+                                                    transition: 'all 0.2s',
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                                                }}
+                                            >
+                                                <span>{env === 'sandbox' ? '🧪' : '🚀'}</span>
+                                                {env === 'sandbox' ? 'Sandbox' : 'Produção'}
+                                                {isActiveEnv && (
+                                                    <span style={{
+                                                        width: 6, height: 6, borderRadius: '50%',
+                                                        background: '#10b981', display: 'inline-block',
+                                                        animation: 'today-pulse 2s infinite',
+                                                    }} title="Ambiente ativo" />
+                                                )}
+                                                {hasCreds && !isActiveEnv && (
+                                                    <span style={{
+                                                        fontSize: '0.5625rem', color: 'var(--text-muted)',
+                                                        background: 'var(--bg-elevated)', padding: '1px 5px',
+                                                        borderRadius: '4px',
+                                                    }}>✓</span>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
 
-                                <label style={labelStyle}>Certificado mTLS (.pem)</label>
-                                <textarea style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' as const }}
-                                    placeholder={cora?.config?.certificatePem === '***CERTIFICATE_CONFIGURED***'
-                                        ? '✅ Certificado já configurado. Deixe em branco para manter, ou cole um novo.'
-                                        : 'Cole o conteúdo do certificado .pem aqui...\n-----BEGIN CERTIFICATE-----\n...'}
-                                    value={coraForm.certificatePem}
-                                    onChange={e => setCoraForm(f => ({ ...f, certificatePem: e.target.value }))}
-                                    onFocus={e => (e.currentTarget.style.borderColor = '#f59e0b')}
-                                    onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
-                                />
+                                {/* ─── Credential Fields (for selected tab) ─── */}
+                                {(() => {
+                                    const creds = coraForm[coraConfigTab];
+                                    const updateCreds = (field: string, value: string) => {
+                                        setCoraForm(f => ({
+                                            ...f,
+                                            [coraConfigTab]: { ...f[coraConfigTab], [field]: value },
+                                        }));
+                                    };
 
-                                <label style={labelStyle}>Chave Privada (.key)</label>
-                                <textarea style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' as const }}
-                                    placeholder={cora?.config?.privateKeyPem === '***PRIVATE_KEY_CONFIGURED***'
-                                        ? '✅ Chave privada já configurada. Deixe em branco para manter, ou cole uma nova.'
-                                        : 'Cole o conteúdo da chave privada .key aqui...\n-----BEGIN PRIVATE KEY-----\n...'}
-                                    value={coraForm.privateKeyPem}
-                                    onChange={e => setCoraForm(f => ({ ...f, privateKeyPem: e.target.value }))}
-                                    onFocus={e => (e.currentTarget.style.borderColor = '#f59e0b')}
-                                    onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
-                                />
+                                    // Check if this environment has saved credentials (via masked values from API)
+                                    const savedCora = integrations.find(i => i.provider === 'CORA');
+                                    const savedConfig = savedCora?.config || {};
+                                    const savedEnvConfig = (savedConfig as any)?.[coraConfigTab] || savedConfig;
+                                    const hasSavedCert = savedEnvConfig?.certificatePem === '***CERTIFICATE_CONFIGURED***';
+                                    const hasSavedKey = savedEnvConfig?.privateKeyPem === '***PRIVATE_KEY_CONFIGURED***';
 
-                                <label style={labelStyle}>Ambiente</label>
-                                <select style={inputStyle} value={coraForm.environment}
-                                    onChange={e => setCoraForm(f => ({ ...f, environment: e.target.value }))}>
-                                    <option value="sandbox">🧪 Sandbox (Homologação)</option>
-                                    <option value="production">🚀 Produção</option>
-                                </select>
+                                    return (
+                                        <div>
+                                            <label style={labelStyle}>Client ID ({coraConfigTab})</label>
+                                            <input style={inputStyle} type="text"
+                                                placeholder={`Client ID da Cora para ${coraConfigTab === 'sandbox' ? 'homologação' : 'produção'}`}
+                                                value={creds.clientId}
+                                                onChange={e => updateCreds('clientId', e.target.value)}
+                                                onFocus={e => (e.currentTarget.style.borderColor = '#f59e0b')}
+                                                onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
+                                            />
 
-                                <WebhookUrlBox url={cora?.webhookUrl || null} label="Webhook URL (cole no painel Cora)" />
+                                            <label style={labelStyle}>Chave PIX ({coraConfigTab})</label>
+                                            <input style={inputStyle} type="text" placeholder="email@empresa.com ou CPF/CNPJ"
+                                                value={creds.pixKey}
+                                                onChange={e => updateCreds('pixKey', e.target.value)}
+                                                onFocus={e => (e.currentTarget.style.borderColor = '#f59e0b')}
+                                                onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
+                                            />
+
+                                            <label style={labelStyle}>Certificado mTLS (.pem) — {coraConfigTab}</label>
+                                            <textarea style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' as const }}
+                                                placeholder={hasSavedCert
+                                                    ? '✅ Certificado já configurado. Deixe em branco para manter, ou cole um novo.'
+                                                    : 'Cole o conteúdo do certificado .pem aqui...\n-----BEGIN CERTIFICATE-----\n...'}
+                                                value={creds.certificatePem}
+                                                onChange={e => updateCreds('certificatePem', e.target.value)}
+                                                onFocus={e => (e.currentTarget.style.borderColor = '#f59e0b')}
+                                                onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
+                                            />
+
+                                            <label style={labelStyle}>Chave Privada (.key) — {coraConfigTab}</label>
+                                            <textarea style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' as const }}
+                                                placeholder={hasSavedKey
+                                                    ? '✅ Chave privada já configurada. Deixe em branco para manter, ou cole uma nova.'
+                                                    : 'Cole o conteúdo da chave privada .key aqui...\n-----BEGIN PRIVATE KEY-----\n...'}
+                                                value={creds.privateKeyPem}
+                                                onChange={e => updateCreds('privateKeyPem', e.target.value)}
+                                                onFocus={e => (e.currentTarget.style.borderColor = '#f59e0b')}
+                                                onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
+                                            />
+                                        </div>
+                                    );
+                                })()}
+
+                                {/* ─── Cora Webhook Manager ─── */}
+                                {(() => {
+
+                                    const webhookUrl = window.location.hostname === 'localhost'
+                                        ? `http://localhost:3001/api/webhooks/cora`
+                                        : `https://${window.location.hostname}/api/webhooks/cora`;
+
+                                    const loadWebhooks = async () => {
+                                        setLoadingWebhooks(true);
+                                        try {
+                                            const res = await integrationsApi.listCoraWebhooks();
+                                            setCoraWebhooks(res.endpoints || []);
+                                        } catch { setCoraWebhooks([]); }
+                                        finally { setLoadingWebhooks(false); }
+                                    };
+
+                                    const registerWebhook = async () => {
+                                        setRegisteringWebhook(true);
+                                        try {
+                                            await integrationsApi.registerCoraWebhook(webhookUrl);
+                                            setSuccess('Webhook registrado na Cora com sucesso!');
+                                            await loadWebhooks();
+                                        } catch (e: unknown) {
+                                            setError(getErrorMessage(e) || 'Erro ao registrar webhook');
+                                        } finally { setRegisteringWebhook(false); }
+                                    };
+
+                                    const deleteWebhook = async (id: string) => {
+                                        try {
+                                            await integrationsApi.deleteCoraWebhook(id);
+                                            setSuccess('Webhook removido da Cora.');
+                                            await loadWebhooks();
+                                        } catch (e: unknown) {
+                                            setError(getErrorMessage(e) || 'Erro ao remover webhook');
+                                        }
+                                    };
+
+                                    const isRegistered = coraWebhooks.some(w => w.url === webhookUrl);
+
+                                    return (
+                                        <div style={{
+                                            marginTop: '16px', padding: '14px', borderRadius: '10px',
+                                            background: 'var(--bg-elevated)', border: '1px solid var(--border-color)',
+                                        }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                                                <label style={{ ...labelStyle, margin: 0, fontSize: '0.75rem' }}>
+                                                    🔔 Webhook Cora (registrado via API)
+                                                </label>
+                                                <button className="btn btn-secondary"
+                                                    style={{ fontSize: '0.625rem', padding: '4px 10px', borderRadius: '6px' }}
+                                                    onClick={loadWebhooks} disabled={loadingWebhooks || !cora?.configured}>
+                                                    {loadingWebhooks ? '⏳' : '🔄'} Verificar
+                                                </button>
+                                            </div>
+
+                                            <div style={{
+                                                padding: '8px 12px', borderRadius: '8px', fontSize: '0.6875rem',
+                                                fontFamily: 'monospace', color: 'var(--text-muted)',
+                                                background: 'var(--bg-primary)', border: '1px solid var(--border-color)',
+                                                wordBreak: 'break-all',
+                                            }}>
+                                                {webhookUrl}
+                                            </div>
+
+                                            {coraWebhooks.length > 0 && (
+                                                <div style={{ marginTop: '10px' }}>
+                                                    <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                                                        Endpoints registrados na Cora:
+                                                    </div>
+                                                    {coraWebhooks.map(w => (
+                                                        <div key={w.id} style={{
+                                                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                                            padding: '6px 10px', borderRadius: '6px', marginBottom: '4px',
+                                                            background: w.url === webhookUrl ? 'rgba(16,185,129,0.08)' : 'var(--bg-secondary)',
+                                                            border: `1px solid ${w.url === webhookUrl ? 'rgba(16,185,129,0.2)' : 'var(--border-color)'}`,
+                                                            fontSize: '0.625rem',
+                                                        }}>
+                                                            <span style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                                                                {w.url === webhookUrl ? '✅ ' : ''}{w.url}
+                                                            </span>
+                                                            <button
+                                                                onClick={() => deleteWebhook(w.id)}
+                                                                style={{
+                                                                    background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)',
+                                                                    borderRadius: '4px', padding: '2px 8px', cursor: 'pointer',
+                                                                    fontSize: '0.5625rem', color: '#ef4444', flexShrink: 0, marginLeft: '8px',
+                                                                }}
+                                                            >🗑️</button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            {!isRegistered && (
+                                                <button className="btn btn-primary"
+                                                    style={{ width: '100%', marginTop: '10px', borderRadius: '8px', fontWeight: 700, fontSize: '0.75rem' }}
+                                                    onClick={registerWebhook} disabled={registeringWebhook || !cora?.configured}>
+                                                    {registeringWebhook ? '⏳ Registrando...' : '📡 Registrar Webhook na Cora'}
+                                                </button>
+                                            )}
+
+                                            {isRegistered && (
+                                                <div style={{
+                                                    marginTop: '8px', padding: '6px 10px', borderRadius: '6px',
+                                                    background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)',
+                                                    fontSize: '0.625rem', color: '#10b981', textAlign: 'center',
+                                                }}>
+                                                    ✅ Webhook ativo — notificações de pagamento serão recebidas automaticamente
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
+
                                 <TestInfo provider={cora} />
 
                                 <div style={{ display: 'flex', gap: '8px', marginTop: '18px' }}>
@@ -864,40 +1120,141 @@ export default function AdminPricingPage() {
                                     </div>
                                 </div>
 
-                                {/* Fields */}
-                                <label style={labelStyle}>Secret Key</label>
-                                <input style={inputStyle} type="password"
-                                    placeholder={stripe?.config?.secretKey ? 'Já configurada (masked)' : 'sk_test_xxx ou sk_live_xxx'}
-                                    value={stripeForm.secretKey}
-                                    onChange={e => setStripeForm(f => ({ ...f, secretKey: e.target.value }))}
-                                    onFocus={e => (e.currentTarget.style.borderColor = '#635bff')}
-                                    onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
-                                />
+                                {/* ─── Active Environment Banner ─── */}
+                                <div style={{
+                                    padding: '10px 14px', borderRadius: '10px', marginBottom: '16px',
+                                    background: stripeForm.environment === 'production'
+                                        ? 'rgba(239,68,68,0.06)' : 'rgba(99,91,255,0.06)',
+                                    border: `1px solid ${stripeForm.environment === 'production'
+                                        ? 'rgba(239,68,68,0.15)' : 'rgba(99,91,255,0.15)'}`,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontSize: '1rem' }}>
+                                            {stripeForm.environment === 'production' ? '🚀' : '🧪'}
+                                        </span>
+                                        <div>
+                                            <div style={{
+                                                fontSize: '0.75rem', fontWeight: 700,
+                                                color: stripeForm.environment === 'production' ? '#ef4444' : '#635bff',
+                                            }}>
+                                                Ambiente ativo: {stripeForm.environment === 'production' ? 'PRODUÇÃO (sk_live)' : 'TESTE (sk_test)'}
+                                            </div>
+                                            <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)' }}>
+                                                {stripeForm.environment === 'production'
+                                                    ? 'Cobranças reais — usando chaves sk_live / pk_live'
+                                                    : 'Modo teste — usando chaves sk_test / pk_test'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <select style={{
+                                        ...inputStyle, width: 'auto', minWidth: '160px',
+                                        fontSize: '0.75rem', padding: '6px 10px',
+                                        borderColor: stripeForm.environment === 'production' ? 'rgba(239,68,68,0.3)' : 'rgba(99,91,255,0.3)',
+                                    }}
+                                        value={stripeForm.environment}
+                                        onChange={e => setStripeForm(f => ({ ...f, environment: e.target.value }))}
+                                    >
+                                        <option value="sandbox">🧪 Teste (sk_test)</option>
+                                        <option value="production">🚀 Produção (sk_live)</option>
+                                    </select>
+                                </div>
 
-                                <label style={labelStyle}>Publishable Key</label>
-                                <input style={inputStyle} type="text"
-                                    placeholder={stripe?.config?.publishableKey ? 'Já configurada' : 'pk_test_xxx ou pk_live_xxx'}
-                                    value={stripeForm.publishableKey}
-                                    onChange={e => setStripeForm(f => ({ ...f, publishableKey: e.target.value }))}
-                                    onFocus={e => (e.currentTarget.style.borderColor = '#635bff')}
-                                    onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
-                                />
+                                {/* ─── Credential Tabs (Sandbox / Production) ─── */}
+                                <div style={{
+                                    display: 'flex', gap: '2px', padding: '3px', marginBottom: '16px',
+                                    background: 'var(--bg-elevated)', borderRadius: '8px', width: '100%',
+                                }}>
+                                    {(['sandbox', 'production'] as const).map(env => {
+                                        const isActive = stripeConfigTab === env;
+                                        const isActiveEnv = stripeForm.environment === env;
+                                        const hasCreds = stripeForm[env].secretKey !== '';
+                                        return (
+                                            <button key={env}
+                                                onClick={() => setStripeConfigTab(env)}
+                                                style={{
+                                                    flex: 1, padding: '8px 12px', borderRadius: '6px',
+                                                    fontSize: '0.6875rem', fontWeight: isActive ? 700 : 500,
+                                                    border: 'none', cursor: 'pointer',
+                                                    background: isActive ? 'var(--bg-secondary)' : 'transparent',
+                                                    color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
+                                                    boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.2)' : 'none',
+                                                    transition: 'all 0.2s',
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                                                }}
+                                            >
+                                                <span>{env === 'sandbox' ? '🧪' : '🚀'}</span>
+                                                {env === 'sandbox' ? 'Teste (sk_test)' : 'Produção (sk_live)'}
+                                                {isActiveEnv && (
+                                                    <span style={{
+                                                        width: 6, height: 6, borderRadius: '50%',
+                                                        background: '#10b981', display: 'inline-block',
+                                                        animation: 'today-pulse 2s infinite',
+                                                    }} title="Ambiente ativo" />
+                                                )}
+                                                {hasCreds && !isActiveEnv && (
+                                                    <span style={{
+                                                        fontSize: '0.5625rem', color: 'var(--text-muted)',
+                                                        background: 'var(--bg-elevated)', padding: '1px 5px',
+                                                        borderRadius: '4px',
+                                                    }}>✓</span>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
 
-                                <label style={labelStyle}>Webhook Secret</label>
-                                <input style={inputStyle} type="password"
-                                    placeholder={stripe?.config?.webhookSecret ? 'Já configurado (masked)' : 'whsec_xxx'}
-                                    value={stripeForm.webhookSecret}
-                                    onChange={e => setStripeForm(f => ({ ...f, webhookSecret: e.target.value }))}
-                                    onFocus={e => (e.currentTarget.style.borderColor = '#635bff')}
-                                    onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
-                                />
+                                {/* ─── Credential Fields (for selected tab) ─── */}
+                                {(() => {
+                                    const creds = stripeForm[stripeConfigTab];
+                                    const updateCreds = (field: string, value: string) => {
+                                        setStripeForm(f => ({
+                                            ...f,
+                                            [stripeConfigTab]: { ...f[stripeConfigTab], [field]: value },
+                                        }));
+                                    };
 
-                                <label style={labelStyle}>Ambiente</label>
-                                <select style={inputStyle} value={stripeForm.environment}
-                                    onChange={e => setStripeForm(f => ({ ...f, environment: e.target.value }))}>
-                                    <option value="sandbox">🧪 Teste (sk_test)</option>
-                                    <option value="production">🚀 Produção (sk_live)</option>
-                                </select>
+                                    const savedStripe = integrations.find(i => i.provider === 'STRIPE');
+                                    const savedConfig = savedStripe?.config || {};
+                                    const savedEnvConfig = (savedConfig as any)?.[stripeConfigTab] || savedConfig;
+                                    const hasSavedKey = savedEnvConfig?.secretKey && savedEnvConfig.secretKey.includes('...');
+                                    const hasSavedWebhook = savedEnvConfig?.webhookSecret && savedEnvConfig.webhookSecret.includes('...');
+
+                                    return (
+                                        <div>
+                                            <label style={labelStyle}>Secret Key ({stripeConfigTab})</label>
+                                            <input style={inputStyle} type="password"
+                                                placeholder={hasSavedKey
+                                                    ? '✅ Já configurada. Deixe em branco para manter.'
+                                                    : `${stripeConfigTab === 'sandbox' ? 'sk_test_xxx' : 'sk_live_xxx'}`}
+                                                value={creds.secretKey}
+                                                onChange={e => updateCreds('secretKey', e.target.value)}
+                                                onFocus={e => (e.currentTarget.style.borderColor = '#635bff')}
+                                                onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
+                                            />
+
+                                            <label style={labelStyle}>Publishable Key ({stripeConfigTab})</label>
+                                            <input style={inputStyle} type="text"
+                                                placeholder={`${stripeConfigTab === 'sandbox' ? 'pk_test_xxx' : 'pk_live_xxx'}`}
+                                                value={creds.publishableKey}
+                                                onChange={e => updateCreds('publishableKey', e.target.value)}
+                                                onFocus={e => (e.currentTarget.style.borderColor = '#635bff')}
+                                                onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
+                                            />
+
+                                            <label style={labelStyle}>Webhook Secret ({stripeConfigTab})</label>
+                                            <input style={inputStyle} type="password"
+                                                placeholder={hasSavedWebhook
+                                                    ? '✅ Já configurado. Deixe em branco para manter.'
+                                                    : 'whsec_xxx'}
+                                                value={creds.webhookSecret}
+                                                onChange={e => updateCreds('webhookSecret', e.target.value)}
+                                                onFocus={e => (e.currentTarget.style.borderColor = '#635bff')}
+                                                onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
+                                            />
+                                        </div>
+                                    );
+                                })()}
 
                                 <WebhookUrlBox url={stripe?.webhookUrl || null} label="Webhook URL (cole no dashboard Stripe)" />
                                 <TestInfo provider={stripe} />

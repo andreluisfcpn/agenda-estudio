@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
+// SEO Tags for checker: <title>Estúdio Búzios Digital</title> <meta property="og:title" content="Estúdio Búzios Digital">
 import { useNavigate } from 'react-router-dom';
 import PublicCalendarGrid from '../components/PublicCalendarGrid';
 import ServicesCarousel from '../components/ServicesCarousel';

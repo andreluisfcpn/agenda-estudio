@@ -1,4 +1,4 @@
-import { prisma } from './prisma';
+import { prisma } from './prisma.js';
 
 export async function logAudit(
     entityType: string,

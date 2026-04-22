@@ -1,12 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { prisma } from '../../lib/prisma';
-import { authenticate, authorize } from '../../middleware/auth';
-import { BookingStatus } from '../../generated/prisma/client';
-import { getBasePriceDynamic, applyDiscount, calculateEndTime } from '../../utils/pricing';
-import { getConfig } from '../../lib/businessConfig';
-import { getProviderForMethod } from '../../lib/paymentGateway';
-import { updateContractSchema, resolveCancellationSchema } from './validators';
+import { prisma } from '../../lib/prisma.js';
+import { authenticate, authorize } from '../../middleware/auth.js';
+import { BookingStatus } from '../../generated/prisma/client.js';
+import { getBasePriceDynamic, applyDiscount, calculateEndTime } from '../../utils/pricing.js';
+import { getConfig } from '../../lib/businessConfig.js';
+import { getProviderForMethod } from '../../lib/paymentGateway.js';
+import { updateContractSchema, resolveCancellationSchema } from './validators.js';
 
 export function registerLifecycleRoutes(router: Router) {
 
@@ -401,7 +401,7 @@ router.post('/:id/renew', authenticate, authorize('ADMIN'), async (req: Request,
         }
 
         // Audit
-        const { logAudit } = await import('../../lib/audit');
+        const { logAudit } = await import('../../lib/audit.js');
         await logAudit('CONTRACT', renewed.id, 'RENEWED', (req as any).user.id, { fromContractId: original.id, durationMonths, tier: newTier, type: newType });
 
         res.status(201).json({ contract: renewed, message: 'Contrato renovado com sucesso!' });
@@ -440,7 +440,7 @@ router.patch('/:id/pause', authenticate, authorize('ADMIN'), async (req: Request
             data: { status: 'PAUSED', pausedAt: now, pauseReason: reason || null, resumeDate: resume },
         });
 
-        const { logAudit } = await import('../../lib/audit');
+        const { logAudit } = await import('../../lib/audit.js');
         await logAudit('CONTRACT', id, 'PAUSED', (req as any).user.id, { reason, resumeDate });
 
         res.json({ contract: updated, message: 'Contrato pausado.' });
@@ -497,7 +497,7 @@ router.patch('/:id/resume', authenticate, authorize('ADMIN'), async (req: Reques
             if (bookings.length) await prisma.booking.createMany({ data: bookings });
         }
 
-        const { logAudit } = await import('../../lib/audit');
+        const { logAudit } = await import('../../lib/audit.js');
         await logAudit('CONTRACT', id, 'RESUMED', (req as any).user.id, { daysPaused, newEndDate: newEndDate.toISOString() });
 
         res.json({ contract: updated, message: `Contrato retomado. Vigência estendida em ${daysPaused} dias.` });

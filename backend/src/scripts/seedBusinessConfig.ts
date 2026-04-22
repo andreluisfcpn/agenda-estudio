@@ -3,7 +3,7 @@
  * Run with: npx ts-node -e "require('./src/scripts/seedBusinessConfig')"
  * Or simply: npx tsx src/scripts/seedBusinessConfig.ts
  */
-import { prisma } from '../lib/prisma';
+import { prisma } from '../lib/prisma.js';
 
 const configs = [
     // ── Plans ─────────────────────────────────────────────

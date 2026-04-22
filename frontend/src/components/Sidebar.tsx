@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { NavLink } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useNavigation } from '../context/NavigationContext';
 import {
     LayoutDashboard,
     CalendarDays,
@@ -31,12 +32,15 @@ interface NavItemProps {
 
 function NavItem({ to, icon: Icon, label, collapsed }: NavItemProps) {
     const [showTooltip, setShowTooltip] = useState(false);
+    const { navigateTo } = useNavigation();
+    const location = useLocation();
+    const isActive = location.pathname === to;
 
     return (
         <div style={{ position: 'relative' }}>
-            <NavLink
-                to={to}
-                className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+            <button
+                className={`sidebar-link ${isActive ? 'active' : ''}`}
+                onClick={() => navigateTo(to)}
                 onMouseEnter={() => collapsed && setShowTooltip(true)}
                 onMouseLeave={() => setShowTooltip(false)}
             >
@@ -44,7 +48,7 @@ function NavItem({ to, icon: Icon, label, collapsed }: NavItemProps) {
                     <Icon size={20} strokeWidth={1.8} />
                 </span>
                 <span className="sidebar-link-label">{label}</span>
-            </NavLink>
+            </button>
 
             {collapsed && showTooltip && (
                 <div className="sidebar-tooltip">

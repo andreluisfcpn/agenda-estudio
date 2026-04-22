@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ContractType, Tier, PaymentMethod } from '../../generated/prisma/client';
+import { ContractType, Tier, PaymentMethod } from '../../generated/prisma/client.js';
 
 // ─── CREATE (Admin) ─────────────────────────────────────
 
@@ -126,6 +126,7 @@ export const serviceContractSchema = z.object({
 // ─── PAY ────────────────────────────────────────────────
 
 export const contractPaySchema = z.object({
+    paymentMethod: z.enum(['CARTAO', 'PIX']).optional().default('CARTAO'),
     paymentType: z.enum(['CREDIT', 'DEBIT']).optional(),
     installments: z.number().int().min(1).max(12).optional(),
 });

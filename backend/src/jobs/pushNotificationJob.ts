@@ -1,6 +1,6 @@
-import { prisma } from '../lib/prisma';
-import { redis } from '../lib/redis';
-import { sendPushToUser, PushPayload } from '../modules/push/pushService';
+import { prisma } from '../lib/prisma.js';
+import { redis } from '../lib/redis.js';
+import { sendPushToUser, PushPayload } from '../modules/push/pushService.js';
 
 // Redis TTL per severity (deduplication)
 const SEVERITY_TTL: Record<string, number> = {

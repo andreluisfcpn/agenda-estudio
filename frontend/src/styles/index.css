@@ -513,39 +513,63 @@ a:hover {
   gap: 0;
 }
 
-.calendar-mobile-nav {
+.calendar-mobile-month {
+  padding: 4px 0 10px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 0;
-  margin-bottom: 12px;
+  justify-content: space-between;
 }
 
-.calendar-mobile-nav-btn {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
+.calendar-mobile-month__text {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  display: inline-block;
+}
+.calendar-mobile-month__text::first-letter {
+  text-transform: uppercase;
+}
+
+.calendar-mobile-today-btn {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 6px 16px;
+  border-radius: 20px;
   border: 1px solid var(--border-color);
   background: var(--bg-elevated);
-  color: var(--text-secondary);
+  color: var(--accent-primary);
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
   -webkit-tap-highlight-color: transparent;
 }
-
-.calendar-mobile-nav-btn:active {
-  background: rgba(17, 129, 155, 0.1);
+.calendar-mobile-today-btn:active {
   transform: scale(0.95);
+  background: rgba(17, 129, 155, 0.1);
 }
 
-/* Day Picker Pills */
-.calendar-day-pills {
+/* Pills Carousel (3-panel horizontal) */
+.pills-carousel-viewport {
+  overflow: hidden;
+  padding: 0 0 16px;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: pan-y;
+}
+.pills-carousel-track {
+  display: flex;
+  width: 300%;
+  will-change: transform;
+  cursor: grab;
+  user-select: none;
+}
+.pills-carousel-track:active {
+  cursor: grabbing;
+}
+.pills-carousel-panel {
   display: flex;
   gap: 6px;
-  padding: 0 0 16px;
+  width: 33.3333%;
+  flex-shrink: 0;
   justify-content: space-between;
 }
 
@@ -556,7 +580,7 @@ a:hover {
   gap: 4px;
   padding: 10px 0;
   flex: 1;
-  min-height: 60px;
+  min-height: 64px;
   border: 1px solid var(--border-subtle);
   border-radius: 14px;
   background: var(--bg-card);
@@ -565,6 +589,7 @@ a:hover {
   transition: all 0.2s ease;
   position: relative;
   -webkit-tap-highlight-color: transparent;
+  overflow: hidden;
 }
 
 .calendar-day-pill:active {
@@ -583,6 +608,7 @@ a:hover {
   font-size: 1.0625rem;
   font-weight: 800;
   line-height: 1;
+  display: block;
 }
 
 .calendar-day-pill--selected {
@@ -615,6 +641,38 @@ a:hover {
 }
 
 /* Slot Cards */
+/* Slot crossfade — 3-phase: fade-out → swap → fade-in */
+@keyframes slotsOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@keyframes slotsIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.calendar-slots-crossfade {
+  min-height: 320px;
+}
+.slots-phase-visible {
+  opacity: 1;
+}
+.slots-phase-out,
+.slots-phase-out_done {
+  animation: slotsOut 150ms ease-in forwards;
+  pointer-events: none;
+}
+.slots-phase-in {
+  animation: slotsIn 260ms ease-out forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .slots-phase-out,
+  .slots-phase-in {
+    animation: none;
+    opacity: 1;
+  }
+}
+
 .calendar-mobile-slots {
   display: flex;
   flex-direction: column;
@@ -1011,7 +1069,6 @@ tr:hover td {
 
 /* â”€â”€â”€ Responsive â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 /* Responsive sidebar: moved to sidebar.css */
-}
 .text-stroke { -webkit-text-stroke: 1px rgba(255, 255, 255, 0.4); color: transparent; }
 .text-stroke-hover:hover { color: #006C89; -webkit-text-stroke: 0px; transition: all 0.3s ease; }
 /* --- Global Ambient Overrides -------------------------------- */
@@ -1059,8 +1116,9 @@ tr:hover td {
   border: 1px solid var(--border-subtle);
   border-left: 3px solid var(--accent, var(--accent-primary));
   border-radius: var(--radius-lg);
-  padding: 20px;
+  padding: 14px; /* Mobile safe */
   min-height: 80px;
+  min-width: 0; /* Prevent grid blowout */
   transition: all var(--transition-base);
   cursor: default;
 }
@@ -1115,6 +1173,26 @@ tr:hover td {
 /* Interactive variant */
 .stat-card-ui.card-interactive {
   cursor: pointer;
+}
+
+@media (max-width: 767px) {
+  .stat-card-ui__value {
+    font-size: 1.25rem;
+  }
+  .stat-card-ui__icon {
+    width: 30px;
+    height: 30px;
+    margin-bottom: 8px;
+  }
+  .stat-card-ui__bg-icon {
+    display: none;
+  }
+}
+
+@media (min-width: 768px) {
+  .stat-card-ui {
+    padding: 20px;
+  }
 }
 
 /* ─── StatusBadge ────────────────────────────────────────── */

@@ -1,6 +1,6 @@
-import { prisma } from '../lib/prisma';
-import { getPackageSlots } from '../utils/pricing';
-import { releaseMultiSlotLock } from '../lib/redis';
+import { prisma } from '../lib/prisma.js';
+import { getPackageSlots } from '../utils/pricing.js';
+import { releaseMultiSlotLock } from '../lib/redis.js';
 
 /**
  * Cron job: clean expired HELD bookings and AWAITING_PAYMENT contracts.

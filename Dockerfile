@@ -4,9 +4,10 @@
 # ============================================================
 
 # ─── Stage 1: Install ALL dependencies ──────────────────────
-FROM node:20-alpine AS deps
+FROM node:22-alpine AS deps
 
 WORKDIR /app
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 
 # Copy root workspace config
 COPY package.json package-lock.json ./
@@ -14,6 +15,10 @@ COPY package.json package-lock.json ./
 # Copy each workspace's package.json
 COPY backend/package.json  ./backend/
 COPY frontend/package.json ./frontend/
+
+# Copy Prisma schema + config (needed for postinstall: prisma generate)
+COPY backend/prisma/          ./backend/prisma/
+COPY backend/prisma.config.ts ./backend/
 
 # Install all dependencies (including devDependencies for build)
 RUN npm ci
@@ -45,22 +50,26 @@ RUN cd backend && npx prisma generate
 # Copy backend source and compile
 COPY backend/ ./backend/
 RUN npm run build -w backend
+# Fix Prisma generated imports: TSC preserves .ts extensions in output,
+# but compiled files have .js extension. Rewrite .ts -> .js in generated dist.
+RUN find /app/backend/dist/generated -name '*.js' -exec sed -i "s/\.ts'/\.js'/g; s/\.ts\"/\.js\"/g" {} +
 
 # ─── Stage 4: Production Image ──────────────────────────────
-FROM node:20-alpine AS production
+FROM node:22-alpine AS production
 
 # Metadata
 LABEL maintainer="Buzios Digital <contato@buzios.digital>"
 LABEL description="Studio Scheduler — Booking & Payment Platform"
 
 WORKDIR /app
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 
 # ── 4.1  Production dependencies ─────────────────────────────
 COPY package.json package-lock.json ./
 COPY backend/package.json  ./backend/
 COPY frontend/package.json ./frontend/
 
-RUN npm ci --omit=dev --workspace=backend && \
+RUN npm ci --omit=dev --ignore-scripts --workspace=backend && \
     npm cache clean --force
 
 # ── 4.2  Prisma CLI — copy from build stage (avoids 1GB+ global install)
@@ -88,7 +97,9 @@ COPY --from=backend-build /app/backend/dist/ ./backend/dist/
 COPY --from=frontend-build /app/frontend/dist/ ./frontend/dist/
 
 # ── 4.7  Create uploads directory for multer/sharp ───────────
-RUN mkdir -p /app/backend/uploads
+# Also symlink node_modules so backend/dist can resolve hoisted packages
+RUN mkdir -p /app/backend/uploads && \
+    ln -s /app/node_modules /app/backend/node_modules
 
 # ── 4.8  Security: Run as non-root user ──────────────────────
 RUN addgroup -g 1001 -S appgroup && \
@@ -100,6 +111,7 @@ USER appuser
 # ── 4.9  Environment defaults (overridden by Railway) ────────
 ENV NODE_ENV=production
 ENV PORT=3001
+ENV NODE_PATH=/app/node_modules
 
 EXPOSE 3001
 
@@ -124,3 +136,4 @@ CMD ["sh", "-c", "\
   echo 'Starting server...' && \
   node dist/index.js \
 "]
+

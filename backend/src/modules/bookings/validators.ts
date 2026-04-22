@@ -40,6 +40,7 @@ export const adminCreateBookingSchema = z.object({
     addOns: z.array(z.string()).optional(),
     adminNotes: z.string().optional(),
     customPrice: z.number().int().min(0).optional(),
+    paymentMethod: z.enum(['CARTAO', 'PIX', 'BOLETO']).optional().default('CARTAO'),
 });
 
 export const adminUpdateBookingSchema = z.object({

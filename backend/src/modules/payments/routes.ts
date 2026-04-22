@@ -1,8 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { prisma } from '../../lib/prisma';
-import { authenticate, authorize } from '../../middleware/auth';
-import { PaymentStatus, PaymentMethod } from '../../generated/prisma/client';
+import { prisma } from '../../lib/prisma.js';
+import { authenticate, authorize } from '../../middleware/auth.js';
+import { PaymentStatus, PaymentMethod } from '../../generated/prisma/client.js';
 
 const router = Router();
 

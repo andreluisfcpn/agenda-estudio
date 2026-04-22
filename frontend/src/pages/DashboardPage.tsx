@@ -4,7 +4,6 @@ import { bookingsApi, contractsApi, usersApi, Booking, BookingWithUser, Contract
 import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
 import { useNavigate } from 'react-router-dom';
-import ModalOverlay from '../components/ModalOverlay';
 import PaymentModal from '../components/PaymentModal';
 import StatCard from '../components/ui/StatCard';
 import StatusBadge from '../components/ui/StatusBadge';

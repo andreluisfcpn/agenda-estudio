@@ -1,9 +1,9 @@
 import Redis from 'ioredis';
-import { config } from '../config';
+import { config } from '../config/index.js';
 
-export const redis = new Redis(config.redis.url, {
+export const redis = new Redis.default(config.redis.url, {
     maxRetriesPerRequest: 3,
-    retryStrategy(times) {
+    retryStrategy(times: number) {
         const delay = Math.min(times * 200, 3000);
         return delay;
     },
@@ -15,7 +15,7 @@ redis.on('connect', () => {
     console.log('[Redis] Connected successfully');
 });
 
-redis.on('error', (err) => {
+redis.on('error', (err: Error) => {
     console.error('[Redis] Connection error:', err.message);
 });
 

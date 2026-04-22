@@ -8,6 +8,12 @@ import './styles/bottom-tab-bar.css';
 import './styles/landing.css';
 import './styles/login-modal.css';
 import './styles/checkout.css';
+import './styles/modals.css';
+import './styles/my-bookings.css';
+import './styles/client-area.css';
+import './styles/bottom-sheet.css';
+import './styles/contract-wizard.css';
+import './styles/page-transition.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>

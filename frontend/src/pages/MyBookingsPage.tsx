@@ -3,9 +3,7 @@ import { useState, useEffect } from 'react';
 import { bookingsApi, Booking } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
-import StatusBadge from '../components/ui/StatusBadge';
-import { Clapperboard, Building2, Mic, Star, RefreshCw, Loader2, CheckCircle } from 'lucide-react';
-import { formatBRL } from '../utils/format';
+import { Clapperboard, ChevronDown } from 'lucide-react';
 import { DashboardSkeleton } from '../components/ui/SkeletonLoader';
 
 const PLATFORMS = [
@@ -15,11 +13,8 @@ const PLATFORMS = [
     { key: 'FACEBOOK', label: 'Facebook', color: '#1877F2' },
 ];
 
-// formatBRL imported from utils/format
-
 export default function MyBookingsPage() {
     const { user } = useAuth();
-    const isAdmin = user?.role === 'ADMIN';
     const [bookings, setBookings] = useState<Booking[]>([]);
     const [loading, setLoading] = useState(true);
     const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -127,270 +122,233 @@ export default function MyBookingsPage() {
         return <DashboardSkeleton />;
     }
 
+    const now = Date.now();
+    const finalized = bookings.filter(b => {
+        if (b.status !== 'COMPLETED' && b.status !== 'FALTA') return false;
+        const dateStr = b.date.split('T')[0];
+        const endDateTime = new Date(`${dateStr}T${b.endTime}:00`).getTime();
+        return endDateTime <= now;
+    });
+
     return (
         <div>
-            <div className="page-header">
-                <h1 className="page-title">Minhas Gravações</h1>
-                <p className="page-subtitle">Histórico de sessões finalizadas — gerencie plataformas e links</p>
+            {/* Hero */}
+            <div className="client-hero client-hero--default animate-card-enter">
+                <div className="client-hero__header client-hero__header--standalone">
+                    <div className="client-hero__icon-wrapper" style={{
+                        background: 'linear-gradient(135deg, rgba(59,130,246,0.2), rgba(59,130,246,0.05))',
+                        borderColor: 'rgba(59,130,246,0.25)',
+                        boxShadow: '0 0 20px rgba(59,130,246,0.12)',
+                        color: '#3b82f6',
+                    }}>
+                        <Clapperboard size={22} />
+                    </div>
+                    <div>
+                        <h1 className="client-hero__title">Minhas Gravações</h1>
+                        <p className="client-hero__subtitle">Histórico de sessões · Gerencie plataformas e links</p>
+                    </div>
+                </div>
             </div>
 
-
-
-            {(() => {
-                const now = Date.now();
-                const finalized = bookings.filter(b => {
-                    // Only COMPLETED and FALTA — NAO_REALIZADO excluded (credit returned, no media)
-                    if (b.status !== 'COMPLETED' && b.status !== 'FALTA') return false;
-                    // Only show if session end time has passed
-                    const dateStr = b.date.split('T')[0];
-                    const endDateTime = new Date(`${dateStr}T${b.endTime}:00`).getTime();
-                    return endDateTime <= now;
-                });
-                return finalized.length === 0 ? (
+            {finalized.length === 0 ? (
+                <div className="bookings-list">
                     <div className="card">
                         <div className="empty-state">
                             <div className="empty-state-icon"><Clapperboard size={32} /></div>
                             <div className="empty-state-text">Nenhuma gravação realizada ainda</div>
-                            <p style={{ color: 'var(--text-muted)', marginTop: '8px', fontSize: '0.8125rem' }}>
+                            <p className="booking-section-header__desc" style={{ marginTop: 8 }}>
                                 Suas sessões aparecerão aqui após serem concluídas.
                             </p>
                         </div>
                     </div>
-                ) : (
-                    <div style={{ display: 'grid', gap: '12px' }}>
-                        {finalized.map(b => (
-                            <div key={b.id} className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                                {/* Main row */}
-                                <div
-                                    style={{
-                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                        flexWrap: 'wrap', gap: '12px', padding: '16px 24px', cursor: 'pointer',
-                                        transition: 'background 0.15s',
-                                    }}
-                                    onClick={() => expandBooking(b)}
-                                    onMouseOver={e => e.currentTarget.style.background = 'var(--bg-card-hover)'}
-                                    onMouseOut={e => e.currentTarget.style.background = 'transparent'}
-                                >
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                                        <div style={{
-                                            width: 48, height: 48,
-                                            borderRadius: 'var(--radius-md)',
-                                            background: `var(--tier-${b.tierApplied.toLowerCase()}-bg)`,
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            fontSize: '1.25rem',
-                                        }}>
-                                            
-                                        </div>
-                                        <div>
-                                            <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>
-                                                {new Date(b.date).toLocaleDateString('pt-BR', { timeZone: 'UTC', weekday: 'long', day: '2-digit', month: 'long' })}
-                                            </div>
-                                            <div style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem' }}>
-                                                {b.startTime} — {b.endTime} · <span className={`badge badge-${b.tierApplied.toLowerCase()}`}>{b.tierApplied}</span>
-                                            </div>
-                                        </div>
+                </div>
+            ) : (
+                <div className="bookings-list">
+                    {finalized.map((b, i) => (
+                        <div key={b.id} className="card booking-card animate-card-enter" style={{ '--i': i } as React.CSSProperties}>
+                            {/* Main row */}
+                            <div className="booking-card__row" onClick={() => expandBooking(b)}>
+                                <div className="booking-card__left">
+                                    <div
+                                        className="booking-card__icon"
+                                        style={{ background: `var(--tier-${b.tierApplied.toLowerCase()}-bg)` }}
+                                    >
+                                        <Clapperboard size={20} style={{ color: `var(--tier-${b.tierApplied.toLowerCase()})` }} />
                                     </div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                        <span style={{ fontWeight: 700, color: statusColor(b.status), fontSize: '0.8125rem' }}>
-                                            {statusLabel(b.status)}
-                                        </span>
-                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', transform: expandedId === b.id ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
-                                            ▼
-                                        </span>
+                                    <div>
+                                        <div className="booking-card__date">
+                                            {new Date(b.date).toLocaleDateString('pt-BR', { timeZone: 'UTC', weekday: 'long', day: '2-digit', month: 'long' })}
+                                        </div>
+                                        <div className="booking-card__time">
+                                            {b.startTime} — {b.endTime} · <span className={`badge badge-${b.tierApplied.toLowerCase()}`}>{b.tierApplied}</span>
+                                        </div>
                                     </div>
                                 </div>
-
-                                {/* Expanded detail */}
-                                {expandedId === b.id && (
-                                    <div style={{
-                                        borderTop: '1px solid var(--border-subtle)',
-                                        padding: '20px 24px',
-                                        background: 'var(--bg-secondary)',
-                                        animation: 'fadeIn 0.2s ease',
-                                    }}>
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                                            {/* FASE 1 */}
-                                            <div style={{ gridColumn: '1 / -1', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px', marginBottom: '4px' }}>
-                                                <h3 style={{ fontSize: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span style={{ background: 'var(--bg-elevated)', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Fase 1</span>
-                                                    Preparativos
-                                                </h3>
-                                                <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Configure sua gravação livremente. Os dados são mantidos caso haja reagendamento.</p>
-                                            </div>
-
-                                            {/* Client Notes */}
-                                            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                                                <label className="form-label">Minha Observação</label>
-                                                <textarea
-                                                    className="form-input"
-                                                    rows={3}
-                                                    value={clientNotes}
-                                                    onChange={e => setClientNotes(e.target.value)}
-                                                    placeholder="Anotações pessoais sobre esta gravação..."
-                                                    style={{ resize: 'vertical' }}
-                                                />
-                                            </div>
-
-                                            {/* Admin Notes (read-only) */}
-                                            {b.adminNotes && (
-                                                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                                                    <label className="form-label">Observação do Admin</label>
-                                                    <div style={{
-                                                        padding: '10px 14px', background: 'var(--bg-elevated)',
-                                                        border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)',
-                                                        fontSize: '0.875rem', color: 'var(--text-secondary)',
-                                                        whiteSpace: 'pre-wrap',
-                                                    }}>
-                                                        {b.adminNotes}
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* Distribution - Platforms */}
-                                            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                                                <label className="form-label">Distribuição</label>
-                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '4px' }}>
-                                                    {PLATFORMS.map(p => (
-                                                        <label
-                                                            key={p.key}
-                                                            style={{
-                                                                display: 'flex', alignItems: 'center', gap: '6px',
-                                                                padding: '6px 12px', borderRadius: 'var(--radius-md)',
-                                                                border: `1px solid ${platforms.includes(p.key) ? p.color : 'var(--border-default)'}`,
-                                                                background: platforms.includes(p.key) ? `${p.color}15` : 'var(--bg-card)',
-                                                                cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600,
-                                                                transition: 'all 0.15s',
-                                                            }}
-                                                        >
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={platforms.includes(p.key)}
-                                                                onChange={() => togglePlatform(p.key)}
-                                                                style={{ accentColor: p.color }}
-                                                            />
-                                                            {p.label}
-                                                        </label>
-                                                    ))}
-                                                </div>
-                                            </div>
-
-                                            {/* Platform Links */}
-                                            {platforms.length > 0 && (
-                                                <div style={{ gridColumn: '1 / -1', display: 'grid', gap: '10px' }}>
-                                                    {platforms.map(pk => {
-                                                        const plat = PLATFORMS.find(p => p.key === pk);
-                                                        return (
-                                                            <div key={pk} className="form-group" style={{ marginBottom: 0 }}>
-                                                                <label className="form-label">{plat?.label || pk} — Link</label>
-                                                                <input
-                                                                    className="form-input"
-                                                                    value={platformLinks[pk] || ''}
-                                                                    onChange={e => setPlatformLinks(prev => ({ ...prev, [pk]: e.target.value }))}
-                                                                    placeholder={`https://${pk.toLowerCase()}.com/...`}
-                                                                />
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            )}
-
-                                            {/* FASE 2 */}
-                                            <div style={{ gridColumn: '1 / -1', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px', marginTop: '12px', marginBottom: '4px' }}>
-                                                <h3 style={{ fontSize: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span style={{ background: 'var(--bg-elevated)', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Fase 2</span>
-                                                    Métricas de Audiência
-                                                </h3>
-                                            </div>
-
-                                            {b.status !== 'COMPLETED' ? (
-                                                <div style={{ gridColumn: '1 / -1', padding: '16px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '16px' }}>
-                                                    Métricas disponíveis apenas para gravações finalizadas (COMPLETED).
-                                                </div>
-                                            ) : (
-                                                <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '12px', marginBottom: '16px' }}>
-                                                    <div className="card" style={{ background: 'var(--bg-card)', padding: '12px', border: '1px solid var(--border-default)' }}>
-                                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Duração Real</div>
-                                                        <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>{b.durationMinutes ? `${b.durationMinutes} min` : '--'}</div>
-                                                    </div>
-                                                    <div className="card" style={{ background: 'var(--bg-card)', padding: '12px', border: '1px solid var(--border-default)' }}>
-                                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Pico ao Vivo</div>
-                                                        <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>{b.peakViewers ? `${b.peakViewers}` : '--'}</div>
-                                                    </div>
-                                                    <div className="card" style={{ background: 'var(--bg-card)', padding: '12px', border: '1px solid var(--border-default)' }}>
-                                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Chat</div>
-                                                        <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>{b.chatMessages ? `${b.chatMessages}` : '--'}</div>
-                                                    </div>
-                                                    <div className="card" style={{ background: 'var(--bg-card)', padding: '12px', border: '1px solid var(--border-default)' }}>
-                                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Origem</div>
-                                                        <div style={{ fontSize: '1rem', fontWeight: 700, marginTop: '4px' }}>{b.audienceOrigin || '--'}</div>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* Actions */}
-                                        <div style={{ display: 'flex', gap: '10px', marginTop: '16px', justifyContent: 'space-between', flexWrap: 'wrap' }}>
-                                            <div style={{ display: 'flex', gap: '10px' }}>
-                                                {canReschedule(b) && (
-                                                    <button className="btn btn-secondary btn-sm" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setRescheduleId(rescheduleId === b.id ? null : b.id); setRescheduleError(''); }}>
-                                                        Reagendar
-                                                    </button>
-                                                )}
-                                            </div>
-                                            <button className="btn btn-primary btn-sm" onClick={() => handleSave(b.id)} disabled={saving}>
-                                                {saving ? 'Salvando...' : 'Salvar'}
-                                            </button>
-                                        </div>
-
-                                        {/* Reschedule Panel */}
-                                        {rescheduleId === b.id && (
-                                            <div style={{
-                                                marginTop: '16px', padding: '16px',
-                                                background: 'var(--bg-card)', borderRadius: 'var(--radius-md)',
-                                                border: '1px solid var(--border-default)',
-                                            }}>
-                                                <h4 style={{ fontSize: '0.875rem', fontWeight: 700, marginBottom: '12px' }}>Reagendar Gravação</h4>
-                                                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '12px' }}>
-                                                    Máximo 7 dias à frente · Mesma faixa ({b.tierApplied})
-                                                </p>
-                                                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                                                    <input
-                                                        type="date"
-                                                        className="form-input"
-                                                        value={rescheduleDate}
-                                                        onChange={e => setRescheduleDate(e.target.value)}
-                                                        min={new Date().toISOString().split('T')[0]}
-                                                        max={new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
-                                                        style={{ flex: 1 }}
-                                                    />
-                                                    <input
-                                                        type="time"
-                                                        className="form-input"
-                                                        value={rescheduleTime}
-                                                        onChange={e => setRescheduleTime(e.target.value)}
-                                                        step={3600}
-                                                        style={{ width: 120 }}
-                                                    />
-                                                    <button
-                                                        className="btn btn-primary btn-sm"
-                                                        onClick={() => handleReschedule(b.id)}
-                                                        disabled={rescheduling || !rescheduleDate || !rescheduleTime}
-                                                    >
-                                                        Confirmar
-                                                    </button>
-                                                </div>
-                                                {rescheduleError && (
-                                                    <div className="error-message" style={{ marginTop: '8px' }}>{rescheduleError}</div>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
+                                <div className="booking-card__right">
+                                    <span className="booking-card__status" style={{ color: statusColor(b.status) }}>
+                                        {statusLabel(b.status)}
+                                    </span>
+                                    <ChevronDown
+                                        size={16}
+                                        className={`booking-card__chevron ${expandedId === b.id ? 'booking-card__chevron--open' : ''}`}
+                                    />
+                                </div>
                             </div>
-                        ))}
-                    </div>
-                )
-            })()}
+
+                            {/* Expanded detail */}
+                            {expandedId === b.id && (
+                                <div className="booking-card__detail">
+                                    {/* FASE 1 — Preparativos */}
+                                    <div className="booking-section-header">
+                                        <h3 className="booking-section-header__title">
+                                            <span className="booking-section-header__badge">Fase 1</span>
+                                            Preparativos
+                                        </h3>
+                                        <p className="booking-section-header__desc">Configure sua gravação livremente. Os dados são mantidos caso haja reagendamento.</p>
+                                    </div>
+
+                                    {/* Client Notes */}
+                                    <div className="form-group">
+                                        <label className="form-label">Minha Observação</label>
+                                        <textarea
+                                            className="form-input"
+                                            rows={3}
+                                            value={clientNotes}
+                                            onChange={e => setClientNotes(e.target.value)}
+                                            placeholder="Anotações pessoais sobre esta gravação..."
+                                            style={{ resize: 'vertical' }}
+                                        />
+                                    </div>
+
+                                    {/* Admin Notes (read-only) */}
+                                    {b.adminNotes && (
+                                        <div className="form-group">
+                                            <label className="form-label">Observação do Admin</label>
+                                            <div className="booking-modal__admin-note">
+                                                {b.adminNotes}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Distribution - Platforms */}
+                                    <div className="form-group">
+                                        <label className="form-label">Distribuição</label>
+                                        <div className="booking-modal__platforms">
+                                            {PLATFORMS.map(p => (
+                                                <label key={p.key}
+                                                    className={`platform-toggle ${platforms.includes(p.key) ? 'platform-toggle--active' : ''}`}
+                                                    style={{
+                                                        '--platform-color': p.color,
+                                                        '--platform-bg': `${p.color}15`,
+                                                    } as React.CSSProperties}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={platforms.includes(p.key)}
+                                                        onChange={() => togglePlatform(p.key)}
+                                                        style={{ accentColor: p.color }}
+                                                    />
+                                                    {p.label}
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Platform Links */}
+                                    {platforms.length > 0 && (
+                                        <div className="booking-modal__links">
+                                            {platforms.map(pk => {
+                                                const plat = PLATFORMS.find(p => p.key === pk);
+                                                return (
+                                                    <div key={pk} className="form-group" style={{ marginBottom: 0 }}>
+                                                        <label className="form-label">{plat?.label || pk} — Link</label>
+                                                        <input
+                                                            className="form-input"
+                                                            value={platformLinks[pk] || ''}
+                                                            onChange={e => setPlatformLinks(prev => ({ ...prev, [pk]: e.target.value }))}
+                                                            placeholder={`https://${pk.toLowerCase()}.com/...`}
+                                                        />
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+
+                                    {/* FASE 2 — Métricas */}
+                                    <div className="booking-section-header">
+                                        <h3 className="booking-section-header__title">
+                                            <span className="booking-section-header__badge">Fase 2</span>
+                                            Métricas de Audiência
+                                        </h3>
+                                    </div>
+
+                                    {b.status !== 'COMPLETED' ? (
+                                        <div className="info-box info-box--neutral">
+                                            Métricas disponíveis apenas para gravações finalizadas (COMPLETED).
+                                        </div>
+                                    ) : (
+                                        <div className="metrics-grid">
+                                            <div className="metric-card">
+                                                <div className="metric-card__label">Duração Real</div>
+                                                <div className="metric-card__value">{b.durationMinutes ? `${b.durationMinutes} min` : '--'}</div>
+                                            </div>
+                                            <div className="metric-card">
+                                                <div className="metric-card__label">Pico ao Vivo</div>
+                                                <div className="metric-card__value">{b.peakViewers ? `${b.peakViewers}` : '--'}</div>
+                                            </div>
+                                            <div className="metric-card">
+                                                <div className="metric-card__label">Chat</div>
+                                                <div className="metric-card__value">{b.chatMessages ? `${b.chatMessages}` : '--'}</div>
+                                            </div>
+                                            <div className="metric-card">
+                                                <div className="metric-card__label">Origem</div>
+                                                <div className="metric-card__value" style={{ fontSize: '1rem' }}>{b.audienceOrigin || '--'}</div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Actions */}
+                                    <div className="booking-card__actions">
+                                        <div>
+                                            {canReschedule(b) && (
+                                                <button className="btn btn-secondary btn-sm" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setRescheduleId(rescheduleId === b.id ? null : b.id); setRescheduleError(''); }}>
+                                                    Reagendar
+                                                </button>
+                                            )}
+                                        </div>
+                                        <button className="btn btn-primary btn-sm" onClick={() => handleSave(b.id)} disabled={saving}>
+                                            {saving ? 'Salvando...' : 'Salvar'}
+                                        </button>
+                                    </div>
+
+                                    {/* Reschedule Panel */}
+                                    {rescheduleId === b.id && (
+                                        <div className="reschedule-panel" style={{ marginTop: 16 }}>
+                                            <h4 className="reschedule-panel__title">Reagendar Gravação</h4>
+                                            <p className="reschedule-panel__note">
+                                                Máximo 7 dias à frente · Mesma faixa ({b.tierApplied})
+                                            </p>
+                                            <div className="reschedule-panel__form">
+                                                <input type="date" className="form-input" value={rescheduleDate}
+                                                    onChange={e => setRescheduleDate(e.target.value)}
+                                                    min={new Date().toISOString().split('T')[0]}
+                                                    max={new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]}
+                                                    style={{ flex: 1 }} />
+                                                <input type="time" className="form-input" value={rescheduleTime}
+                                                    onChange={e => setRescheduleTime(e.target.value)} step={3600} style={{ width: 120 }} />
+                                                <button className="btn btn-primary btn-sm" onClick={() => handleReschedule(b.id)}
+                                                    disabled={rescheduling || !rescheduleDate || !rescheduleTime}>
+                                                    Confirmar
+                                                </button>
+                                            </div>
+                                            {rescheduleError && <div className="error-message" style={{ marginTop: 8 }}>{rescheduleError}</div>}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }

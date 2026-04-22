@@ -1,10 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { prisma } from '../../lib/prisma';
-import { authenticate } from '../../middleware/auth';
-import { BookingStatus } from '../../generated/prisma/client';
-import { publicAvailabilitySchema, availabilitySchema } from './validators';
-import { getPublicDayAvailability, getAuthDayAvailability } from './availability.service';
+import { prisma } from '../../lib/prisma.js';
+import { authenticate } from '../../middleware/auth.js';
+import { BookingStatus } from '../../generated/prisma/client.js';
+import { publicAvailabilitySchema, availabilitySchema } from './validators.js';
+import { getPublicDayAvailability, getAuthDayAvailability } from './availability.service.js';
 
 export function registerAvailabilityRoutes(router: Router) {
 

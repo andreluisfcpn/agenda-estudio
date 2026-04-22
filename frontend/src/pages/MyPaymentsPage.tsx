@@ -3,38 +3,30 @@ import { useState, useEffect, useCallback } from 'react';
 import { stripeApi, contractsApi, SavedCard, ContractWithStats, PaymentSummary } from '../api/client';
 import StripeCardForm from '../components/StripeCardForm';
 import { useUI } from '../context/UIContext';
+import { useAuth } from '../context/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { CreditCard, Trash2, Shield, Plus, Zap, Clock, CheckCircle, XCircle, AlertTriangle, Wallet, X } from 'lucide-react';
-import ModalOverlay from '../components/ModalOverlay';
+import {
+    CreditCard, Trash2, Shield, Plus, Zap, Clock,
+    CheckCircle, XCircle, AlertTriangle, Wallet, ArrowRight, Landmark,
+} from 'lucide-react';
+import AddCardModal from '../components/AddCardModal';
 import PaymentModal from '../components/PaymentModal';
 import { getClientPaymentMethods } from '../constants/paymentMethods';
 import ToggleSwitch from '../components/ui/ToggleSwitch';
+import StatCard from '../components/ui/StatCard';
 import StatusBadge from '../components/ui/StatusBadge';
 import { formatBRL, formatDate } from '../utils/format';
 import { PaymentsSkeleton } from '../components/ui/SkeletonLoader';
+import '../styles/my-payments.css';
 
 const BRAND_LABELS: Record<string, string> = {
-    visa: 'Visa',
-    mastercard: 'Mastercard',
-    elo: 'Elo',
-    amex: 'Amex',
-    hipercard: 'Hipercard',
-    unknown: 'Cartão',
+    visa: 'Visa', mastercard: 'Mastercard', elo: 'Elo',
+    amex: 'Amex', hipercard: 'Hipercard', unknown: 'Cartão',
 };
-
-const BRAND_ICONS: Record<string, string> = {};
-
-const STATUS_CONFIG: Record<string, { icon: React.ReactNode; label: string; color: string; bg: string }> = {
-    PAID: { icon: <CheckCircle size={14} />, label: 'Pago', color: '#10b981', bg: 'rgba(16,185,129,0.1)' },
-    PENDING: { icon: <Clock size={14} />, label: 'Pendente', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)' },
-    FAILED: { icon: <XCircle size={14} />, label: 'Falhou', color: '#ef4444', bg: 'rgba(239,68,68,0.1)' },
-    REFUNDED: { icon: <AlertTriangle size={14} />, label: 'Estornado', color: '#8b5cf6', bg: 'rgba(139,92,246,0.1)' },
-};
-
-// formatBRL and formatDate imported from utils/format
 
 export default function MyPaymentsPage() {
     const { showToast, showConfirm } = useUI();
+    const { user } = useAuth();
     const location = useLocation();
     const navigate = useNavigate();
 
@@ -43,7 +35,7 @@ export default function MyPaymentsPage() {
     const [autoCharge, setAutoCharge] = useState(false);
     const [contracts, setContracts] = useState<ContractWithStats[]>([]);
     const [loading, setLoading] = useState(true);
-    
+
     const [showAddCard, setShowAddCard] = useState(false);
     const [setupSecret, setSetupSecret] = useState<string | null>(null);
     const [removingId, setRemovingId] = useState<string | null>(null);
@@ -78,7 +70,7 @@ export default function MyPaymentsPage() {
             const pid = location.state.autoOpenPaymentId;
             let targetContract = null;
             let targetPayment = null;
-            
+
             for (const c of contracts) {
                 const found = c.payments?.find(p => p.id === pid);
                 if (found) {
@@ -87,20 +79,17 @@ export default function MyPaymentsPage() {
                     break;
                 }
             }
-            
+
             if (targetPayment && targetContract && !payingPayment) {
                 setPayingPayment({
                     ...targetPayment,
                     contractName: targetContract.name || targetContract.type,
                     contractDuration: targetContract.durationMonths || 1
                 });
-                
-                // Clear state so it doesn't reopen on refresh
                 navigate('.', { replace: true, state: {} });
             }
         }
     }, [contracts, location.state, payingPayment, navigate]);
-
 
     // ─── Aggregating Payments ─────────────────────────────
     const allPayments: (PaymentSummary & { contractName: string; contractDuration: number })[] = [];
@@ -110,6 +99,7 @@ export default function MyPaymentsPage() {
         });
     });
 
+    const now = new Date();
     const pendingPayments = allPayments.filter(p => p.status === 'PENDING' || p.status === 'FAILED').sort((a, b) => {
         if (a.status === 'FAILED' && b.status !== 'FAILED') return -1;
         if (b.status === 'FAILED' && a.status !== 'FAILED') return 1;
@@ -120,6 +110,9 @@ export default function MyPaymentsPage() {
         (b.dueDate ? new Date(b.dueDate).getTime() : 0) - (a.dueDate ? new Date(a.dueDate).getTime() : 0)
     );
 
+    const totalPending = pendingPayments.reduce((acc, p) => acc + p.amount, 0);
+    const totalPaid = paidPayments.reduce((acc, p) => acc + p.amount, 0);
+    const overdueCount = pendingPayments.filter(p => p.dueDate && new Date(p.dueDate) < now).length;
 
     // ─── Card Actions ─────────────────────────────────────
     const handleAddCard = async () => {
@@ -136,6 +129,7 @@ export default function MyPaymentsPage() {
         setShowAddCard(false);
         setSetupSecret(null);
         showToast('Cartão salvo com sucesso!');
+        stripeApi.invalidateCache();
         loadData();
     };
 
@@ -174,7 +168,6 @@ export default function MyPaymentsPage() {
     const handleToggleAutoCharge = async (enabled: boolean) => {
         try {
             await stripeApi.setAutoCharge(enabled);
-            // Optimistic update
             setAutoCharge(enabled);
             showToast(enabled ? 'Cobrança automática ATIVADA.' : 'Cobrança automática DESATIVADA.');
         } catch (err: unknown) {
@@ -182,6 +175,14 @@ export default function MyPaymentsPage() {
         }
     };
 
+    // ─── Hero Message ───────────────────────────────────
+    const heroMessage = (() => {
+        if (overdueCount > 0) return `Você tem ${overdueCount} fatura(s) em atraso`;
+        if (pendingPayments.length > 0) return `${pendingPayments.length} parcela(s) pendente(s)`;
+        return 'Tudo em dia! Nenhuma cobrança pendente.';
+    })();
+
+    const hasOverdue = overdueCount > 0;
 
     if (loading && contracts.length === 0) {
         return <PaymentsSkeleton />;
@@ -189,60 +190,98 @@ export default function MyPaymentsPage() {
 
     return (
         <div>
-            <div className="page-header" style={{ marginBottom: '32px' }}>
-                <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <Wallet size={28} /> Pagamentos
-                </h1>
-                <p className="page-subtitle">Pague parcelas pendentes e gerencie seus cartões.</p>
+            {/* ─── Hero Banner ─── */}
+            <div className={`client-hero ${hasOverdue ? 'client-hero--alert' : 'client-hero--default'} animate-card-enter`}>
+                <div className="client-hero__header client-hero__header--standalone">
+                    <div className="client-hero__icon-wrapper" style={{
+                        background: hasOverdue
+                            ? 'linear-gradient(135deg, rgba(239,68,68,0.2), rgba(239,68,68,0.05))'
+                            : 'linear-gradient(135deg, rgba(16,185,129,0.2), rgba(16,185,129,0.05))',
+                        borderColor: hasOverdue ? 'rgba(239,68,68,0.25)' : 'rgba(16,185,129,0.25)',
+                        boxShadow: hasOverdue ? '0 0 20px rgba(239,68,68,0.12)' : '0 0 20px rgba(16,185,129,0.12)',
+                        color: hasOverdue ? '#ef4444' : '#10b981',
+                    }}>
+                        <Landmark size={22} />
+                    </div>
+                    <div>
+                        <h2 className="client-hero__title">Pagamentos</h2>
+                        <p className="client-hero__subtitle">{heroMessage}</p>
+                    </div>
+                </div>
             </div>
 
-            {/* ─── 🔥 PENDENTES (HIERARQUIA #1) ──────────────────────────────────────────────── */}
-            
-            <div style={{ marginBottom: '48px' }}>
-                <h2 className="section-heading">
-                    <Zap size={24} color="#f59e0b" />
-                    Pagamentos Pendentes
-                </h2>
+            {/* ─── Stat Cards (matches Dashboard grid) ─── */}
+            <div className="payments-stats stagger-enter">
+                <StatCard
+                    icon={Wallet}
+                    label="Pendente"
+                    value={formatBRL(totalPending)}
+                    detail={overdueCount > 0 ? `${overdueCount} em atraso` : pendingPayments.length > 0 ? 'No prazo' : 'Tudo em dia'}
+                    accent={overdueCount > 0 ? '#ef4444' : '#10b981'}
+                    index={0}
+                />
+                <StatCard
+                    icon={CheckCircle}
+                    label="Total Pago"
+                    value={formatBRL(totalPaid)}
+                    detail={`${paidPayments.length} pagamento(s)`}
+                    accent="#2dd4bf"
+                    index={1}
+                />
+            </div>
+
+            {/* ─── Pagamentos Pendentes ─── */}
+            <div className="payments-section">
+                <h3 className="payments-section__title">
+                    <span className="payments-section__icon payments-section__icon--pending">
+                        <Zap size={18} />
+                    </span>
+                    Faturas Pendentes
+                </h3>
 
                 {pendingPayments.length === 0 ? (
-                    <div className="empty-state--nice">
-                        <CheckCircle size={32} style={{ margin: '0 auto 12px', color: '#10b981', opacity: 0.8 }} />
-                        <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>Tudo em dia! Você não tem cobranças pendentes.</span>
+                    <div className="payments-empty animate-card-enter" style={{ '--i': 0 } as React.CSSProperties}>
+                        <CheckCircle size={32} className="payments-empty__icon" />
+                        <div className="payments-empty__text">Tudo em dia! Você não tem cobranças pendentes.</div>
                     </div>
                 ) : (
-                    <div className="stagger-enter" style={{ display: 'grid', gap: '16px' }}>
-                        {pendingPayments.map(p => {
+                    <div className="pending-grid stagger-enter">
+                        {pendingPayments.map((p, i) => {
                             const isOverdue = new Date(p.dueDate).getTime() < Date.now();
                             const isFailed = p.status === 'FAILED';
-                            const defaultCard = cards.find(c => c.isDefault) || cards[0];
-                            const availableMethods = getClientPaymentMethods();
-                            const pixEnabled = availableMethods.some(m => m.key === 'PIX');
-                            const cardEnabled = availableMethods.some(m => m.key === 'CARTAO');
 
                             return (
-                                <div key={p.id} className={`payment-card ${(isFailed || isOverdue) ? 'payment-card--urgent' : ''}`}>
+                                <div
+                                    key={p.id}
+                                    className={`pending-card animate-card-enter ${(isFailed || isOverdue) ? 'pending-card--urgent' : ''}`}
+                                    style={{ '--i': i } as React.CSSProperties}
+                                    onClick={() => setPayingPayment(p)}
+                                >
                                     {(isFailed || isOverdue) && (
-                                        <div className="payment-card__badge">
+                                        <span className="pending-card__badge">
+                                            <AlertTriangle size={10} />
                                             {isFailed ? 'Falha no Cartão' : 'Em Atraso'}
-                                        </div>
+                                        </span>
                                     )}
-
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                    <div className="pending-card__top">
                                         <div>
-                                            <div className="payment-card__amount">{formatBRL(p.amount)}</div>
-                                            <div className="payment-card__info">{p.contractName}</div>
-                                            <div className="payment-card__date">Vence(u) em {formatDate(p.dueDate)}</div>
+                                            <div className="pending-card__amount">{formatBRL(p.amount)}</div>
+                                            <div className="pending-card__contract">{p.contractName}</div>
+                                            <div className="pending-card__due">
+                                                {isOverdue ? 'Vencida' : 'Vence'} em {formatDate(p.dueDate)}
+                                            </div>
                                         </div>
-
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                            <button 
-                                                onClick={() => setPayingPayment(p)}
-                                                className="btn btn-primary btn-cta"
-                                                aria-label={`Pagar ${formatBRL(p.amount)}`}>
-                                                <CreditCard size={18} />
-                                                Pagar Agora
-                                            </button>
-                                        </div>
+                                        <StatusBadge status={isOverdue ? 'FAILED' : p.status} label={isOverdue ? 'Atrasada' : undefined} />
+                                    </div>
+                                    <div className="pending-card__actions">
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); setPayingPayment(p); }}
+                                            className="pending-card__pay-btn"
+                                            aria-label={`Pagar ${formatBRL(p.amount)}`}
+                                        >
+                                            <CreditCard size={18} />
+                                            Pagar Agora
+                                        </button>
                                     </div>
                                 </div>
                             );
@@ -251,122 +290,103 @@ export default function MyPaymentsPage() {
                 )}
             </div>
 
-            {/* ─── 🤖 COBRANÇA AUTOMÁTICA (HIERARQUIA #2) ──────────────────────────────────── */}
-            
+            {/* ─── Cobrança Automática ─── */}
             {(cards.length > 0 || autoCharge) && (
-                <div style={{ marginBottom: '48px', position: 'relative' }}>
-                    <div className={`auto-charge-banner ${autoCharge ? 'auto-charge-banner--active' : 'auto-charge-banner--inactive'}`}>
-                        <div>
-                            <h3 style={{ fontSize: '1.25rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px', color: autoCharge ? '#10b981' : 'var(--text-primary)', marginBottom: '8px' }}>
-                                <Shield size={20} />
-                                Cobrança Automática {autoCharge ? 'Ativa' : ''}
-                            </h3>
-                            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', maxWidth: 600 }}>
-                                {autoCharge 
-                                    ? "As parcelas dos seus contratos serão cobradas automaticamente no seu cartão padrão no dia do vencimento."
-                                    : "Ative para cobrar suas parcelas no cartão padrão no dia do vencimento. Sem multas e preocupações."
-                                }
-                            </p>
-                        </div>
-
-                        <ToggleSwitch
-                            checked={autoCharge}
-                            onChange={handleToggleAutoCharge}
-                            label={autoCharge ? 'Ligado' : 'Desligado'}
-                        />
+                <div className={`autocharge-card animate-card-enter ${autoCharge ? 'autocharge-card--active' : ''}`} style={{ '--i': 2 } as React.CSSProperties}>
+                    <div className="autocharge-card__info">
+                        <h3 className="autocharge-card__title">
+                            <Shield size={18} style={{ color: autoCharge ? '#10b981' : 'var(--text-muted)' }} />
+                            Cobrança Automática
+                        </h3>
+                        <p className="autocharge-card__desc">
+                            {autoCharge
+                                ? 'Parcelas cobradas no cartão padrão no vencimento.'
+                                : 'Ative para cobrar parcelas automaticamente.'}
+                        </p>
                     </div>
+                    <ToggleSwitch
+                        checked={autoCharge}
+                        onChange={handleToggleAutoCharge}
+                        label={autoCharge ? 'Ligado' : 'Desligado'}
+                    />
                 </div>
             )}
 
-            {/* ─── ✅ HISTÓRICO (HIERARQUIA #3) ────────────────────────────────────────────── */}
-            
+            {/* ─── Histórico de Pagamentos ─── */}
             {paidPayments.length > 0 && (
-                <div style={{ marginBottom: '48px' }}>
-                    <h2 className="section-heading--sm">
+                <div className="payments-section">
+                    <h3 className="payments-section__title">
+                        <span className="payments-section__icon payments-section__icon--history">
+                            <Clock size={18} />
+                        </span>
                         Histórico de Pagamentos
-                    </h2>
-                    <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
-                        {paidPayments.slice(0, showAllHistory ? undefined : 5).map((p, i, arr) => (
-                            <div key={p.id} className="history-row">
-                                <div>
-                                    <div className="history-row__name">{p.contractName}</div>
-                                    <div className="history-row__date">Pago em {formatDate(p.dueDate)}</div>
+                    </h3>
+                    <div className="history-list">
+                        {paidPayments.slice(0, showAllHistory ? undefined : 5).map(p => (
+                            <div key={p.id} className="history-item">
+                                <div className="history-item__info">
+                                    <div className="history-item__name">{p.contractName}</div>
+                                    <div className="history-item__date">Pago em {formatDate(p.dueDate)}</div>
                                 </div>
-                                <div className="history-row__amount">
-                                    <div>{formatBRL(p.amount)}</div>
+                                <div className="history-item__right">
+                                    <span className="history-item__amount">{formatBRL(p.amount)}</span>
                                     <StatusBadge status="PAID" label={p.provider === 'STRIPE' ? 'Automático' : 'Pago'} />
                                 </div>
                             </div>
                         ))}
                     </div>
                     {paidPayments.length > 5 && !showAllHistory && (
-                        <button onClick={() => setShowAllHistory(true)} style={{
-                            display: 'block', width: '100%', padding: '12px', marginTop: '8px',
-                            background: 'transparent', border: '1px solid var(--border-subtle)',
-                            borderRadius: 'var(--radius-md)', color: 'var(--text-secondary)',
-                            fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer',
-                            minHeight: '44px',
-                        }}>Ver todos ({paidPayments.length})</button>
+                        <button onClick={() => setShowAllHistory(true)} className="payments-show-all">
+                            Ver todos ({paidPayments.length})
+                        </button>
                     )}
                 </div>
             )}
 
-            {/* ─── 💳 CARTÕES SALVOS (HIERARQUIA #4) ───────────────────────────────────────── */}
-            
-            <div>
-                <h2 className="section-heading--sm" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Wallet size={20} style={{ color: 'var(--text-secondary)' }} />
+            {/* ─── Cartões Salvos ─── */}
+            <div className="payments-section">
+                <h3 className="payments-section__title">
+                    <span className="payments-section__icon payments-section__icon--cards">
+                        <CreditCard size={18} />
+                    </span>
                     Cartões Salvos
-                </h2>
+                </h3>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
-                    
-                    {cards.map(card => (
-                        <div key={card.id} className={`saved-card ${card.isDefault ? 'saved-card--default' : ''}`}>
+                <div className="wallet-grid stagger-enter">
+                    {cards.map((card, i) => (
+                        <div key={card.id} className={`wallet-card animate-card-enter ${card.isDefault ? 'wallet-card--default' : ''}`} style={{ '--i': i } as React.CSSProperties}>
                             {card.isDefault && (
-                                <div className="saved-card__badge">
-                                    <Shield size={10} fill="#fff" />
+                                <div className="wallet-card__badge">
+                                    <Shield size={10} fill="#10b981" />
                                     CARTÃO PADRÃO
                                 </div>
                             )}
-                            
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                <div className="saved-card__icon">
+                            <div className="wallet-card__body">
+                                <div className="wallet-card__icon">
                                     <CreditCard size={22} style={{ color: card.isDefault ? '#10b981' : 'var(--text-secondary)' }} />
                                 </div>
-                                <div style={{ flex: 1 }}>
-                                    <div style={{ fontWeight: 800, fontSize: '0.925rem' }}>
+                                <div>
+                                    <div className="wallet-card__brand">
                                         {BRAND_LABELS[card.brand] || card.brand}{' '}
-                                        <span style={{ color: 'var(--text-secondary)' }}>•••• {card.last4}</span>
+                                        <span className="wallet-card__last4">•••• {card.last4}</span>
                                     </div>
-                                    <div style={{
-                                        fontSize: '0.8125rem',
-                                        color: card.isDefault ? 'rgba(16, 185, 129, 0.8)' : 'var(--text-muted)',
-                                    }}>
+                                    <div className={`wallet-card__meta ${card.isDefault ? 'wallet-card__meta--active' : ''}`}>
                                         {card.isDefault ? '✓ Cobrança automática ativa' : `Vence ${card.expMonth.toString().padStart(2, '0')}/${card.expYear}`}
                                     </div>
                                 </div>
                             </div>
-
-                            <div className="saved-card__actions">
+                            <div className="wallet-card__actions">
                                 {!card.isDefault && (
                                     <button
                                         onClick={() => handleSetDefault(card)}
                                         disabled={settingDefaultId === card.id}
-                                        style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: 'none', padding: '10px 12px', borderRadius: '8px', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer', flex: 1, minHeight: '44px' }}
+                                        className="wallet-card__action-btn wallet-card__action-btn--default"
                                     >
                                         {settingDefaultId === card.id ? '...' : 'Tornar Padrão'}
                                     </button>
                                 )}
                                 {card.isDefault && (
-                                    <div style={{
-                                        flex: 1, padding: '10px 12px', borderRadius: '8px',
-                                        fontSize: '0.75rem', fontWeight: 600, minHeight: '44px',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        color: 'rgba(16, 185, 129, 0.7)',
-                                        background: 'rgba(16, 185, 129, 0.06)',
-                                        border: '1px solid rgba(16, 185, 129, 0.15)',
-                                    }}>
+                                    <div className="wallet-card__action-btn wallet-card__action-btn--active-exp">
                                         Vence {card.expMonth.toString().padStart(2, '0')}/{card.expYear}
                                     </div>
                                 )}
@@ -374,7 +394,7 @@ export default function MyPaymentsPage() {
                                     onClick={() => handleRemoveCard(card)}
                                     disabled={removingId === card.id}
                                     aria-label="Remover Cartão"
-                                    style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: 'none', padding: '10px 12px', borderRadius: '8px', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '44px', minWidth: '44px' }}
+                                    className="wallet-card__action-btn wallet-card__action-btn--remove"
                                 >
                                     {removingId === card.id ? <div className="spinner" style={{ width: 14, height: 14 }} /> : <Trash2 size={16} />}
                                 </button>
@@ -382,39 +402,25 @@ export default function MyPaymentsPage() {
                         </div>
                     ))}
 
-                    <button 
-                        onClick={handleAddCard}
-                        style={{ border: '2px dashed var(--border-color)', background: 'transparent', borderRadius: 'var(--radius-md)', padding: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', color: 'var(--text-secondary)', cursor: 'pointer', minHeight: '130px', transition: 'border-color 0.2s, color 0.2s' }}
-                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-primary)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
-                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-color)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}>
+                    <button onClick={handleAddCard} className="wallet-add-btn animate-card-enter" style={{ '--i': cards.length } as React.CSSProperties}>
                         <Plus size={24} />
-                        <span style={{ fontWeight: 700, fontSize: '0.875rem' }}>Adicionar Cartão</span>
+                        <span className="wallet-add-btn__label">Adicionar Cartão</span>
                     </button>
                 </div>
             </div>
 
-            {/* ─── MODALS ─────────────────────────────────────────────────────────────────── */}
+            {/* ─── MODALS ─── */}
 
             {/* Add Card Modal */}
-            {showAddCard && setupSecret && (
-                <ModalOverlay onClose={() => setShowAddCard(false)}>
-                    <div className="modal" style={{ maxWidth: 400 }}>
-                        <h2 className="modal-title">Adicionar Novo Cartão</h2>
-                        <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '24px' }}>
-                            Mantenha um cartão salvo para facilitar compras e habilitar renovação automática. Nenhuma cobrança é feita agora.
-                        </p>
-                        <StripeCardForm
-                            mode="setup"
-                            clientSecret={setupSecret}
-                            onSuccess={handleCardSaved}
-                            onError={(msg) => showToast({ message: msg, type: 'error' })}
-                            onCancel={() => setShowAddCard(false)}
-                        />
-                    </div>
-                </ModalOverlay>
-            )}
+            <AddCardModal
+                isOpen={showAddCard && !!setupSecret}
+                clientSecret={setupSecret || ''}
+                onClose={() => setShowAddCard(false)}
+                onSuccess={handleCardSaved}
+                onError={(msg) => showToast({ message: msg, type: 'error' })}
+            />
 
-            {/* Payment Modal — Unified PaymentModal */}
+            {/* Payment Modal */}
             {payingPayment && (
                 <PaymentModal
                     title="Pagar Parcela"
@@ -432,7 +438,6 @@ export default function MyPaymentsPage() {
                     onClose={() => setPayingPayment(null)}
                 />
             )}
-
         </div>
     );
 }

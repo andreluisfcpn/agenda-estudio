@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { prisma } from '../../lib/prisma';
-import { authenticate, authorize } from '../../middleware/auth';
-import { releaseMultiSlotLock } from '../../lib/redis';
-import { getProviderForMethod } from '../../lib/paymentGateway';
+import { prisma } from '../../lib/prisma.js';
+import { authenticate, authorize } from '../../middleware/auth.js';
+import { releaseMultiSlotLock } from '../../lib/redis.js';
+import { getProviderForMethod } from '../../lib/paymentGateway.js';
 import {
     getSlotTier,
     getBasePriceDynamic,
@@ -11,16 +11,16 @@ import {
     getPackageSlots,
     calculateEndTime,
     isOperatingDay,
-} from '../../utils/pricing';
-import { BookingStatus, Prisma } from '../../generated/prisma/client';
-import { getConfig } from '../../lib/businessConfig';
+} from '../../utils/pricing.js';
+import { BookingStatus, Prisma } from '../../generated/prisma/client.js';
+import { getConfig } from '../../lib/businessConfig.js';
 import {
     adminUpdateBookingSchema,
     clientUpdateBookingSchema,
     rescheduleSchema,
     addOnPurchaseSchema,
-} from './validators';
-import { restoreCredit, deductCredit } from './booking.service';
+} from './validators.js';
+import { restoreCredit, deductCredit } from './booking.service.js';
 
 export function registerManagementRoutes(router: Router) {
 

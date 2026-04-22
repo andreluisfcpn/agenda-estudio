@@ -1,11 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { prisma } from '../../lib/prisma';
-import { authenticate } from '../../middleware/auth';
-import { BookingStatus } from '../../generated/prisma/client';
-import { generateTimeSlots } from '../../utils/pricing';
-import { getConfig, getConfigString } from '../../lib/businessConfig';
-import { checkFixoSchema, customCheckSchema } from './validators';
+import { prisma } from '../../lib/prisma.js';
+import { authenticate } from '../../middleware/auth.js';
+import { BookingStatus } from '../../generated/prisma/client.js';
+import { generateTimeSlots } from '../../utils/pricing.js';
+import { getConfig, getConfigString } from '../../lib/businessConfig.js';
+import { checkFixoSchema, customCheckSchema } from './validators.js';
 
 export function registerCheckRoutes(router: Router) {
 

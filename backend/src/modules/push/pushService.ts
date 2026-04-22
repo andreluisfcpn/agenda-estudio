@@ -1,6 +1,6 @@
 import webPush from 'web-push';
-import { config } from '../../config';
-import { prisma } from '../../lib/prisma';
+import { config } from '../../config/index.js';
+import { prisma } from '../../lib/prisma.js';
 
 // Initialize VAPID
 if (config.push.vapidPublicKey && config.push.vapidPrivateKey) {

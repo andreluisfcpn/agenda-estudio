@@ -3,27 +3,31 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
-import path from 'path';
-import { config } from './config';
-import { errorHandler } from './middleware/errorHandler';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+import { config } from './config/index.js';
+import { errorHandler } from './middleware/errorHandler.js';
 
 // Route modules
-import authRoutes from './modules/auth/routes';
-import bookingRoutes from './modules/bookings/routes';
-import contractRoutes from './modules/contracts/routes';
-import userRoutes from './modules/users/routes';
-import blockedSlotRoutes from './modules/blocked-slots/routes';
-import pricingRoutes from './modules/pricing/routes';
-import paymentRoutes from './modules/payments/routes';
-import { financeRouter } from './modules/finance/routes';
-import notificationRoutes from './modules/notifications/routes';
-import reportRoutes from './modules/reports/routes';
-import integrationRoutes from './modules/integrations/routes';
-import webhookRoutes from './modules/webhooks/routes';
-import stripeRoutes from './modules/stripe/routes';
-import pushRoutes from './modules/push/routes';
+import authRoutes from './modules/auth/routes.js';
+import bookingRoutes from './modules/bookings/routes.js';
+import contractRoutes from './modules/contracts/routes.js';
+import userRoutes from './modules/users/routes.js';
+import blockedSlotRoutes from './modules/blocked-slots/routes.js';
+import pricingRoutes from './modules/pricing/routes.js';
+import paymentRoutes from './modules/payments/routes.js';
+import { financeRouter } from './modules/finance/routes.js';
+import notificationRoutes from './modules/notifications/routes.js';
+import reportRoutes from './modules/reports/routes.js';
+import integrationRoutes from './modules/integrations/routes.js';
+import webhookRoutes from './modules/webhooks/routes.js';
+import stripeRoutes from './modules/stripe/routes.js';
+import pushRoutes from './modules/push/routes.js';
 
-import { prisma } from './lib/prisma';
+import { prisma } from './lib/prisma.js';
 
 
 const app = express();
@@ -32,13 +36,42 @@ const app = express();
 
 // ─── Security ───────────────────────────────────────────
 
+// Trust first proxy hop (Railway load balancer) — required for
+// express-rate-limit to correctly identify clients via X-Forwarded-For
+if (config.nodeEnv === 'production') {
+    app.set('trust proxy', 1);
+}
+
 app.use(helmet({
-    contentSecurityPolicy: config.nodeEnv === 'production' ? undefined : false,
+    contentSecurityPolicy: config.nodeEnv === 'production' ? {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+            fontSrc: ["'self'", "https://fonts.gstatic.com"],
+            imgSrc: ["'self'", "data:", "blob:", "https://buzios.digital", "https://agenda.buzios.digital", "https://*.stripe.com"],
+            connectSrc: ["'self'", "https://agenda.buzios.digital", "https://*.stripe.com", "https://matls-clients.api.stage.cora.com.br"],
+            frameSrc: ["'self'", "https://*.stripe.com"],
+        },
+    } : false,
     crossOriginEmbedderPolicy: false,
 }));
 
+// CORS: accept FRONTEND_URL and production domain
+const allowedOrigins = [
+    config.frontendUrl,
+    'https://agenda.buzios.digital',
+].filter(Boolean);
+
 app.use(cors({
-    origin: config.frontendUrl,
+    origin: (origin, callback) => {
+        // Allow requests with no origin (server-to-server, curl, health checks)
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('CORS not allowed'));
+        }
+    },
     credentials: true,
 }));
 
@@ -132,14 +165,14 @@ app.use(errorHandler);
 
 // ─── Start Server ───────────────────────────────────────
 
-app.listen(config.port, () => {
+app.listen(config.port, async () => {
     console.log(`🎙️  Studio Scheduler API running on http://localhost:${config.port}`);
     console.log(`   Environment: ${config.nodeEnv}`);
 
     // Phase 2 Auto-Completion Cronjob
     // This runs on startup and every 5 minutes, flagging past-due events as COMPLETED.
     // Uses Redis lock to prevent duplicate execution across multiple instances.
-    const { redis } = require('./lib/redis');
+    const { redis } = await import('./lib/redis.js');
 
     const runCron = async () => {
         const lockKey = 'cron:auto-complete:lock';
@@ -177,7 +210,7 @@ app.listen(config.port, () => {
     setInterval(runCron, 5 * 60 * 1000);
 
     // Hold Expiration Cronjob — clean expired HELD bookings & AWAITING_PAYMENT contracts every 60s
-    import('./jobs/cleanExpiredHolds').then(({ cleanExpiredHolds }) => {
+    import('./jobs/cleanExpiredHolds.js').then(({ cleanExpiredHolds }) => {
         const runHoldCleanup = async () => {
             const holdLockKey = 'cron:hold-cleanup:lock';
             const lockAcquired = await redis.set(holdLockKey, 'running', 'EX', 50, 'NX');
@@ -193,7 +226,7 @@ app.listen(config.port, () => {
     }).catch(err => console.error('[HOLD-CLEANUP] Failed to load job:', err));
 
     // Push Notification Cronjob — checks & sends push every 15 minutes
-    import('./jobs/pushNotificationJob').then(({ runPushNotificationJob }) => {
+    import('./jobs/pushNotificationJob.js').then(({ runPushNotificationJob }) => {
         const runPushJob = async () => {
             const pushLockKey = 'cron:push-notif:lock';
             const lockAcquired = await redis.set(pushLockKey, 'running', 'EX', 840, 'NX');

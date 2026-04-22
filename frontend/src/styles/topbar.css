@@ -14,7 +14,7 @@
   background: rgba(0, 30, 38, 0.85);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 /* ─── Left: Hamburger + Logo ─── */
@@ -40,7 +40,7 @@
 }
 
 .topbar-hamburger:hover {
-  background: rgba(17,129,155,0.1);
+  background: rgba(17, 129, 155, 0.1);
   color: var(--accent-primary);
 }
 
@@ -80,8 +80,8 @@
 }
 
 .topbar-notif button:hover {
-  background: rgba(17,129,155,0.08) !important;
-  border-color: rgba(17,129,155,0.12) !important;
+  background: rgba(17, 129, 155, 0.08) !important;
+  border-color: rgba(17, 129, 155, 0.12) !important;
 }
 
 /* Hide text label in topbar notification */
@@ -108,20 +108,24 @@
 }
 
 .topbar-profile-trigger:hover {
-  background: rgba(17,129,155,0.08);
-  border-color: rgba(17,129,155,0.12);
+  background: rgba(17, 129, 155, 0.08);
+  border-color: rgba(17, 129, 155, 0.12);
 }
 
 .topbar-profile-trigger--active {
-  background: rgba(17,129,155,0.12);
-  border-color: rgba(17,129,155,0.2);
+  background: rgba(17, 129, 155, 0.12);
+  border-color: rgba(17, 129, 155, 0.2);
 }
 
 .topbar-avatar {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary, #0e6b7a));
+  background: linear-gradient(
+    135deg,
+    var(--accent-primary),
+    var(--accent-secondary, #0e6b7a)
+  );
   display: flex;
   align-items: center;
   justify-content: center;
@@ -130,12 +134,12 @@
   color: #fff;
   letter-spacing: 0.02em;
   flex-shrink: 0;
-  border: 2px solid rgba(255,255,255,0.1);
+  border: 2px solid rgba(255, 255, 255, 0.1);
   transition: border-color 0.2s ease;
 }
 
 .topbar-profile-trigger:hover .topbar-avatar {
-  border-color: rgba(17,129,155,0.4);
+  border-color: rgba(17, 129, 155, 0.4);
 }
 
 .topbar-avatar--lg {
@@ -162,7 +166,9 @@
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  box-shadow: 0 12px 40px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.04);
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
   padding: 6px;
   z-index: 200;
   animation: topbarDropdownEnter 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -223,7 +229,7 @@
 }
 
 .topbar-profile-dropdown__item:hover {
-  background: rgba(17,129,155,0.08);
+  background: rgba(17, 129, 155, 0.08);
   color: var(--text-primary);
 }
 
@@ -232,7 +238,7 @@
 }
 
 .topbar-profile-dropdown__item--danger:hover {
-  background: rgba(239,68,68,0.08);
+  background: rgba(239, 68, 68, 0.08);
   color: #f87171;
 }
 
@@ -253,5 +259,18 @@
   .topbar-profile-dropdown {
     right: -8px;
     min-width: 220px;
+    max-width: calc(100vw - 32px);
+  }
+}
+
+/* Narrow screens safety */
+@media (max-width: 359px) {
+  .topbar {
+    padding: 0 12px;
+  }
+
+  .topbar-profile-dropdown {
+    right: -4px;
+    min-width: 200px;
   }
 }

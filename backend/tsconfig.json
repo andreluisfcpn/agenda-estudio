@@ -1,7 +1,8 @@
 {
     "compilerOptions": {
         "target": "ES2022",
-        "module": "commonjs",
+        "module": "nodenext",
+        "moduleResolution": "nodenext",
         "lib": [
             "ES2022"
         ],
@@ -14,13 +15,7 @@
         "resolveJsonModule": true,
         "declaration": true,
         "declarationMap": true,
-        "sourceMap": true,
-        "baseUrl": "./src",
-        "paths": {
-            "@/*": [
-                "./*"
-            ]
-        }
+        "sourceMap": true
     },
     "include": [
         "src/**/*"
@@ -29,4 +24,4 @@
         "node_modules",
         "dist"
     ]
-}
+}

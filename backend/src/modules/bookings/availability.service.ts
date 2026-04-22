@@ -2,8 +2,8 @@
 // Computes slot availability for both public and authenticated endpoints.
 // Extracted from bookings/routes.ts for reusability and testability.
 
-import { prisma } from '../../lib/prisma';
-import { BookingStatus } from '../../generated/prisma/client';
+import { prisma } from '../../lib/prisma.js';
+import { BookingStatus } from '../../generated/prisma/client.js';
 import {
     getSlotTier,
     getSlotTierBatch,
@@ -12,7 +12,7 @@ import {
     getPackageSlots,
     isOperatingDay,
     getSlotDuration,
-} from '../../utils/pricing';
+} from '../../utils/pricing.js';
 
 // ─── Types ──────────────────────────────────────────────
 

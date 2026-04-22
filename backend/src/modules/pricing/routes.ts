@@ -1,8 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { prisma } from '../../lib/prisma';
-import { authenticate, authorize } from '../../middleware/auth';
-import { getAllConfigs, invalidateConfigCache } from '../../lib/businessConfig';
+import { prisma } from '../../lib/prisma.js';
+import { authenticate, authorize } from '../../middleware/auth.js';
+import { getAllConfigs, invalidateConfigCache } from '../../lib/businessConfig.js';
 
 const router = Router();
 
@@ -186,7 +186,7 @@ router.put('/business-config', authenticate, authorize('ADMIN'), async (req: Req
 
 router.get('/payment-methods', async (_req: Request, res: Response) => {
     try {
-        const { getAvailablePaymentMethods } = await import('../../lib/paymentGateway');
+        const { getAvailablePaymentMethods } = await import('../../lib/paymentGateway.js');
         const methods = await getAvailablePaymentMethods();
 
         // If no configs exist yet, return hardcoded defaults

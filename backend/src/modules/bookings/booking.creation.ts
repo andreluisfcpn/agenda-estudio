@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { prisma } from '../../lib/prisma';
-import { authenticate, authorize } from '../../middleware/auth';
-import { acquireMultiSlotLock, releaseMultiSlotLock } from '../../lib/redis';
-import { stripeCreatePaymentIntent, stripeGetOrCreateCustomer, isStripeEnabled } from '../../lib/stripeService';
+import { prisma } from '../../lib/prisma.js';
+import { authenticate, authorize } from '../../middleware/auth.js';
+import { acquireMultiSlotLock, releaseMultiSlotLock } from '../../lib/redis.js';
+import { stripeCreatePaymentIntent, stripeGetOrCreateCustomer, isStripeEnabled } from '../../lib/stripeService.js';
 import {
     getSlotTier,
     getBasePriceDynamic,
@@ -14,11 +14,11 @@ import {
     calculateEndTime,
     fitsInOperatingHours,
     isOperatingDay,
-} from '../../utils/pricing';
-import { BookingStatus, Prisma } from '../../generated/prisma/client';
-import { getConfig } from '../../lib/businessConfig';
-import { getErrorMessage } from '../../utils/errors';
-import { createBookingSchema, bulkBookingSchema, adminCreateBookingSchema } from './validators';
+} from '../../utils/pricing.js';
+import { BookingStatus, Prisma } from '../../generated/prisma/client.js';
+import { getConfig } from '../../lib/businessConfig.js';
+import { getErrorMessage } from '../../utils/errors.js';
+import { createBookingSchema, bulkBookingSchema, adminCreateBookingSchema } from './validators.js';
 
 export function registerCreationRoutes(router: Router) {
 
@@ -380,60 +380,29 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                         });
                     }
 
-                    // For PIX: create Cora Invoice with QR code
+                    // For PIX: create Cora Invoice with QR code via centralized helper
                     if (data.paymentMethod === 'PIX') {
                         try {
-                            const { coraCreateBoleto, isCoraEnabled } = await import('../../lib/coraService');
-                            if (await isCoraEnabled()) {
-                                const user = await prisma.user.findUnique({ where: { id: userId } });
-                                const docStr = user?.cpfCnpj?.replace(/\D/g, '') || '';
-                                if (docStr.length !== 11 && docStr.length !== 14) {
-                                    console.warn('[BOOKING-PIX] User has no valid CPF/CNPJ, PIX may fail');
-                                }
-                                const docType: 'CPF' | 'CNPJ' = docStr.length === 14 ? 'CNPJ' : 'CPF';
-                                const pixDueDate = new Date();
-                                pixDueDate.setDate(pixDueDate.getDate() + 1);
+                            const { createCoraPayment } = await import('../../lib/coraPaymentHelper.js');
 
-                                let addressData: any = undefined;
-                                if (user?.address) {
-                                    try {
-                                        const addr = JSON.parse(user.address);
-                                        addressData = {
-                                            street: addr.street || 'N/A',
-                                            number: addr.number || 'S/N',
-                                            district: addr.district || 'Centro',
-                                            city: addr.city || user.city || 'Cidade',
-                                            state: addr.state || user.state || 'RJ',
-                                            zipCode: (addr.zipCode || addr.cep || '00000000').replace(/\D/g, ''),
-                                        };
-                                    } catch { /* use undefined */ }
-                                }
+                            const coraRes = await createCoraPayment({
+                                userId,
+                                amount: price,
+                                description: `Avulso ${data.date} ${data.startTime}`,
+                                withPixQrCode: true,
+                            });
 
-                                const coraResult = await coraCreateBoleto({
-                                    amount: price,
-                                    dueDate: pixDueDate.toISOString().split('T')[0],
-                                    description: `Avulso ${data.date} ${data.startTime}`,
-                                    withPixQrCode: true,
-                                    customer: {
-                                        name: user?.name || 'Cliente',
-                                        email: user?.email || 'cliente@estudio.com',
-                                        document: { type: docType, identity: docStr || '00000000000' },
-                                        ...(addressData ? { address: addressData } : {}),
-                                    },
-                                });
+                            pixString = coraRes.pixString;
+                            qrCodeBase64 = coraRes.qrCodeBase64;
 
-                                pixString = coraResult.pixString || null;
-                                qrCodeBase64 = coraResult.qrCodeBase64 || null;
-
-                                await prisma.payment.update({
-                                    where: { id: payment.id },
-                                    data: {
-                                        providerRef: coraResult.id,
-                                        provider: 'CORA',
-                                        pixString: coraResult.pixString,
-                                    },
-                                });
-                            }
+                            await prisma.payment.update({
+                                where: { id: payment.id },
+                                data: {
+                                    providerRef: coraRes.result.id,
+                                    provider: 'CORA',
+                                    pixString: coraRes.pixString,
+                                },
+                            });
                         } catch (pixErr: unknown) {
                             console.error('[BOOKING-PIX] Cora PIX creation failed:', getErrorMessage(pixErr));
                         }
@@ -692,6 +661,56 @@ router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res
             },
         });
 
+        // Create Payment record for admin bookings (visible in financial reports)
+        let createdPaymentId: string | null = null;
+        let boletoUrl: string | null = null;
+        let barcode: string | null = null;
+        try {
+            const paymentProvider = data.paymentMethod === 'BOLETO' ? 'CORA' : (data.paymentMethod === 'PIX' ? 'CORA' : 'STRIPE');
+            const paymentRecord = await prisma.payment.create({
+                data: {
+                    userId: data.userId,
+                    contractId: finalContractId,
+                    bookingId: booking.id,
+                    provider: paymentProvider as any,
+                    amount: price,
+                    status: data.status === 'CONFIRMED' ? 'PAID' : 'PENDING',
+                    dueDate: dateObj,
+                    installments: 1,
+                    ...(data.status === 'CONFIRMED' ? { paidAt: new Date() } : {}),
+                },
+            });
+            createdPaymentId = paymentRecord.id;
+
+            // Admin-only: generate BOLETO via Cora
+            if (data.paymentMethod === 'BOLETO' && data.status !== 'CONFIRMED') {
+                try {
+                    const { createCoraPayment } = await import('../../lib/coraPaymentHelper.js');
+                    const coraRes = await createCoraPayment({
+                        userId: data.userId,
+                        amount: price,
+                        description: `Boleto - ${data.startTime} ${data.date}`,
+                        withPixQrCode: false,
+                        dueDays: 3,
+                    });
+                    boletoUrl = coraRes.boletoUrl;
+                    barcode = coraRes.barcode;
+                    await prisma.payment.update({
+                        where: { id: paymentRecord.id },
+                        data: {
+                            providerRef: coraRes.result.id,
+                            provider: 'CORA',
+                            boletoUrl: coraRes.boletoUrl,
+                        },
+                    });
+                } catch (bErr: unknown) {
+                    console.error('[ADMIN-BOOKING] Boleto generation failed:', bErr);
+                }
+            }
+        } catch (payErr: unknown) {
+            console.error('[ADMIN-BOOKING] Payment creation failed:', payErr);
+        }
+
         res.status(201).json({
             booking: {
                 id: booking.id,
@@ -702,6 +721,9 @@ router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res
                 price: booking.price,
                 status: booking.status,
             },
+            paymentId: createdPaymentId,
+            boletoUrl,
+            barcode,
             message: 'Agendamento criado pelo administrador.',
         });
     } catch (err) {

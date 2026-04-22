@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { ContractWithStats, ContractBooking, PricingConfig } from '../../api/client';
-import { Pause } from 'lucide-react';
+import { Pause, ChevronDown } from 'lucide-react';
 import { DAY_NAMES } from '../../utils/format';
 import AwaitingPaymentBanner from './AwaitingPaymentBanner';
 
@@ -52,19 +51,17 @@ export default function ContractCard({
     const daysLeft = Math.ceil((new Date(c.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
     const isExpiring = c.status === 'ACTIVE' && !isAvulso && daysLeft >= 0 && daysLeft <= 15;
 
+    const accentType = c.type === 'FIXO' ? 'fixo' : isAvulso ? 'avulso' : c.type === 'CUSTOM' ? 'custom' : 'flex';
+
     return (
-        <div className="card" style={{ position: 'relative', overflow: 'hidden', padding: 0 }}>
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: c.type === 'FIXO' ? 'var(--tier-sabado)' : isAvulso ? 'var(--tier-comercial)' : 'var(--tier-audiencia)' }} />
+        <div className="card contract-card">
+            <div className={`contract-card__accent contract-card__accent--${accentType}`} />
 
             {/* Clickable header */}
-            <div style={{ padding: '20px 24px', cursor: 'pointer', transition: 'background 0.15s' }}
-                onClick={onToggle}
-                onMouseOver={e => e.currentTarget.style.background = 'var(--bg-card-hover)'}
-                onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+            <div className="contract-card__header" onClick={onToggle}>
+                <div className="contract-card__top-row">
                     <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                        <div className="contract-card__badges">
                             {isAvulso ? (
                                 <span className="badge badge-active">AVULSO</span>
                             ) : (
@@ -75,24 +72,24 @@ export default function ContractCard({
                             <span className={`badge badge-${c.tier.toLowerCase()}`}>{c.tier}</span>
                             {c.status === 'ACTIVE' ? (
                                 isArchived ? (
-                                    <span className="badge" style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border-default)' }}>FINALIZADO</span>
+                                    <span className="badge badge-muted">FINALIZADO</span>
                                 ) : (
                                     <>
                                         <span className="badge badge-active">ATIVO</span>
-                                        {isExpiring && <span className="badge" style={{ background: 'rgba(217,119,6,0.1)', color: '#f59e0b', border: '1px solid rgba(217,119,6,0.2)' }}>VENCE EM {daysLeft} DIAS</span>}
+                                        {isExpiring && <span className="badge badge-expiring">VENCE EM {daysLeft} DIAS</span>}
                                     </>
                                 )
                             ) : c.status === 'AWAITING_PAYMENT' ? (
-                                <span className="badge" style={{ background: 'rgba(217,119,6,0.1)', color: '#f59e0b', border: '1px solid rgba(217,119,6,0.2)', animation: 'pulse 2s infinite' }}>AGUARDANDO PAGAMENTO</span>
+                                <span className="badge badge-awaiting">AGUARDANDO PAGAMENTO</span>
                             ) : c.status === 'PENDING_CANCELLATION' ? (
-                                <span className="badge" style={{ background: '#FFF8E1', color: '#F57F17', border: '1px solid #FFE082' }}>AGUARDANDO CANCELAMENTO</span>
+                                <span className="badge badge-pending-cancel">AGUARDANDO CANCELAMENTO</span>
                             ) : c.status === 'PAUSED' ? (
                                 <span className="badge badge-paused">PAUSADO</span>
                             ) : (
                                 <span className="badge badge-cancelled">{c.status === 'EXPIRED' ? 'EXPIRADO' : 'CANCELADO'}</span>
                             )}
                         </div>
-                        <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+                        <div className="contract-card__meta">
                             {isAvulso ? (
                                 <>
                                     {new Date(c.startDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
@@ -100,7 +97,7 @@ export default function ContractCard({
                                     {c.bookings?.[0]?.addOns && c.bookings[0].addOns.length > 0 && (
                                         <>
                                             {' · '}
-                                            <span style={{ color: 'var(--accent-primary)', fontWeight: 600 }}>
+                                            <span className="contract-card__addons-text">
                                                 Inclusos: {c.bookings[0].addOns.map(ak => allAddons.find(a => a.key === ak)?.name || ak).join(', ')}
                                             </span>
                                         </>
@@ -109,28 +106,31 @@ export default function ContractCard({
                             ) : (
                                 <>
                                     {new Date(c.startDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })} — {new Date(c.endDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
-                                    {' · '}{c.durationMonths} meses · Desconto <strong style={{ color: 'var(--tier-comercial)' }}>{c.discountPct}%</strong>
+                                    {' · '}{c.durationMonths} meses · Desconto <strong className="contract-card__discount">{c.discountPct}%</strong>
                                 </>
                             )}
                         </div>
                         {c.type === 'FIXO' && (
-                            <div style={{ marginTop: '6px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            <div className="contract-card__detail">
                                 Dia fixo: <strong>{c.fixedDayOfWeek !== null && c.fixedDayOfWeek !== undefined ? DAY_NAMES[c.fixedDayOfWeek] : '—'}</strong>
                                 {c.fixedTime && <> · Horário: <strong>{c.fixedTime}</strong></>}
                             </div>
                         )}
                         {c.type === 'FLEX' && !isAvulso && (
-                            <div style={{ marginTop: '6px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            <div className="contract-card__detail">
                                 Créditos: <strong>{c.flexCreditsRemaining ?? 0}</strong> restantes de <strong>{c.flexCreditsTotal ?? 0}</strong>
                             </div>
                         )}
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div className="contract-card__end">
                         {c.contractUrl && (
                             <a href={c.contractUrl} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm"
                                 onClick={e => e.stopPropagation()}>Ver Contrato</a>
                         )}
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▼</span>
+                        <ChevronDown
+                            size={16}
+                            className={`contract-card__chevron ${expanded ? 'contract-card__chevron--open' : ''}`}
+                        />
                     </div>
                 </div>
 
@@ -145,16 +145,16 @@ export default function ContractCard({
 
                 {/* Paused Banner */}
                 {c.status === 'PAUSED' && (
-                    <div style={{ background: 'rgba(217, 119, 6, 0.1)', border: '1px solid rgba(217, 119, 6, 0.2)', borderLeft: '3px solid #d97706', padding: '12px 16px', margin: '0 24px 16px 24px', borderRadius: 'var(--radius-sm)' }}>
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                            <Pause size={20} style={{ color: '#f59e0b' }} />
-                            <div>
-                                <h4 style={{ fontSize: '0.875rem', fontWeight: 700, color: '#d97706', marginBottom: '4px' }}>Contrato Pausado</h4>
-                                <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+                    <div className="hold-banner" style={{ margin: '12px 0 0' }}>
+                        <div className="hold-banner__content">
+                            <Pause size={20} className="hold-banner__icon" />
+                            <div style={{ flex: 1 }}>
+                                <div className="hold-banner__title">Contrato Pausado</div>
+                                <p className="hold-banner__desc">
                                     <strong>Motivo:</strong> {c.pauseReason || 'Não informado'}<br/>
                                     <strong>Retorno Previsto:</strong> {c.resumeDate ? new Date(c.resumeDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'Indefinido'}
                                 </p>
-                                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '8px', fontStyle: 'italic' }}>
+                                <p className="contract-card__pause-note">
                                     Durante a pausa, novos agendamentos estão bloqueados. Retornaremos sua vigência acrescida dos dias parados.
                                 </p>
                             </div>
@@ -164,33 +164,39 @@ export default function ContractCard({
 
                 {/* Consumption bar or Cancelled Stats */}
                 {isCancelled ? (
-                    <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '12px', marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}><div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--tier-sabado)' }} /> Gravações Realizadas</span>
-                            <span style={{ fontSize: '0.875rem', fontWeight: 700 }}>{completedBookings.length}</span>
+                    <div className="contract-card__cancelled-stats">
+                        <div className="contract-card__cancelled-row">
+                            <span className="contract-card__cancelled-label">
+                                <span className="contract-card__dot contract-card__dot--done" /> Gravações Realizadas
+                            </span>
+                            <span className="contract-card__cancelled-value">{completedBookings.length}</span>
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}><div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-muted)' }} /> Gravações Canceladas</span>
-                            <span style={{ fontSize: '0.875rem', fontWeight: 700 }}>{totalBookings - completedBookings.length}</span>
+                        <div className="contract-card__cancelled-row">
+                            <span className="contract-card__cancelled-label">
+                                <span className="contract-card__dot contract-card__dot--cancelled" /> Gravações Canceladas
+                            </span>
+                            <span className="contract-card__cancelled-value">{totalBookings - completedBookings.length}</span>
                         </div>
-                        <div style={{ marginTop: '4px', paddingTop: '8px', borderTop: '1px dashed var(--border-subtle)', fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'right' }}>
+                        <div className="contract-card__cancelled-footer">
                             Encerrado em: <strong>{new Date(c.endDate).toLocaleDateString('pt-BR')}</strong>
                         </div>
                     </div>
                 ) : !isArchived ? (
-                    <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Gravações</span>
-                            <span style={{ fontSize: '0.75rem', fontWeight: 700 }}>{usedBookingsCount} / {totalBookings} episódios</span>
+                    <div className="contract-progress" style={{ padding: 0, marginTop: 12 }}>
+                        <div className="contract-progress__header">
+                            <span className="contract-progress__label-text">Gravações</span>
+                            <span className="contract-progress__label-count">{usedBookingsCount} / {totalBookings} episódios</span>
                         </div>
-                        <div style={{ height: 8, borderRadius: 4, background: 'var(--bg-elevated)', overflow: 'hidden' }}>
-                            <div style={{
-                                height: '100%', borderRadius: 4,
-                                background: usedPct >= 100 ? 'var(--status-blocked)' : 'var(--status-available)',
-                                width: `${Math.min(usedPct, 100)}%`, transition: 'width 0.5s ease',
-                            }} />
+                        <div className="contract-progress__bar-bg">
+                            <div
+                                className="contract-progress__bar-fill"
+                                style={{
+                                    background: usedPct >= 100 ? 'var(--status-blocked)' : 'var(--status-available)',
+                                    width: `${Math.min(usedPct, 100)}%`,
+                                }}
+                            />
                         </div>
-                        <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                        <div className="contract-progress__summary">
                             {totalBookings - usedBookingsCount} restantes · {usedPct}% utilizado
                         </div>
                         
@@ -199,17 +205,19 @@ export default function ContractCard({
                             const addonName = allAddons.find(a => a.key === addonKey)?.name || addonKey;
                             const usedAddonPct = usage.limit > 0 ? Math.round((usage.used / usage.limit) * 100) : 0;
                             return (
-                                <div key={addonKey} style={{ marginTop: '14px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>{addonName}</span>
-                                        <span style={{ fontSize: '0.75rem', fontWeight: 700 }}>{usage.used} / {usage.limit} entregues (Ciclo Atual)</span>
+                                <div key={addonKey} className="contract-progress__addon">
+                                    <div className="contract-progress__header">
+                                        <span className="contract-progress__label-text">{addonName}</span>
+                                        <span className="contract-progress__label-count">{usage.used} / {usage.limit} entregues (Ciclo Atual)</span>
                                     </div>
-                                    <div style={{ height: 6, borderRadius: 3, background: 'var(--bg-elevated)', overflow: 'hidden' }}>
-                                        <div style={{
-                                            height: '100%', borderRadius: 3,
-                                            background: usedAddonPct >= 100 ? 'var(--tier-audiencia)' : 'var(--accent-primary)',
-                                            width: `${Math.min(usedAddonPct, 100)}%`, transition: 'width 0.5s ease',
-                                        }} />
+                                    <div className="contract-progress__bar-bg contract-progress__bar-bg--sm">
+                                        <div
+                                            className="contract-progress__bar-fill"
+                                            style={{
+                                                background: usedAddonPct >= 100 ? 'var(--tier-audiencia)' : 'var(--accent-primary)',
+                                                width: `${Math.min(usedAddonPct, 100)}%`,
+                                            }}
+                                        />
                                     </div>
                                 </div>
                             );
@@ -221,68 +229,68 @@ export default function ContractCard({
                             const usedAddonCount = bookings.filter(b => b.status !== 'NAO_REALIZADO' && b.status !== 'CANCELLED' && b.addOns?.includes(addonKey)).length;
                             const usedAddonPct = totalBookings > 0 ? Math.round((usedAddonCount / totalBookings) * 100) : 0;
                             return (
-                                <div key={addonKey} style={{ marginTop: '14px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>{addonName}</span>
-                                        <span style={{ fontSize: '0.75rem', fontWeight: 700 }}>{usedAddonCount} / {totalBookings} entregues</span>
+                                <div key={addonKey} className="contract-progress__addon">
+                                    <div className="contract-progress__header">
+                                        <span className="contract-progress__label-text">{addonName}</span>
+                                        <span className="contract-progress__label-count">{usedAddonCount} / {totalBookings} entregues</span>
                                     </div>
-                                    <div style={{ height: 6, borderRadius: 3, background: 'var(--bg-elevated)', overflow: 'hidden' }}>
-                                        <div style={{
-                                            height: '100%', borderRadius: 3,
-                                            background: usedAddonPct >= 100 ? 'var(--status-blocked)' : 'var(--accent-primary)',
-                                            width: `${Math.min(usedAddonPct, 100)}%`, transition: 'width 0.5s ease',
-                                        }} />
+                                    <div className="contract-progress__bar-bg contract-progress__bar-bg--sm">
+                                        <div
+                                            className="contract-progress__bar-fill"
+                                            style={{
+                                                background: usedAddonPct >= 100 ? 'var(--status-blocked)' : 'var(--accent-primary)',
+                                                width: `${Math.min(usedAddonPct, 100)}%`,
+                                            }}
+                                        />
                                     </div>
                                 </div>
                             );
                         })}
                     </div>
                 ) : (
-                    <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', marginTop: '4px' }}>
-                        <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 500 }}>
-                            Todas as gravações realizadas
-                        </span>
+                    <div className="contract-card__archived-note">
+                        Todas as gravações realizadas
                     </div>
                 )}
             </div>
 
             {/* Expanded */}
             {expanded && (
-                <div style={{ borderTop: '1px solid var(--border-subtle)', padding: '20px 24px', background: 'var(--bg-secondary)' }}>
+                <div className="contract-bookings">
                     {planConfig?.description && (
-                        <div style={{ padding: '12px 16px', borderRadius: 'var(--radius-md)', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', fontSize: '0.8125rem', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', marginBottom: '16px' }}>
-                            <div style={{ fontWeight: 700, fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Regras do Plano</div>
+                        <div className="contract-bookings__rules">
+                            <div className="contract-bookings__rules-label">Regras do Plano</div>
                             {planConfig.description}
                         </div>
                     )}
 
                     {/* Pending */}
                     {!isCancelled && (
-                        <div style={{ marginBottom: '16px' }}>
-                            <h4 style={{ fontSize: '0.8125rem', fontWeight: 700, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                Agendamentos Realizados <span className="badge badge-reserved" style={{ fontSize: '0.65rem' }}>{pendingBookings.length}</span>
+                        <div className="contract-booking-group">
+                            <h4 className="contract-booking-group__title">
+                                Agendamentos Realizados <span className="badge badge-reserved">{pendingBookings.length}</span>
                             </h4>
                             {pendingBookings.length === 0 ? (
-                                <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', padding: '8px 0' }}>Nenhum agendamento pendente.</div>
+                                <div className="contract-bookings__empty">Nenhum agendamento pendente.</div>
                             ) : (
-                                <div className="stagger-enter" style={{ display: 'grid', gap: '6px' }}>
+                                <div className="stagger-enter">
                                     {pendingBookings.map(b => (
                                         <div key={b.id}
                                             onClick={() => onBookingClick(b)}
-                                            className="booking-row"
+                                            className="contract-booking-item"
                                             role="button"
                                             tabIndex={0}
                                             aria-label={`Agendamento ${new Date(b.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })} ${b.startTime}`}
                                         >
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                <span style={{ fontWeight: 700 }}>
+                                            <div>
+                                                <div className="contract-booking-item__date">
                                                     {new Date(b.date).toLocaleDateString('pt-BR', { timeZone: 'UTC', weekday: 'short', day: '2-digit', month: '2-digit' })}
-                                                </span>
-                                                <span style={{ color: 'var(--text-secondary)' }}>{b.startTime} — {b.endTime}</span>
+                                                </div>
+                                                <div className="contract-booking-item__time">{b.startTime} — {b.endTime}</div>
                                             </div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                {canModify(b) && c.status !== 'PAUSED' && <span style={{ fontSize: '0.65rem', color: 'var(--tier-audiencia)' }}>Gerenciar</span>}
-                                                <span style={{ fontSize: '0.75rem' }}>{statusLabel(b.status)}</span>
+                                            <div className="contract-booking-item__actions">
+                                                {canModify(b) && c.status !== 'PAUSED' && <span className="contract-booking-item__manage">Gerenciar</span>}
+                                                <span className="contract-booking-item__status">{statusLabel(b.status)}</span>
                                             </div>
                                         </div>
                                     ))}
@@ -292,30 +300,29 @@ export default function ContractCard({
                     )}
 
                     {/* Completed */}
-                    <div>
-                        <h4 style={{ fontSize: '0.8125rem', fontWeight: 700, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            Gravações Realizadas <span className="badge badge-confirmed" style={{ fontSize: '0.65rem' }}>{completedBookings.length}</span>
+                    <div className="contract-booking-group">
+                        <h4 className="contract-booking-group__title">
+                            Gravações Realizadas <span className="badge badge-confirmed">{completedBookings.length}</span>
                         </h4>
                         {completedBookings.length === 0 ? (
-                            <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', padding: '8px 0' }}>Nenhuma gravação realizada ainda.</div>
+                            <div className="contract-bookings__empty">Nenhuma gravação realizada ainda.</div>
                         ) : (
-                            <div style={{ display: 'grid', gap: '6px' }}>
+                            <div>
                                 {completedBookings.map(b => (
                                     <div key={b.id}
                                         onClick={() => onBookingClick(b)}
-                                        className="booking-row"
+                                        className="contract-booking-item contract-booking-item--completed"
                                         role="button"
                                         tabIndex={0}
-                                        style={{ opacity: 0.85 }}
                                         aria-label={`Gravação ${new Date(b.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })} ${b.startTime}`}
                                     >
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                            <span style={{ fontWeight: 700 }}>
+                                        <div>
+                                            <div className="contract-booking-item__date">
                                                 {new Date(b.date).toLocaleDateString('pt-BR', { timeZone: 'UTC', weekday: 'short', day: '2-digit', month: '2-digit' })}
-                                            </span>
-                                            <span style={{ color: 'var(--text-secondary)' }}>{b.startTime} — {b.endTime}</span>
+                                            </div>
+                                            <div className="contract-booking-item__time">{b.startTime} — {b.endTime}</div>
                                         </div>
-                                        <span style={{ fontSize: '0.75rem' }}>{statusLabel(b.status)}</span>
+                                        <span className="contract-booking-item__status">{statusLabel(b.status)}</span>
                                     </div>
                                 ))}
                             </div>
@@ -323,27 +330,27 @@ export default function ContractCard({
                     </div>
 
                     {c.status === 'ACTIVE' && (
-                        <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap' }}>
+                        <div className="contract-actions">
                             {isExpiring && onRenewContract && (
-                                <button className="btn btn-primary" style={{ fontSize: '0.75rem', padding: '6px 12px', minHeight: '44px', background: 'var(--tier-comercial)', borderColor: 'var(--tier-comercial)', boxShadow: '0 4px 12px rgba(109, 40, 217, 0.3)' }}
+                                <button className="btn btn-primary btn-sm contract-actions__renew"
                                     onClick={(e) => { e.stopPropagation(); onRenewContract(); }}>
                                     Renovar Contrato
                                 </button>
                             )}
                             {!isAvulso && c.status === 'ACTIVE' && onSubscribeContract && (
-                                <button className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '6px 12px', minHeight: '44px' }}
+                                <button className="btn btn-secondary btn-sm"
                                     onClick={(e) => { e.stopPropagation(); onSubscribeContract(); }}>
                                     Ativar Recorrência (Stripe)
                                 </button>
                             )}
                             {c.type === 'FLEX' && (c.flexCreditsRemaining || 0) > 0 && onBulkBooking && (
-                                <button className="btn btn-primary" style={{ fontSize: '0.75rem', padding: '6px 12px', minHeight: '44px' }}
+                                <button className="btn btn-primary btn-sm"
                                     onClick={(e) => { e.stopPropagation(); onBulkBooking(); }}>
                                     Agendar Gravações Pendentes
                                 </button>
                             )}
                             {onRequestCancel && (
-                                <button className="btn" style={{ background: '#FFF0F0', color: '#D32F2F', border: '1px solid #FFCDD2', fontSize: '0.75rem', padding: '6px 12px', minHeight: '44px' }}
+                                <button className="btn btn-sm contract-actions__cancel"
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         onRequestCancel(c.id, c.type === 'FIXO' ? '20% do valor correspondente aos meses/agendamentos que faltavam realizar.' : '20% do valor correspondente aos créditos não utilizados.');

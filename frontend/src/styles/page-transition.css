@@ -1,0 +1,283 @@
+/* ═══════════════════════════════════════════════════════════════
+   Page Transition Loader — Animated loading overlay
+   Positioned between Topbar (56px) and BottomTabBar (64px)
+   Centered on the VISIBLE viewport, GPU-accelerated
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Container — Fixed to visible content area ───────────── */
+.ptl {
+  position: fixed;
+  top: 56px;                                    /* below Topbar */
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 500;                                 /* above content, below modals */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-primary);
+  animation: ptlFadeIn 0.2s ease-out forwards;
+  will-change: opacity;
+}
+
+/* Mobile: account for bottom tab bar */
+@media (max-width: 768px) {
+  .ptl {
+    bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* Desktop: account for sidebar */
+@media (min-width: 769px) {
+  .ptl {
+    left: 220px;
+  }
+
+  .app-layout--sidebar-collapsed .ptl {
+    left: 52px;
+  }
+}
+
+/* ── Exit animation ──────────────────────────────────────── */
+.ptl--exiting {
+  animation: ptlFadeOut 0.3s ease-in forwards;
+  pointer-events: none;
+}
+
+@keyframes ptlFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes ptlFadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+/* ── Ambient Glow ────────────────────────────────────────── */
+.ptl__glow {
+  position: absolute;
+  width: 280px;
+  height: 280px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(17, 129, 155, 0.15) 0%,
+    rgba(17, 129, 155, 0.05) 40%,
+    transparent 70%
+  );
+  animation: ptlGlowPulse 2s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+@keyframes ptlGlowPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+}
+
+/* ── Center Group ────────────────────────────────────────── */
+.ptl__center {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Orbiting Ring ───────────────────────────────────────── */
+.ptl__orbit {
+  position: absolute;
+  inset: 0;
+  animation: ptlOrbitSpin 2.4s linear infinite;
+  will-change: transform;
+}
+
+.ptl__orbit-dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  box-shadow: 0 0 12px rgba(17, 129, 155, 0.6);
+}
+
+.ptl__orbit-dot--1 {
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  animation: ptlDotPulse 1.2s ease-in-out infinite;
+}
+
+.ptl__orbit-dot--2 {
+  bottom: 12px;
+  left: 6px;
+  width: 6px;
+  height: 6px;
+  opacity: 0.7;
+  animation: ptlDotPulseSimple 1.2s ease-in-out 0.4s infinite;
+}
+
+.ptl__orbit-dot--3 {
+  bottom: 12px;
+  right: 6px;
+  width: 5px;
+  height: 5px;
+  opacity: 0.5;
+  animation: ptlDotPulseSimple 1.2s ease-in-out 0.8s infinite;
+}
+
+@keyframes ptlOrbitSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes ptlDotPulse {
+  0%, 100% {
+    transform: translateX(-50%) scale(1);
+    box-shadow: 0 0 8px rgba(17, 129, 155, 0.4);
+  }
+  50% {
+    transform: translateX(-50%) scale(1.4);
+    box-shadow: 0 0 16px rgba(17, 129, 155, 0.8);
+  }
+}
+
+@keyframes ptlDotPulseSimple {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 8px rgba(17, 129, 155, 0.4);
+  }
+  50% {
+    transform: scale(1.4);
+    box-shadow: 0 0 16px rgba(17, 129, 155, 0.8);
+  }
+}
+
+/* ── Pulsing Core ────────────────────────────────────────── */
+.ptl__core {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ptl__core-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(17, 129, 155, 0.3);
+  animation: ptlCorePulse 1.8s ease-out infinite;
+  will-change: transform, opacity;
+}
+
+.ptl__core-ring--delayed {
+  animation-delay: 0.6s;
+}
+
+@keyframes ptlCorePulse {
+  0% {
+    transform: scale(0.8);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+/* ── Logo SVG ────────────────────────────────────────────── */
+.ptl__logo {
+  width: 22px;
+  height: 22px;
+  color: var(--accent-primary);
+  animation: ptlLogoBreath 2s ease-in-out infinite;
+  will-change: transform, opacity;
+  z-index: 1;
+}
+
+.ptl__logo-path {
+  stroke-dasharray: 120;
+  stroke-dashoffset: 120;
+  animation: ptlLogoDraw 1.5s ease-out forwards,
+             ptlLogoGlow 2s ease-in-out 1.5s infinite;
+}
+
+@keyframes ptlLogoBreath {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+}
+
+@keyframes ptlLogoDraw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes ptlLogoGlow {
+  0%, 100% {
+    filter: drop-shadow(0 0 4px rgba(17, 129, 155, 0.3));
+  }
+  50% {
+    filter: drop-shadow(0 0 10px rgba(17, 129, 155, 0.6));
+  }
+}
+
+/* ── Progress Shimmer Bar ────────────────────────────────── */
+.ptl__progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(17, 129, 155, 0.1);
+  overflow: hidden;
+}
+
+.ptl__progress-bar {
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--accent-primary) 30%,
+    rgba(45, 212, 191, 0.8) 50%,
+    var(--accent-primary) 70%,
+    transparent 100%
+  );
+  width: 40%;
+  animation: ptlProgressSlide 1.2s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes ptlProgressSlide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Reduced Motion — Simplified fallback
+   ═══════════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  .ptl__orbit { animation: none; }
+  .ptl__orbit-dot { animation: none; }
+  .ptl__core-ring { animation: none; opacity: 0.3; transform: scale(1); }
+  .ptl__logo { animation: none; opacity: 1; }
+  .ptl__logo-path { animation: none; stroke-dashoffset: 0; filter: none; }
+  .ptl__glow { animation: none; opacity: 0.5; }
+  .ptl__progress-bar { animation: ptlProgressSlide 2s linear infinite; }
+}

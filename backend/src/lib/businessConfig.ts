@@ -1,4 +1,4 @@
-import { prisma } from './prisma';
+import { prisma } from './prisma.js';
 
 // Default values used if DB has no row for a key
 const DEFAULTS: Record<string, string> = {

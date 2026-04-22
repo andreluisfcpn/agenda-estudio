@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import { registerCreationRoutes } from './contract.creation';
-import { registerCheckRoutes } from './contract.checks';
-import { registerLifecycleRoutes } from './contract.lifecycle';
-import { registerPaymentRoutes } from './contract.payments';
-import { registerServiceRoutes } from './contract.services';
+import { registerCreationRoutes } from './contract.creation.js';
+import { registerCheckRoutes } from './contract.checks.js';
+import { registerLifecycleRoutes } from './contract.lifecycle.js';
+import { registerPaymentRoutes } from './contract.payments.js';
+import { registerServiceRoutes } from './contract.services.js';
 
 const router = Router();
 

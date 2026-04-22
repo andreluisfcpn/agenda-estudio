@@ -3,9 +3,9 @@
 // correct provider (Cora for PIX/Boleto, Stripe for Cartão)
 // Falls back to mock data when integrations are not configured.
 
-import { coraCreateBoleto, isCoraEnabled, type CoraBoletoPayload } from './coraService';
-import { stripeCreatePaymentIntent, stripeGetOrCreateCustomer, isStripeEnabled } from './stripeService';
-import { prisma } from './prisma';
+import { coraCreateBoleto, isCoraEnabled, type CoraBoletoPayload } from './coraService.js';
+import { stripeCreatePaymentIntent, stripeGetOrCreateCustomer, isStripeEnabled } from './stripeService.js';
+import { prisma } from './prisma.js';
 
 // ─── Global Provider Routing ────────────────────────────
 // Fixed mapping: which provider handles which payment method.
@@ -275,7 +275,9 @@ export async function updatePaymentWithGatewayResult(paymentId: string, result: 
     await prisma.payment.update({
         where: { id: paymentId },
         data: {
-            provider: result.provider === 'MOCK' ? 'CORA' : result.provider,
+            provider: result.provider === 'MOCK'
+                ? (result.pixString ? 'CORA' : result.paymentUrl ? 'STRIPE' : 'CORA')
+                : result.provider,
             providerRef: result.providerRef,
             pixString: result.pixString,
             boletoUrl: result.boletoUrl,

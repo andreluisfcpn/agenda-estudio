@@ -5,16 +5,17 @@ import ContractWizard from '../components/ContractWizard';
 import CustomContractWizard from '../components/CustomContractWizard';
 import BulkBookingModal from '../components/BulkBookingModal';
 import BookingDetailModal from '../components/BookingDetailModal';
-import ModalOverlay from '../components/ModalOverlay';
+import CancelContractModal from '../components/CancelContractModal';
+import SocialServiceModal from '../components/SocialServiceModal';
+import SubscribeModal from '../components/SubscribeModal';
+import RenewContractModal from '../components/RenewContractModal';
 import { useLocation } from 'react-router-dom';
-import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import { useUI } from '../context/UIContext';
-import StatusBadge from '../components/ui/StatusBadge';
-import { FileText, Sparkles, Palette, Rocket, CheckCircle, XCircle, AlertTriangle, CreditCard, RefreshCw, CalendarDays, Clock, BarChart3, Pencil, Loader2 } from 'lucide-react';
-import { getClientPaymentMethods, type PaymentMethodKey } from '../constants/paymentMethods';
+import { FileText, Sparkles, Rocket, Plus, Pencil } from 'lucide-react';
 import ContractCard from '../components/client/ContractCard';
-import { formatBRL, DAY_NAMES } from '../utils/format';
+import { formatBRL } from '../utils/format';
 import { ContractsSkeleton } from '../components/ui/SkeletonLoader';
+import '../styles/my-contracts.css';
 
 const PLATFORMS = [
     { key: 'YOUTUBE', label: 'YouTube', color: '#FF0000' },
@@ -39,9 +40,6 @@ export default function MyContractsPage() {
     const [allAddons, setAllAddons] = useState<Addon[]>([]);
     const [socialAddon, setSocialAddon] = useState<Addon | null>(null);
     const [showSocialModal, setShowSocialModal] = useState(false);
-    const [socialPayment, setSocialPayment] = useState<PaymentMethodKey | null>(null);
-    const [socialDuration, setSocialDuration] = useState<3 | 6>(3);
-    const [subscribingSocial, setSubscribingSocial] = useState(false);
 
     // Booking detail modal state
     const [detailBooking, setDetailBooking] = useState<ContractBooking | null>(null);
@@ -68,21 +66,15 @@ export default function MyContractsPage() {
 
     // Cancel Modal
     const [showCancelModalFor, setShowCancelModalFor] = useState<{ id: string, feeNote: string } | null>(null);
-    const [cancellingContract, setCancellingContract] = useState(false);
 
     // Renew Modal
     const [showRenewModalFor, setShowRenewModalFor] = useState<ContractWithStats | null>(null);
-    const [renewDuration, setRenewDuration] = useState<3 | 6 | 12>(3);
-    const [renewMethod, setRenewMethod] = useState<'PIX' | 'CARTAO'>('PIX');
-    const [renewLoading, setRenewLoading] = useState(false);
 
     // Subscribe (Recurring) Modal
     const [showSubscribeModalFor, setShowSubscribeModalFor] = useState<ContractWithStats | null>(null);
     const [savedCards, setSavedCards] = useState<SavedCard[]>([]);
-    const [selectedCardId, setSelectedCardId] = useState<string>('');
-    const [subscribeLoading, setSubscribeLoading] = useState(false);
 
-    const { get: getRule } = useBusinessConfig();
+
 
     useEffect(() => { loadData(); }, []);
 
@@ -99,42 +91,32 @@ export default function MyContractsPage() {
             setPricing(pricingRes.pricing);
             setAllAddons(addonsRes.addons);
             setSavedCards(cardsRes.paymentMethods);
-            if (cardsRes.paymentMethods.length > 0) {
-                const defaultCard = cardsRes.paymentMethods.find((c: any) => c.isDefault) || cardsRes.paymentMethods[0];
-                setSelectedCardId(defaultCard.id);
-            }
             setSocialAddon(addonsRes.addons.find((a: any) => a.key === 'GESTAO_SOCIAL') || null);
         } catch (err) { console.error('Failed to load contracts:', err); }
         finally { setLoading(false); }
     };
 
-    const handleRenew = async () => {
+    const handleRenew = async (durationMonths: 3 | 6 | 12, paymentMethod: 'PIX' | 'CARTAO') => {
         if (!showRenewModalFor) return;
-        setRenewLoading(true);
         try {
-            await contractsApi.clientRenew(showRenewModalFor.id, { durationMonths: renewDuration, paymentMethod: renewMethod });
+            await contractsApi.clientRenew(showRenewModalFor.id, { durationMonths, paymentMethod });
             showToast({ message: 'Renovação iniciada! Conclua o pagamento.', type: 'success' });
             setShowRenewModalFor(null);
             loadData();
         } catch (err: unknown) {
             showToast({ message: getErrorMessage(err) || 'Erro ao renovar contrato.', type: 'error' });
-        } finally {
-            setRenewLoading(false);
         }
     };
 
-    const handleSubscribe = async () => {
-        if (!showSubscribeModalFor || !selectedCardId) return;
-        setSubscribeLoading(true);
+    const handleSubscribe = async (paymentMethodId: string) => {
+        if (!showSubscribeModalFor) return;
         try {
-            await contractsApi.subscribe(showSubscribeModalFor.id, { paymentMethodId: selectedCardId });
+            await contractsApi.subscribe(showSubscribeModalFor.id, { paymentMethodId });
             showToast({ message: 'Cobrança automática ativada com sucesso.', type: 'success' });
             setShowSubscribeModalFor(null);
             loadData();
         } catch (err: unknown) {
             showToast({ message: getErrorMessage(err) || 'Erro ao ativar cobrança automática.', type: 'error' });
-        } finally {
-            setSubscribeLoading(false);
         }
     };
 
@@ -253,7 +235,6 @@ export default function MyContractsPage() {
 
     const confirmCancelContract = async () => {
         if (!showCancelModalFor) return;
-        setCancellingContract(true);
         try {
             await contractsApi.requestCancellation(showCancelModalFor.id);
             showToast('Cancelamento solicitado com sucesso. Os agendamentos futuros foram liberados.');
@@ -261,8 +242,6 @@ export default function MyContractsPage() {
             setShowCancelModalFor(null);
         } catch (err: unknown) {
             showAlert({ message: 'Erro ao solicitar cancelamento: ' + getErrorMessage(err), type: 'error' });
-        } finally {
-            setCancellingContract(false);
         }
     };
 
@@ -291,11 +270,10 @@ export default function MyContractsPage() {
         finally { setRescheduling(false); }
     };
 
-    const handleSubscribeSocial = async () => {
-        if (!socialAddon || !socialPayment) return;
-        setSubscribingSocial(true);
+    const handleSubscribeSocial = async (paymentMethod: string, durationMonths: 3 | 6) => {
+        if (!socialAddon) return;
         try {
-            const res = await contractsApi.createService({ serviceKey: socialAddon.key, paymentMethod: socialPayment as any, durationMonths: socialDuration });
+            const res = await contractsApi.createService({ serviceKey: socialAddon.key, paymentMethod: paymentMethod as any, durationMonths });
             showToast('Serviço contratado com sucesso!');
             setShowSocialModal(false);
             if (res.clientSecret) {
@@ -304,8 +282,6 @@ export default function MyContractsPage() {
             setTimeout(() => loadData(), 1000);
         } catch (err: unknown) {
             showAlert({ message: getErrorMessage(err) || 'Erro ao contratar serviço.', type: 'error' });
-        } finally {
-            setSubscribingSocial(false);
         }
     };
 
@@ -327,98 +303,110 @@ export default function MyContractsPage() {
 
     return (
         <div>
-            <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
-                <div>
-                    <h1 className="page-title">Meus Contratos & Serviços</h1>
-                    <p className="page-subtitle">Acompanhe seus contratos, consumo e regras dos planos</p>
+            {/* ─── Hero Banner ─── */}
+            <div className="client-hero client-hero--default animate-card-enter">
+                <div className="client-hero__header" style={{ marginBottom: '16px' }}>
+                    <div className="client-hero__icon-wrapper" style={{
+                        background: 'linear-gradient(135deg, rgba(17,129,155,0.22), rgba(17,129,155,0.06))',
+                        borderColor: 'rgba(17,129,155,0.25)',
+                        boxShadow: '0 0 20px rgba(17,129,155,0.15)',
+                        color: 'var(--accent-primary)',
+                    }}>
+                        <Pencil size={22} />
+                    </div>
+                    <div>
+                        <h2 className="client-hero__greeting" style={{ margin: 0 }}>Meus Contratos</h2>
+                        <p className="client-hero__message" style={{ margin: '4px 0 0 0' }}>
+                            {activeContracts.length > 0
+                                ? `${activeContracts.length} ativo(s) · Acompanhe consumo e regras`
+                                : 'Acompanhe seus planos, consumo e regras'}
+                        </p>
+                    </div>
                 </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div className="client-cta-stack">
                     <button className="btn btn-primary" onClick={() => setShowWizard(true)}>
-                        Novo Contrato
+                        <Plus size={16} /> Novo Contrato
                     </button>
-                    <button className="btn" onClick={() => setShowCustomWizard(true)}
-                        style={{ background: 'linear-gradient(135deg, var(--accent-primary), #22c55e)', color: '#fff', border: 'none', fontWeight: 700, padding: '10px 16px' }}>
-                        Monte Seu Plano
+                    <button className="btn btn-secondary" onClick={() => setShowCustomWizard(true)}>
+                        <Sparkles size={16} /> Monte Seu Plano
                     </button>
                 </div>
             </div>
 
-
-
-            {/* Gestao de Rede Social Banner */}
+            {/* ─── Social Service Upsell Banner ─── */}
             {socialAddon && !contracts.some(c => c.type === 'SERVICO' && c.status === 'ACTIVE' && c.addOns?.includes('GESTAO_SOCIAL')) && (
-                <div style={{
-                    background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(34, 197, 94, 0.1) 100%)',
-                    border: '1px solid var(--accent-primary)', borderRadius: 'var(--radius-lg)',
-                    padding: '24px', marginBottom: '32px', display: 'flex', flexWrap: 'wrap', gap: '24px', alignItems: 'center', justifyContent: 'space-between',
-                }}>
-                    <div style={{ flex: '1 1 300px' }}>
-                        <div style={{ display: 'inline-block', padding: '4px 8px', background: 'var(--accent-primary)', color: '#fff', fontSize: '0.6875rem', fontWeight: 800, borderRadius: '4px', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>
-                            Novo Serviço Especializado
-                        </div>
-                        <h3 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '8px', color: 'var(--text-primary)' }}>
-                            {socialAddon.name}
-                        </h3>
-                        <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: 500 }}>
-                            {socialAddon.description || 'Deixe a publicação, análise de métricas e SEO dos seus cortes com nosso time de especialistas. Assinatura mensal avulsa independente de planos do estúdio.'}
+                <div className="contracts-upsell animate-card-enter" style={{ '--i': 1 } as React.CSSProperties}>
+                    <div style={{ flex: '1 1 0', minWidth: 0 }}>
+                        <span className="contracts-upsell__badge">Novo Serviço</span>
+                        <h3 className="contracts-upsell__title">{socialAddon.name}</h3>
+                        <p className="contracts-upsell__desc">
+                            {socialAddon.description || 'Deixe a publicação, análise de métricas e SEO dos seus cortes com nosso time de especialistas.'}
                         </p>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', minWidth: 200 }}>
-                        <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--accent-primary)', textAlign: 'center' }}>
-                            {formatBRL(socialAddon.price)}<span style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: 600 }}>/mês</span>
+                    <div className="contracts-upsell__cta">
+                        <div className="contracts-upsell__price">
+                            {formatBRL(socialAddon.price)}<span>/mês</span>
                         </div>
-                        <button className="btn btn-primary" onClick={() => setShowSocialModal(true)} style={{ width: '100%', padding: '12px 20px' }}>
-                            Assinar Agora
+                        <button className="contracts-upsell__subscribe-btn" onClick={() => setShowSocialModal(true)}>
+                            <Rocket size={16} /> Assinar Agora
                         </button>
                     </div>
                 </div>
             )}
 
-            <div className="stats-row" style={{ marginBottom: '24px' }}>
-                <div className={`stat-card ${tab === 'active' ? 'active' : ''}`} onClick={() => setTab('active')} style={{ cursor: 'pointer', border: tab === 'active' ? '2px solid var(--accent-primary)' : undefined }}>
-                    <div className="stat-label">Ativos</div>
-                    <div className="stat-value">{activeContracts.length}</div>
-                </div>
-                <div className={`stat-card ${tab === 'archived' ? 'active' : ''}`} onClick={() => setTab('archived')} style={{ cursor: 'pointer', border: tab === 'archived' ? '2px solid var(--accent-primary)' : undefined }}>
-                    <div className="stat-label">Finalizados</div>
-                    <div className="stat-value">{archivedContracts.length}</div>
-                </div>
-                <div className={`stat-card ${tab === 'cancelled' ? 'active' : ''}`} onClick={() => setTab('cancelled')} style={{ cursor: 'pointer', border: tab === 'cancelled' ? '2px solid var(--accent-primary)' : undefined }}>
-                    <div className="stat-label">Cancelados</div>
-                    <div className="stat-value">{cancelledContracts.length}</div>
-                </div>
+            {/* ─── Tab Filters (Segmented Control) ─── */}
+            <div className="contracts-tabs">
+                {[
+                    { key: 'active' as const, label: 'Ativos', count: activeContracts.length },
+                    { key: 'archived' as const, label: 'Finalizados', count: archivedContracts.length },
+                    { key: 'cancelled' as const, label: 'Cancelados', count: cancelledContracts.length },
+                ].map(t => (
+                    <button
+                        key={t.key}
+                        className={`contracts-tab ${tab === t.key ? 'contracts-tab--active' : ''}`}
+                        onClick={() => setTab(t.key)}
+                    >
+                        <span className="contracts-tab__count">{t.count}</span>
+                        <span className="contracts-tab__label">{t.label}</span>
+                    </button>
+                ))}
             </div>
 
+            {/* ─── Contract List ─── */}
             {contractsToDisplay.length === 0 ? (
-                <div className="card"><div className="empty-state">
-                    <div className="empty-state-icon"><FileText size={32} /></div>
-                    <div className="empty-state-text">Nenhum contrato {tab === 'active' ? 'ativo' : tab === 'archived' ? 'finalizado' : 'cancelado'}</div>
-                </div></div>
+                <div className="contracts-empty animate-card-enter" style={{ '--i': 0 } as React.CSSProperties}>
+                    <FileText size={32} className="contracts-empty__icon" />
+                    <div className="contracts-empty__text">
+                        Nenhum contrato {tab === 'active' ? 'ativo' : tab === 'archived' ? 'finalizado' : 'cancelado'}
+                    </div>
+                </div>
             ) : (
-                <div style={{ display: 'grid', gap: '16px' }}>
-                    {contractsToDisplay.map(c => (
-                        <ContractCard key={c.id} contract={c} planConfig={getPlanConfig(c.tier)} allAddons={allAddons}
-                            expanded={expandedId === c.id} onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
-                            onBookingClick={openBookingDetail} statusLabel={statusLabel} canModify={canModifyBooking}
-                            onRequestCancel={c.status === 'ACTIVE' && !isContractArchived(c) ? handleRequestCancel : undefined}
-                            onBulkBooking={c.status === 'ACTIVE' && !isContractArchived(c) ? () => setShowBulkModalFor(c) : undefined}
-                            isArchived={isContractArchived(c)}
-                            isCancelled={c.status === 'CANCELLED'}
-                            onRenewContract={() => setShowRenewModalFor(c)}
-                            onSubscribeContract={() => setShowSubscribeModalFor(c)}
-                            onPayContract={c.status === 'AWAITING_PAYMENT' ? async () => {
-                                try {
-                                    const res = await contractsApi.pay(c.id);
-                                    showToast({ type: 'success', message: 'Abrindo pagamento...' });
-                                    window.location.href = `/meus-pagamentos?pay=${c.id}&secret=${res.clientSecret}`;
-                                } catch (err: unknown) {
-                                    showToast({ type: 'error', message: getErrorMessage(err) || 'Erro ao iniciar pagamento' });
-                                }
-                            } : undefined}
-                            onExpireContract={c.status === 'AWAITING_PAYMENT' ? () => {
-                                setContracts(prev => prev.filter(ct => ct.id !== c.id));
-                                showToast('⏰ Tempo esgotado. O horário foi liberado.');
-                            } : undefined} />
+                <div className="contracts-grid stagger-enter">
+                    {contractsToDisplay.map((c, i) => (
+                        <div key={c.id} className="animate-card-enter" style={{ '--i': i } as React.CSSProperties}>
+                            <ContractCard contract={c} planConfig={getPlanConfig(c.tier)} allAddons={allAddons}
+                                expanded={expandedId === c.id} onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
+                                onBookingClick={openBookingDetail} statusLabel={statusLabel} canModify={canModifyBooking}
+                                onRequestCancel={c.status === 'ACTIVE' && !isContractArchived(c) ? handleRequestCancel : undefined}
+                                onBulkBooking={c.status === 'ACTIVE' && !isContractArchived(c) ? () => setShowBulkModalFor(c) : undefined}
+                                isArchived={isContractArchived(c)}
+                                isCancelled={c.status === 'CANCELLED'}
+                                onRenewContract={() => setShowRenewModalFor(c)}
+                                onSubscribeContract={() => setShowSubscribeModalFor(c)}
+                                onPayContract={c.status === 'AWAITING_PAYMENT' ? async () => {
+                                    try {
+                                        const res = await contractsApi.pay(c.id);
+                                        showToast({ type: 'success', message: 'Abrindo pagamento...' });
+                                        window.location.href = `/meus-pagamentos?pay=${c.id}&secret=${res.clientSecret}`;
+                                    } catch (err: unknown) {
+                                        showToast({ type: 'error', message: getErrorMessage(err) || 'Erro ao iniciar pagamento' });
+                                    }
+                                } : undefined}
+                                onExpireContract={c.status === 'AWAITING_PAYMENT' ? () => {
+                                    setContracts(prev => prev.filter(ct => ct.id !== c.id));
+                                    showToast('⏰ Tempo esgotado. O horário foi liberado.');
+                                } : undefined} />
+                        </div>
                     ))}
                 </div>
             )}
@@ -490,143 +478,23 @@ export default function MyContractsPage() {
             )}
 
             {/* Cancel Contract Modal */}
-            {showCancelModalFor && (
-                <ModalOverlay onClose={() => setShowCancelModalFor(null)} preventClose={cancellingContract}>
-                    <div className="modal" style={{ maxWidth: 400 }}>
-                        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-                            <AlertTriangle size={48} style={{ color: '#f59e0b', marginBottom: '10px' }} />
-                            <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Solicitar Cancelamento</h2>
-                        </div>
-                        <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.5, textAlign: 'center' }}>
-                            Tem certeza que deseja solicitar o cancelamento antecipado deste contrato?
-                        </p>
-                        <div style={{ background: '#FFF0F0', border: '1px solid #FFCDD2', padding: '12px 16px', borderRadius: 'var(--radius-md)', color: '#D32F2F', fontSize: '0.8125rem', marginBottom: '24px', fontWeight: 500, lineHeight: 1.4 }}>
-                            <strong>Atenção:</strong> O cancelamento implica uma respectiva multa de {showCancelModalFor.feeNote} Todos os seus horários futuros atrelados a este contrato serão libertados e cancelados de imediato.
-                        </div>
-                        <div className="modal-actions">
-                            <button className="btn btn-secondary" onClick={() => setShowCancelModalFor(null)} disabled={cancellingContract} style={{ flex: 1 }}>
-                                Voltar
-                            </button>
-                            <button className="btn btn-danger" onClick={confirmCancelContract} disabled={cancellingContract} style={{ flex: 1 }}>
-                                {cancellingContract ? 'Aguarde...' : 'Confirmar Cancelamento'}
-                            </button>
-                        </div>
-                    </div>
-                </ModalOverlay>
-            )}
+            <CancelContractModal
+                isOpen={!!showCancelModalFor}
+                feeNote={showCancelModalFor?.feeNote || ''}
+                onClose={() => setShowCancelModalFor(null)}
+                onConfirm={confirmCancelContract}
+            />
 
             {/* Social Service Checkout Modal */}
-            {showSocialModal && socialAddon && (
-                <ModalOverlay onClose={() => setShowSocialModal(false)} preventClose={subscribingSocial}>
-                    <div className="modal" style={{ maxWidth: 460 }}>
-                        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-                            <Rocket size={48} style={{ color: 'var(--accent-primary)', marginBottom: '10px' }} />
-                            <h2 style={{ fontSize: '1.5rem', fontWeight: 800 }}>Assinar {socialAddon.name}</h2>
-                        </div>
-                        
-                        <div style={{ fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '10px' }}>
-                            1. Escolha sua Fidelidade
-                        </div>
-
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '24px' }}>
-                            {[3, 6].map((dur) => {
-                                const isSel = socialDuration === dur;
-                                const discountPct = dur === 6 ? getRule('service_discount_6months') : getRule('service_discount_3months');
-                                return (
-                                    <div key={dur} onClick={() => setSocialDuration(dur as 3 | 6)} style={{
-                                        border: `2px solid ${isSel ? 'var(--accent-primary)' : 'var(--border-subtle)'}`,
-                                        background: isSel ? 'rgba(139, 92, 246, 0.08)' : 'var(--bg-secondary)',
-                                        borderRadius: 'var(--radius-md)', padding: '16px', cursor: 'pointer', textAlign: 'center', transition: 'all 0.2s',
-                                        position: 'relative', overflow: 'hidden'
-                                    }}>
-                                        <div style={{ fontSize: '1.25rem', fontWeight: 800, color: isSel ? 'var(--accent-primary)' : 'var(--text-primary)' }}>{dur} Meses</div>
-                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>Desconto de {discountPct}%</div>
-                                        {dur === 6 && (
-                                            <div style={{ position: 'absolute', top: 12, right: -24, background: '#22c55e', color: '#fff', fontSize: '0.625rem', fontWeight: 800, padding: '2px 24px', transform: 'rotate(45deg)' }}>
-                                                MELHOR
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                        
-                        {(() => {
-                            const monthlyBase = socialAddon.price;
-                            const discountPct = socialDuration === 6 ? getRule('service_discount_6months') : getRule('service_discount_3months');
-                            const monthlyDiscounted = Math.round(monthlyBase * (1 - discountPct / 100));
-                            const subtotal = monthlyDiscounted * socialDuration;
-                            
-                            const pixExtra = getRule('pix_extra_discount_pct');
-                            const card3xFee = getRule('card_fee_3x_pct');
-                            const card6xFee = getRule('card_fee_6x_pct');
-                            const pixTotal = Math.round(subtotal * (1 - pixExtra / 100));
-                            const cardRate = socialDuration === 3 ? (1 + card3xFee / 100) : (1 + card6xFee / 100);
-                            const cardTotal = Math.round(subtotal * cardRate);
-
-                            return (
-                                <>
-                                    <div style={{
-                                        padding: '16px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', marginBottom: '24px',
-                                    }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.875rem' }}>
-                                            <span style={{ color: 'var(--text-secondary)' }}>Valor Original ({socialDuration}x {formatBRL(monthlyBase)})</span>
-                                            <span style={{ textDecoration: 'line-through', color: 'var(--text-muted)' }}>{formatBRL(monthlyBase * socialDuration)}</span>
-                                        </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                                            <span>Subtotal com {discountPct}% OFF</span>
-                                            <span>{formatBRL(subtotal)}</span>
-                                        </div>
-                                    </div>
-
-                                    <div style={{ fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '10px' }}>
-                                        2. Forma de Pagamento Única
-                                    </div>
-
-                                    {/* Payment Method Cards */}
-                                    {getClientPaymentMethods().map(pm => {
-                                        const isSelected = socialPayment === pm.key;
-                                        return (
-                                            <div key={pm.key} onClick={() => setSocialPayment(pm.key as PaymentMethodKey)}
-                                                style={{
-                                                    padding: '12px 14px', borderRadius: 'var(--radius-sm)', marginBottom: '10px', cursor: 'pointer',
-                                                    background: isSelected ? pm.bgActive : pm.bgInactive,
-                                                    border: `2px solid ${isSelected ? pm.borderActive : pm.borderInactive}`,
-                                                    transition: 'all 0.2s ease',
-                                                }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                    <div>
-                                                        <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>{pm.emoji} {pm.key === 'PIX' ? `${pm.label} (-${pixExtra}% Extra)` : `${pm.label} em até ${socialDuration}x`}</div>
-                                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{pm.key === 'PIX' ? 'Pagamento à vista' : `+ ${Math.round((cardRate - 1) * 100)}% Tx. de Parcelamento`}</div>
-                                                    </div>
-                                                    <div style={{ textAlign: 'right' }}>
-                                                        {pm.key === 'PIX' ? (
-                                                            <div style={{ fontSize: '1.125rem', fontWeight: 800, color: pm.color }}>{formatBRL(pixTotal)}</div>
-                                                        ) : (
-                                                            <div style={{ fontSize: '1.125rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                                                                {socialDuration}x de {formatBRL(Math.round(cardTotal / socialDuration))}<span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>/mês</span>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </>
-                            );
-                        })()}
-
-                        <div className="modal-actions">
-                            <button className="btn btn-secondary" onClick={() => setShowSocialModal(false)} disabled={subscribingSocial} style={{ flex: 1 }}>
-                                Cancelar
-                            </button>
-                            <button className="btn btn-primary" onClick={handleSubscribeSocial} disabled={subscribingSocial || !socialPayment} style={{ flex: 1 }}>
-                                {subscribingSocial ? 'Processando...' : 'Confirmar Assinatura'}
-                            </button>
-                        </div>
-                    </div>
-                </ModalOverlay>
+            {socialAddon && (
+                <SocialServiceModal
+                    isOpen={showSocialModal}
+                    addon={socialAddon}
+                    onClose={() => setShowSocialModal(false)}
+                    onConfirm={handleSubscribeSocial}
+                />
             )}
+
             {/* Custom Contract Wizard Modal */}
             {showCustomWizard && (
                 <CustomContractWizard
@@ -637,114 +505,22 @@ export default function MyContractsPage() {
             )}
 
             {/* Subscribe (Recurring) Modal */}
-            {showSubscribeModalFor && (
-                <ModalOverlay onClose={() => !subscribeLoading && setShowSubscribeModalFor(null)}>
-                    <div className="modal-content" style={{ maxWidth: '450px' }}>
-                        <div className="modal-header">
-                            <h2 style={{ fontSize: '1.25rem', fontWeight: 800 }}>Ativar Cobrança Automática</h2>
-                            <button className="btn-close" onClick={() => setShowSubscribeModalFor(null)} disabled={subscribeLoading}>×</button>
-                        </div>
-                        <div style={{ padding: '20px' }}>
-                            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-                                O plano <strong>{showSubscribeModalFor.name} ({showSubscribeModalFor.tier})</strong> será cobrado mensalmente no seu cartão salvo de forma automática.
-                            </p>
-
-                            {savedCards.length > 0 ? (
-                                <div className="form-group">
-                                    <label className="form-label" style={{ fontWeight: 700 }}>Escolha o Cartão</label>
-                                    <div style={{ display: 'grid', gap: '8px' }}>
-                                        {savedCards.map(card => (
-                                            <div key={card.id} onClick={() => setSelectedCardId(card.id)}
-                                                style={{
-                                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                                    padding: '12px 16px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)',
-                                                    border: `2px solid ${selectedCardId === card.id ? 'var(--accent-primary)' : 'transparent'}`,
-                                                    cursor: 'pointer', transition: 'all 0.2s ease',
-                                                }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                    <CreditCard size={24} />
-                                                    <div>
-                                                        <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
-                                                            {card.brand.toUpperCase()} final {card.last4}
-                                                        </div>
-                                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Exp {card.expMonth.toString().padStart(2, '0')}/{card.expYear.toString().slice(-2)}</div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            ) : (
-                                <div style={{ background: '#FFF8E1', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid #FFE082', marginBottom: '20px' }}>
-                                    <AlertTriangle size={20} style={{ color: '#f59e0b' }} />
-                                    <span style={{ fontSize: '0.875rem', color: '#F57F17', fontWeight: 600, display: 'block', marginTop: '8px' }}>
-                                        Você precisa adicionar um Cartão de Crédito primeiro em "Meus Pagamentos".
-                                    </span>
-                                </div>
-                            )}
-
-                            <div className="modal-actions" style={{ marginTop: '24px' }}>
-                                <button className="btn btn-secondary" onClick={() => setShowSubscribeModalFor(null)} disabled={subscribeLoading} style={{ flex: 1 }}>
-                                    Cancelar
-                                </button>
-                                <button className="btn btn-primary" onClick={handleSubscribe} disabled={subscribeLoading || savedCards.length === 0 || !selectedCardId} style={{ flex: 1 }}>
-                                    {subscribeLoading ? 'Processando...' : 'Assinar Automaticamente'}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </ModalOverlay>
-            )}
+            <SubscribeModal
+                isOpen={!!showSubscribeModalFor}
+                contractName={showSubscribeModalFor?.name || ''}
+                contractTier={showSubscribeModalFor?.tier || ''}
+                savedCards={savedCards}
+                onClose={() => setShowSubscribeModalFor(null)}
+                onConfirm={handleSubscribe}
+            />
 
             {/* Renew Modal */}
-            {showRenewModalFor && (
-                <ModalOverlay onClose={() => !renewLoading && setShowRenewModalFor(null)}>
-                    <div className="modal-content" style={{ maxWidth: '400px' }}>
-                        <div className="modal-header">
-                            <h2 style={{ fontSize: '1.25rem', fontWeight: 800 }}>Renovar Contrato</h2>
-                            <button className="btn-close" onClick={() => setShowRenewModalFor(null)} disabled={renewLoading}>×</button>
-                        </div>
-                        <div style={{ padding: '20px' }}>
-                            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-                                Renove seu plano <strong>{showRenewModalFor.tier}</strong> agora para garantir seu horário e preço.
-                            </p>
-
-                            <div className="form-group">
-                                <label className="form-label">Duração (Meses)</label>
-                                <select className="form-input" value={renewDuration} onChange={e => setRenewDuration(Number(e.target.value) as any)}>
-                                    <option value={3}>3 Meses</option>
-                                    <option value={6}>6 Meses</option>
-                                    <option value={12}>12 Meses</option>
-                                </select>
-                            </div>
-
-                            <div className="form-group" style={{ marginTop: '16px' }}>
-                                <label className="form-label">Método de Pagamento da Fatura</label>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-                                    {getClientPaymentMethods().map(pm => (
-                                        <button key={pm.key} onClick={() => setRenewMethod(pm.key as 'PIX'|'CARTAO')}
-                                            style={{
-                                                padding: '10px 0', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)',
-                                                background: renewMethod === pm.key ? 'var(--bg-card)' : 'transparent', fontWeight: 600, fontSize: '0.8125rem',
-                                                borderColor: renewMethod === pm.key ? pm.color : 'var(--border-subtle)',
-                                                color: renewMethod === pm.key ? pm.color : 'var(--text-secondary)'
-                                            }}>
-                                            {pm.emoji} {pm.label}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="modal-actions" style={{ marginTop: '24px' }}>
-                                <button className="btn btn-secondary" onClick={() => setShowRenewModalFor(null)} disabled={renewLoading} style={{ flex: 1 }}>Voltar</button>
-                                <button className="btn btn-primary" onClick={handleRenew} disabled={renewLoading} style={{ flex: 1 }}>
-                                    {renewLoading ? 'Gerando...' : 'Confirmar'}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </ModalOverlay>
-            )}
+            <RenewContractModal
+                isOpen={!!showRenewModalFor}
+                tier={showRenewModalFor?.tier || ''}
+                onClose={() => setShowRenewModalFor(null)}
+                onConfirm={handleRenew}
+            />
 
         </div>
     );

@@ -1,8 +1,8 @@
 import { Router, Request, Response } from 'express';
-import { prisma } from '../../lib/prisma';
-import { config } from '../../config';
-import { authenticate } from '../../middleware/auth';
-import { sendPushToUser } from './pushService';
+import { prisma } from '../../lib/prisma.js';
+import { config } from '../../config/index.js';
+import { authenticate } from '../../middleware/auth.js';
+import { sendPushToUser } from './pushService.js';
 
 const router = Router();
 

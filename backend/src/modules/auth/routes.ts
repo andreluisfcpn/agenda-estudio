@@ -3,16 +3,20 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import sharp from 'sharp';
-import { prisma } from '../../lib/prisma';
-import { config } from '../../config';
-import { authenticate } from '../../middleware/auth';
+import { prisma } from '../../lib/prisma.js';
+import { config } from '../../config/index.js';
+import { authenticate } from '../../middleware/auth.js';
 import { OAuth2Client } from 'google-auth-library';
-import { otpService } from '../../lib/otp';
-import { Prisma } from '../../generated/prisma/client';
-import { getErrorMessage } from '../../utils/errors';
+import { otpService } from '../../lib/otp.js';
+import { Prisma } from '../../generated/prisma/client.js';
+import { getErrorMessage } from '../../utils/errors.js';
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID);
 

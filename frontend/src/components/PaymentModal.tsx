@@ -2,8 +2,7 @@
 // Single source of truth for payment modal UI across the system.
 // Used in: DashboardPage, MyPaymentsPage, and anywhere a modal payment is needed.
 
-import { X } from 'lucide-react';
-import ModalOverlay from './ModalOverlay';
+import BottomSheetModal from './BottomSheetModal';
 import InlineCheckout from './InlineCheckout';
 import type { PaymentMethodKey } from '../constants/paymentMethods';
 
@@ -39,51 +38,21 @@ export default function PaymentModal({
     onError,
     onClose,
 }: PaymentModalProps) {
+    // PaymentModal is now just a facade to BottomSheetModal
+    // Note: We need to pass isOpen={true} because this component is only mounted when it should be open
+    // based on how it's used in DashboardPage/ClientDashboard currently (e.g., {payingInvoice && <PaymentModal ... />})
     return (
-        <ModalOverlay onClose={onClose}>
-            <div className="modal-content" style={{ maxWidth: 480, padding: 0 }}>
-                {/* Header */}
-                <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '20px 24px',
-                    borderBottom: '1px solid var(--border-subtle)',
-                }}>
-                    <h2 style={{ fontSize: '1.125rem', fontWeight: 800, margin: 0 }}>
-                        {title}
-                    </h2>
-                    <button
-                        onClick={onClose}
-                        aria-label="Fechar"
-                        style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: 'var(--text-secondary)',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            padding: '8px',
-                            borderRadius: '50%',
-                        }}
-                    >
-                        <X size={20} />
-                    </button>
-                </div>
-
-                {/* Body */}
-                <div style={{ padding: '20px 24px 24px' }}>
-                    <InlineCheckout
-                        amount={amount}
-                        paymentId={paymentId}
-                        description={description}
-                        contractDuration={contractDuration}
-                        allowedMethods={allowedMethods}
-                        onSuccess={onSuccess}
-                        onError={onError}
-                        onCancel={onClose}
-                    />
-                </div>
-            </div>
-        </ModalOverlay>
+        <BottomSheetModal isOpen={true} onClose={onClose} title={title}>
+            <InlineCheckout
+                amount={amount}
+                paymentId={paymentId}
+                description={description}
+                contractDuration={contractDuration}
+                allowedMethods={allowedMethods}
+                onSuccess={onSuccess}
+                onError={onError}
+                onCancel={onClose}
+            />
+        </BottomSheetModal>
     );
 }
