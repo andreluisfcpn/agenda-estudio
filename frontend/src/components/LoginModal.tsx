@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { maskPhone, maskEmail, translateError } from '../utils/mask';
 import { ApiError } from '../api/client';
+import { focusUnlessTouch } from '../utils/focus';
 import { useGoogleLogin } from '@react-oauth/google';
 
 interface LoginModalProps {
@@ -73,15 +74,11 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
     };
 
     // Focus first input when modal opens or view changes.
-    // On touch devices we DON'T autofocus — it pops the on-screen keyboard the
-    // moment the sheet opens, covering the modal and hurting UX. The user taps
-    // the field when they're ready.
+    // focusUnlessTouch skips touch devices so the on-screen keyboard doesn't pop
+    // open the moment the sheet appears (covering the modal, hurting UX).
     useEffect(() => {
         if (isOpen) {
-            const isTouch = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
-            if (isTouch) return;
-            const timer = setTimeout(() => firstInputRef.current?.focus(), 350);
-            return () => clearTimeout(timer);
+            return focusUnlessTouch(firstInputRef.current, 350);
         } else {
             // Reset view when closed
             setTimeout(() => setView('login'), 300);
