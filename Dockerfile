@@ -30,6 +30,13 @@ WORKDIR /app
 
 # Copy frontend source (CACHEBUST invalidates cache when content changes)
 ARG CACHEBUST=1
+
+# Google OAuth Client ID is embedded into the frontend bundle at build time
+# (Vite reads import.meta.env.VITE_*). Railway passes the service variable of
+# the same name as a build arg when it is declared here.
+ARG VITE_GOOGLE_CLIENT_ID
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
+
 COPY frontend/ ./frontend/
 
 # Build frontend → frontend/dist/
