@@ -121,10 +121,14 @@ router.put('/addons', authenticate, authorize('ADMIN'), async (req: Request, res
 router.get('/business-config/public', async (_req: Request, res: Response) => {
     try {
         const rows = await prisma.businessConfig.findMany({ orderBy: { key: 'asc' } });
-        // Return as a simple key→value map (string values preserved, numbers parsed)
-        const config: Record<string, string | number> = {};
+        // Return as a simple key→value map (string values preserved, numbers parsed, JSON parsed)
+        const config: Record<string, string | number | Record<string, number>> = {};
         for (const row of rows) {
-            config[row.key] = row.type === 'string' ? row.value : parseFloat(row.value);
+            if (row.type === 'json') {
+                try { config[row.key] = JSON.parse(row.value); } catch { config[row.key] = row.value; }
+            } else {
+                config[row.key] = row.type === 'string' ? row.value : parseFloat(row.value);
+            }
         }
         res.json({ config });
     } catch (err) {

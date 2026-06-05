@@ -110,6 +110,22 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
 
     const [pricingConfigs, setPricingConfigs] = useState<any[]>([]);
 
+    // Reset all state when slot changes or modal re-opens (prevents ghost 'done' screen)
+    useEffect(() => {
+        if (isOpen) {
+            setStep('choose');
+            setError('');
+            setSelectedContractId(null);
+            setSelectedAddons([]);
+            setClientSecret(null);
+            setBookingId(null);
+            setHoldExpiresAt(null);
+            setPaymentIntentId(null);
+            bookingRef.current = null;
+            paymentRef.current = null;
+        }
+    }, [date, time, isOpen]);
+
     // Load client contracts on mount
     useEffect(() => {
         setLoadingContracts(true);

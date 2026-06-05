@@ -73,5 +73,9 @@ export const rescheduleSchema = z.object({
 });
 
 export const addOnPurchaseSchema = z.object({
-    addonKey: z.string().min(1, 'ID do serviço é obrigatório'),
-});
+    addonKey: z.string().min(1, 'ID do serviço é obrigatório').optional(),
+    addonKeys: z.array(z.string().min(1)).min(1).optional(),
+}).refine(
+    data => data.addonKey || (data.addonKeys && data.addonKeys.length > 0),
+    { message: 'addonKey ou addonKeys é obrigatório' },
+);

@@ -23,6 +23,7 @@ const DEFAULTS: Record<string, number> = {
 
 // Module-level cache so the request is only made once across all components
 let cachedConfig: Record<string, number> | null = null;
+let cachedRawConfig: Record<string, unknown> | null = null;
 let fetchPromise: Promise<Record<string, number>> | null = null;
 
 async function fetchConfig(): Promise<Record<string, number>> {
@@ -30,10 +31,12 @@ async function fetchConfig(): Promise<Record<string, number>> {
     if (!fetchPromise) {
         fetchPromise = pricingApi.getBusinessConfigPublic()
             .then(res => {
-                // Coerce all values to numbers for type safety
+                cachedRawConfig = res.config as Record<string, unknown>;
                 const parsed: Record<string, number> = {};
                 for (const [k, v] of Object.entries(res.config)) {
-                    parsed[k] = typeof v === 'number' ? v : Number(v) || 0;
+                    if (typeof v === 'number') parsed[k] = v;
+                    else if (typeof v === 'string') parsed[k] = Number(v) || 0;
+                    // Objects (JSON configs) are kept in rawConfig only
                 }
                 cachedConfig = parsed;
                 return parsed;
@@ -53,8 +56,12 @@ export function useBusinessConfig() {
     }, []);
 
     const get = (key: string): number => config[key] ?? DEFAULTS[key] ?? 0;
+    const getJson = <T = unknown>(key: string): T | null => {
+        const raw = cachedRawConfig?.[key];
+        return (raw && typeof raw === 'object') ? raw as T : null;
+    };
 
-    return { config, get, loaded };
+    return { config, get, getJson, loaded };
 }
 
 /** Call this after admin saves business config to invalidate the module-level cache */

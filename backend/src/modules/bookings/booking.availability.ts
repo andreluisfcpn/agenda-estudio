@@ -41,7 +41,9 @@ router.get('/availability', authenticate, async (req: Request, res: Response) =>
         const dayAvailability = await getAuthDayAvailability(date);
 
         if (dayAvailability.closed) {
-            res.json({ date, closed: true, slots: [] });
+            // Keep the response shape stable (dayOfWeek + myBookings) so the client
+            // never hits an undefined field on closed days.
+            res.json({ date, dayOfWeek: dayAvailability.dayOfWeek, closed: true, slots: [], myBookings: [] });
             return;
         }
 

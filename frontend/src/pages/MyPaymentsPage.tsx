@@ -24,6 +24,99 @@ const BRAND_LABELS: Record<string, string> = {
     amex: 'Amex', hipercard: 'Hipercard', unknown: 'Cartão',
 };
 
+// ─── Pending Payment Card with live timer ──────────────
+interface PendingPaymentCardProps {
+    payment: PaymentSummary & { contractName: string; contractDuration: number; paymentDeadline?: string | null };
+    index: number;
+    isOverdue: boolean;
+    isFailed: boolean;
+    onPay: () => void;
+    onExpired: () => void;
+}
+
+function PendingPaymentCard({ payment: p, index: i, isOverdue, isFailed, onPay, onExpired }: PendingPaymentCardProps) {
+    const deadline = p.paymentDeadline ? new Date(p.paymentDeadline).getTime() : null;
+    const hasTimer = !!deadline && deadline > Date.now();
+
+    const [remaining, setRemaining] = useState(() => {
+        if (!deadline) return -1;
+        return Math.max(0, Math.floor((deadline - Date.now()) / 1000));
+    });
+    const [fading, setFading] = useState(false);
+
+    useEffect(() => {
+        if (!deadline) return;
+        const timer = setInterval(() => {
+            const diff = deadline - Date.now();
+            const secs = Math.max(0, Math.floor(diff / 1000));
+            setRemaining(secs);
+            if (secs <= 0) {
+                clearInterval(timer);
+                setFading(true);
+                setTimeout(() => onExpired(), 800);
+            }
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [deadline, onExpired]);
+
+    if (fading) {
+        return (
+            <div className="pending-card animate-card-enter pending-card--fading" style={{ '--i': i } as React.CSSProperties}>
+                <div style={{ textAlign: 'center', padding: '24px 16px', color: 'var(--text-muted)' }}>
+                    ⏰ Tempo esgotado — removendo...
+                </div>
+            </div>
+        );
+    }
+
+    const mins = Math.floor(remaining / 60);
+    const secs = remaining % 60;
+    const timerColor = remaining <= 60 ? '#ef4444' : remaining <= 180 ? '#f59e0b' : '#10b981';
+
+    return (
+        <div
+            className={`pending-card animate-card-enter ${(isFailed || isOverdue) ? 'pending-card--urgent' : ''}`}
+            style={{ '--i': i } as React.CSSProperties}
+            onClick={onPay}
+        >
+            {(isFailed || isOverdue) && (
+                <span className="pending-card__badge">
+                    <AlertTriangle size={10} />
+                    {isFailed ? 'Falha no Cartão' : 'Em Atraso'}
+                </span>
+            )}
+            <div className="pending-card__top">
+                <div>
+                    <div className="pending-card__amount">{formatBRL(p.amount)}</div>
+                    <div className="pending-card__contract">{p.contractName}</div>
+                    <div className="pending-card__due">
+                        {isOverdue ? 'Vencida' : 'Vence'} em {formatDate(p.dueDate)}
+                    </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                    <StatusBadge status={isOverdue ? 'FAILED' : p.status} label={isOverdue ? 'Atrasada' : undefined} />
+                    {hasTimer && remaining > 0 && (
+                        <div className="pending-card__timer" style={{ color: timerColor }}>
+                            <Clock size={12} />
+                            <span>{String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}</span>
+                        </div>
+                    )}
+                </div>
+            </div>
+            <div className="pending-card__actions">
+                <button
+                    onClick={(e) => { e.stopPropagation(); onPay(); }}
+                    className="pending-card__pay-btn"
+                    aria-label={`Pagar ${formatBRL(p.amount)}`}
+                >
+                    <CreditCard size={18} />
+                    Pagar Agora
+                </button>
+            </div>
+        </div>
+    );
+}
+
 export default function MyPaymentsPage() {
     const { showToast, showConfirm } = useUI();
     const { user } = useAuth();
@@ -42,7 +135,7 @@ export default function MyPaymentsPage() {
     const [settingDefaultId, setSettingDefaultId] = useState<string | null>(null);
 
     // Payment flow
-    const [payingPayment, setPayingPayment] = useState<(PaymentSummary & { contractName: string; contractDuration: number }) | null>(null);
+    const [payingPayment, setPayingPayment] = useState<(PaymentSummary & { contractName: string; contractDuration: number; paymentDeadline?: string | null }) | null>(null);
     const [showAllHistory, setShowAllHistory] = useState(false);
 
     // ─── Data Loading ─────────────────────────────────────
@@ -92,10 +185,10 @@ export default function MyPaymentsPage() {
     }, [contracts, location.state, payingPayment, navigate]);
 
     // ─── Aggregating Payments ─────────────────────────────
-    const allPayments: (PaymentSummary & { contractName: string; contractDuration: number })[] = [];
+    const allPayments: (PaymentSummary & { contractName: string; contractDuration: number; paymentDeadline?: string | null })[] = [];
     contracts.forEach(c => {
         (c.payments || []).forEach(p => {
-            allPayments.push({ ...p, contractName: c.name, contractDuration: c.durationMonths });
+            allPayments.push({ ...p, contractName: c.name, contractDuration: c.durationMonths, paymentDeadline: c.paymentDeadline });
         });
     });
 
@@ -251,39 +344,15 @@ export default function MyPaymentsPage() {
                             const isFailed = p.status === 'FAILED';
 
                             return (
-                                <div
+                                <PendingPaymentCard
                                     key={p.id}
-                                    className={`pending-card animate-card-enter ${(isFailed || isOverdue) ? 'pending-card--urgent' : ''}`}
-                                    style={{ '--i': i } as React.CSSProperties}
-                                    onClick={() => setPayingPayment(p)}
-                                >
-                                    {(isFailed || isOverdue) && (
-                                        <span className="pending-card__badge">
-                                            <AlertTriangle size={10} />
-                                            {isFailed ? 'Falha no Cartão' : 'Em Atraso'}
-                                        </span>
-                                    )}
-                                    <div className="pending-card__top">
-                                        <div>
-                                            <div className="pending-card__amount">{formatBRL(p.amount)}</div>
-                                            <div className="pending-card__contract">{p.contractName}</div>
-                                            <div className="pending-card__due">
-                                                {isOverdue ? 'Vencida' : 'Vence'} em {formatDate(p.dueDate)}
-                                            </div>
-                                        </div>
-                                        <StatusBadge status={isOverdue ? 'FAILED' : p.status} label={isOverdue ? 'Atrasada' : undefined} />
-                                    </div>
-                                    <div className="pending-card__actions">
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); setPayingPayment(p); }}
-                                            className="pending-card__pay-btn"
-                                            aria-label={`Pagar ${formatBRL(p.amount)}`}
-                                        >
-                                            <CreditCard size={18} />
-                                            Pagar Agora
-                                        </button>
-                                    </div>
-                                </div>
+                                    payment={p}
+                                    index={i}
+                                    isOverdue={isOverdue}
+                                    isFailed={isFailed}
+                                    onPay={() => setPayingPayment(p)}
+                                    onExpired={loadData}
+                                />
                             );
                         })}
                     </div>

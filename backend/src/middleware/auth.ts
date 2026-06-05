@@ -34,7 +34,8 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
     }
 
     try {
-        const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+        // Pin the algorithm to prevent algorithm-confusion attacks (e.g. 'none' / RS↔HS).
+        const decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
         req.user = {
             userId: decoded.userId,
             email: decoded.email,

@@ -132,10 +132,22 @@ router.patch('/:id/confirm', authenticate, async (req: Request, res: Response) =
         return;
     }
 
+    // VULN-C2 FIX: Avulso bookings (with holdExpiresAt) MUST have a PAID payment
+    // Contract-based bookings (no hold timer) can confirm directly via credit consumption
+    if (booking.holdExpiresAt) {
+        const hasPaidPayment = await prisma.payment.findFirst({
+            where: { bookingId: id, status: 'PAID' },
+        });
+        if (!hasPaidPayment) {
+            res.status(402).json({ error: 'Pagamento obrigatório para confirmar agendamento avulso.' });
+            return;
+        }
+    }
+
     // Confirm booking
     const updated = await prisma.booking.update({
         where: { id },
-        data: { status: BookingStatus.CONFIRMED },
+        data: { status: BookingStatus.CONFIRMED, holdExpiresAt: null },
     });
 
     // Release Redis locks (booking is now persisted in DB)

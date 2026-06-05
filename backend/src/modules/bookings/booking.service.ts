@@ -8,15 +8,19 @@ import { getPackageSlots } from '../../utils/pricing.js';
 
 // ─── Credit Management ─────────────────────────────────
 
-/** Restore a single credit to a Flex or Custom contract. */
+/** Restore a single credit to a Flex or Custom contract (atomic). */
 export async function restoreCredit(contractId: string): Promise<boolean> {
-    const contract = await prisma.contract.findUnique({ where: { id: contractId } });
+    const contract = await prisma.contract.findUnique({
+        where: { id: contractId },
+        select: { type: true, customCreditsRemaining: true },
+    });
     if (!contract) return false;
 
     if (contract.type === 'FLEX' || contract.type === 'AVULSO') {
+        // Atomic increment avoids lost updates under concurrent cancellations.
         await prisma.contract.update({
             where: { id: contractId },
-            data: { flexCreditsRemaining: (contract.flexCreditsRemaining || 0) + 1 },
+            data: { flexCreditsRemaining: { increment: 1 } },
         });
         return true;
     }
@@ -24,7 +28,7 @@ export async function restoreCredit(contractId: string): Promise<boolean> {
     if (contract.type === 'CUSTOM' && contract.customCreditsRemaining != null) {
         await prisma.contract.update({
             where: { id: contractId },
-            data: { customCreditsRemaining: contract.customCreditsRemaining + 1 },
+            data: { customCreditsRemaining: { increment: 1 } },
         });
         return true;
     }
@@ -32,25 +36,28 @@ export async function restoreCredit(contractId: string): Promise<boolean> {
     return false;
 }
 
-/** Deduct a single credit from a Flex or Custom contract. */
+/** Deduct a single credit from a Flex or Custom contract (atomic, guarded > 0). */
 export async function deductCredit(contractId: string): Promise<boolean> {
-    const contract = await prisma.contract.findUnique({ where: { id: contractId } });
+    const contract = await prisma.contract.findUnique({
+        where: { id: contractId },
+        select: { type: true },
+    });
     if (!contract) return false;
 
-    if ((contract.type === 'FLEX' || contract.type === 'AVULSO') && (contract.flexCreditsRemaining || 0) > 0) {
-        await prisma.contract.update({
-            where: { id: contractId },
-            data: { flexCreditsRemaining: contract.flexCreditsRemaining! - 1 },
+    if (contract.type === 'FLEX' || contract.type === 'AVULSO') {
+        const r = await prisma.contract.updateMany({
+            where: { id: contractId, flexCreditsRemaining: { gt: 0 } },
+            data: { flexCreditsRemaining: { decrement: 1 } },
         });
-        return true;
+        return r.count > 0;
     }
 
-    if (contract.type === 'CUSTOM' && (contract.customCreditsRemaining || 0) > 0) {
-        await prisma.contract.update({
-            where: { id: contractId },
-            data: { customCreditsRemaining: contract.customCreditsRemaining! - 1 },
+    if (contract.type === 'CUSTOM') {
+        const r = await prisma.contract.updateMany({
+            where: { id: contractId, customCreditsRemaining: { gt: 0 } },
+            data: { customCreditsRemaining: { decrement: 1 } },
         });
-        return true;
+        return r.count > 0;
     }
 
     return false;

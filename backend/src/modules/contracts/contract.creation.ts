@@ -180,6 +180,8 @@ router.post('/', authenticate, authorize('ADMIN'), async (req: Request, res: Res
 });
 
 // ─── POST /api/contracts/self (CLIENT) ──────────────────
+// Phase 1: Creates ONLY the first payment with contract data in metadata.
+// Contract + bookings are created AFTER payment is confirmed (via webhook/verify).
 
 router.post('/self', authenticate, async (req: Request, res: Response) => {
     try {
@@ -209,194 +211,109 @@ router.post('/self', authenticate, async (req: Request, res: Response) => {
             return;
         }
 
-        // Validate Fixo requires day and time
+        // Infer fixedDayOfWeek for FIXO
         if (data.type === 'FIXO' && (!data.fixedDayOfWeek || !data.fixedTime)) {
-            // Infer from first booking
-            const dayOfWeek = firstDate.getDay() === 0 ? 7 : firstDate.getDay(); // 1=Mon..6=Sat
+            const dayOfWeek = firstDate.getDay() === 0 ? 7 : firstDate.getDay();
             data.fixedDayOfWeek = dayOfWeek;
             data.fixedTime = data.firstBookingTime;
         }
 
+        // Calculate first month's amount
         const discountPct = data.durationMonths === 3 ? await getConfig('discount_3months') : await getConfig('discount_6months');
+        const basePrice = await getBasePriceDynamic(data.tier);
+        const discountedPrice = applyDiscount(basePrice, discountPct);
+        const sessionsPerMonth = await getConfig('sessions_per_month');
 
-        // Contract starts on the first booking date
-        const startDate = firstDate;
-        const endDate = new Date(startDate);
-        endDate.setMonth(endDate.getMonth() + data.durationMonths);
-
-        const totalEpisodes = data.durationMonths === 3 ? await getConfig('episodes_3months') : await getConfig('episodes_6months');
-
-        const contract = await prisma.contract.create({
-            data: {
-                userId,
-                name: data.name,
-                type: data.type,
-                tier: data.tier,
-                durationMonths: data.durationMonths,
-                discountPct,
-                startDate,
-                endDate,
-                status: ContractStatus.ACTIVE,
-                fixedDayOfWeek: data.type === 'FIXO' ? data.fixedDayOfWeek : null,
-                fixedTime: data.type === 'FIXO' ? data.fixedTime : null,
-                flexCreditsTotal: data.type === 'FLEX' ? totalEpisodes : null,
-                flexCreditsRemaining: data.type === 'FLEX' ? totalEpisodes : null,
-                flexCycleStart: data.type === 'FLEX' ? startDate : null,
-                flexWeeksCompensated: data.type === 'FLEX' ? 0 : null,
-                paymentMethod: data.paymentMethod,
-                addOns: data.addOns || [],
-            },
-        });
-
-        // For FIXO: auto-generate bookings
-        if (data.type === 'FIXO' && data.fixedDayOfWeek && data.fixedTime) {
-            const bookings = [];
-            const current = new Date(startDate);
-
-            while (current.getDay() !== (data.fixedDayOfWeek % 7)) {
-                current.setDate(current.getDate() + 1);
-            }
-
-            const totalWeeks = data.durationMonths * (await getConfig('sessions_per_month'));
-            const endTime = calculateEndTime(data.fixedTime);
-            const basePrice = await getBasePriceDynamic(data.tier);
-            const discountedPrice = applyDiscount(basePrice, discountPct);
-
-            for (let week = 0; week < totalWeeks; week++) {
-                const bookingDate = new Date(current);
-                bookingDate.setDate(current.getDate() + week * 7);
-                if (bookingDate > endDate) break;
-
-                const bookingDateStr = bookingDate.toISOString().split('T')[0];
-                const fixedTime = data.fixedTime!;
-                let finalDate = bookingDate;
-                let finalTime = fixedTime;
-
-                // Check override resolutions from validation checks
-                const resolution = data.resolvedConflicts?.find(c =>
-                    c.originalDate === bookingDateStr && c.originalTime === fixedTime
-                );
-
-                if (resolution) {
-                    finalDate = new Date(resolution.newDate + 'T00:00:00');
-                    finalTime = resolution.newTime;
-                }
-
-                bookings.push({
-                    userId,
-                    contractId: contract.id,
-                    date: finalDate,
-                    startTime: finalTime,
-                    endTime: calculateEndTime(finalTime),
-                    status: BookingStatus.CONFIRMED,
-                    tierApplied: data.tier,
-                    price: discountedPrice,
-                });
-            }
-
-            if (bookings.length > 0) {
-                await prisma.booking.createMany({ data: bookings });
-            }
-        }
-
-        // For FLEX: just create the first booking
-        if (data.type === 'FLEX') {
-            const endTime = calculateEndTime(data.firstBookingTime);
-            const basePrice = await getBasePriceDynamic(data.tier);
-            const discountedPrice = applyDiscount(basePrice, discountPct);
-
-            await prisma.booking.create({
-                data: {
-                    userId,
-                    contractId: contract.id,
-                    date: firstDate,
-                    startTime: data.firstBookingTime,
-                    endTime,
-                    status: BookingStatus.CONFIRMED,
-                    tierApplied: data.tier,
-                    price: discountedPrice,
-                    addOns: data.addOns ? data.addOns.filter(a => a !== 'GESTAO_SOCIAL') : [],
-                },
-            });
-        }
-
-        // Calculate Add-ons cost
         let addonsCost = 0;
         if (data.addOns && data.addOns.length > 0) {
             const addonConfigs = await prisma.addOnConfig.findMany({
-                where: { key: { in: data.addOns } }
+                where: { key: { in: data.addOns } },
             });
             const baseAddonsCost = addonConfigs.reduce((acc, curr) => acc + curr.price, 0);
             addonsCost = applyDiscount(baseAddonsCost, discountPct);
         }
 
-        // Generate payment installments
-        const basePrice = await getBasePriceDynamic(data.tier);
-        const discountedPrice = applyDiscount(basePrice, discountPct);
-        const monthlyAmount = ((await getConfig('sessions_per_month')) * discountedPrice) + addonsCost;
-        const payments = [];
+        let monthlyAmount = (sessionsPerMonth * discountedPrice) + addonsCost;
 
-        for (let i = 0; i < data.durationMonths; i++) {
-            const dueDate = new Date(startDate);
-            dueDate.setMonth(dueDate.getMonth() + i);
-
-            payments.push({
-                userId,
-                contractId: contract.id,
-                provider: getProviderForMethod(data.paymentMethod),
-                amount: monthlyAmount,
-                status: 'PENDING' as const,
-                dueDate,
-            });
-        }
-
-        if (payments.length > 0) {
-            await prisma.payment.createMany({ data: payments });
-        }
-
-        // Enrich payments with gateway (Cora/Stripe) data
-        const createdPayments = await prisma.payment.findMany({
-            where: { contractId: contract.id },
-            include: { user: { select: { name: true, email: true } } },
-            orderBy: { dueDate: 'asc' },
-        });
-
-        let firstClientSecret: string | null = null;
-
-        for (const p of createdPayments) {
-            try {
-                const result = await gatewayCreatePayment({
-                    paymentMethod: data.paymentMethod as 'PIX' | 'BOLETO' | 'CARTAO',
-                    amount: p.amount,
-                    description: `${data.name} - Parcela`,
-                    customer: { name: p.user.name, email: p.user.email || '' },
-                    dueDate: p.dueDate || new Date(),
-                    paymentId: p.id,
-                    contractId: contract.id,
-                    userId,
-                });
-                await updatePaymentWithGatewayResult(p.id, result);
-
-                // Capture the first payment's clientSecret for inline card flow
-                if (!firstClientSecret && result.clientSecret) {
-                    firstClientSecret = result.clientSecret;
-                }
-            } catch (err) {
-                console.error(`[Gateway] Failed to create payment for ${p.id}:`, err);
+        // Apply card installment surcharge from admin config
+        if (data.paymentMethod === 'CARTAO') {
+            const surchargeConfig = await prisma.businessConfig.findUnique({ where: { key: 'card_installment_surcharges' } });
+            if (surchargeConfig) {
+                try {
+                    const surcharges = JSON.parse(surchargeConfig.value) as Record<string, number>;
+                    const pct = surcharges[String(data.durationMonths)] ?? 0;
+                    monthlyAmount = Math.round(monthlyAmount * (1 + pct / 100));
+                } catch { /* use base amount */ }
             }
         }
 
+        // Store contract creation data in payment metadata
+        const contractData = {
+            name: data.name,
+            type: data.type,
+            tier: data.tier,
+            durationMonths: data.durationMonths,
+            firstBookingDate: data.firstBookingDate,
+            firstBookingTime: data.firstBookingTime,
+            paymentMethod: data.paymentMethod,
+            addOns: data.addOns || [],
+            fixedDayOfWeek: data.fixedDayOfWeek,
+            fixedTime: data.fixedTime,
+            resolvedConflicts: data.resolvedConflicts,
+        };
+
+        // Create ONLY the first payment (no contract yet)
+        const firstPayment = await prisma.payment.create({
+            data: {
+                userId,
+                provider: getProviderForMethod(data.paymentMethod),
+                amount: monthlyAmount,
+                status: 'PENDING',
+                dueDate: firstDate,
+                metadata: { contractData },
+            },
+        });
+
+        // Enrich with gateway (PIX QR code / Stripe PaymentIntent)
+        const user = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } });
+        let clientSecret: string | null = null;
+        let pixString: string | null = null;
+
+        try {
+            const result = await gatewayCreatePayment({
+                paymentMethod: data.paymentMethod as 'PIX' | 'BOLETO' | 'CARTAO',
+                amount: monthlyAmount,
+                description: `${data.name} - 1ª Parcela`,
+                customer: { name: user?.name || 'Cliente', email: user?.email || '' },
+                dueDate: firstDate,
+                paymentId: firstPayment.id,
+                userId,
+            });
+            await updatePaymentWithGatewayResult(firstPayment.id, result);
+
+            if (result.clientSecret) clientSecret = result.clientSecret;
+            if (result.pixString) pixString = result.pixString;
+        } catch (err) {
+            console.error(`[Contract:Self] Failed to create gateway payment:`, err);
+        }
+
+        const duration = data.durationMonths;
+        console.log(`CONTRACT PAYMENT ${firstPayment.id} created for user ${userId}, amount: ${monthlyAmount}, method: ${data.paymentMethod}`);
+
         res.status(201).json({
-            contract,
-            message: `Contrato ${data.type} criado com sucesso!`,
-            ...(firstClientSecret && { clientSecret: firstClientSecret }),
+            message: `Pagamento da 1ª parcela gerado. Efetue o pagamento para ativar seu contrato.`,
+            firstPaymentId: firstPayment.id,
+            amount: monthlyAmount,
+            duration,
+            ...(clientSecret && { clientSecret }),
+            ...(pixString && { firstPixString: pixString }),
         });
     } catch (err) {
         if (err instanceof z.ZodError) {
             res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
             return;
         }
-        console.error('Erro ao criar contrato (Cliente):', err);
+        console.error('Erro ao criar pagamento do contrato (Cliente):', err);
         const errMsg = err instanceof Error ? err.message : 'Erro interno ao processar criação do contrato';
         res.status(500).json({ error: errMsg });
     }

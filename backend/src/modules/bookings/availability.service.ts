@@ -53,17 +53,29 @@ export async function buildOccupiedSet(
 
     const occupied = new Set<string>();
 
+    // Expired RESERVED holds no longer occupy the slot. Skipping them is correct for
+    // ANY availability reader, so it's the default (opt-out via excludeExpiredHolds:false).
+    const skipExpiredHolds = options?.excludeExpiredHolds !== false;
+
     for (const b of bookings) {
         if (
-            options?.excludeExpiredHolds &&
+            skipExpiredHolds &&
             b.status === 'RESERVED' &&
             b.holdExpiresAt &&
             new Date(b.holdExpiresAt).getTime() <= Date.now()
         ) {
             continue;
         }
-        const slots = getPackageSlots(b.startTime, 2);
-        slots.forEach(s => occupied.add(s));
+        // Mark every 30-min slot in the booking's real [startTime, endTime) range —
+        // robust to variable package durations (no hardcoded 2h assumption).
+        const [sH, sM] = b.startTime.split(':').map(Number);
+        const [eH, eM] = b.endTime.split(':').map(Number);
+        let m = sH * 60 + sM;
+        const end = eH * 60 + eM;
+        while (m < end) {
+            occupied.add(`${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
+            m += 30;
+        }
     }
 
     for (const b of blockedSlots) {
@@ -123,9 +135,10 @@ export async function getAuthDayAvailability(dateStr: string): Promise<DayAvaila
         return { date: dateStr, dayOfWeek, closed: true, slots: [] };
     }
 
-    const [occupiedSlots, allSlots] = await Promise.all([
+    const [occupiedSlots, allSlots, slotDuration] = await Promise.all([
         buildOccupiedSet(dateObj, { excludeExpiredHolds: true }),
         generateTimeSlots(),
+        getSlotDuration(),
     ]);
 
     // Pre-load all tier configs once instead of per-slot
@@ -134,7 +147,7 @@ export async function getAuthDayAvailability(dateStr: string): Promise<DayAvaila
     const slots = await Promise.all(
         allSlots.map(async (slot): Promise<SlotAvailability> => {
             const tier = tierMap.get(slot) ?? null;
-            const packageSlots = getPackageSlots(slot, 2);
+            const packageSlots = getPackageSlots(slot, slotDuration);
             const isBlocked = packageSlots.some(s => occupiedSlots.has(s));
             const available = !isBlocked && tier !== null;
             return {

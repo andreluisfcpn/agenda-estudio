@@ -105,7 +105,6 @@ router.get('/my', authenticate, async (req: Request, res: Response) => {
             totalBookings,
             ...(addonUsage ? { addonUsage } : {})
         };
-        console.log("CONTRACT", c.id, "duration:", c.durationMonths, "totalBookings:", totalBookings);
         return result;
     });
 
@@ -133,7 +132,17 @@ router.get('/:id', authenticate, async (req: Request, res: Response) => {
                     startTime: true,
                     endTime: true,
                     status: true,
+                    tierApplied: true,
                     price: true,
+                    clientNotes: true,
+                    adminNotes: true,
+                    platforms: true,
+                    platformLinks: true,
+                    addOns: true,
+                    durationMinutes: true,
+                    peakViewers: true,
+                    chatMessages: true,
+                    audienceOrigin: true,
                 },
             },
             payments: {

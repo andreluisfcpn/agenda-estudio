@@ -179,6 +179,32 @@
   transform: scale(0.97);
 }
 
+/* ── Timer Badge ── */
+.pending-card__timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.8125rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.04em;
+  animation: timer-pulse 1s ease-in-out infinite;
+}
+
+@keyframes timer-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* ── Fading Out (expired) ── */
+.pending-card--fading {
+  opacity: 0;
+  transform: scale(0.95) translateY(-8px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+  pointer-events: none;
+}
+
 /* ── Auto-Charge Banner ── */
 .autocharge-card {
   background: var(--bg-card);

@@ -4,8 +4,10 @@ import { redis } from './redis.js';
 const OTP_EXPIRY_SECONDS = 5 * 60; // 5 minutes
 const OTP_PREFIX = 'otp:';
 const OTP_FAIL_PREFIX = 'otp:fail:';
+const OTP_COOLDOWN_PREFIX = 'otp:cooldown:';
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_SECONDS = 30 * 60; // 30 minutes lockout after max failures
+const SEND_COOLDOWN_SECONDS = 30; // anti-spam: min interval between sends to the same target
 
 export const otpService = {
     async generateAndSendMock(target: string, name: string): Promise<void> {
@@ -16,9 +18,11 @@ export const otpService = {
         // Store in Redis with TTL (replaces in-memory Map)
         const key = `${OTP_PREFIX}${target}`;
         await redis.set(key, code, 'EX', OTP_EXPIRY_SECONDS);
+        // Anti-spam: register a short cooldown for this target
+        await redis.set(`${OTP_COOLDOWN_PREFIX}${target}`, '1', 'EX', SEND_COOLDOWN_SECONDS);
 
-        // Reset failure counter when a new code is generated
-        await redis.del(`${OTP_FAIL_PREFIX}${target}`);
+        // AUTH-M1 FIX: Do NOT reset failure counter on new code generation
+        // This prevents attackers from bypassing lockout by requesting new codes
 
         const isEmail = target.includes('@');
 
@@ -65,5 +69,10 @@ export const otpService = {
         const failKey = `${OTP_FAIL_PREFIX}${target}`;
         const failCount = parseInt(await redis.get(failKey) || '0', 10);
         return failCount >= MAX_FAILED_ATTEMPTS;
+    },
+
+    /** True if a code was sent to this target within the resend cooldown window. */
+    async isOnSendCooldown(target: string): Promise<boolean> {
+        return (await redis.get(`${OTP_COOLDOWN_PREFIX}${target}`)) !== null;
     }
 };

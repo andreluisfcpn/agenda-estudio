@@ -109,8 +109,11 @@ export const bookingsApi = {
         request<{ booking: Booking; message: string }>(`/bookings/${id}/client-update`, { method: 'PATCH', body: JSON.stringify(data) }),
     reschedule: (id: string, data: { date: string; startTime: string }) =>
         request<{ booking: Booking; message: string }>(`/bookings/${id}/reschedule`, { method: 'PATCH', body: JSON.stringify(data) }),
-    purchaseAddon: (id: string, addonKey: string) =>
-        request<{ booking: Booking; checkoutUrl: string; message: string; amount: number }>(`/bookings/${id}/addons`, { method: 'POST', body: JSON.stringify({ addonKey }) }),
+    purchaseAddon: (id: string, addonKeyOrKeys: string | string[]) =>
+        request<{ paymentId: string; message: string; amount: number; activatedKeys: string[]; pendingKeys: string[] }>(
+            `/bookings/${id}/addons`,
+            { method: 'POST', body: JSON.stringify(Array.isArray(addonKeyOrKeys) ? { addonKeys: addonKeyOrKeys } : { addonKey: addonKeyOrKeys }) }
+        ),
 };
 
 // ─── Contracts ──────────────────────────────────────────
@@ -118,7 +121,7 @@ export const contractsApi = {
     checkFixo: (data: { tier: string; durationMonths: number; startDate: string; fixedDayOfWeek: number; fixedTime: string }) =>
         request<{ available: boolean; conflicts: { date: string; originalTime: string; suggestedReplacement?: { date: string; time: string } }[] }>('/contracts/check-fixo', { method: 'POST', body: JSON.stringify(data) }),
     create: (data: CreateContractData) => request<{ contract: Contract; payments: PaymentSummary[]; message: string }>('/contracts', { method: 'POST', body: JSON.stringify(data) }),
-    createSelf: (data: SelfContractData) => request<{ contract: Contract; message: string; clientSecret?: string }>('/contracts/self', { method: 'POST', body: JSON.stringify(data) }),    // Standalone services (e.g. Social Media Management)
+    createSelf: (data: SelfContractData) => request<{ message: string; firstPaymentId: string; amount: number; duration: number; clientSecret?: string; firstPixString?: string }>('/contracts/self', { method: 'POST', body: JSON.stringify(data) }),    // Standalone services (e.g. Social Media Management)
     createService: (opts: { serviceKey: string, paymentMethod: 'CARTAO' | 'PIX' | 'BOLETO', durationMonths?: number }) => request<{ contract: Contract; checkoutUrl?: string; clientSecret?: string; message: string }>('/contracts/service', { method: 'POST', body: JSON.stringify(opts) }),
     createCustom: (data: CustomContractData) => request<{ contract: Contract; payments: PaymentSummary[]; summary: CustomContractSummary; message: string; clientSecret?: string }>('/contracts/custom', { method: 'POST', body: JSON.stringify(data) }),
     checkCustom: (data: { tier: string; durationMonths: number; schedule: { day: number; time: string }[]; startDate: string }) =>

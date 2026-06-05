@@ -11,6 +11,7 @@ import {
     getPackageSlots,
     calculateEndTime,
     isOperatingDay,
+    studioDateTime,
 } from '../../utils/pricing.js';
 import { BookingStatus, Prisma } from '../../generated/prisma/client.js';
 import { getConfig } from '../../lib/businessConfig.js';
@@ -346,9 +347,8 @@ router.patch('/:id/reschedule', authenticate, async (req: Request, res: Response
         }
 
         // Rule 1: Must be at least configured hours before the original booking
-        const originalDateTime = new Date(booking.date);
-        const [origH, origM] = booking.startTime.split(':').map(Number);
-        originalDateTime.setUTCHours(origH, origM, 0, 0);
+        // (studio timezone, consistent with the 24h cancellation check)
+        const originalDateTime = studioDateTime(booking.date.toISOString().split('T')[0], booking.startTime);
         const now = new Date();
         const rescheduleMinHours = await getConfig('reschedule_min_hours');
         const hoursUntilOriginal = (originalDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
@@ -441,6 +441,81 @@ router.patch('/:id/reschedule', authenticate, async (req: Request, res: Response
     }
 });
 
+// ─── POST /api/bookings/cleanup-orphan-addons (Admin) ────
+// Remove addons from bookings that were added before payment was confirmed (legacy bug)
+router.post('/cleanup-orphan-addons', authenticate, authorize('ADMIN'), async (_req: Request, res: Response) => {
+    try {
+        // Find all bookings with addons
+        const bookingsWithAddons = await prisma.booking.findMany({
+            where: { addOns: { isEmpty: false } },
+            include: { contract: true },
+        });
+
+        let cleaned = 0;
+        let paymentsDeleted = 0;
+
+        for (const booking of bookingsWithAddons) {
+            const contractAddons = booking.contract?.addOns || [];
+
+            // Avulso addons = addons on booking that are NOT in the contract
+            const avulsoAddons = booking.addOns.filter(a => !contractAddons.includes(a));
+            if (avulsoAddons.length === 0) continue;
+
+            // Check which avulso addons have a PAID payment
+            const paidPayments = await prisma.payment.findMany({
+                where: { bookingId: booking.id, status: 'PAID', paymentUrl: { not: null } },
+            });
+
+            const paidAddonKeys = new Set<string>();
+            for (const p of paidPayments) {
+                try {
+                    const meta = JSON.parse(p.paymentUrl!);
+                    const keys: string[] = meta.addonKeys || (meta.addonKey ? [meta.addonKey] : []);
+                    keys.forEach(k => paidAddonKeys.add(k));
+                } catch {}
+            }
+
+            // Remove unpaid avulso addons from booking
+            const unpaidAddons = avulsoAddons.filter(a => !paidAddonKeys.has(a));
+            if (unpaidAddons.length > 0) {
+                const cleanedAddons = booking.addOns.filter(a => !unpaidAddons.includes(a));
+                await prisma.booking.update({
+                    where: { id: booking.id },
+                    data: { addOns: cleanedAddons },
+                });
+                cleaned++;
+                console.log(`[Cleanup] Removed orphan addons ${unpaidAddons.join(', ')} from booking ${booking.id}`);
+            }
+        }
+
+        // Also delete orphan PENDING addon payments — but only ones older than 1h so we
+        // never remove an in-flight payment the user is still completing.
+        const orphanCutoff = new Date(Date.now() - 60 * 60 * 1000);
+        const orphanPayments = await prisma.payment.findMany({
+            where: { status: 'PENDING', paymentUrl: { not: null }, createdAt: { lt: orphanCutoff } },
+        });
+
+        for (const p of orphanPayments) {
+            try {
+                const meta = JSON.parse(p.paymentUrl!);
+                if (meta.addonKey || meta.addonKeys) {
+                    await prisma.payment.delete({ where: { id: p.id } });
+                    paymentsDeleted++;
+                }
+            } catch {}
+        }
+
+        res.json({
+            message: `Limpeza concluída: ${cleaned} booking(s) corrigido(s), ${paymentsDeleted} pagamento(s) órfão(s) removido(s).`,
+            bookingsCleaned: cleaned,
+            paymentsDeleted,
+        });
+    } catch (err) {
+        console.error('[Cleanup] Error:', err);
+        res.status(500).json({ error: 'Erro na limpeza.' });
+    }
+});
+
 // ─── POST /api/bookings/:id/addons (Purchase Addon) ─────
 
 router.post('/:id/addons', authenticate, async (req: Request, res: Response) => {
@@ -448,6 +523,9 @@ router.post('/:id/addons', authenticate, async (req: Request, res: Response) => 
         const id = req.params.id as string;
         const data = addOnPurchaseSchema.parse(req.body);
         const userId = req.user!.userId;
+
+        // Normalize: accept single addonKey or array of addonKeys
+        const keys: string[] = data.addonKeys || (data.addonKey ? [data.addonKey] : []);
 
         const booking = await prisma.booking.findFirst({
             where: { id, userId, status: { in: ['RESERVED', 'CONFIRMED'] } },
@@ -459,51 +537,81 @@ router.post('/:id/addons', authenticate, async (req: Request, res: Response) => 
             return;
         }
 
-        if (booking.addOns.includes(data.addonKey)) {
-            res.status(400).json({ error: 'Este serviço já está ativo neste episódio.' });
+        // Filter out already-active addons
+        const newKeys = keys.filter(k => !booking.addOns.includes(k));
+        if (newKeys.length === 0) {
+            res.status(400).json({ error: 'Todos os serviços selecionados já estão ativos neste episódio.' });
             return;
         }
 
-        const addonConfig = await prisma.addOnConfig.findUnique({
-            where: { key: data.addonKey }
+        // Validate all addon keys exist
+        const addonConfigs = await prisma.addOnConfig.findMany({
+            where: { key: { in: newKeys } }
         });
-
-        if (!addonConfig) {
-            res.status(404).json({ error: 'Serviço não encontrado no catálogo.' });
+        if (addonConfigs.length !== newKeys.length) {
+            const found = addonConfigs.map(a => a.key);
+            const missing = newKeys.filter(k => !found.includes(k));
+            res.status(404).json({ error: `Serviço(s) não encontrado(s): ${missing.join(', ')}` });
             return;
         }
 
-        let price = addonConfig.price;
-        if (booking.contract) {
-            price = applyDiscount(price, booking.contract.discountPct);
+        // Split: contract addons (free) vs paid addons
+        const contractKeys = newKeys.filter(k => booking.contract?.addOns?.includes(k));
+        const paidKeys = newKeys.filter(k => !booking.contract?.addOns?.includes(k));
+
+        // Activate contract addons immediately (no payment needed)
+        if (contractKeys.length > 0) {
+            await prisma.booking.update({
+                where: { id },
+                data: { addOns: { push: contractKeys } }
+            });
         }
 
-        // Generate Payment entry
-        const payment = await prisma.payment.create({
-            data: {
-                userId,
-                contractId: booking.contract?.id || null,
-                bookingId: id,
-                provider: getProviderForMethod('CARTAO'),
-                amount: price,
-                status: 'PENDING',
-                dueDate: new Date(),
+        // For paid addons: create ONE combined payment
+        if (paidKeys.length > 0) {
+            let totalPrice = 0;
+            for (const key of paidKeys) {
+                const config = addonConfigs.find(a => a.key === key)!;
+                let price = config.price;
+                if (booking.contract) {
+                    price = applyDiscount(price, booking.contract.discountPct);
+                }
+                totalPrice += price;
             }
-        });
 
-        // Add to booking
-        const updatedBooking = await prisma.booking.update({
-            where: { id },
-            data: {
-                addOns: { push: data.addonKey }
-            }
-        });
+            const payment = await prisma.payment.create({
+                data: {
+                    userId,
+                    contractId: booking.contract?.id || null,
+                    bookingId: id,
+                    provider: getProviderForMethod('CARTAO'),
+                    amount: totalPrice,
+                    status: 'PENDING',
+                    dueDate: new Date(),
+                    // Store ALL addon keys in metadata for post-payment activation
+                    paymentUrl: JSON.stringify({ addonKeys: paidKeys }),
+                }
+            });
 
+            res.status(200).json({
+                message: contractKeys.length > 0
+                    ? `${contractKeys.length} serviço(s) do plano ativado(s). Cobrança gerada para ${paidKeys.length} serviço(s) avulso(s).`
+                    : 'Cobrança gerada. O serviço será ativado após a confirmação do pagamento.',
+                paymentId: payment.id,
+                amount: totalPrice,
+                activatedKeys: contractKeys,
+                pendingKeys: paidKeys,
+            });
+            return;
+        }
+
+        // All were contract addons (no payment needed)
         res.status(200).json({
-            message: 'Serviço adicionado com sucesso e cobrança gerada.',
-            booking: updatedBooking,
-            checkoutUrl: `/payment/${payment.id}`, // Mock URL for payment processing
-            amount: price,
+            message: 'Serviço(s) incluso(s) no plano ativado(s) com sucesso.',
+            paymentId: '',
+            amount: 0,
+            activatedKeys: contractKeys,
+            pendingKeys: [],
         });
     } catch (err) {
         if (err instanceof z.ZodError) {

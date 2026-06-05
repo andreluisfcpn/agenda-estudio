@@ -88,8 +88,17 @@ export default function ClientDashboard() {
                 contractsApi.getMy(),
             ]);
             const historyStatuses = ['COMPLETED', 'FALTA', 'NAO_REALIZADO', 'CANCELLED'];
-            const completedBookings = bookingsRes.bookings.filter(b => historyStatuses.includes(b.status));
-            const futureBookings = bookingsRes.bookings.filter(b => b.status === 'RESERVED' || b.status === 'CONFIRMED');
+            const bookingTs = (b: Booking) => new Date(`${b.date.split('T')[0]}T${b.startTime}:00`).getTime();
+            const nowTs = new Date();
+            // History = past/closed sessions, most recent first
+            const completedBookings = bookingsRes.bookings
+                .filter(b => historyStatuses.includes(b.status))
+                .sort((a, b) => bookingTs(b) - bookingTs(a));
+            // Upcoming = active status AND in the future, soonest first (fixes past
+            // CONFIRMED sessions showing as "próximos" with negative day counts).
+            const futureBookings = bookingsRes.bookings
+                .filter(b => (b.status === 'RESERVED' || b.status === 'CONFIRMED') && bookingTs(b) >= nowTs.getTime())
+                .sort((a, b) => bookingTs(a) - bookingTs(b));
 
             setRecentBookings(completedBookings.slice(0, 10));
             setUpcomingBookings(futureBookings.slice(0, 10));

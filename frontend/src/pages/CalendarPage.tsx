@@ -351,6 +351,23 @@ export default function CalendarPage() {
         });
     }, [currentWeek, loadWeekData]);
 
+    // Refetch calendar data when user returns to this tab (e.g. after paying)
+    useEffect(() => {
+        const handleVisibility = () => {
+            if (document.visibilityState === 'visible') {
+                const dates = getWeekDates(currentWeek);
+                loadWeekData(dates);
+                if (!isAdmin) {
+                    bookingsApi.getMy()
+                        .then(res => setAllMyBookings(res.bookings))
+                        .catch(() => {});
+                }
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibility);
+        return () => document.removeEventListener('visibilitychange', handleVisibility);
+    }, [currentWeek, loadWeekData, isAdmin]);
+
     const preSelectHandled = useRef(false);
     useEffect(() => {
         if (preSelectHandled.current) return;

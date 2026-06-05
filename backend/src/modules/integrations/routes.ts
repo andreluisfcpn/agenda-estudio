@@ -217,9 +217,11 @@ router.put('/:provider', authenticate, authorize('ADMIN'), async (req: Request, 
                         const existingSub = (existingConfig[env] || {}) as Record<string, any>;
                         const merged: Record<string, any> = { ...existingSub };
                         for (const [key, value] of Object.entries(incoming)) {
-                            if (value !== undefined && value !== null && value !== '') {
-                                merged[key] = value;
-                            }
+                            // Skip empty, null, undefined values
+                            if (value === undefined || value === null || value === '') continue;
+                            // Skip masked values sent back from the frontend (e.g. 'int-1bk...bsHJ', '***CERTIFICATE_CONFIGURED***')
+                            if (typeof value === 'string' && (value.includes('...') || value.startsWith('***'))) continue;
+                            merged[key] = value;
                         }
                         mergedConfig[env] = merged;
                     }
@@ -227,9 +229,9 @@ router.put('/:provider', authenticate, authorize('ADMIN'), async (req: Request, 
                     // Flat format (legacy)
                     mergedConfig = { ...existingConfig };
                     for (const [key, value] of Object.entries(data.config)) {
-                        if (value !== undefined && value !== null && value !== '') {
-                            mergedConfig[key] = value;
-                        }
+                        if (value === undefined || value === null || value === '') continue;
+                        if (typeof value === 'string' && (value.includes('...') || value.startsWith('***'))) continue;
+                        mergedConfig[key] = value;
                     }
                 }
             } catch { /* existing config parse failed, use new config */ }

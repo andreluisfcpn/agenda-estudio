@@ -8,6 +8,7 @@ import { stripeVerifyWebhook } from '../../lib/stripeService.js';
 import { decryptConfigSafe } from '../../utils/crypto.js';
 import crypto from 'node:crypto';
 import { createNotification } from '../notifications/notificationService.js';
+import { onPaymentConfirmed, unlockNextCycleBookings } from '../../lib/paymentEffects.js';
 
 const router = Router();
 
@@ -18,68 +19,49 @@ const router = Router();
 //   webhook-event-type: invoice.paid
 //   webhook-resource-id: inv_xxx
 
-async function verifyCoraSignature(req: Request): Promise<boolean> {
-    // Cora identifies via user-agent and webhook-specific headers
-    const userAgent = req.headers['user-agent'] as string;
-    const eventId = req.headers['webhook-event-id'] as string;
-    const signature = req.headers['x-cora-signature'] as string || req.headers['x-webhook-signature'] as string;
+// Tri-state HMAC check. Cora's Direct Integration secures webhooks via
+// mTLS/allowlist (not an HMAC header the app can configure), so we treat the
+// signature as an *optional* fast path:
+//   'valid'   → signature present, secret configured and matches (trust event)
+//   'invalid' → signature present but does NOT match (tampering → reject)
+//   'absent'  → no signature, or no secret configured to verify it. We then fall
+//               back to verifying the real invoice state via the Cora API (mTLS).
+type CoraSigState = 'valid' | 'invalid' | 'absent';
 
-    // Primary: check HMAC signature if webhookSecret is configured
-    if (signature) {
-        try {
-            const integration = await prisma.integrationConfig.findUnique({ where: { provider: 'CORA' } });
-            if (!integration) return false;
+async function verifyCoraSignature(req: Request): Promise<CoraSigState> {
+    const signature = (req.headers['x-cora-signature'] as string) || (req.headers['x-webhook-signature'] as string);
+    if (!signature) return 'absent';
 
-            const decrypted = decryptConfigSafe(integration.config);
-            const parsed = JSON.parse(decrypted);
+    try {
+        const integration = await prisma.integrationConfig.findUnique({ where: { provider: 'CORA' } });
+        if (!integration) return 'absent';
 
-            // Resolve dual-config: pick webhookSecret from active environment
-            const environment = integration.environment === 'production' ? 'production' : 'sandbox';
-            let webhookSecret: string | undefined;
-            if (parsed.sandbox || parsed.production) {
-                webhookSecret = parsed[environment]?.webhookSecret;
-            } else {
-                webhookSecret = parsed.webhookSecret; // legacy flat format
-            }
+        const decrypted = decryptConfigSafe(integration.config);
+        const parsed = JSON.parse(decrypted);
 
-            if (!webhookSecret) {
-                console.warn(`[Webhook:Cora] Signature present but no webhookSecret configured for "${environment}"`);
-                return false;
-            }
-
-            const rawBody = (req as any).rawBody || JSON.stringify(req.body);
-            const expectedSignature = crypto
-                .createHmac('sha256', webhookSecret)
-                .update(rawBody)
-                .digest('hex');
-
-            // Prevent timing attacks with constant-time comparison
-            const sigBuf = Buffer.from(signature);
-            const expectedBuf = Buffer.from(expectedSignature);
-            if (sigBuf.length !== expectedBuf.length) return false;
-
-            return crypto.timingSafeEqual(sigBuf, expectedBuf);
-        } catch (err) {
-            console.error('[Webhook:Cora] Signature verification error:', err);
-            return false;
+        // Resolve dual-config: pick webhookSecret from active environment
+        const environment = integration.environment === 'production' ? 'production' : 'sandbox';
+        let webhookSecret: string | undefined;
+        if (parsed.sandbox || parsed.production) {
+            webhookSecret = parsed[environment]?.webhookSecret;
+        } else {
+            webhookSecret = parsed.webhookSecret; // legacy flat format
         }
-    }
+        if (!webhookSecret) return 'absent'; // can't verify HMAC → rely on Cora-API check
 
-    // No HMAC signature — reject in production (VULN-01 fix)
-    // User-Agent spoofing is trivial; never trust it for authentication
-    if (process.env.NODE_ENV === 'production') {
-        console.error('[Webhook:Cora] No signature — rejecting in production');
-        return false;
-    }
+        // VULN-H3 FIX: rawBody MUST be available for correct signature verification
+        const rawBody = (req as any).rawBody;
+        if (!rawBody) return 'absent';
 
-    // Dev-only: accept unsigned webhooks ONLY with explicit opt-in flag
-    if (process.env.ALLOW_UNVERIFIED_WEBHOOKS === 'true') {
-        console.warn('[Webhook:Cora] Accepting unverified webhook (dev + ALLOW_UNVERIFIED_WEBHOOKS)');
-        return true;
+        const expectedSignature = crypto.createHmac('sha256', webhookSecret).update(rawBody).digest('hex');
+        const sigBuf = Buffer.from(signature);
+        const expectedBuf = Buffer.from(expectedSignature);
+        if (sigBuf.length !== expectedBuf.length) return 'invalid';
+        return crypto.timingSafeEqual(sigBuf, expectedBuf) ? 'valid' : 'invalid';
+    } catch (err) {
+        console.error('[Webhook:Cora] Signature verification error:', err);
+        return 'invalid';
     }
-
-    console.warn('[Webhook:Cora] No signature and ALLOW_UNVERIFIED_WEBHOOKS not set — rejecting');
-    return false;
 }
 
 // ─── POST /api/webhooks/cora ────────────────────────────
@@ -87,103 +69,48 @@ async function verifyCoraSignature(req: Request): Promise<boolean> {
 
 router.post('/cora', async (req: Request, res: Response) => {
     try {
-        // Verify webhook signature
-        const isValid = await verifyCoraSignature(req);
-        if (!isValid) {
-            console.error('[Webhook:Cora] Invalid or missing signature — rejecting');
+        // Optional HMAC fast-path. If a signature is present but INVALID, it's
+        // tampering → reject. Otherwise (valid or absent) we proceed and re-verify
+        // the real invoice state against the Cora API (mTLS) before changing
+        // anything — so confirmation never depends on a header Cora may not send.
+        const sigState = await verifyCoraSignature(req);
+        if (sigState === 'invalid') {
+            console.error('[Webhook:Cora] Signature present but invalid — rejecting (tampering)');
             res.status(401).json({ error: 'Invalid webhook signature' });
             return;
         }
 
         const event = req.body;
-
-        console.log('[Webhook:Cora] Received event:', JSON.stringify(event).slice(0, 500));
-
         // Cora sends event metadata in HEADERS (primary) and sometimes in body (fallback)
-        const eventType = (req.headers['webhook-event-type'] as string) || event.event_type || event.type || event.event;
-        const invoiceId = (req.headers['webhook-resource-id'] as string) || event.data?.id || event.invoice_id || event.id;
+        const eventType = ((req.headers['webhook-event-type'] as string) || event?.event_type || event?.type || event?.event || '').toLowerCase();
+        const invoiceId = (req.headers['webhook-resource-id'] as string) || event?.data?.id || event?.invoice_id || event?.id;
+
+        console.log(`[Webhook:Cora] Event: ${eventType || '(none)'}, Invoice: ${invoiceId || '(none)'} (sig: ${sigState})`);
 
         if (!invoiceId) {
-            console.log('[Webhook:Cora] No invoice ID found in event');
             res.status(200).json({ received: true });
             return;
         }
 
-        console.log(`[Webhook:Cora] Event: ${eventType}, Invoice: ${invoiceId}`);
-
-        // Handle payment confirmation events
-        // Cora may send event types in different casing — normalize to lowercase
-        const normalizedEventType = eventType?.toLowerCase() || '';
-        const confirmationEvents = [
-            'invoice.paid',
-            'invoice.payment_confirmed',
-            'payment_received',
-            'boleto_paid',
-        ];
-
-        if (confirmationEvents.includes(normalizedEventType)) {
-            // Find payment by providerRef (Cora invoice ID)
-            const payment = await prisma.payment.findFirst({
-                where: { providerRef: invoiceId },
-            });
-
-            if (payment && payment.status !== 'PAID') {
-                // Atomic update: only update if still PENDING to prevent race conditions
-                const updated = await prisma.payment.updateMany({
-                    where: { id: payment.id, status: 'PENDING' },
-                    data: { status: 'PAID', paidAt: new Date() },
-                });
-
-                if (updated.count > 0) {
-                    console.log(`[Webhook:Cora] Payment ${payment.id} marked as PAID (invoice: ${invoiceId})`);
-
-                    // Instant push: payment confirmed
-                    createNotification({
-                        userId: payment.userId,
-                        type: 'PAYMENT_CONFIRMED',
-                        severity: 'info',
-                        title: '✅ Pagamento Confirmado',
-                        message: `Seu pagamento de R$ ${(payment.amount / 100).toFixed(2).replace('.', ',')} foi confirmado!`,
-                        entityType: 'PAYMENT',
-                        entityId: payment.id,
-                        actionUrl: '/meus-pagamentos',
-                    }).catch(() => {});
-
-                    if (payment.contractId) {
-                        await unlockNextCycleBookings(payment.contractId);
-                    }
-                }
-            } else if (!payment) {
-                console.log(`[Webhook:Cora] No payment found for providerRef: ${invoiceId}`);
-            }
+        // Match by providerRef (Cora invoice ID)
+        const payment = await prisma.payment.findFirst({ where: { providerRef: invoiceId } });
+        if (!payment) {
+            console.log(`[Webhook:Cora] No payment found for providerRef: ${invoiceId}`);
+            res.status(200).json({ received: true });
+            return;
         }
 
-        // Handle cancellation events
-        const cancellationEvents = ['invoice.cancelled', 'invoice.expired'];
-        if (cancellationEvents.includes(normalizedEventType)) {
-            const payment = await prisma.payment.findFirst({
-                where: { providerRef: invoiceId },
-            });
+        const { reconcileCoraPayment, reconcileCoraCancellation } = await import('../../lib/coraReconciliation.js');
+        const cancellationEvents = ['invoice.cancelled', 'invoice.canceled', 'invoice.expired'];
 
-            if (payment && payment.status === 'PENDING') {
-                await prisma.payment.updateMany({
-                    where: { id: payment.id, status: 'PENDING' },
-                    data: { status: 'FAILED' },
-                });
-                console.log(`[Webhook:Cora] Payment ${payment.id} marked as FAILED (invoice: ${invoiceId})`);
-
-                // Instant push: Cora boleto cancelled/expired
-                createNotification({
-                    userId: payment.userId,
-                    type: 'PAYMENT_FAILED',
-                    severity: 'critical',
-                    title: '❌ Boleto Cancelado/Expirado',
-                    message: 'Seu boleto foi cancelado ou expirou. Gere um novo em Meus Pagamentos.',
-                    entityType: 'PAYMENT',
-                    entityId: payment.id,
-                    actionUrl: '/meus-pagamentos',
-                }).catch(() => {});
-            }
+        if (cancellationEvents.includes(eventType)) {
+            // Verify the invoice is genuinely cancelled/expired via Cora before failing it.
+            await reconcileCoraCancellation(payment.id);
+        } else {
+            // Any other event (incl. invoice.paid or a missing/unknown type) triggers a
+            // Cora-API-verified confirmation. reconcileCoraPayment only marks PAID +
+            // runs all effects if Cora actually reports the invoice as paid.
+            await reconcileCoraPayment(payment.id);
         }
 
         res.status(200).json({ received: true });
@@ -238,33 +165,24 @@ router.post('/stripe', async (req: Request, res: Response) => {
                 const payment = await prisma.payment.findUnique({ where: { id: paymentId } });
 
                 if (payment && payment.status !== 'PAID') {
-                    // Atomic update to prevent race conditions with verifyPayment
-                    const updated = await prisma.payment.updateMany({
-                        where: { id: paymentId, status: 'PENDING' },
-                        data: {
-                            status: 'PAID',
-                            paidAt: new Date(),
-                            providerRef: session.payment_intent || session.id,
-                        },
-                    });
+                    // Verify the charged amount matches before marking PAID (parity with
+                    // payment_intent.succeeded). Guards against tampered/mismatched sessions.
+                    if (session.amount_total != null && session.amount_total !== payment.amount) {
+                        console.error(`[Webhook:Stripe] checkout.session amount mismatch: session=${session.amount_total}, DB=${payment.amount} — skipping ${paymentId}`);
+                    } else {
+                        // Atomic update to prevent race conditions with verifyPayment
+                        const updated = await prisma.payment.updateMany({
+                            where: { id: paymentId, status: 'PENDING' },
+                            data: {
+                                status: 'PAID',
+                                paidAt: new Date(),
+                                providerRef: session.payment_intent || session.id,
+                            },
+                        });
 
-                    if (updated.count > 0) {
-                        console.log(`[Webhook:Stripe] Payment ${paymentId} marked as PAID`);
-
-                        // Instant push: payment confirmed
-                        createNotification({
-                            userId: payment.userId,
-                            type: 'PAYMENT_CONFIRMED',
-                            severity: 'info',
-                            title: '✅ Pagamento Confirmado',
-                            message: `Seu pagamento de R$ ${(payment.amount / 100).toFixed(2).replace('.', ',')} foi confirmado!`,
-                            entityType: 'PAYMENT',
-                            entityId: payment.id,
-                            actionUrl: '/meus-pagamentos',
-                        }).catch(() => {});
-
-                        if (payment.contractId) {
-                            await unlockNextCycleBookings(payment.contractId);
+                        if (updated.count > 0) {
+                            console.log(`[Webhook:Stripe] Payment ${paymentId} marked as PAID`);
+                            await onPaymentConfirmed(paymentId);
                         }
                     }
                 }
@@ -308,16 +226,17 @@ router.post('/stripe', async (req: Request, res: Response) => {
             const paymentIntentId = charge.payment_intent;
 
             if (paymentIntentId) {
-                const payment = await prisma.payment.findFirst({
-                    where: { providerRef: paymentIntentId },
+                // VULN-C1 FIX: Atomic guard — only refund payments that are currently PAID
+                // Prevents marking PENDING/FAILED payments as REFUNDED via forged webhooks
+                const updated = await prisma.payment.updateMany({
+                    where: { providerRef: String(paymentIntentId), status: 'PAID' },
+                    data: { status: 'REFUNDED' },
                 });
 
-                if (payment) {
-                    await prisma.payment.update({
-                        where: { id: payment.id },
-                        data: { status: 'REFUNDED' },
-                    });
-                    console.log(`[Webhook:Stripe] Payment ${payment.id} marked as REFUNDED`);
+                if (updated.count > 0) {
+                    console.log(`[Webhook:Stripe] ${updated.count} payment(s) marked as REFUNDED for PI ${paymentIntentId}`);
+                } else {
+                    console.warn(`[Webhook:Stripe] charge.refunded received for PI ${paymentIntentId} but no PAID payment found — skipping`);
                 }
             }
         }
@@ -330,21 +249,24 @@ router.post('/stripe', async (req: Request, res: Response) => {
             if (paymentId) {
                 const payment = await prisma.payment.findUnique({ where: { id: paymentId } });
                 if (payment && payment.status !== 'PAID') {
-                    // Atomic update to prevent race conditions
-                    const updated = await prisma.payment.updateMany({
-                        where: { id: paymentId, status: 'PENDING' },
-                        data: {
-                            status: 'PAID',
-                            paidAt: new Date(),
-                            providerRef: pi.id,
-                            paymentType: pi.payment_method_types?.includes('card') ? 'CREDIT' : null,
-                        },
-                    });
+                    // VULN-H2 FIX: Verify amount matches before marking as PAID
+                    if (pi.amount !== payment.amount) {
+                        console.error(`[Webhook:Stripe] Amount mismatch on PI succeeded: PI=${pi.amount}, DB=${payment.amount} — skipping payment ${paymentId}`);
+                    } else {
+                        // Atomic update to prevent race conditions
+                        const updated = await prisma.payment.updateMany({
+                            where: { id: paymentId, status: 'PENDING' },
+                            data: {
+                                status: 'PAID',
+                                paidAt: new Date(),
+                                providerRef: pi.id,
+                                paymentType: pi.payment_method_types?.includes('card') ? 'CREDIT' : null,
+                            },
+                        });
 
-                    if (updated.count > 0) {
-                        console.log(`[Webhook:Stripe] Payment ${paymentId} marked as PAID (PaymentIntent)`);
-                        if (payment.contractId) {
-                            await unlockNextCycleBookings(payment.contractId);
+                        if (updated.count > 0) {
+                            console.log(`[Webhook:Stripe] Payment ${paymentId} marked as PAID (PaymentIntent)`);
+                            await onPaymentConfirmed(paymentId);
                         }
                     }
                 }
@@ -455,19 +377,25 @@ router.post('/stripe', async (req: Request, res: Response) => {
                 });
 
                 if (payment) {
-                    const updated = await prisma.payment.updateMany({
-                        where: { id: payment.id, status: 'PENDING' },
-                        data: {
-                            status: 'PAID',
-                            paidAt: new Date(),
-                            providerRef: invoice.payment_intent ? String(invoice.payment_intent) : invoice.id,
-                        },
-                    });
+                    // VULN-M5 FIX: Verify invoice amount matches expected payment amount
+                    const invoiceAmount = invoice.amount_paid || invoice.total;
+                    if (invoiceAmount != null && invoiceAmount !== payment.amount) {
+                        console.error(`[Webhook:Stripe] Subscription amount mismatch: Invoice=${invoiceAmount}, DB=${payment.amount} — skipping payment ${payment.id}`);
+                    } else {
+                        const updated = await prisma.payment.updateMany({
+                            where: { id: payment.id, status: 'PENDING' },
+                            data: {
+                                status: 'PAID',
+                                paidAt: new Date(),
+                                providerRef: invoice.payment_intent ? String(invoice.payment_intent) : invoice.id,
+                            },
+                        });
 
-                    if (updated.count > 0) {
-                        console.log(`[Webhook:Stripe] Subscription payment ${payment.id} marked as PAID`);
-                        if (payment.contractId) {
-                            await unlockNextCycleBookings(payment.contractId);
+                        if (updated.count > 0) {
+                            console.log(`[Webhook:Stripe] Subscription payment ${payment.id} marked as PAID`);
+                            if (payment.contractId) {
+                                await unlockNextCycleBookings(payment.contractId);
+                            }
                         }
                     }
                 }
@@ -521,53 +449,5 @@ router.post('/stripe', async (req: Request, res: Response) => {
         res.status(200).json({ received: true, error: 'processing_error' });
     }
 });
-
-// ─── Helper: Unlock PROGRESSIVE access bookings ─────────
-// When a payment is confirmed for a PROGRESSIVE contract,
-// change RESERVED bookings in the next cycle to CONFIRMED
-
-async function unlockNextCycleBookings(contractId: string): Promise<void> {
-    try {
-        const contract = await prisma.contract.findUnique({
-            where: { id: contractId },
-            select: { accessMode: true, startDate: true },
-        });
-
-        if (!contract || contract.accessMode !== 'PROGRESSIVE') return;
-
-        // Find the earliest RESERVED bookings and confirm them (1 cycle worth)
-        const reservedBookings = await prisma.booking.findMany({
-            where: {
-                contractId,
-                status: 'RESERVED',
-            },
-            orderBy: { date: 'asc' },
-            take: 20, // max 1 cycle of bookings
-        });
-
-        if (reservedBookings.length === 0) return;
-
-        // Confirm the first cycle of reserved bookings
-        // A cycle is ~4 weeks, so confirm bookings within 28 days of the earliest reserved
-        const firstDate = reservedBookings[0].date;
-        const cycleEnd = new Date(firstDate);
-        cycleEnd.setDate(cycleEnd.getDate() + 28);
-
-        const toConfirm = reservedBookings.filter(b => b.date < cycleEnd);
-
-        if (toConfirm.length > 0) {
-            await prisma.booking.updateMany({
-                where: {
-                    id: { in: toConfirm.map(b => b.id) },
-                },
-                data: { status: 'CONFIRMED' },
-            });
-
-            console.log(`[Webhook] Unlocked ${toConfirm.length} bookings for contract ${contractId}`);
-        }
-    } catch (err) {
-        console.error('[Webhook] Error unlocking bookings:', err);
-    }
-}
 
 export default router;

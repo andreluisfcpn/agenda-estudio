@@ -250,6 +250,7 @@ model Payment {
   installments         Int?      @default(1)  // number of installments
   paymentType          String?   @map("payment_type")  // DEBIT | CREDIT
   stripeSubscriptionId String?   @map("stripe_subscription_id")
+  metadata    Json?               // Pending contract data, addon keys, etc.
   paidAt      DateTime?       @map("paid_at")
   createdAt   DateTime        @default(now()) @map("created_at")
   updatedAt   DateTime        @updatedAt @map("updated_at")

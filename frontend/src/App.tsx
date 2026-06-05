@@ -31,6 +31,7 @@ const AdminServicesPage = React.lazy(() => import('./pages/AdminServicesPage'));
 const AdminTodayPage = React.lazy(() => import('./pages/AdminTodayPage'));
 const AdminFinancePage = React.lazy(() => import('./pages/AdminFinancePage'));
 const AdminReportsPage = React.lazy(() => import('./pages/AdminReportsPage'));
+const AdminIntegrationsPage = React.lazy(() => import('./pages/AdminIntegrationsPage'));
 const ClientProfilePage = React.lazy(() => import('./pages/ClientProfilePage'));
 
 // ─── Success Toast ──────────────────────────────────────
@@ -181,6 +182,7 @@ function AppRoutes() {
             <Route path="/admin/services" element={<ProtectedRoute><AdminRoute><AdminServicesPage /></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/finance" element={<ProtectedRoute><AdminRoute><AdminFinancePage /></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/reports" element={<ProtectedRoute><AdminRoute><AdminReportsPage /></AdminRoute></ProtectedRoute>} />
+            <Route path="/admin/integrations" element={<ProtectedRoute><AdminRoute><AdminIntegrationsPage /></AdminRoute></ProtectedRoute>} />
 
             {/* Legacy redirects */}
             <Route path="/clients" element={<Navigate to="/admin/clients" replace />} />

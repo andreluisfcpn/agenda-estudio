@@ -28,7 +28,7 @@ export async function getStripe(): Promise<StripeType | null> {
 interface CardFormInnerProps {
     mode: 'setup' | 'payment';
     clientSecret: string;
-    onSuccess: () => void;
+    onSuccess: (paymentIntentId?: string) => void;
     onError: (msg: string) => void;
     onCancel?: () => void;
     submitLabel?: string;
@@ -80,7 +80,7 @@ function CardFormInner({ mode, clientSecret, onSuccess, onError, onCancel, submi
                     setFormError(msg);
                     onError(msg);
                 } else if (paymentIntent?.status === 'succeeded') {
-                    onSuccess();
+                    onSuccess(paymentIntent.id);
                 } else if (paymentIntent?.status === 'requires_action') {
                     setFormError('Autenticação adicional necessária. Siga as instruções do banco.');
                 }
@@ -177,7 +177,7 @@ function CardFormInner({ mode, clientSecret, onSuccess, onError, onCancel, submi
 interface StripeCardFormProps {
     mode: 'setup' | 'payment';
     clientSecret: string;
-    onSuccess: () => void;
+    onSuccess: (paymentIntentId?: string) => void;
     onError: (msg: string) => void;
     onCancel?: () => void;
     submitLabel?: string;

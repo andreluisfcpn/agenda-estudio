@@ -32,8 +32,26 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
         const sessionsPerMonth = await getConfig('sessions_per_month');
         const monthlyAmount = sessionsPerMonth * discountedPrice;
 
+        // PAY-M1 FIX: Reuse existing pending payment for the same contract instead of creating orphans
+        const existingPending = await prisma.payment.findFirst({
+            where: { contractId, userId, status: 'PENDING' },
+            orderBy: { createdAt: 'desc' },
+        });
+
         // ─── PIX: Cora ───────────────────────────────────────
         if (data.paymentMethod === 'PIX') {
+            // If we already have a pending PIX payment with a pixString, return it
+            if (existingPending && existingPending.provider === 'CORA' && existingPending.pixString) {
+                res.json({
+                    provider: 'CORA',
+                    paymentId: existingPending.id,
+                    pixString: existingPending.pixString,
+                    amount: existingPending.amount,
+                    message: 'QR Code PIX já gerado. Escaneie para ativar o contrato.',
+                });
+                return;
+            }
+
             const { createCoraPayment } = await import('../../lib/coraPaymentHelper.js');
 
             // Create Payment record
@@ -94,6 +112,25 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
         }
 
         const customerId = await stripeGetOrCreateCustomer(userId);
+
+        // PAY-M1: Reuse existing pending Stripe payment if available
+        if (existingPending && existingPending.provider === 'STRIPE' && existingPending.providerRef) {
+            const { stripeGetPaymentIntent } = await import('../../lib/stripeService.js');
+            try {
+                const pi = await stripeGetPaymentIntent(existingPending.providerRef);
+                if (pi.status === 'requires_payment_method' || pi.status === 'requires_confirmation' || pi.status === 'requires_action') {
+                    res.json({
+                        provider: 'STRIPE',
+                        clientSecret: pi.client_secret,
+                        paymentId: existingPending.id,
+                        amount: existingPending.amount,
+                        maxInstallments,
+                        message: 'PaymentIntent existente reutilizado.',
+                    });
+                    return;
+                }
+            } catch { /* PI expired or invalid — create new one below */ }
+        }
 
         // Create Payment record
         const payment = await prisma.payment.create({
@@ -210,6 +247,27 @@ router.post('/:id/confirm-payment', authenticate, async (req: Request, res: Resp
             return;
         }
 
+        // VULN-H4 FIX: Trigger contract fulfillment (bookings + remaining installments)
+        // The fulfillContractFromPayment function is idempotent (guards against double-creation)
+        const paidPayment = await prisma.payment.findFirst({
+            where: { contractId, status: 'PAID' },
+            orderBy: { paidAt: 'desc' },
+        });
+        if (paidPayment) {
+            try {
+                const { fulfillContractFromPayment } = await import('../../lib/contractFulfillment.js');
+                await fulfillContractFromPayment(paidPayment.id);
+                // Renewals: the contract already exists (fulfillment is a no-op for it), so
+                // generate the FIXO bookings here. Idempotent — no-op if bookings exist or
+                // the contract isn't FIXO. Fixes client-renew producing a paid contract
+                // with zero scheduled sessions.
+                const { generateBookingsForRenewedContract } = await import('../../lib/paymentEffects.js');
+                await generateBookingsForRenewedContract(contractId);
+            } catch (fulfillErr) {
+                console.error('[CONTRACT-CONFIRM-PAYMENT] Fulfillment error (non-blocking):', fulfillErr);
+            }
+        }
+
         res.json({
             contract: { id: contractId, status: 'ACTIVE' },
             message: '✅ Contrato ativado! Agora você pode agendar seus horários.',
@@ -294,11 +352,15 @@ router.post('/:id/subscribe', authenticate, async (req: Request, res: Response) 
             durationMonths: duration,
         });
 
-        // Update payment providerRef if subscription created successfully
+        // PAY-M1 FIX: Persist BOTH providerRef and stripeSubscriptionId
+        // The webhook handler (invoice.payment_succeeded) searches by stripeSubscriptionId
         if (subResult.subscriptionId) {
             await prisma.payment.update({
                 where: { id: payment.id },
-                data: { providerRef: subResult.subscriptionId }
+                data: {
+                    providerRef: subResult.subscriptionId,
+                    stripeSubscriptionId: subResult.subscriptionId,
+                },
             });
         }
 
@@ -334,7 +396,7 @@ router.post('/:id/subscribe', authenticate, async (req: Request, res: Response) 
             res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
             return;
         }
-        res.status(500).json({ error: err.message || 'Erro ao configurar assinatura.' });
+        res.status(500).json({ error: 'Erro ao configurar assinatura.' });
     }
 });
 
@@ -352,6 +414,15 @@ router.post('/:id/client-renew', authenticate, async (req: Request, res: Respons
         if (!['ACTIVE', 'EXPIRED'].includes(original.status)) { 
             res.status(400).json({ error: 'Só é possível renovar contratos ativos ou expirados.' }); 
             return; 
+        }
+
+        // PAY-M2 FIX: Block duplicate pending renewals
+        const pendingRenewal = await prisma.contract.findFirst({
+            where: { renewedFromId: id, status: 'AWAITING_PAYMENT' },
+        });
+        if (pendingRenewal) {
+            res.status(400).json({ error: 'Já existe uma renovação pendente para este contrato. Realize o pagamento ou aguarde a expiração.' });
+            return;
         }
 
         // Calculate discount based on duration
@@ -409,7 +480,7 @@ router.post('/:id/client-renew', authenticate, async (req: Request, res: Respons
             res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
             return;
         }
-        res.status(500).json({ error: err.message || 'Erro ao processar renovação.' });
+        res.status(500).json({ error: 'Erro ao processar renovação.' });
     }
 });
 

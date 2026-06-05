@@ -21,6 +21,7 @@ import {
     LogOut,
     Wallet,
     Sparkles,
+    Plug,
 } from 'lucide-react';
 
 interface NavItemProps {
@@ -204,6 +205,7 @@ export default function Sidebar({ collapsed, onProfileClick }: SidebarProps) {
                         <NavItem to="/admin/pricing" icon={BadgeDollarSign} label="Planos & Valores" collapsed={collapsed} />
                         <NavItem to="/admin/services" icon={Sparkles} label="Serviços" collapsed={collapsed} />
                         <NavItem to="/admin/finance" icon={CreditCard} label="Financeiro" collapsed={collapsed} />
+                        <NavItem to="/admin/integrations" icon={Plug} label="Integrações" collapsed={collapsed} />
                         <NavItem to="/admin/reports" icon={BarChart3} label="Relatórios" collapsed={collapsed} />
                     </>
                 )}

@@ -14,6 +14,7 @@ import {
     calculateEndTime,
     fitsInOperatingHours,
     isOperatingDay,
+    studioDateTime,
 } from '../../utils/pricing.js';
 import { BookingStatus, Prisma } from '../../generated/prisma/client.js';
 import { getConfig } from '../../lib/businessConfig.js';
@@ -32,8 +33,8 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
         const dateObj = new Date(data.date + 'T00:00:00');
         const dayOfWeek = dateObj.getUTCDay();
 
-        // Validate: Past Time Booking Check
-        const slotDateTime = new Date(`${data.date}T${data.startTime}:00`);
+        // Validate: Past Time Booking Check (studio timezone, consistent across server TZs)
+        const slotDateTime = studioDateTime(data.date, data.startTime);
         const minAdvanceMinutes = await getConfig('booking_min_advance_minutes');
         const diffMinutes = (slotDateTime.getTime() - Date.now()) / (1000 * 60);
         if (diffMinutes < minAdvanceMinutes) {
@@ -148,13 +149,21 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
         }
 
         try {
-            // Check for existing bookings (double-booking at DB level)
-            // Exclude user's own RESERVED bookings — they are allowed to retry payment
+            // Check for existing bookings (double-booking at DB level).
+            // Exclude: (a) the user's own RESERVED holds (they may retry payment) and
+            // (b) ANY expired RESERVED hold (no longer occupies the slot — the cron just
+            // hasn't swept it yet). The Redis lock above already guards real races.
+            const nowConflict = new Date();
             const conflicting = await prisma.booking.findFirst({
                 where: {
                     date: dateObj,
                     status: { not: BookingStatus.CANCELLED },
-                    NOT: { userId, status: BookingStatus.RESERVED },
+                    NOT: {
+                        OR: [
+                            { userId, status: BookingStatus.RESERVED },
+                            { status: BookingStatus.RESERVED, holdExpiresAt: { lt: nowConflict } },
+                        ],
+                    },
                     OR: packageSlots.map(slot => ({
                         startTime: { lte: slot },
                         endTime: { gt: slot },
@@ -257,6 +266,7 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                         startTime: existingHold.startTime,
                         endTime: existingHold.endTime,
                         tier: existingHold.tierApplied,
+                        tierApplied: existingHold.tierApplied,
                         price: existingHold.price,
                         status: existingHold.status,
                         contractId: existingHold.contractId,
@@ -302,18 +312,28 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                 finalContractId = newContract.id;
                 isAvulsoCreated = true;
             } else {
-                // Decrement credits based on contract type
+                // Decrement credits based on contract type — VULN-M2 FIX: atomic operation
                 const contract = await prisma.contract.findUnique({ where: { id: finalContractId } });
                 if ((contract?.type === 'FLEX' || contract?.type === 'AVULSO') && (contract.flexCreditsRemaining || 0) > 0) {
-                    await prisma.contract.update({
-                        where: { id: finalContractId },
-                        data: { flexCreditsRemaining: contract.flexCreditsRemaining! - 1 },
+                    const decremented = await prisma.contract.updateMany({
+                        where: { id: finalContractId, flexCreditsRemaining: { gt: 0 } },
+                        data: { flexCreditsRemaining: { decrement: 1 } },
                     });
+                    if (decremented.count === 0) {
+                        await releaseMultiSlotLock(data.date, packageSlots, userId);
+                        res.status(400).json({ error: 'Créditos esgotados (concorrência). Tente novamente.' });
+                        return;
+                    }
                 } else if (contract?.type === 'CUSTOM' && (contract.customCreditsRemaining || 0) > 0) {
-                    await prisma.contract.update({
-                        where: { id: finalContractId },
-                        data: { customCreditsRemaining: contract.customCreditsRemaining! - 1 },
+                    const decremented = await prisma.contract.updateMany({
+                        where: { id: finalContractId, customCreditsRemaining: { gt: 0 } },
+                        data: { customCreditsRemaining: { decrement: 1 } },
                     });
+                    if (decremented.count === 0) {
+                        await releaseMultiSlotLock(data.date, packageSlots, userId);
+                        res.status(400).json({ error: 'Créditos esgotados (concorrência). Tente novamente.' });
+                        return;
+                    }
                 }
             }
 
@@ -420,6 +440,7 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                     startTime: booking.startTime,
                     endTime: booking.endTime,
                     tier: booking.tierApplied,
+                    tierApplied: booking.tierApplied,
                     price: booking.price,
                     status: booking.status,
                     contractId: booking.contractId,

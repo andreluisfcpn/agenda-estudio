@@ -50,7 +50,7 @@ app.use(helmet({
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
             fontSrc: ["'self'", "https://fonts.gstatic.com"],
             imgSrc: ["'self'", "data:", "blob:", "https://buzios.digital", "https://agenda.buzios.digital", "https://*.stripe.com"],
-            connectSrc: ["'self'", "https://agenda.buzios.digital", "https://*.stripe.com", "https://matls-clients.api.stage.cora.com.br"],
+            connectSrc: ["'self'", "https://agenda.buzios.digital", "https://*.stripe.com", "https://matls-clients.api.cora.com.br"],
             frameSrc: ["'self'", "https://*.stripe.com"],
         },
     } : false,
@@ -140,6 +140,12 @@ app.use('/api/auth/otp', otpLimiter);
 app.use('/api/auth/register/send-code', otpLimiter);
 app.use('/api/stripe/create-payment', paymentLimiter);
 app.use('/api/stripe/verify-payment', paymentLimiter);
+// VULN-H1 FIX: Rate limit ALL financial endpoints
+app.use('/api/contracts/:id/pay', paymentLimiter);
+app.use('/api/contracts/:id/confirm-payment', paymentLimiter);
+app.use('/api/contracts/:id/subscribe', paymentLimiter);
+app.use('/api/contracts/:id/client-renew', paymentLimiter);
+app.use('/api/bookings/:id/complete-payment', paymentLimiter);
 app.use('/api', apiLimiter);
 
 app.use('/api/auth', authRoutes);
@@ -246,6 +252,23 @@ app.listen(config.port, async () => {
         setTimeout(runCleanupJob, 10000); // run once on boot
         console.log('   🧹 Notification cleanup job registered (daily)');
     }).catch(err => console.error('[NOTIF-CLEANUP] Failed to load:', err));
+
+    // Cora Reconciliation Cronjob — confirm paid PIX/Boleto whose webhook was missed (every 2min)
+    import('./lib/coraReconciliation.js').then(({ reconcilePendingCoraPayments }) => {
+        const runReconcile = async () => {
+            const lockKey = 'cron:cora-reconcile:lock';
+            const lockAcquired = await redis.set(lockKey, 'running', 'EX', 110, 'NX');
+            if (lockAcquired !== 'OK') return;
+            try {
+                await reconcilePendingCoraPayments();
+            } finally {
+                await redis.del(lockKey);
+            }
+        };
+        setInterval(runReconcile, 2 * 60 * 1000);
+        setTimeout(runReconcile, 15000); // run once shortly after boot
+        console.log('   💸 Cora reconciliation job registered (every 2min)');
+    }).catch(err => console.error('[CORA-RECONCILE] Failed to load:', err));
 });
 
 export default app;

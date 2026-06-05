@@ -133,6 +133,13 @@ router.post('/register/send-code', async (req: Request, res: Response) => {
         }
 
         const target = data.method === 'email' ? data.email : data.phone;
+
+        // Anti-spam: enforce a short per-target resend cooldown
+        if (await otpService.isOnSendCooldown(target)) {
+            res.status(429).json({ error: 'Aguarde alguns segundos antes de solicitar um novo código.' });
+            return;
+        }
+
         await otpService.generateAndSendMock(target, data.name);
 
         res.json({ message: `Código enviado para ${target}` });
@@ -291,15 +298,42 @@ router.post('/google', async (req: Request, res: Response) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Google payload shape varies between ID token and userinfo endpoint
         let payload: Record<string, any> | null = null;
 
-        // Try verifying as ID Token first (for backwards compatibility if any client still sends it)
+        const expectedClientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID;
+
+        // Try verifying as ID Token first (validates signature + audience for us)
         try {
             const ticket = await googleClient.verifyIdToken({
                 idToken,
-                audience: process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID,
+                audience: expectedClientId,
             });
             payload = ticket.getPayload() ?? null;
         } catch {
-            // If verification fails, it might be an access_token. Let's fetch user info.
+            // Not an ID token → treat as an OAuth access_token. We MUST validate that the
+            // token was issued for THIS app (audience) before trusting it, otherwise ANY
+            // Google access_token obtained by any third-party app could be replayed here
+            // to impersonate the victim (account takeover). The /userinfo endpoint happily
+            // returns a profile for ANY valid Google access_token regardless of client.
+            if (!expectedClientId) {
+                res.status(500).json({ error: 'Login Google não está configurado no servidor.' });
+                return;
+            }
+
+            const tokenInfoRes = await fetch(
+                `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(idToken)}`
+            );
+            if (!tokenInfoRes.ok) {
+                res.status(401).json({ error: 'Token Google inválido.' });
+                return;
+            }
+            const tokenInfo = await tokenInfoRes.json() as Record<string, any>;
+            const tokenAudience = tokenInfo.aud || tokenInfo.azp || tokenInfo.issued_to;
+            if (tokenAudience !== expectedClientId) {
+                console.error(`[Auth:Google] access_token audience mismatch (${tokenAudience} != ${expectedClientId}) — rejecting`);
+                res.status(401).json({ error: 'Token Google não autorizado para este aplicativo.' });
+                return;
+            }
+
+            // Audience validated — now it's safe to fetch the profile
             const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
                 headers: { Authorization: `Bearer ${idToken}` }
             });
@@ -312,33 +346,44 @@ router.post('/google', async (req: Request, res: Response) => {
             return;
         }
 
+        // AUTH-H1 FIX: First try to find by googleId (safe — unique identifier)
         let user = await prisma.user.findFirst({
-            where: {
-                OR: [
-                    { googleId: payload.sub },
-                    { email: payload.email } // Attempt link if email already exists
-                ]
-            }
+            where: { googleId: payload.sub },
         });
 
-
         if (!user) {
-            // Create user from google payload
-            user = await prisma.user.create({
-                data: {
-                    email: payload.email,
-                    googleId: payload.sub,
-                    name: payload.name || payload.email.split('@')[0],
-                    photoUrl: payload.picture,
-                    role: 'CLIENTE',
+            // Check if email is already registered (potential account linking)
+            const existingByEmail = await prisma.user.findFirst({
+                where: { email: payload.email },
+            });
+
+            if (existingByEmail) {
+                // AUTH-H1 FIX: Don't auto-link — require user to login with password first
+                // This prevents account takeover via email-based Google OAuth linking
+                if (existingByEmail.passwordHash) {
+                    res.status(409).json({
+                        error: 'Já existe uma conta com este e-mail. Faça login com sua senha e vincule o Google nas configurações.',
+                        requiresPasswordAuth: true,
+                    });
+                    return;
                 }
-            });
-        } else if (!user.googleId) {
-            // Update existing user with googleId
-            user = await prisma.user.update({
-                where: { id: user.id },
-                data: { googleId: payload.sub }
-            });
+                // If no password (created via OTP only), safe to link since both are external auth
+                user = await prisma.user.update({
+                    where: { id: existingByEmail.id },
+                    data: { googleId: payload.sub },
+                });
+            } else {
+                // Create new user from Google payload
+                user = await prisma.user.create({
+                    data: {
+                        email: payload.email,
+                        googleId: payload.sub,
+                        name: payload.name || payload.email.split('@')[0],
+                        photoUrl: payload.picture,
+                        role: 'CLIENTE',
+                    },
+                });
+            }
         }
 
         const tokens = generateTokens({ userId: user.id, email: user.email || '', role: user.role });
@@ -350,7 +395,9 @@ router.post('/google', async (req: Request, res: Response) => {
             }
         });
     } catch (err) {
-        res.status(401).json({ error: 'Falha na autenticação via Google', details: err });
+        // AUTH-M3 FIX: Don't expose internal error object to client
+        console.error('[AUTH:Google] Authentication error:', err);
+        res.status(401).json({ error: 'Falha na autenticação via Google.' });
     }
 });
 
@@ -364,6 +411,12 @@ router.post('/otp/send', async (req: Request, res: Response) => {
         const existingEmail = await prisma.user.findUnique({ where: { email } });
         if (existingEmail) {
             res.status(409).json({ error: 'E-mail já cadastrado.' });
+            return;
+        }
+
+        // Anti-spam: enforce a short per-target resend cooldown
+        if (await otpService.isOnSendCooldown(phone)) {
+            res.status(429).json({ error: 'Aguarde alguns segundos antes de solicitar um novo código.' });
             return;
         }
 
@@ -407,7 +460,7 @@ router.post('/otp/verify', async (req: Request, res: Response) => {
         let user = await prisma.user.findUnique({ where: { phone } });
 
         if (!user) {
-            const passwordHash = await bcrypt.hash(password, 10);
+            const passwordHash = await bcrypt.hash(password, 12); // AUTH-H2 FIX: standardize cost to 12
             user = await prisma.user.create({
                 data: {
                     phone,
@@ -446,7 +499,7 @@ router.post('/refresh', async (req: Request, res: Response) => {
     }
 
     try {
-        const decoded = jwt.verify(refreshToken, config.jwt.refreshSecret) as {
+        const decoded = jwt.verify(refreshToken, config.jwt.refreshSecret, { algorithms: ['HS256'] }) as {
             userId: string;
             email: string;
             role: string;
@@ -558,7 +611,9 @@ router.post('/profile/photo', authenticate, upload.single('photo'), async (req: 
         }
 
         // Process image: resize to 256x256 square, JPEG output
-        const filename = `photo_${req.user!.userId}_${Date.now()}.jpg`;
+        // AUTH-H3 FIX: Sanitize userId to prevent theoretical path traversal
+        const safeUserId = req.user!.userId.replace(/[^a-zA-Z0-9\-_]/g, '');
+        const filename = `photo_${safeUserId}_${Date.now()}.jpg`;
         const outputPath = path.join(UPLOADS_DIR, filename);
 
         await sharp(file.buffer)

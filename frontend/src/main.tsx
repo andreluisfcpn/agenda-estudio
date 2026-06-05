@@ -14,6 +14,7 @@ import './styles/client-area.css';
 import './styles/bottom-sheet.css';
 import './styles/contract-wizard.css';
 import './styles/page-transition.css';
+import './styles/booking-fullscreen.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>

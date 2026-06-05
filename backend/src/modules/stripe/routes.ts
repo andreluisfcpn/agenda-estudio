@@ -17,6 +17,7 @@ import {
     stripeGetInstallmentPlans,
     stripeGetPaymentIntent,
 } from '../../lib/stripeService.js';
+import { fulfillContractFromPayment } from '../../lib/contractFulfillment.js';
 
 const router = Router();
 
@@ -112,7 +113,13 @@ router.delete('/payment-methods/:pmId', authenticate, async (req: Request, res: 
             where: { userId, OR: [{ id: pmId }, { stripePaymentMethodId: pmId }] },
         });
 
-        const stripePmId = saved?.stripePaymentMethodId || pmId;
+        // STRIPE-M2 FIX: Block detach if card not found in our DB (prevents IDOR)
+        if (!saved) {
+            res.status(404).json({ error: 'Cartão não encontrado.' });
+            return;
+        }
+
+        const stripePmId = saved.stripePaymentMethodId;
 
         // Detach from Stripe
         await stripeDetachPaymentMethod(stripePmId);
@@ -452,6 +459,13 @@ router.post('/verify-payment', authenticate, async (req: Request, res: Response)
         const pi = await stripeGetPaymentIntent(data.paymentIntentId);
         
         if (pi.status === 'succeeded') {
+            // STRIPE-M1 FIX: Verify the PaymentIntent belongs to this payment
+            if (pi.metadata?.paymentId && pi.metadata.paymentId !== data.paymentId) {
+                console.error(`[Stripe:Verify] PI ownership mismatch: PI.meta=${pi.metadata.paymentId}, requested=${data.paymentId}`);
+                res.status(400).json({ error: 'PaymentIntent não pertence a este pagamento.' });
+                return;
+            }
+
             // VULN-07 FIX: Verify amount matches before accepting
             if (pi.amount !== payment.amount) {
                 console.error(`[Stripe:Verify] Amount mismatch: PI=${pi.amount}, DB=${payment.amount} for payment ${payment.id}`);
@@ -469,6 +483,55 @@ router.post('/verify-payment', authenticate, async (req: Request, res: Response)
                     paymentType: pi.payment_method_types?.includes('card') ? 'CREDIT' : null,
                 },
             });
+
+            // Activate addon(s) on booking if this payment is for an addon purchase
+            if (payment.bookingId && payment.paymentUrl) {
+                try {
+                    const meta = JSON.parse(payment.paymentUrl);
+                    const keys: string[] = meta.addonKeys || (meta.addonKey ? [meta.addonKey] : []);
+                    if (keys.length > 0) {
+                        const booking = await prisma.booking.findUnique({ where: { id: payment.bookingId } });
+                        if (booking) {
+                            const toActivate = keys.filter(k => !booking.addOns.includes(k));
+                            if (toActivate.length > 0) {
+                                await prisma.booking.update({
+                                    where: { id: payment.bookingId },
+                                    data: { addOns: { push: toActivate } },
+                                });
+                                console.log(`[Stripe:Verify] Activated addon(s) ${toActivate.join(', ')} on booking ${payment.bookingId}`);
+                            }
+                        }
+                    }
+                } catch { /* not addon metadata, ignore */ }
+            }
+
+            // FIX: Confirm the booking and clear hold timer when payment is for a booking (avulso)
+            if (payment.bookingId) {
+                const bookingUpdated = await prisma.booking.updateMany({
+                    where: {
+                        id: payment.bookingId,
+                        status: { in: ['RESERVED', 'HELD'] },
+                    },
+                    data: {
+                        status: 'CONFIRMED',
+                        holdExpiresAt: null,
+                    },
+                });
+                if (bookingUpdated.count > 0) {
+                    console.log(`[Stripe:Verify] Confirmed booking ${payment.bookingId} (cleared hold timer)`);
+                }
+
+                // Also activate the avulso micro-contract if still AWAITING_PAYMENT
+                if (payment.contractId) {
+                    await prisma.contract.updateMany({
+                        where: { id: payment.contractId, status: 'AWAITING_PAYMENT' },
+                        data: { status: 'ACTIVE', paymentDeadline: null },
+                    });
+                }
+            }
+
+            // Fulfill pending contract if this is the first payment
+            await fulfillContractFromPayment(payment.id);
 
             // Unlock progressive bookings if needed
             if (payment.contractId) {

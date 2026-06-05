@@ -19,10 +19,13 @@ import {
   CreditCard,
   Lock,
   Calendar,
+  CalendarDays,
+  Clock,
   AlertTriangle,
   Info,
   Check,
   Plus,
+  ShieldCheck,
 } from "lucide-react";
 
 export interface CustomContractWizardProps {
@@ -125,6 +128,9 @@ export default function CustomContractWizard({
 
   // Inline card payment
   const [cardClientSecret, setCardClientSecret] = useState<string | null>(null);
+
+  // Cancel confirmation modal
+  const [showCancelModal, setShowCancelModal] = useState(false);
 
   const { get: getRule } = useBusinessConfig();
 
@@ -331,30 +337,31 @@ export default function CustomContractWizard({
 
         {/* ══════════ STEP 6: SUCCESS ══════════ */}
         {step === 6 && (
-          <div className="wizard-state-screen">
-            <div className="wizard-state-screen__icon">🎉</div>
-            <h3 className="wizard-state-screen__title">
-              Plano Personalizado Criado!
-            </h3>
-            <p className="wizard-state-screen__desc">
-              {`${sessionsPerWeek}x/semana · ${totalSessions} sessões em ${durationMonths} meses · ${discountPct}% de desconto`}
+          <div className="wizard-success">
+            <div className="wizard-success__confetti">
+              <div className="wizard-success__icon-wrap">
+                <CheckCircle2 size={48} />
+              </div>
+            </div>
+            <h3 className="wizard-success__title">Parabéns! Plano Ativado</h3>
+            <p className="wizard-success__desc">
+              Seu plano personalizado de <strong>{sessionsPerWeek}x/semana</strong> com <strong>{totalSessions} sessões</strong> em <strong>{durationMonths} {durationMonths === 1 ? 'ciclo' : 'ciclos'}</strong> foi confirmado.
             </p>
-            <p
-              className="wizard-state-screen__desc"
-              style={{ marginBottom: 20 }}
-            >
-              Todos os {totalSessions} agendamentos foram gerados
-              automaticamente na sua agenda.
+            <div className="wizard-success__details">
+              <div className="wizard-success__detail-row">
+                <CalendarDays size={14} />
+                <span>{totalSessions} sessões agendadas automaticamente</span>
+              </div>
+              <div className="wizard-success__detail-row">
+                <Clock size={14} />
+                <span>Desconto de {discountPct}% aplicado</span>
+              </div>
+            </div>
+            <p className="wizard-success__next">
+              Acompanhe seus agendamentos e pagamentos na sua área do cliente.
             </p>
-            <button
-              className="btn btn-primary"
-              style={{ width: "100%" }}
-              onClick={() => {
-                onComplete();
-                onClose();
-              }}
-            >
-              ✅ Ver Meus Contratos
+            <button className="wizard-cta-pay" style={{ width: '100%' }} onClick={() => { onComplete(); onClose(); }}>
+              <CalendarDays size={18} /> Ver Minha Agenda
             </button>
           </div>
         )}
@@ -363,7 +370,9 @@ export default function CustomContractWizard({
         {step === 8 && cardClientSecret && (
           <div className="wizard-payment-step">
             <div className="wizard-payment-step__header">
-              <div className="wizard-payment-step__icon">💳</div>
+              <div className="wizard-payment-step__icon-v2">
+                <ShieldCheck size={28} />
+              </div>
               <h3 className="wizard-payment-step__title">
                 Pagamento do 1º Ciclo
               </h3>
@@ -372,36 +381,53 @@ export default function CustomContractWizard({
               </p>
             </div>
 
-            <div
-              className="info-box info-box--success"
-              style={{
-                textAlign: "center",
-                marginBottom: 24,
-                fontSize: "0.9375rem",
-                fontWeight: 600,
-              }}
-            >
-              💰 Valor: {formatBRL(cycleAmount)} (1º de {durationMonths} ciclos)
+            <div className="wizard-info-banner wizard-info-banner--warning">
+              <AlertTriangle size={14} />
+              <span>O contrato só será criado após a confirmação do pagamento. Sem pagamento, nenhum agendamento será reservado.</span>
+            </div>
+
+            <div className="wizard-receipt" style={{ marginBottom: 16, padding: '12px 16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>1º de {durationMonths} ciclos</span>
+                <span style={{ fontWeight: 800, fontSize: '1.125rem', color: 'var(--accent-primary)' }}>{formatBRL(cycleAmount)}</span>
+              </div>
             </div>
 
             <StripeCardForm
               mode="payment"
               clientSecret={cardClientSecret}
               onSuccess={() => setStep(6)}
-              onError={(msg) => {
-                setError(msg);
-                setStep(3);
-              }}
-              onCancel={() => setStep(6)}
+              onError={(msg) => { setError(msg); setStep(3); }}
+              onCancel={() => setShowCancelModal(true)}
               submitLabel={`Pagar ${formatBRL(cycleAmount)}`}
             />
 
-            <button
-              className="btn btn-ghost btn-sm wizard-payment-step__skip"
-              onClick={() => setStep(6)}
-            >
-              Pagar depois na aba Pagamentos →
+            <button className="wizard-cancel-link" onClick={() => setShowCancelModal(true)}>
+              Cancelar
             </button>
+
+            {showCancelModal && (
+              <div className="wizard-cancel-overlay" onClick={() => setShowCancelModal(false)}>
+                <div className="wizard-cancel-modal" onClick={e => e.stopPropagation()}>
+                  <div className="wizard-cancel-modal__icon">
+                    <AlertTriangle size={32} />
+                  </div>
+                  <h4 className="wizard-cancel-modal__title">Tem certeza que deseja sair?</h4>
+                  <p className="wizard-cancel-modal__desc">
+                    Seu plano <strong>não será criado</strong> sem o pagamento do 1º ciclo. Nenhum horário será reservado na agenda.
+                  </p>
+                  <p className="wizard-cancel-modal__sub">
+                    Você pode voltar a qualquer momento e iniciar uma nova contratação.
+                  </p>
+                  <button className="wizard-cta-pay" style={{ width: '100%', marginBottom: 10 }} onClick={() => setShowCancelModal(false)}>
+                    <ShieldCheck size={16} /> Continuar Pagamento
+                  </button>
+                  <button className="wizard-cancel-modal__exit" onClick={() => { setShowCancelModal(false); onClose(); }}>
+                    Sair sem pagar
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

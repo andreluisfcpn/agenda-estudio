@@ -160,6 +160,16 @@ export function getPackageSlots(startTime: string, packageHours: number = 2): st
 }
 
 /**
+ * Convert a studio wall-clock date+time into a UTC instant.
+ * The studio operates in America/Sao_Paulo (UTC-3, no DST since 2019). Pinning
+ * the offset makes all time-distance checks (min-advance, 24h-cancel, reschedule)
+ * consistent regardless of the server's own timezone.
+ */
+export function studioDateTime(dateStr: string, timeStr: string): Date {
+    return new Date(`${dateStr}T${timeStr}:00-03:00`);
+}
+
+/**
  * Calculate end time given start time and duration.
  */
 export function calculateEndTime(startTime: string, durationHours: number = 2): string {

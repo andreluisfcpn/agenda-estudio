@@ -9,7 +9,7 @@ import CancelContractModal from '../components/CancelContractModal';
 import SocialServiceModal from '../components/SocialServiceModal';
 import SubscribeModal from '../components/SubscribeModal';
 import RenewContractModal from '../components/RenewContractModal';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useUI } from '../context/UIContext';
 import { FileText, Sparkles, Rocket, Plus, Pencil } from 'lucide-react';
 import ContractCard from '../components/client/ContractCard';
@@ -27,6 +27,7 @@ const PLATFORMS = [
 
 export default function MyContractsPage() {
     const location = useLocation();
+    const navigate = useNavigate();
     const [contracts, setContracts] = useState<ContractWithStats[]>([]);
     const [pricing, setPricing] = useState<PricingConfig[]>([]);
     const [loading, setLoading] = useState(true);
@@ -397,7 +398,12 @@ export default function MyContractsPage() {
                                     try {
                                         const res = await contractsApi.pay(c.id);
                                         showToast({ type: 'success', message: 'Abrindo pagamento...' });
-                                        window.location.href = `/meus-pagamentos?pay=${c.id}&secret=${res.clientSecret}`;
+                                        // FE-H1 FIX: Never expose clientSecret in URL — use navigate state instead
+                                        // MyPaymentsPage already handles location.state.autoOpenPaymentId (L69-91)
+                                        const firstPendingPayment = c.payments?.find(p => p.status === 'PENDING');
+                                        navigate('/meus-pagamentos', { 
+                                            state: { autoOpenPaymentId: firstPendingPayment?.id || res.paymentId } 
+                                        });
                                     } catch (err: unknown) {
                                         showToast({ type: 'error', message: getErrorMessage(err) || 'Erro ao iniciar pagamento' });
                                     }

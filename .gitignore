@@ -4,6 +4,8 @@ dist/
 *.log
 
 # Scratch/temp files
+cookies.txt
+*.cookies
 test.js
 test-*.ts
 test-*.js

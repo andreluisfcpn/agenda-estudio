@@ -106,6 +106,8 @@ export default function InlineCheckout({
     const [pixQrBase64, setPixQrBase64] = useState<string | null>(null);
     const [pixCopied, setPixCopied] = useState(false);
     const pollIntervalRef = useRef<number | null>(null);
+    // PAY-H1 FIX: Prevent double-init from rapid clicks
+    const initGuardRef = useRef(false);
 
     // Generate QR Code locally from pixString
     useEffect(() => {
@@ -180,6 +182,8 @@ export default function InlineCheckout({
     // ─── CARD ───────────────────────────────────────────
 
     const initCardPayment = async () => {
+        if (initGuardRef.current) return;
+        initGuardRef.current = true;
         setProcessing(true);
         setError('');
         try {
@@ -237,6 +241,7 @@ export default function InlineCheckout({
             onError(msg);
         } finally {
             setProcessing(false);
+            initGuardRef.current = false;
         }
     };
 
@@ -255,6 +260,8 @@ export default function InlineCheckout({
     // ─── PIX ────────────────────────────────────────────
 
     const initPixPayment = async () => {
+        if (initGuardRef.current) return;
+        initGuardRef.current = true;
         setProcessing(true);
         setError('');
         try {
@@ -281,6 +288,7 @@ export default function InlineCheckout({
             onError(msg);
         } finally {
             setProcessing(false);
+            initGuardRef.current = false;
         }
     };
 

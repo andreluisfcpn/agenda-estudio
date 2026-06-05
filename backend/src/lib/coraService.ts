@@ -407,7 +407,8 @@ async function coraCreatePixQrCode(
 
     if (process.env.NODE_ENV !== 'production') {
         console.log('[Cora PIX] URL:', `${urls.api}/v2/invoices`);
-        console.log('[Cora PIX] Body:', body);
+        // CORA-H1 FIX: Don't log full body with PII (CPF, address) — log safe fields only
+        console.log('[Cora PIX] Preview:', JSON.stringify({ amount: payload.amount, description: payload.description }));
     }
 
     const response = await httpsRequestWithToken(`${urls.api}/v2/invoices`, {
@@ -469,6 +470,12 @@ export async function coraGetBoleto(boletoId: string): Promise<any> {
     const { config, environment } = setup;
     const urls = CORA_URLS[environment as keyof typeof CORA_URLS] || CORA_URLS.sandbox;
 
+    // CORA-M1 FIX: Validate id format to prevent URL injection.
+    // Cora invoice ids look like "inv_kDGtdGRnTTm87XcEOIKWiQ" (alnum + _ -), not just hex.
+    if (!/^[a-zA-Z0-9_-]{8,80}$/.test(boletoId)) {
+        throw new Error('Invalid boleto ID format');
+    }
+
     const response = await httpsRequestWithToken(`${urls.api}/v2/invoices/${boletoId}`, {
         method: 'GET',
         headers: { 'Authorization': `Bearer ${token}` },
@@ -490,6 +497,11 @@ export async function coraCancelBoleto(boletoId: string): Promise<void> {
     const token = await coraAuthenticate();
     const { config, environment } = setup;
     const urls = CORA_URLS[environment as keyof typeof CORA_URLS] || CORA_URLS.sandbox;
+
+    // CORA-M1 FIX: Validate id format (Cora ids are alnum + _ -, e.g. "inv_xxx")
+    if (!/^[a-zA-Z0-9_-]{8,80}$/.test(boletoId)) {
+        throw new Error('Invalid boleto ID format');
+    }
 
     const response = await httpsRequestWithToken(`${urls.api}/v2/invoices/${boletoId}`, {
         method: 'DELETE',

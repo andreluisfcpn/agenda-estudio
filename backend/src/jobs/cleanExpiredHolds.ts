@@ -3,8 +3,13 @@ import { getPackageSlots } from '../utils/pricing.js';
 import { releaseMultiSlotLock } from '../lib/redis.js';
 
 /**
- * Cron job: clean expired HELD bookings and AWAITING_PAYMENT contracts.
- * Run every 60 seconds.
+ * Cron job: clean expired HELD/RESERVED bookings and AWAITING_PAYMENT contracts.
+ * Runs every 60 seconds.
+ *
+ * Safety invariants (added to stop deleting just-paid bookings):
+ *  - Never cancel/delete anything that has a PAID payment — promote it instead.
+ *  - Guard every cancel/delete by current status (atomic updateMany / deleteMany
+ *    conditions) so a webhook confirming between the snapshot and the write wins.
  */
 export async function cleanExpiredHolds() {
     const now = new Date();
@@ -20,11 +25,41 @@ export async function cleanExpiredHolds() {
 
     for (const booking of expiredBookings) {
         try {
-            // Cancel the booking
-            await prisma.booking.update({
-                where: { id: booking.id },
+            // ── Guard: did a payment confirm this booking/contract since the snapshot? ──
+            const paidExists = await prisma.payment.findFirst({
+                where: {
+                    status: 'PAID',
+                    OR: [
+                        { bookingId: booking.id },
+                        ...(booking.contractId ? [{ contractId: booking.contractId }] : []),
+                    ],
+                },
+                select: { id: true },
+            });
+
+            if (paidExists) {
+                // A payment landed — promote rather than delete (repairs a webhook/cron race).
+                await prisma.booking.updateMany({
+                    where: { id: booking.id, status: { in: ['RESERVED', 'HELD'] } },
+                    data: { status: 'CONFIRMED', holdExpiresAt: null },
+                });
+                if (booking.contractId) {
+                    await prisma.contract.updateMany({
+                        where: { id: booking.contractId, status: 'AWAITING_PAYMENT' },
+                        data: { status: 'ACTIVE', paymentDeadline: null },
+                    });
+                }
+                console.log(`[HOLD-CLEANUP] Booking ${booking.id} has a PAID payment — promoted to CONFIRMED (not cancelled)`);
+                continue;
+            }
+
+            // Atomic cancel guarded by status: if the webhook confirmed it between the
+            // findMany snapshot and now, count===0 and we skip this booking entirely.
+            const cancelled = await prisma.booking.updateMany({
+                where: { id: booking.id, status: { in: ['HELD', 'RESERVED'] }, holdExpiresAt: { lt: now } },
                 data: { status: 'CANCELLED' },
             });
+            if (cancelled.count === 0) continue;
 
             // Release Redis lock
             const dateStr = booking.date.toISOString().split('T')[0];
@@ -34,28 +69,31 @@ export async function cleanExpiredHolds() {
             // Restore contract credits if applicable, or delete abandoned Avulso
             if (booking.contract) {
                 const c = booking.contract;
-                const isAvulso = c.type === 'AVULSO';
 
-                if (isAvulso && c.status === 'AWAITING_PAYMENT') {
-                    // Delete the payment(s)
-                    await prisma.payment.deleteMany({ where: { contractId: c.id } });
-                    // Delete the booking(s)
-                    await prisma.booking.deleteMany({ where: { contractId: c.id } });
-                    // Delete the contract
-                    await prisma.contract.delete({ where: { id: c.id } });
-                    console.log(`[HOLD-CLEANUP] Deleted abandoned Avulso contract ${c.id}`);
-                } else {
-                    if ((c.type === 'FLEX' || c.type === 'AVULSO') && (c.flexCreditsRemaining ?? 0) >= 0) {
-                        await prisma.contract.update({
-                            where: { id: c.id },
-                            data: { flexCreditsRemaining: (c.flexCreditsRemaining ?? 0) + 1 },
-                        });
-                    } else if (c.type === 'CUSTOM' && (c.customCreditsRemaining ?? 0) >= 0) {
-                        await prisma.contract.update({
-                            where: { id: c.id },
-                            data: { customCreditsRemaining: (c.customCreditsRemaining ?? 0) + 1 },
-                        });
+                if (c.type === 'AVULSO') {
+                    // Re-verify the contract is still AWAITING_PAYMENT and has NO paid
+                    // payment before any destructive delete.
+                    const fresh = await prisma.contract.findUnique({ where: { id: c.id }, select: { status: true } });
+                    const paid = await prisma.payment.findFirst({ where: { contractId: c.id, status: 'PAID' }, select: { id: true } });
+
+                    if (fresh?.status === 'AWAITING_PAYMENT' && !paid) {
+                        await prisma.payment.deleteMany({ where: { contractId: c.id, status: { not: 'PAID' } } });
+                        await prisma.booking.deleteMany({ where: { contractId: c.id } });
+                        await prisma.contract.deleteMany({ where: { id: c.id, status: 'AWAITING_PAYMENT' } });
+                        console.log(`[HOLD-CLEANUP] Deleted abandoned Avulso contract ${c.id}`);
+                    } else {
+                        console.log(`[HOLD-CLEANUP] Skipped Avulso ${c.id} cleanup (status=${fresh?.status}, hasPaid=${!!paid})`);
                     }
+                } else if ((c.type === 'FLEX') && (c.flexCreditsRemaining ?? 0) >= 0) {
+                    await prisma.contract.update({
+                        where: { id: c.id },
+                        data: { flexCreditsRemaining: (c.flexCreditsRemaining ?? 0) + 1 },
+                    });
+                } else if (c.type === 'CUSTOM' && (c.customCreditsRemaining ?? 0) >= 0) {
+                    await prisma.contract.update({
+                        where: { id: c.id },
+                        data: { customCreditsRemaining: (c.customCreditsRemaining ?? 0) + 1 },
+                    });
                 }
             }
 
@@ -87,12 +125,24 @@ export async function cleanExpiredHolds() {
                 continue;
             }
 
-            // Delete the payment(s)
-            await prisma.payment.deleteMany({ where: { contractId: c.id } });
-            // Delete the booking(s)
+            // Never delete a contract that has a PAID payment — promote it instead.
+            const paid = await prisma.payment.findFirst({ where: { contractId: c.id, status: 'PAID' }, select: { id: true } });
+            if (paid) {
+                await prisma.contract.updateMany({
+                    where: { id: c.id, status: 'AWAITING_PAYMENT' },
+                    data: { status: 'ACTIVE', paymentDeadline: null },
+                });
+                await prisma.booking.updateMany({
+                    where: { contractId: c.id, status: { in: ['RESERVED', 'HELD'] } },
+                    data: { status: 'CONFIRMED', holdExpiresAt: null },
+                });
+                console.log(`[HOLD-CLEANUP] Orphan contract ${c.id} has a PAID payment — promoted to ACTIVE (not deleted)`);
+                continue;
+            }
+
+            await prisma.payment.deleteMany({ where: { contractId: c.id, status: { not: 'PAID' } } });
             await prisma.booking.deleteMany({ where: { contractId: c.id } });
-            // Delete the contract
-            await prisma.contract.delete({ where: { id: c.id } });
+            await prisma.contract.deleteMany({ where: { id: c.id, status: 'AWAITING_PAYMENT' } });
             console.log(`[HOLD-CLEANUP] Swept orphaned expired contract ${c.id}`);
         } catch (err) {
             console.error(`[HOLD-CLEANUP] Failed to sweep orphaned contract ${c.id}:`, err);

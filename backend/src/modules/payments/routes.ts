@@ -140,6 +140,15 @@ const updatePaymentSchema = z.object({
     notes: z.string().optional(),
 });
 
+// VULN-M3 FIX: Payment state machine — prevents arbitrary status transitions
+const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
+    PENDING:  ['PAID', 'FAILED', 'CANCELLED', 'REFUNDED'],
+    FAILED:   ['PENDING', 'PAID'],
+    PAID:     ['REFUNDED'],
+    CANCELLED: ['PENDING'],
+    REFUNDED: [], // terminal state
+};
+
 router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request<{ id: string }>, res: Response) => {
     try {
         const { id } = req.params;
@@ -151,10 +160,22 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request<{ id:
             return;
         }
 
+        // Validate status transition if changing status
+        if (data.status && data.status !== existing.status) {
+            const allowed = VALID_STATUS_TRANSITIONS[existing.status] || [];
+            if (!allowed.includes(data.status)) {
+                res.status(400).json({
+                    error: `Transição inválida: ${existing.status} → ${data.status}. Transições permitidas: ${allowed.join(', ') || 'nenhuma (estado terminal)'}.`
+                });
+                return;
+            }
+        }
+
         const updated = await prisma.payment.update({
             where: { id },
             data: {
                 ...(data.status && { status: data.status }),
+                ...(data.status === 'PAID' && !existing.paidAt && { paidAt: new Date() }),
                 ...(data.providerRef !== undefined && { providerRef: data.providerRef }),
             },
             include: {
@@ -162,6 +183,11 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request<{ id:
                 contract: { select: { id: true, name: true, type: true, tier: true } },
             },
         });
+
+        // Audit log for financial state changes
+        if (data.status && data.status !== existing.status) {
+            console.log(`[PAYMENT-ADMIN] ${req.user!.userId} changed payment ${id}: ${existing.status} → ${data.status}`);
+        }
 
         res.json({ payment: updated, message: 'Pagamento atualizado com sucesso.' });
     } catch (err) {
@@ -175,7 +201,12 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request<{ id:
 });
 
 // ─── GET /api/payments/:id/status (CLIENT) ──────────────
-// Lightweight polling endpoint for PIX/Boleto status checks
+// Lightweight polling endpoint for PIX/Boleto status checks.
+// For pending Cora payments it actively reconciles against the Cora API
+// (throttled) so confirmation never depends solely on the webhook.
+
+const _coraCheckTimes = new Map<string, number>();
+const CORA_CHECK_THROTTLE_MS = 8000;
 
 router.get('/:id/status', authenticate, async (req: Request, res: Response) => {
     try {
@@ -185,7 +216,7 @@ router.get('/:id/status', authenticate, async (req: Request, res: Response) => {
 
         const payment = await prisma.payment.findFirst({
             where: isAdmin ? { id } : { id, userId },
-            select: { status: true, provider: true, pixString: true, boletoUrl: true },
+            select: { id: true, status: true, provider: true, providerRef: true, pixString: true, boletoUrl: true },
         });
 
         if (!payment) {
@@ -193,8 +224,24 @@ router.get('/:id/status', authenticate, async (req: Request, res: Response) => {
             return;
         }
 
+        let status: string = payment.status;
+
+        // Active reconciliation for pending Cora payments (webhook-independent fallback)
+        if (status === 'PENDING' && payment.provider === 'CORA' && payment.providerRef) {
+            const last = _coraCheckTimes.get(payment.id) || 0;
+            if (Date.now() - last > CORA_CHECK_THROTTLE_MS) {
+                _coraCheckTimes.set(payment.id, Date.now());
+                try {
+                    const { reconcileCoraPayment } = await import('../../lib/coraReconciliation.js');
+                    if (await reconcileCoraPayment(payment.id)) status = 'PAID';
+                } catch (e) {
+                    console.error('[Payment-Status] Cora reconciliation failed:', e instanceof Error ? e.message : e);
+                }
+            }
+        }
+
         res.json({
-            status: payment.status,
+            status,
             provider: payment.provider,
             pixString: payment.pixString,
             boletoUrl: payment.boletoUrl,
@@ -204,5 +251,5 @@ router.get('/:id/status', authenticate, async (req: Request, res: Response) => {
         res.status(500).json({ error: 'Erro ao consultar status.' });
     }
 });
-
 export default router;
+

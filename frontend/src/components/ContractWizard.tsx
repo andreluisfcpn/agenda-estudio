@@ -1,12 +1,12 @@
 import { getErrorMessage } from '../utils/errors';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import BottomSheetModal from './BottomSheetModal';
 import { PricingConfig, AddOnConfig, bookingsApi, contractsApi, Slot, pricingApi, stripeApi } from '../api/client';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import { getClientPaymentMethods, type PaymentMethodKey } from '../constants/paymentMethods';
 import InlineCheckout from './InlineCheckout';
 import StripeCardForm from './StripeCardForm';
-import { X } from 'lucide-react';
+import { X, Pin, Shuffle, CalendarDays, Clock, Lock, CheckCircle2, XCircle, AlertTriangle, ChevronLeft, ChevronRight, Sparkles, Film, TrendingUp, FileText, Receipt, Mic, Tag, CreditCard, ScrollText, ShieldCheck } from 'lucide-react';
 
 export interface ContractWizardProps {
     pricing: PricingConfig[];
@@ -24,6 +24,8 @@ const TIER_INFO: Record<string, { emoji: string; hours: string; desc: string }> 
 };
 
 const DAY_NAMES_FULL = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+const DAY_NAMES_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const MONTH_NAMES_SHORT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
 function formatBRL(cents: number): string {
     return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
@@ -58,15 +60,20 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
 
-    // Inline card payment
+    // Inline payment (card + PIX)
     const [cardClientSecret, setCardClientSecret] = useState<string | null>(null);
+    const [firstPaymentId, setFirstPaymentId] = useState<string | null>(null);
+    const [firstPixString, setFirstPixString] = useState<string | null>(null);
+
+    // Cancel confirmation modal
+    const [showCancelModal, setShowCancelModal] = useState(false);
 
     // Conflicts
     const [conflicts, setConflicts] = useState<{ date: string, originalTime: string, suggestedReplacement?: { date: string, time: string } }[]>([]);
     const [resolvedConflicts, setResolvedConflicts] = useState<{ originalDate: string, originalTime: string, newDate: string, newTime: string }[]>([]);
 
     // Business rules from admin config
-    const { get: getRule } = useBusinessConfig();
+    const { get: getRule, getJson } = useBusinessConfig();
 
     // Derived
     const tierConfig = pricing.find(p => p.tier === selectedTier);
@@ -92,8 +99,8 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
         return d;
     }).filter(d => {
         if (d.getDay() === 0) return false;
-        if (selectedTier === 'COMERCIAL') return d.getDay() >= 1 && d.getDay() <= 5;
-        return true;
+        if (selectedTier === 'SABADO') return d.getDay() === 6;
+        return d.getDay() >= 1 && d.getDay() <= 5; // COMERCIAL + AUDIENCIA = Seg-Sex
     });
 
     useEffect(() => {
@@ -128,13 +135,14 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                 ...(scheduleType === 'FIXO' ? { fixedDayOfWeek: dayOfWeek, fixedTime: firstTime } : {}),
             });
 
+            if (res.firstPaymentId) setFirstPaymentId(res.firstPaymentId);
+            if (res.firstPixString) setFirstPixString(res.firstPixString);
+
             if (res.clientSecret && paymentMethod === 'CARTAO') {
                 setCardClientSecret(res.clientSecret);
                 setStep(8);
             } else if (paymentMethod === 'PIX') {
                 setStep(8);
-            } else {
-                setStep(6);
             }
         } catch (err: unknown) {
             setError(getErrorMessage(err) || 'Erro ao processar criação do contrato');
@@ -203,21 +211,38 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                 {step === 5 && (
                     <div className="wizard-state-screen">
                         <div className="spinner" style={{ margin: '0 auto 20px', width: 40, height: 40 }} />
-                        <h3 className="wizard-state-screen__title">Processando...</h3>
-                        <p className="wizard-state-screen__desc">Gerando seus agendamentos. Aguarde um instante.</p>
+                        <h3 className="wizard-state-screen__title">Gerando pagamento...</h3>
+                        <p className="wizard-state-screen__desc">Preparando a 1ª parcela. Aguarde um instante.</p>
                     </div>
                 )}
 
                 {/* ══════════ STEP 6: SUCCESS ══════════ */}
                 {step === 6 && (
-                    <div className="wizard-state-screen">
-                        <div className="wizard-state-screen__icon">🎉</div>
-                        <h3 className="wizard-state-screen__title">Contrato Criado com Sucesso!</h3>
-                        <p className="wizard-state-screen__desc">
-                            {`Seu plano ${scheduleType === 'FIXO' ? 'Fixo' : 'Flex'} de ${duration} meses com ${totalGravacoes} gravações está ativo.`}
+                    <div className="wizard-success">
+                        <div className="wizard-success__confetti">
+                            <div className="wizard-success__icon-wrap">
+                                <CheckCircle2 size={48} />
+                            </div>
+                        </div>
+                        <h3 className="wizard-success__title">Parabéns! Contrato Ativado</h3>
+                        <p className="wizard-success__desc">
+                            Seu plano <strong>{scheduleType === 'FIXO' ? 'Fixo' : 'Flex'}</strong> de <strong>{duration} meses</strong> foi confirmado com sucesso.
                         </p>
-                        <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => { onComplete(); onClose(); }}>
-                            ✅ Ver Meus Contratos
+                        <div className="wizard-success__details">
+                            <div className="wizard-success__detail-row">
+                                <CalendarDays size={14} />
+                                <span>{totalGravacoes} sessões de gravação agendadas</span>
+                            </div>
+                            <div className="wizard-success__detail-row">
+                                <Clock size={14} />
+                                <span>Vigência a partir de {firstDate.split('-').reverse().join('/')}</span>
+                            </div>
+                        </div>
+                        <p className="wizard-success__next">
+                            Você pode acompanhar seus agendamentos e pagamentos na sua área do cliente.
+                        </p>
+                        <button className="wizard-cta-pay" style={{ width: '100%' }} onClick={() => { onComplete(); onClose(); }}>
+                            <CalendarDays size={18} /> Ver Minha Agenda
                         </button>
                     </div>
                 )}
@@ -226,42 +251,103 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                 {step === 8 && (
                     <div className="wizard-payment-step">
                         <div className="wizard-payment-step__header">
-                            <div className="wizard-payment-step__icon">💳</div>
+                            <div className="wizard-payment-step__icon-v2">
+                                <ShieldCheck size={28} />
+                            </div>
                             <h3 className="wizard-payment-step__title">Pagamento da 1ª Parcela</h3>
                             <p className="wizard-payment-step__desc">
                                 Complete o pagamento para ativar seu contrato. As demais parcelas serão cobradas mensalmente.
                             </p>
                         </div>
 
+                        {/* Warning: payment required */}
+                        <div className="wizard-info-banner wizard-info-banner--warning">
+                            <AlertTriangle size={14} />
+                            <span>O contrato só será criado após a confirmação do pagamento. Sem pagamento, nenhum agendamento será reservado.</span>
+                        </div>
+
                         {paymentMethod === 'CARTAO' && cardClientSecret ? (
                             <>
-                                <div className="info-box info-box--success" style={{ textAlign: 'center', marginBottom: 24 }}>
-                                    💰 Valor: {formatBRL(monthlyTotal)} (1ª parcela de {duration}x)
+                                <div className="wizard-receipt" style={{ marginBottom: 16, padding: '12px 16px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>1ª parcela de {duration}x</span>
+                                        <span style={{ fontWeight: 800, fontSize: '1.125rem', color: 'var(--accent-primary)' }}>{formatBRL(monthlyTotal)}</span>
+                                    </div>
                                 </div>
                                 <StripeCardForm
                                     mode="payment"
                                     clientSecret={cardClientSecret}
-                                    onSuccess={() => setStep(6)}
+                                    onSuccess={async (paymentIntentId) => {
+                                        // Confirm the payment on the backend so the contract is
+                                        // materialized synchronously instead of depending solely on
+                                        // the Stripe webhook (which may not be configured/delivered).
+                                        try {
+                                            if (firstPaymentId && paymentIntentId) {
+                                                const r = await stripeApi.verifyPayment({ paymentId: firstPaymentId, paymentIntentId });
+                                                if (r.status !== 'PAID') {
+                                                    setError('Não foi possível confirmar o pagamento. Verifique seu extrato antes de tentar novamente.');
+                                                    setStep(4);
+                                                    return;
+                                                }
+                                            }
+                                            setStep(6);
+                                        } catch {
+                                            setError('Pagamento realizado, mas não pôde ser confirmado automaticamente. Verifique "Meus Contratos" em instantes.');
+                                            setStep(4);
+                                        }
+                                    }}
                                     onError={(msg) => { setError(msg); setStep(4); }}
-                                    onCancel={() => setStep(6)}
+                                    onCancel={() => setShowCancelModal(true)}
                                     submitLabel={`Pagar ${formatBRL(monthlyTotal)}`}
                                 />
                             </>
                         ) : (
                             <InlineCheckout
                                 amount={monthlyTotal}
+                                paymentId={firstPaymentId || undefined}
                                 description={`1ª parcela - Contrato ${duration} meses`}
                                 contractDuration={duration}
                                 allowedMethods={paymentMethod === 'PIX' ? ['PIX'] : ['CARTAO', 'PIX']}
+                                createPaymentFn={firstPaymentId ? async () => ({
+                                    paymentId: firstPaymentId,
+                                    pixString: firstPixString || undefined,
+                                }) : undefined}
                                 onSuccess={() => setStep(6)}
                                 onError={(msg) => { setError(msg); setStep(4); }}
-                                onCancel={() => setStep(6)}
+                                onCancel={() => setShowCancelModal(true)}
                             />
                         )}
 
-                        <button className="btn btn-ghost btn-sm wizard-payment-step__skip" onClick={() => setStep(6)}>
-                            Pagar depois na aba Pagamentos →
-                        </button>
+                        {/* Show external cancel only for Stripe card flow (InlineCheckout has its own) */}
+                        {paymentMethod === 'CARTAO' && cardClientSecret && (
+                            <button className="wizard-cancel-link" onClick={() => setShowCancelModal(true)}>
+                                Cancelar
+                            </button>
+                        )}
+
+                        {/* ── Cancel Confirmation Modal ── */}
+                        {showCancelModal && (
+                            <div className="wizard-cancel-overlay" onClick={() => setShowCancelModal(false)}>
+                                <div className="wizard-cancel-modal" onClick={e => e.stopPropagation()}>
+                                    <div className="wizard-cancel-modal__icon">
+                                        <AlertTriangle size={32} />
+                                    </div>
+                                    <h4 className="wizard-cancel-modal__title">Tem certeza que deseja sair?</h4>
+                                    <p className="wizard-cancel-modal__desc">
+                                        Seu contrato <strong>não será criado</strong> sem o pagamento da 1ª parcela. Nenhum horário será reservado na agenda.
+                                    </p>
+                                    <p className="wizard-cancel-modal__sub">
+                                        Você pode voltar a qualquer momento e iniciar uma nova contratação.
+                                    </p>
+                                    <button className="wizard-cta-pay" style={{ width: '100%', marginBottom: 10 }} onClick={() => setShowCancelModal(false)}>
+                                        <ShieldCheck size={16} /> Continuar Pagamento
+                                    </button>
+                                    <button className="wizard-cancel-modal__exit" onClick={() => { setShowCancelModal(false); onClose(); }}>
+                                        Sair sem pagar
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -360,109 +446,145 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
 
                 {/* ══════════ STEP 2: AGENDA CONFIG ══════════ */}
                 {step === 2 && (
-                    <div>
+                    <div className="wizard-step2">
                         <h3 className="wizard-step__title">2. Configure sua Agenda</h3>
+                        <p className="wizard-step__subtitle">Escolha o modelo e selecione seu primeiro horário de gravação.</p>
 
-                        {/* Fixo / Flex toggle */}
-                        <div style={{ marginBottom: 20 }}>
-                            <label className="form-label" style={{ marginBottom: 8 }}>Modelo de Agenda</label>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                                <div className={`selectable-card ${scheduleType === 'FIXO' ? 'selectable-card--selected' : ''}`}
-                                    onClick={() => setScheduleType('FIXO')}>
-                                    <div style={{ fontWeight: 700, marginBottom: 4, fontSize: '0.9375rem' }}>📌 Agenda Fixa</div>
-                                    <div className="wizard-slot__tier">Mesmo dia e horário toda semana. O sistema reserva automaticamente.</div>
+                        {/* ── Schedule Type Toggle ── */}
+                        <div className="wizard-schedule-toggle">
+                            <button
+                                className={`wizard-schedule-btn ${scheduleType === 'FIXO' ? 'wizard-schedule-btn--active' : ''}`}
+                                onClick={() => setScheduleType('FIXO')}
+                            >
+                                <div className="wizard-schedule-btn__icon">
+                                    <Pin size={20} />
                                 </div>
-                                <div className={`selectable-card ${scheduleType === 'FLEX' ? 'selectable-card--selected' : ''}`}
-                                    onClick={() => setScheduleType('FLEX')}>
-                                    <div style={{ fontWeight: 700, marginBottom: 4, fontSize: '0.9375rem' }}>🔄 Agenda Flex</div>
-                                    <div className="wizard-slot__tier">Agende semana a semana com total liberdade de horários.</div>
+                                <div className="wizard-schedule-btn__content">
+                                    <span className="wizard-schedule-btn__title">Agenda Fixa</span>
+                                    <span className="wizard-schedule-btn__desc">Mesmo dia e horário toda semana</span>
                                 </div>
-                            </div>
+                                {scheduleType === 'FIXO' && <CheckCircle2 size={20} className="wizard-schedule-btn__check" />}
+                            </button>
+                            <button
+                                className={`wizard-schedule-btn ${scheduleType === 'FLEX' ? 'wizard-schedule-btn--active' : ''}`}
+                                onClick={() => setScheduleType('FLEX')}
+                            >
+                                <div className="wizard-schedule-btn__icon">
+                                    <Shuffle size={20} />
+                                </div>
+                                <div className="wizard-schedule-btn__content">
+                                    <span className="wizard-schedule-btn__title">Agenda Flex</span>
+                                    <span className="wizard-schedule-btn__desc">Agende semana a semana com liberdade</span>
+                                </div>
+                                {scheduleType === 'FLEX' && <CheckCircle2 size={20} className="wizard-schedule-btn__check" />}
+                            </button>
                         </div>
 
-                        {/* Calendar section */}
+                        {/* ── Date & Time (progressive disclosure) ── */}
                         {scheduleType && (
-                            <>
-                                <div className="info-box info-box--warning">
-                                    ⚠️ Atenção: O seu contrato começará a valer a partir da data desta primeira gravação.
+                            <div className="wizard-datetime-section">
+                                {/* Info banner */}
+                                <div className="wizard-info-banner">
+                                    <AlertTriangle size={16} />
+                                    <span>Seu contrato começa a valer a partir desta gravação.</span>
                                 </div>
 
-                                <div className="form-group" style={{ marginBottom: 16 }}>
-                                    <label className="form-label">Data do 1º Episódio</label>
-                                    <select className="form-input" value={firstDate} onChange={e => { setFirstDate(e.target.value); setFirstTime(''); }}>
-                                        <option value="">-- Selecione (próx. 14 dias) --</option>
-                                        {allowedDates.map(d => {
-                                            const y = d.getFullYear();
-                                            const m = String(d.getMonth() + 1).padStart(2, '0');
-                                            const day = String(d.getDate()).padStart(2, '0');
-                                            const dateStr = `${y}-${m}-${day}`;
-                                            return (
-                                                <option key={dateStr} value={dateStr}>
-                                                    {DAY_NAMES_FULL[d.getDay()]}, {day}/{m}/{y}
-                                                </option>
-                                            );
-                                        })}
-                                    </select>
+                                {/* ── Horizontal Date Scroller ── */}
+                                <div className="wizard-date-section">
+                                    <label className="wizard-date-section__label">
+                                        <CalendarDays size={16} />
+                                        Data do 1º Episódio
+                                    </label>
+                                    <div className="wizard-date-scroller">
+                                        <div className="wizard-date-scroller__track">
+                                            {allowedDates.map(d => {
+                                                const y = d.getFullYear();
+                                                const m = String(d.getMonth() + 1).padStart(2, '0');
+                                                const day = String(d.getDate()).padStart(2, '0');
+                                                const dateStr = `${y}-${m}-${day}`;
+                                                const isSelected = firstDate === dateStr;
+                                                const isToday = new Date().toISOString().slice(0, 10) === dateStr;
+                                                return (
+                                                    <button
+                                                        key={dateStr}
+                                                        className={`wizard-date-chip ${isSelected ? 'wizard-date-chip--selected' : ''} ${isToday ? 'wizard-date-chip--today' : ''}`}
+                                                        onClick={() => { setFirstDate(dateStr); setFirstTime(''); }}
+                                                    >
+                                                        <span className="wizard-date-chip__weekday">{DAY_NAMES_SHORT[d.getDay()]}</span>
+                                                        <span className="wizard-date-chip__day">{d.getDate()}</span>
+                                                        <span className="wizard-date-chip__month">{MONTH_NAMES_SHORT[d.getMonth()]}</span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
                                 </div>
 
-                                {/* Time slots */}
+                                {/* ── Time Slot Grid ── */}
                                 {firstDate && (
-                                    <div className="form-group" style={{ marginBottom: 16 }}>
-                                        <label className="form-label">Horário (Pacote 2h)</label>
+                                    <div className="wizard-time-section">
+                                        <label className="wizard-date-section__label">
+                                            <Clock size={16} />
+                                            Horário — Pacote 2h
+                                        </label>
                                         {loadingSlots ? (
-                                            <div className="modal-section__desc" style={{ padding: '12px 0' }}>⏳ Carregando horários disponíveis...</div>
+                                            <div className="wizard-time-loading">
+                                                <div className="wizard-time-loading__spinner" />
+                                                <span>Verificando disponibilidade...</span>
+                                            </div>
+                                        ) : availableSlots.length === 0 ? (
+                                            <div className="wizard-time-empty">
+                                                <XCircle size={24} />
+                                                <span>Nenhum horário disponível nesta data.</span>
+                                            </div>
                                         ) : (
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                            <div className="wizard-time-grid">
                                                 {availableSlots.map(s => {
                                                     const isTierAllowed = selectedTier === 'COMERCIAL' ? s.time <= '15:30' : true;
                                                     const slotDateTime = new Date(`${firstDate}T${s.time}:00`);
                                                     const isPast = (slotDateTime.getTime() - Date.now()) / (1000 * 60) < 30;
                                                     const isSelectable = s.available && isTierAllowed && !isPast;
+                                                    const isSelected = firstTime === s.time;
                                                     const [h] = s.time.split(':').map(Number);
-                                                    const endTime = `${h + 2}:${s.time.split(':')[1]}`;
+                                                    const endTime = `${String(h + 2).padStart(2, '0')}:${s.time.split(':')[1]}`;
+
+                                                    let statusClass = '';
+                                                    if (isSelected) statusClass = 'wizard-time-chip--selected';
+                                                    else if (!isSelectable && !s.available) statusClass = 'wizard-time-chip--occupied';
+                                                    else if (!isSelectable && !isTierAllowed) statusClass = 'wizard-time-chip--locked';
+                                                    else if (!isSelectable && isPast) statusClass = 'wizard-time-chip--past';
 
                                                     return (
-                                                        <div key={s.time}
-                                                            className={`wizard-slot ${firstTime === s.time ? 'wizard-slot--selected' : ''} ${!isSelectable ? 'wizard-slot--disabled' : ''}`}
+                                                        <button
+                                                            key={s.time}
+                                                            className={`wizard-time-chip ${statusClass}`}
                                                             onClick={() => isSelectable && setFirstTime(s.time)}
-                                                            style={{ opacity: isSelectable ? 1 : isPast ? 0.4 : 0.6 }}>
-                                                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                                <span className={`wizard-slot__time ${firstTime === s.time ? 'wizard-slot__time--selected' : ''}`}>
-                                                                    {s.time} - {endTime}
-                                                                </span>
-                                                                <span className="wizard-slot__tier">
-                                                                    {s.tier === 'COMERCIAL' ? '🏢 Comercial' : (s.tier === 'AUDIENCIA' ? '🎤 Audiência' : '🌟 Sábado')}
-                                                                </span>
-                                                            </div>
-                                                            <div>
-                                                                {!isTierAllowed ? (
-                                                                    <span title={`Exclusivo para planos ${s.tier}`}>🔒</span>
-                                                                ) : !s.available ? (
-                                                                    <span className="wizard-slot__status">Ocupado</span>
-                                                                ) : firstTime === s.time ? (
-                                                                    <span style={{ color: 'var(--accent-primary)', fontWeight: 800 }}>✓</span>
-                                                                ) : null}
-                                                            </div>
-                                                        </div>
+                                                            disabled={!isSelectable}
+                                                        >
+                                                            <span className="wizard-time-chip__range">{s.time}–{endTime}</span>
+                                                            <span className="wizard-time-chip__status">
+                                                                {isSelected ? <CheckCircle2 size={14} /> :
+                                                                 !s.available ? 'Ocupado' :
+                                                                 !isTierAllowed ? <Lock size={14} /> :
+                                                                 isPast ? 'Passado' : 'Livre'}
+                                                            </span>
+                                                        </button>
                                                     );
                                                 })}
-                                                {availableSlots.length === 0 && (
-                                                    <div className="modal-section__desc" style={{ padding: '8px 0' }}>
-                                                        Nenhum horário disponível para esta data.
-                                                    </div>
-                                                )}
                                             </div>
                                         )}
                                     </div>
                                 )}
-                            </>
+                            </div>
                         )}
 
                         <div className="wizard-actions">
-                            <button className="btn btn-secondary" onClick={() => setStep(1)}>⬅ Voltar</button>
+                            <button className="btn btn-secondary" onClick={() => setStep(1)}>
+                                <ChevronLeft size={16} /> Voltar
+                            </button>
                             <button className="btn btn-primary" onClick={() => { setStep(3); }}
                                 disabled={!firstDate || !firstTime || !scheduleType}>
-                                Continuar ➔
+                                Continuar <ChevronRight size={16} />
                             </button>
                         </div>
                     </div>
@@ -470,48 +592,86 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
 
                 {/* ══════════ STEP 3: ADICIONAIS OPCIONAIS ══════════ */}
                 {step === 3 && tierConfig && (
-                    <div>
-                        <h3 className="wizard-step__title">3. Serviços Adicionais (Opcionais)</h3>
+                    <div className="wizard-step3">
+                        <h3 className="wizard-step__title">3. Turbine seu Projeto</h3>
                         <p className="wizard-step__subtitle">
-                            Potencialize a entrega do seu projeto. Seu plano te garante <strong>{discountPct}% de desconto</strong> nos extras selecionados abaixo. Contratação 100% opcional.
+                            Serviços extras com <strong>{discountPct}% OFF</strong> no seu plano. 100% opcional.
                         </p>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 32 }}>
+                        {/* Addon Cards */}
+                        <div className="wizard-addons-grid">
                             {addons.filter(a => a.key !== 'GESTAO_SOCIAL').map(addon => {
                                 const isSelected = selectedAddons.includes(addon.key);
                                 const monthlyAddonBase = addon.price * 4;
                                 const discountedAddonPrice = Math.round(monthlyAddonBase * (1 - discountPct / 100));
-                                
+
+                                const ADDON_ICONS: Record<string, React.ReactNode> = {
+                                    CORTES_IA: <Sparkles size={20} />,
+                                    CORTES_HUMANO: <Film size={20} />,
+                                    YOUTUBE_SEO: <TrendingUp size={20} />,
+                                    PAUTAS: <FileText size={20} />,
+                                };
+
                                 return (
-                                    <div key={addon.key}
-                                        className={`wizard-addon ${isSelected ? 'wizard-addon--selected' : ''}`}
+                                    <button key={addon.key}
+                                        className={`wizard-addon-card ${isSelected ? 'wizard-addon-card--selected' : ''}`}
                                         onClick={() => {
                                             if (isSelected) setSelectedAddons(prev => prev.filter(k => k !== addon.key));
                                             else setSelectedAddons(prev => [...prev, addon.key]);
                                         }}>
-                                        <div className="wizard-addon__left">
-                                            <input type="checkbox" checked={isSelected} readOnly className="wizard-addon__checkbox" />
-                                            <div>
-                                                <div className={`wizard-addon__name ${isSelected ? 'wizard-addon__name--selected' : ''}`}>{addon.name}</div>
-                                                <div className="wizard-addon__desc">{addon.description || 'Impulsione seus resultados mensalmente.'}</div>
+                                        {/* Header row */}
+                                        <div className="wizard-addon-card__header">
+                                            <div className={`wizard-addon-card__icon ${isSelected ? 'wizard-addon-card__icon--active' : ''}`}>
+                                                {ADDON_ICONS[addon.key] || <Sparkles size={20} />}
+                                            </div>
+                                            <div className={`wizard-addon-card__toggle ${isSelected ? 'wizard-addon-card__toggle--on' : ''}`}>
+                                                <div className="wizard-addon-card__toggle-knob" />
                                             </div>
                                         </div>
-                                        <div className="wizard-addon__right">
-                                            <div className={`wizard-addon__price ${isSelected ? 'wizard-addon__price--selected' : ''}`}>
-                                                + {formatBRL(discountedAddonPrice)} <span className="wizard-addon__price-unit">/mês</span>
+
+                                        {/* Content */}
+                                        <div className="wizard-addon-card__name">{addon.name}</div>
+                                        <div className="wizard-addon-card__desc">{addon.description}</div>
+
+                                        {/* Price footer */}
+                                        <div className="wizard-addon-card__footer">
+                                            <div className="wizard-addon-card__price">
+                                                +{formatBRL(discountedAddonPrice)}
+                                                <span className="wizard-addon-card__per">/mês</span>
                                             </div>
-                                            {discountPct > 0 && <div className="wizard-addon__original">{formatBRL(monthlyAddonBase)} /mês</div>}
-                                            {discountPct > 0 && <div className="wizard-addon__discount">-{discountPct}% OFF</div>}
+                                            {discountPct > 0 && (
+                                                <div className="wizard-addon-card__savings">
+                                                    <span className="wizard-addon-card__original">{formatBRL(monthlyAddonBase)}</span>
+                                                    <span className="wizard-addon-card__badge">-{discountPct}%</span>
+                                                </div>
+                                            )}
                                         </div>
-                                    </div>
+                                    </button>
                                 );
                             })}
                         </div>
 
+                        {/* Selection summary */}
+                        {selectedAddons.length > 0 && (
+                            <div className="wizard-addon-summary">
+                                <CheckCircle2 size={16} />
+                                <span>{selectedAddons.length} serviço{selectedAddons.length > 1 ? 's' : ''} selecionado{selectedAddons.length > 1 ? 's' : ''}</span>
+                                <span className="wizard-addon-summary__total">
+                                    +{formatBRL(selectedAddons.reduce((acc, key) => {
+                                        const addon = addons.find(a => a.key === key);
+                                        if (!addon) return acc;
+                                        return acc + Math.round(addon.price * 4 * (1 - discountPct / 100));
+                                    }, 0))}/mês
+                                </span>
+                            </div>
+                        )}
+
                         <div className="wizard-actions">
-                            <button className="btn btn-secondary" onClick={() => setStep(2)}>⬅ Voltar</button>
+                            <button className="btn btn-secondary" onClick={() => setStep(2)}>
+                                <ChevronLeft size={16} /> Voltar
+                            </button>
                             <button className="btn btn-primary" onClick={() => setStep(4)}>
-                                {selectedAddons.length > 0 ? 'Continuar ➔' : 'Pular Serviços Extras ➔'}
+                                {selectedAddons.length > 0 ? 'Continuar' : 'Pular Extras'} <ChevronRight size={16} />
                             </button>
                         </div>
                     </div>
@@ -519,128 +679,184 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
 
                 {/* ══════════ STEP 4: SUMMARY & CHECKOUT ══════════ */}
                 {step === 4 && tierConfig && (
-                    <div>
-                        <h3 className="wizard-step__title">4. Resumo e Checkout</h3>
+                    <div className="wizard-step4">
+                        <h3 className="wizard-step__title">4. Resumo e Pagamento</h3>
+                        <p className="wizard-step__subtitle">Revise seu pedido e escolha a forma de pagamento.</p>
 
                         {error && (
-                            <div className="info-box info-box--error">❌ {error}</div>
+                            <div className="wizard-info-banner" style={{ background: 'rgba(239,68,68,0.08)', borderColor: 'rgba(239,68,68,0.2)', color: '#ef4444' }}>
+                                <XCircle size={16} />
+                                <span>{error}</span>
+                            </div>
                         )}
 
-                        {/* Order summary */}
-                        <div className="wizard-summary">
-                            <div className="wizard-summary__label">Carrinho de Compras</div>
+                        {/* ── Receipt-style Summary ── */}
+                        <div className="wizard-receipt">
+                            <div className="wizard-receipt__header">
+                                <Receipt size={16} />
+                                <span>Resumo do Pedido</span>
+                            </div>
 
-                            <div className="wizard-summary__row">
-                                <div>
-                                    <div className="wizard-summary__item-name">Pacote Estúdio ({duration} Meses)</div>
-                                    <div className="wizard-summary__item-desc">{totalGravacoes} sessões de {tierConfig.label} ({scheduleType === 'FIXO' ? 'Fixo' : 'Flex'})</div>
+                            {/* Main package */}
+                            <div className="wizard-receipt__item">
+                                <div className="wizard-receipt__item-info">
+                                    <div className="wizard-receipt__item-icon">
+                                        <Mic size={16} />
+                                    </div>
+                                    <div>
+                                        <div className="wizard-receipt__item-name">Pacote Estúdio — {duration} Meses</div>
+                                        <div className="wizard-receipt__item-meta">
+                                            {totalGravacoes} sessões • {tierConfig.label} • {scheduleType === 'FIXO' ? 'Fixo' : 'Flex'}
+                                        </div>
+                                    </div>
                                 </div>
-                                <div style={{ textAlign: 'right' }}>
-                                    <span className="wizard-summary__item-price">{formatBRL(discountedPrice * 4)}/mês</span>
-                                    {discountPct > 0 && <div className="wizard-summary__discount-note">-{discountPct}% aplicado</div>}
+                                <div className="wizard-receipt__item-price">
+                                    <span>{formatBRL(discountedPrice * 4)}</span>
+                                    <span className="wizard-receipt__item-per">/mês</span>
                                 </div>
                             </div>
 
+                            {discountPct > 0 && (
+                                <div className="wizard-receipt__discount-pill">
+                                    <Tag size={12} />
+                                    <span>Desconto fidelidade de {discountPct}% aplicado</span>
+                                </div>
+                            )}
+
+                            {/* Addon items */}
                             {selectedAddons.length > 0 && (
-                                <div className="wizard-summary__addons">
-                                    <div className="wizard-summary__addons-label">Serviços Adicionais Escolhidos:</div>
+                                <div className="wizard-receipt__addons">
+                                    <div className="wizard-receipt__addons-divider">
+                                        <span>Serviços Extras</span>
+                                    </div>
                                     {selectedAddons.map(key => {
                                         const addon = addons.find(a => a.key === key);
                                         if(!addon) return null;
                                         const discountedMonthly = Math.round((addon.price * sessionsPerMonth) * (1 - discountPct / 100));
+                                        const ADDON_ICON_MAP: Record<string, React.ReactNode> = {
+                                            CORTES_IA: <Sparkles size={14} />,
+                                            CORTES_HUMANO: <Film size={14} />,
+                                            YOUTUBE_SEO: <TrendingUp size={14} />,
+                                            PAUTAS: <FileText size={14} />,
+                                        };
                                         return (
-                                            <div key={key} className="wizard-summary__addon-row">
-                                                <span className="wizard-summary__addon-name">• {addon.name}</span>
-                                                <span className="wizard-summary__addon-price">+ {formatBRL(discountedMonthly)}/mês</span>
+                                            <div key={key} className="wizard-receipt__addon-row">
+                                                <div className="wizard-receipt__addon-info">
+                                                    <span className="wizard-receipt__addon-icon">{ADDON_ICON_MAP[key] || <Sparkles size={14} />}</span>
+                                                    <span>{addon.name}</span>
+                                                </div>
+                                                <span className="wizard-receipt__addon-price">+{formatBRL(discountedMonthly)}/mês</span>
                                             </div>
                                         );
                                     })}
                                 </div>
                             )}
 
-                            <div className="wizard-summary__total">
-                                <span className="wizard-summary__total-label">Subtotal (Mensal)</span>
-                                <span className="wizard-summary__total-value">{formatBRL(monthlyTotal)}</span>
-                            </div>
-                            <div className="wizard-summary__full-total">
-                                <span className="wizard-summary__full-total-label">Valor do Contrato Completo ({duration}x)</span>
-                                <span className="wizard-summary__full-total-value">{formatBRL(monthlyTotal * duration)}</span>
+                            {/* Totals */}
+                            <div className="wizard-receipt__totals">
+                                <div className="wizard-receipt__total-row">
+                                    <span>Mensal</span>
+                                    <span className="wizard-receipt__total-value">{formatBRL(monthlyTotal)}/mês</span>
+                                </div>
+                                <div className="wizard-receipt__total-row wizard-receipt__total-row--grand">
+                                    <span>Contrato Completo ({duration}x)</span>
+                                    <span className="wizard-receipt__grand-value">{formatBRL(monthlyTotal * duration)}</span>
+                                </div>
                             </div>
                         </div>
 
-                        {/* Payment Options */}
-                        <div className="wizard-summary">
-                            <div className="wizard-summary__label">Opções de Pagamento (Formato Final)</div>
+                        {/* ── Payment Method Selector ── */}
+                        <div className="wizard-pay-section">
+                            <div className="wizard-pay-section__label">
+                                <CreditCard size={16} />
+                                <span>Forma de Pagamento</span>
+                            </div>
 
-                            {getClientPaymentMethods().map(pm => {
-                                const isSelected = paymentMethod === pm.key;
-                                let displayPrice = '';
-                                let subPrice = '';
-                                let badge: React.ReactNode = null;
-                                let desc = '';
+                            <div className="wizard-pay-options">
+                                {getClientPaymentMethods().map(pm => {
+                                    const isSelected = paymentMethod === pm.key;
+                                    let displayPrice = '';
+                                    let subPrice = '';
+                                    let surchargePctVal = 0;
+                                    let desc = '';
 
-                                if (pm.key === 'PIX') {
-                                    displayPrice = formatBRL(Math.round(monthlyTotal * duration * 0.9));
-                                    subPrice = formatBRL(monthlyTotal * duration);
-                                    badge = <span className="wizard-payment-card__badge" style={{ background: '#22c55e', color: '#fff' }}>-10%</span>;
-                                    desc = 'Desconto aplicado no valor do contrato completo';
-                                } else if (pm.key === 'CARTAO') {
-                                    displayPrice = `${duration}x ${formatBRL(Math.round(monthlyTotal * 1.15))}`;
-                                    subPrice = `Total: ${formatBRL(Math.round(monthlyTotal * duration * 1.15))}`;
-                                    badge = <span className="wizard-payment-card__badge" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>+15% TAXA</span>;
-                                    desc = 'Valor total com acréscimo da operadora';
-                                } else {
-                                    displayPrice = `${duration}x ${formatBRL(monthlyTotal)}`;
-                                    subPrice = `Total: ${formatBRL(monthlyTotal * duration)}`;
-                                    desc = 'Sem juros mensais. 1º vencimento no envio do contrato';
-                                }
+                                    if (pm.key === 'PIX') {
+                                        displayPrice = `${duration}x ${formatBRL(monthlyTotal)}`;
+                                        subPrice = `Total: ${formatBRL(monthlyTotal * duration)}`;
+                                        desc = 'Parcelas mensais via PIX';
+                                    } else if (pm.key === 'CARTAO') {
+                                        const surcharges = getJson<Record<string, number>>('card_installment_surcharges');
+                                        surchargePctVal = surcharges?.[String(duration)] ?? 0;
+                                        const cardMonthly = Math.round(monthlyTotal * (1 + surchargePctVal / 100));
+                                        displayPrice = `${duration}x ${formatBRL(cardMonthly)}`;
+                                        subPrice = `Total: ${formatBRL(cardMonthly * duration)}`;
+                                        desc = surchargePctVal > 0 ? `Acréscimo de ${surchargePctVal}%` : 'Parcelas no cartão';
+                                    } else {
+                                        displayPrice = `${duration}x ${formatBRL(monthlyTotal)}`;
+                                        subPrice = `Total: ${formatBRL(monthlyTotal * duration)}`;
+                                        desc = 'Boleto bancário mensal';
+                                    }
 
-                                return (
-                                    <div key={pm.key}
-                                        className="wizard-payment-card"
-                                        onClick={() => setPaymentMethod(pm.key as 'CARTAO' | 'PIX')}
-                                        style={{
-                                            background: isSelected ? pm.bgActive : pm.bgInactive,
-                                            border: `2px solid ${isSelected ? pm.borderActive : pm.borderInactive}`,
-                                        }}>
-                                        <div className="wizard-payment-card__row">
-                                            <div>
-                                                <div className="wizard-payment-card__name">
-                                                    {pm.emoji} {pm.accessMode === 'FULL' && pm.key === 'PIX' ? `${pm.label} à vista` : pm.accessMode === 'FULL' ? `${pm.shortLabel} em ${duration}x` : `${pm.label} Mensal`} {badge}
+                                    return (
+                                        <button key={pm.key}
+                                            className={`wizard-pay-card ${isSelected ? 'wizard-pay-card--selected' : ''}`}
+                                            onClick={() => setPaymentMethod(pm.key as 'CARTAO' | 'PIX')}
+                                            style={{ '--pay-color': pm.color, '--pay-bg': pm.bgActive, '--pay-border': pm.borderActive } as React.CSSProperties}>
+                                            <div className="wizard-pay-card__left">
+                                                <div className={`wizard-pay-card__radio ${isSelected ? 'wizard-pay-card__radio--on' : ''}`}>
+                                                    {isSelected && <div className="wizard-pay-card__radio-dot" />}
                                                 </div>
-                                                <div className="wizard-payment-card__desc">{desc}</div>
+                                                <div>
+                                                    <div className="wizard-pay-card__name">
+                                                        {pm.key === 'PIX' ? 'PIX Parcelado' : pm.key === 'CARTAO' ? `Cartão em ${duration}x` : pm.label}
+                                                        {surchargePctVal > 0 && <span className="wizard-pay-card__surcharge">+{surchargePctVal}%</span>}
+                                                    </div>
+                                                    <div className="wizard-pay-card__desc">{desc}</div>
+                                                </div>
                                             </div>
-                                            <div style={{ textAlign: 'right' }}>
-                                                <div className="wizard-payment-card__price" style={{ color: pm.color }}>{displayPrice}</div>
-                                                <div className="wizard-payment-card__sub-price" style={{ textDecoration: pm.key === 'PIX' ? 'line-through' : 'none' }}>{subPrice}</div>
+                                            <div className="wizard-pay-card__right">
+                                                <div className="wizard-pay-card__price">{displayPrice}</div>
+                                                <div className="wizard-pay-card__sub">{subPrice}</div>
                                             </div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
+                                        </button>
+                                    );
+                                })}
+                            </div>
                         </div>
 
-                        {/* Terms */}
-                        <div className="wizard-terms">
-                            <div className="wizard-terms__title">📋 Termos e Regras</div>
-                            <ul className="wizard-terms__list">
-                                <li>A vigência dos {duration} meses inicia em <strong>{firstDate.split('-').reverse().join('/')}</strong>.</li>
-                                <li>Cancelamento com menos de <strong>{selectedTier === 'SABADO' ? '48' : '24'} horas</strong> de antecedência implica na perda do crédito.</li>
-                                <li>Remarcação permitida com até <strong>7 dias</strong> de antecedência.</li>
-                                <li>Créditos não utilizados dentro da vigência do contrato expiram ao final do período.</li>
-                                {scheduleType === 'FIXO' && <li>Horários fixos serão reservados automaticamente para toda a duração do contrato.</li>}
+                        {/* ── Terms ── */}
+                        <div className="wizard-terms-v2">
+                            <div className="wizard-terms-v2__header">
+                                <ScrollText size={16} />
+                                <span>Termos e Regras</span>
+                            </div>
+                            <ul className="wizard-terms-v2__list">
+                                <li>Vigência de {duration} meses a partir de <strong>{firstDate.split('-').reverse().join('/')}</strong>.</li>
+                                <li>Cancelamento com menos de <strong>{selectedTier === 'SABADO' ? '48' : '24'}h</strong> de antecedência = perda do crédito.</li>
+                                <li>Remarcação com até <strong>7 dias</strong> de antecedência.</li>
+                                <li>Créditos não utilizados expiram ao final do contrato.</li>
+                                {scheduleType === 'FIXO' && <li>Horários fixos reservados automaticamente.</li>}
                             </ul>
-                            <label className="wizard-terms__accept">
-                                <input type="checkbox" checked={acceptedTerms} onChange={e => setAcceptedTerms(e.target.checked)}
-                                    className="wizard-terms__checkbox" />
-                                Li e aceito as regras acima
+                            <label className="wizard-terms-v2__accept">
+                                <div className={`wizard-terms-v2__checkbox ${acceptedTerms ? 'wizard-terms-v2__checkbox--checked' : ''}`}>
+                                    {acceptedTerms && <CheckCircle2 size={16} />}
+                                </div>
+                                <span>Li e aceito as regras acima</span>
+                                <input type="checkbox" checked={acceptedTerms} onChange={e => setAcceptedTerms(e.target.checked)} className="sr-only" />
                             </label>
                         </div>
 
+                        {/* ── Actions ── */}
                         <div className="wizard-actions">
-                            <button className="btn btn-secondary" onClick={() => setStep(3)}>⬅ Voltar</button>
-                            <button className="btn btn-primary" onClick={handleSubmit} disabled={!acceptedTerms || submitting || !paymentMethod}>
-                                {submitting ? '⏳ Processando...' : '🔒 Ir para Pagamento'}
+                            <button className="btn btn-secondary" onClick={() => setStep(3)}>
+                                <ChevronLeft size={16} /> Voltar
+                            </button>
+                            <button className="wizard-cta-pay" onClick={handleSubmit} disabled={!acceptedTerms || submitting || !paymentMethod}>
+                                {submitting ? (
+                                    <><div className="wizard-time-loading__spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> Processando...</>
+                                ) : (
+                                    <><ShieldCheck size={18} /> Ir para Pagamento</>
+                                )}
                             </button>
                         </div>
                     </div>

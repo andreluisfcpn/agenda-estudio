@@ -25,6 +25,13 @@ export async function getAvailablePaymentMethods() {
     });
 
     const integrations = await prisma.integrationConfig.findMany();
+
+    // In dev: if no IntegrationConfig records exist at all, skip provider filter
+    // This prevents blocking the wizard when the table hasn't been seeded
+    if (integrations.length === 0 && process.env.NODE_ENV !== 'production') {
+        return methods;
+    }
+
     const enabledProviders = new Set(
         integrations.filter(i => i.enabled).map(i => i.provider)
     );
