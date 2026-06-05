@@ -55,6 +55,10 @@ app.use(helmet({
         },
     } : false,
     crossOriginEmbedderPolicy: false,
+    // OAuth popups (Google login) need the opener relationship preserved. The
+    // Helmet default ('same-origin') severs window.opener, so the popup can't
+    // return the token and login silently fails.
+    crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
 }));
 
 // CORS: accept FRONTEND_URL and production domain
