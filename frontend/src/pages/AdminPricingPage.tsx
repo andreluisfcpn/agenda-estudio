@@ -7,9 +7,7 @@ import AdminPageHeader from '../components/admin/AdminPageHeader';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 
 
-function formatBRL(cents: number): string {
-    return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
-}
+import { formatBRL } from '../utils/format';
 
 const TIER_INFO: Record<string, { emoji: string; desc: string; color: string; bg: string }> = {
     COMERCIAL: { emoji: '🏢', desc: 'Segunda a Sexta, 10h–15:30h', color: '#10b981', bg: 'rgba(16,185,129,0.10)' },

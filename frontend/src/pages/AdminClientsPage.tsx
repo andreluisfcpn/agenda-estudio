@@ -14,9 +14,7 @@ import StatusBadge from '../components/ui/StatusBadge';
 import { USER_TYPE_META, getMeta } from '../constants/adminMeta';
 import { maskPhone } from '../utils/mask';
 
-function formatBRL(cents: number): string {
-    return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
-}
+import { formatBRL } from '../utils/format';
 
 function getUserType(u: UserSummary): string {
     if (u.role === 'ADMIN') return 'ADMIN';

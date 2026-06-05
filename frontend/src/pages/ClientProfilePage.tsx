@@ -6,9 +6,7 @@ import LoadingSpinner from '../components/ui/LoadingSpinner';
 import StatusBadge from '../components/ui/StatusBadge';
 import { TIER_META, BOOKING_STATUS_META, CONTRACT_STATUS_META, getMeta } from '../constants/adminMeta';
 
-function formatBRL(cents: number): string {
-    return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
-}
+import { formatBRL } from '../utils/format';
 
 // ── Inline-edit field ───────────────────────────────
 function FieldItem({ label, value, field, userId, onSaved }: { label: string; value: string | null; field: string; userId: string; onSaved: () => void }) {

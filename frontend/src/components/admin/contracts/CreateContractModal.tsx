@@ -4,9 +4,7 @@ import { contractsApi, UserSummary, CreateContractData, PricingConfig } from '..
 import { useBusinessConfig } from '../../../hooks/useBusinessConfig';
 import ModalOverlay from '../../ModalOverlay';
 
-function formatBRL(cents: number): string {
-    return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
-}
+import { formatBRL } from '../../../utils/format';
 
 const DAY_NAMES_FULL = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 

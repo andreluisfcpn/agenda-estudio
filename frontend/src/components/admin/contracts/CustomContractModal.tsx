@@ -4,9 +4,7 @@ import { contractsApi, pricingApi, UserSummary, PricingConfig, AddOnConfig } fro
 import ModalOverlay from '../../ModalOverlay';
 import { getPaymentMethods } from '../../../constants/paymentMethods';
 
-function formatBRL(cents: number): string {
-    return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
-}
+import { formatBRL } from '../../../utils/format';
 
 interface CustomContractModalProps {
     isOpen: boolean;
