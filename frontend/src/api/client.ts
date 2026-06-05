@@ -381,6 +381,12 @@ export const paymentsApi = {
         request<{ payment: PaymentFull; message: string }>(`/payments/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     getStatus: (paymentId: string) =>
         request<{ status: string; provider: string; pixString?: string; boletoUrl?: string }>(`/payments/${paymentId}/status`),
+    /** Whether PIX/card are running in sandbox (enables the test "simulate" affordance) */
+    getSandboxMode: () =>
+        request<{ pix: boolean; card: boolean }>(`/payments/sandbox-mode`),
+    /** Sandbox-only: simulate a confirmed payment for end-to-end testing */
+    simulate: (paymentId: string) =>
+        request<{ status: string; message: string }>(`/payments/${paymentId}/simulate`, { method: 'POST' }),
 };
 
 // ─── Notifications ──────────────────────────────────────

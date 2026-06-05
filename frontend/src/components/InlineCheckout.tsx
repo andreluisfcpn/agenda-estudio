@@ -108,6 +108,29 @@ export default function InlineCheckout({
     const pollIntervalRef = useRef<number | null>(null);
     // PAY-H1 FIX: Prevent double-init from rapid clicks
     const initGuardRef = useRef(false);
+    // Sandbox testing: when PIX is in sandbox, offer a "simulate payment" button
+    const [pixSandbox, setPixSandbox] = useState(false);
+    const [simulating, setSimulating] = useState(false);
+
+    useEffect(() => {
+        paymentsApi.getSandboxMode().then(m => setPixSandbox(!!m.pix)).catch(() => {});
+    }, []);
+
+    const simulatePayment = useCallback(async () => {
+        if (!paymentId || simulating) return;
+        setSimulating(true);
+        try {
+            const res = await paymentsApi.simulate(paymentId);
+            if (res.status === 'PAID') {
+                if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+                onSuccess();
+            } else {
+                setSimulating(false);
+            }
+        } catch {
+            setSimulating(false);
+        }
+    }, [paymentId, simulating, onSuccess]);
 
     // Generate QR Code locally from pixString
     useEffect(() => {
@@ -570,6 +593,32 @@ export default function InlineCheckout({
                                 <span className="spinner" style={{ width: 14, height: 14, borderColor: '#22c55e', borderTopColor: 'transparent' }} />
                                 Aguardando pagamento...
                             </div>
+
+                            {/* Sandbox testing only: no real bank can pay a homologação QR,
+                                so offer a button that simulates the confirmed payment. */}
+                            {pixSandbox && paymentId && (
+                                <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px dashed var(--border, rgba(255,255,255,0.12))', textAlign: 'center' }}>
+                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: 8 }}>
+                                        🧪 Modo teste (sandbox) — nenhum valor real é cobrado
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={simulatePayment}
+                                        disabled={simulating}
+                                        style={{
+                                            width: '100%', padding: '10px 16px', borderRadius: 10,
+                                            border: '1px solid #f59e0b', background: 'rgba(245,158,11,0.12)',
+                                            color: '#f59e0b', fontWeight: 600, fontSize: '0.8rem',
+                                            cursor: simulating ? 'default' : 'pointer',
+                                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                                        }}
+                                    >
+                                        {simulating
+                                            ? <><span className="spinner" style={{ width: 14, height: 14, borderColor: '#f59e0b', borderTopColor: 'transparent' }} /> Simulando...</>
+                                            : <>🧪 Simular pagamento PIX</>}
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
