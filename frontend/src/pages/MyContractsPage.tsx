@@ -170,7 +170,7 @@ export default function MyContractsPage() {
         if (c.status !== 'CANCELLED') return false;
         
         // Hide abandoned checkout avulsos
-        const isAvulso = c.type === 'FLEX' && c.durationMonths === 1;
+        const isAvulso = c.type === 'AVULSO' || (c.type === 'FLEX' && c.durationMonths === 1);
         if (isAvulso) {
             const hasNonCancelledBooking = c.bookings?.some(b => b.status !== 'CANCELLED');
             if (!hasNonCancelledBooking) return false;

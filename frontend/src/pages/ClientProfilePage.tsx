@@ -4,7 +4,7 @@ import { usersApi, bookingsApi, UserDetail, Booking, Contract } from '../api/cli
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import StatusBadge from '../components/ui/StatusBadge';
-import { TIER_META, BOOKING_STATUS_META, CONTRACT_STATUS_META, getMeta } from '../constants/adminMeta';
+import { TIER_META, BOOKING_STATUS_META, CONTRACT_STATUS_META, CONTRACT_TYPE_META, getMeta } from '../constants/adminMeta';
 
 import { formatBRL } from '../utils/format';
 
@@ -472,7 +472,7 @@ export default function ClientProfilePage() {
                             }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                                     <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                        <span className={`badge ${c.type === 'FIXO' ? 'badge-confirmed' : 'badge-reserved'}`}>{c.type === 'FIXO' ? '📌 Fixo' : '🔄 Flex'}</span>
+                                        <StatusBadge meta={getMeta(CONTRACT_TYPE_META, c.type)} />
                                         <StatusBadge meta={getMeta(TIER_META, c.tier)} />
                                     </div>
                                     <StatusBadge meta={getMeta(CONTRACT_STATUS_META, c.status)} />

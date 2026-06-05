@@ -9,7 +9,7 @@ import ModalOverlay from '../components/ModalOverlay';
 import AdminPageHeader from '../components/admin/AdminPageHeader';
 import { HeroSkeleton, TableSkeleton } from '../components/ui/SkeletonLoader';
 import StatusBadge from '../components/ui/StatusBadge';
-import { CONTRACT_STATUS_META, getMeta } from '../constants/adminMeta';
+import { CONTRACT_STATUS_META, CONTRACT_TYPE_META, getMeta } from '../constants/adminMeta';
 import { getPaymentMethods, getPaymentBadge } from '../constants/paymentMethods';
 import { useAdminContracts } from '../hooks/useAdminContracts';
 import CreateContractModal from '../components/admin/contracts/CreateContractModal';
@@ -299,7 +299,7 @@ export default function AdminContractsPage() {
                                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                         fontSize: '0.9375rem', flexShrink: 0
                                                     }}>
-                                                        {c.type === 'FIXO' ? '📌' : '🎟️'}
+                                                        {(() => { const TI = getMeta(CONTRACT_TYPE_META, c.type).icon; return <TI size={17} />; })()}
                                                     </div>
                                                     <div>
                                                         <div style={{ fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', color: 'var(--accent-primary)' }}
@@ -317,15 +317,7 @@ export default function AdminContractsPage() {
                                             {/* Type + Tier */}
                                             <td>
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                    <span style={{
-                                                        display: 'inline-flex', alignItems: 'center', gap: '3px',
-                                                        padding: '2px 8px', borderRadius: '6px', fontSize: '0.6875rem', fontWeight: 700,
-                                                        background: c.type === 'FIXO' ? 'rgba(99,102,241,0.12)' : 'rgba(16,185,129,0.12)',
-                                                        color: c.type === 'FIXO' ? '#818cf8' : '#34d399',
-                                                        width: 'fit-content'
-                                                    }}>
-                                                        {c.type === 'FIXO' ? '📌 Fixo' : '🎟️ Flex'}
-                                                    </span>
+                                                    <StatusBadge meta={getMeta(CONTRACT_TYPE_META, c.type)} />
                                                     <span style={{
                                                         padding: '2px 8px', borderRadius: '6px', fontSize: '0.625rem', fontWeight: 700,
                                                         background: c.tier === 'AUDIENCIA' ? 'rgba(45,212,191,0.15)' : c.tier === 'SABADO' ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.15)',

@@ -46,7 +46,7 @@ export default function ContractCard({
         return bookingDateTime < now && (b.status === 'RESERVED' || b.status === 'CONFIRMED');
     });
 
-    const isAvulso = c.type === 'FLEX' && c.durationMonths === 1;
+    const isAvulso = c.type === 'AVULSO' || (c.type === 'FLEX' && c.durationMonths === 1);
 
     const daysLeft = Math.ceil((new Date(c.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
     const isExpiring = c.status === 'ACTIVE' && !isAvulso && daysLeft >= 0 && daysLeft <= 15;

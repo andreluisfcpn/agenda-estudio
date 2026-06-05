@@ -7,6 +7,7 @@ import {
     Building2, Mic, Star,
     Clock, CheckCircle, CheckCircle2, Ban, XCircle, AlertCircle,
     Lock, Pause, Undo2, ShieldCheck, Pin, RefreshCw, Ticket, Circle, Hourglass,
+    Sparkles, Wand2,
     type LucideIcon,
 } from 'lucide-react';
 
@@ -52,13 +53,26 @@ export const PAYMENT_STATUS_META: Record<string, MetaEntry> = {
     REFUNDED: { label: 'Estornado', color: '#14b8a6', bg: 'rgba(20,184,166,0.12)', icon: Undo2 },
 };
 
-/** Client "type" derived from role/contract (used by AdminClientsPage). */
+/** Client/contract "type" (role-derived ADMIN + the 5 ContractType values).
+ *  Used for the client-type badge (AdminClientsPage) and contract-type badges. */
 export const USER_TYPE_META: Record<string, MetaEntry> = {
-    ADMIN:  { label: 'Admin',  color: '#f59e0b', bg: 'rgba(245,158,11,0.12)',  icon: ShieldCheck },
-    FIXO:   { label: 'Fixo',   color: '#818cf8', bg: 'rgba(129,140,248,0.12)', icon: Pin },
-    FLEX:   { label: 'Flex',   color: '#34d399', bg: 'rgba(52,211,153,0.12)',  icon: RefreshCw },
-    AVULSO: { label: 'Avulso', color: '#f97316', bg: 'rgba(249,115,22,0.12)',  icon: Ticket },
+    ADMIN:   { label: 'Admin',         color: '#f59e0b', bg: 'rgba(245,158,11,0.12)',  icon: ShieldCheck },
+    FIXO:    { label: 'Fixo',          color: '#818cf8', bg: 'rgba(129,140,248,0.12)', icon: Pin },
+    FLEX:    { label: 'Flex',          color: '#34d399', bg: 'rgba(52,211,153,0.12)',  icon: RefreshCw },
+    AVULSO:  { label: 'Avulso',        color: '#f97316', bg: 'rgba(249,115,22,0.12)',  icon: Ticket },
+    SERVICO: { label: 'Serviço',       color: '#22d3ee', bg: 'rgba(34,211,238,0.12)',  icon: Sparkles },
+    CUSTOM:  { label: 'Personalizado', color: '#a78bfa', bg: 'rgba(167,139,250,0.12)', icon: Wand2 },
 };
+
+/** Contract type → label/color/icon (FIXO/FLEX/AVULSO/SERVICO/CUSTOM).
+ *  Alias of USER_TYPE_META minus ADMIN — use for contract-type badges so AVULSO
+ *  is never collapsed into "Flex". */
+export const CONTRACT_TYPE_META = USER_TYPE_META;
+
+/** Plain label for a contract type (safe for unknown values). */
+export function contractTypeLabel(type: string | null | undefined): string {
+    return getMeta(USER_TYPE_META, type).label;
+}
 
 const FALLBACK: MetaEntry = { label: '—', color: 'var(--text-muted)', bg: 'rgba(148,163,184,0.12)', icon: Circle };
 

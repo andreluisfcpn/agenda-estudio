@@ -19,7 +19,7 @@ import { formatBRL } from '../utils/format';
 function getUserType(u: UserSummary): string {
     if (u.role === 'ADMIN') return 'ADMIN';
     if (u.contracts && u.contracts.length > 0) {
-        return u.contracts[0].type === 'FIXO' ? 'FIXO' : 'FLEX';
+        return u.contracts[0].type; // FIXO | FLEX | AVULSO | SERVICO | CUSTOM
     }
     return 'AVULSO';
 }
