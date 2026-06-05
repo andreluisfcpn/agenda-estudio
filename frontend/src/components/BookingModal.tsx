@@ -450,6 +450,7 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
                             amount={avulsoTotal}
                             description={`Avulso ${dateDisplay} às ${time}`}
                             allowedMethods={['CARTAO', 'PIX']}
+                            context="avulso"
                             createPaymentFn={async (method) => {
                                 // If booking already exists (e.g. PIX was generated first, now switching to Card),
                                 // reuse it instead of creating a new one

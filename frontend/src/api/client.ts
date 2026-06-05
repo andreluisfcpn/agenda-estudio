@@ -335,6 +335,8 @@ export interface PaymentMethodConfigItem {
     key: string; label: string; shortLabel: string; emoji: string;
     description: string; color: string; active: boolean;
     sortOrder: number; accessMode: string;
+    /** CSV of checkout contexts: avulso, contract, invoice */
+    contexts?: string;
 }
 
 // Public types (no auth)

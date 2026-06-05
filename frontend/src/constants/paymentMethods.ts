@@ -33,6 +33,8 @@ export interface PaymentMethodConfig {
   borderInactive: string;
   /** How bookings/payments are released */
   accessMode: 'FULL' | 'PROGRESSIVE';
+  /** CSV of checkout contexts where this method appears: avulso, contract, invoice */
+  contexts?: string;
 }
 
 // ─── Static Fallback Defaults ────────────────────────────
@@ -105,6 +107,7 @@ function apiToConfig(item: PaymentMethodConfigItem): PaymentMethodConfig {
     bgInactive: isVar ? 'var(--bg-secondary)' : `rgba(${rgb}, 0.04)`,
     borderInactive: isVar ? 'var(--border-subtle)' : `rgba(${rgb}, 0.2)`,
     accessMode: item.accessMode as 'FULL' | 'PROGRESSIVE',
+    contexts: item.contexts || 'avulso,contract,invoice',
   };
 }
 
@@ -147,6 +150,12 @@ export function getPaymentMethods(): PaymentMethodConfig[] {
 /** Client-facing methods only (excludes BOLETO). Use in all client UI. */
 export function getClientPaymentMethods(): PaymentMethodConfig[] {
   return _cachedMethods.filter(m => m.key !== 'BOLETO');
+}
+
+/** Whether a method is enabled for a given checkout context (avulso/contract/invoice). */
+export function methodInContext(m: PaymentMethodConfig, context: string): boolean {
+  if (!m.contexts) return true; // no restriction configured → show everywhere
+  return m.contexts.split(',').map(s => s.trim()).includes(context);
 }
 
 /** Whether the methods have been loaded from the API */

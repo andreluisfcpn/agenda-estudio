@@ -332,6 +332,7 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                                 description={`1ª parcela - Contrato ${duration} meses`}
                                 contractDuration={duration}
                                 allowedMethods={paymentMethod === 'PIX' ? ['PIX'] : ['CARTAO', 'PIX']}
+                                context="contract"
                                 createPaymentFn={firstPaymentId ? async () => ({
                                     paymentId: firstPaymentId,
                                     pixString: firstPixString || undefined,

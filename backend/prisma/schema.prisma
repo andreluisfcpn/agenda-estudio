@@ -344,6 +344,8 @@ model PaymentMethodConfig {
   active      Boolean  @default(true)
   sortOrder   Int      @default(0)      @map("sort_order")
   accessMode  String   @default("FULL") @map("access_mode") // "FULL" | "PROGRESSIVE"
+  // CSV of checkout contexts where this method appears: avulso, contract, invoice
+  contexts    String   @default("avulso,contract,invoice")
   updatedAt   DateTime @updatedAt       @map("updated_at")
 
   @@map("payment_method_config")

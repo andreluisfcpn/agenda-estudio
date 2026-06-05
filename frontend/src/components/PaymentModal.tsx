@@ -49,6 +49,7 @@ export default function PaymentModal({
                 description={description}
                 contractDuration={contractDuration}
                 allowedMethods={allowedMethods}
+                context="invoice"
                 onSuccess={onSuccess}
                 onError={onError}
                 onCancel={onClose}

@@ -119,6 +119,7 @@ export function registerMethodsRoutes(router: Router) {
             active: z.boolean(),
             sortOrder: z.number().int().min(0),
             accessMode: z.enum(['FULL', 'PROGRESSIVE']),
+            contexts: z.string().optional().default('avulso,contract,invoice'),
         })),
     });
 
@@ -140,6 +141,7 @@ export function registerMethodsRoutes(router: Router) {
                         active: item.active,
                         sortOrder: item.sortOrder,
                         accessMode: item.accessMode,
+                        contexts: item.contexts,
                     },
                 });
                 results.push(config);

@@ -8,7 +8,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import QRCodeLib from 'qrcode';
 import StripeCardForm from './StripeCardForm';
 import { stripeApi, paymentsApi, type SavedCard } from '../api/client';
-import { getClientPaymentMethods, getPaymentMethods, type PaymentMethodKey } from '../constants/paymentMethods';
+import { getClientPaymentMethods, getPaymentMethods, methodInContext, type PaymentMethodKey } from '../constants/paymentMethods';
 import { Copy, Check, Lock, QrCode, CreditCard, Plus, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { isValidCpfCnpj } from '../utils/mask';
@@ -35,6 +35,8 @@ interface InlineCheckoutProps {
     allowedMethods?: PaymentMethodKey[];
     /** If true, show all methods including BOLETO (admin mode) */
     isAdmin?: boolean;
+    /** Checkout context for per-method visibility: avulso | contract | invoice */
+    context?: string;
     /** Function to create the Payment record on-the-fly */
     createPaymentFn?: (method: 'CARTAO' | 'PIX' | 'BOLETO') => Promise<{
         paymentId: string;
@@ -77,10 +79,17 @@ export default function InlineCheckout({
     onCancel,
     allowedMethods = ['CARTAO', 'PIX'],
     isAdmin = false,
+    context,
     createPaymentFn,
 }: InlineCheckoutProps) {
     const allMethods = isAdmin ? getPaymentMethods() : getClientPaymentMethods();
-    const availableMethods = allMethods.filter(m => allowedMethods.includes(m.key));
+    const ctxMethods = allMethods.filter(m =>
+        allowedMethods.includes(m.key) && (!context || methodInContext(m, context))
+    );
+    // Safety: never leave the checkout with zero methods (e.g. admin hid all from this context).
+    const availableMethods = ctxMethods.length > 0
+        ? ctxMethods
+        : allMethods.filter(m => allowedMethods.includes(m.key));
     const [activeTab, setActiveTab] = useState<ActiveTab>(
         (availableMethods[0]?.key as ActiveTab) || 'CARTAO'
     );

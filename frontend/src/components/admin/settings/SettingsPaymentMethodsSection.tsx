@@ -203,6 +203,32 @@ export default function SettingsPaymentMethodsSection() {
                             </div>
                         </div>
 
+                        {/* Contexts — which checkouts show this method */}
+                        <div style={{ marginTop: '16px' }}>
+                            <label className="form-label" style={{ marginBottom: '6px' }}>Aparece em</label>
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                {([['avulso', 'Avulso'], ['contract', 'Contratos'], ['invoice', 'Faturas']] as const).map(([ctx, lbl]) => {
+                                    const list = (pm.contexts || 'avulso,contract,invoice').split(',').map(s => s.trim()).filter(Boolean);
+                                    const on = list.includes(ctx);
+                                    return (
+                                        <button key={ctx} type="button"
+                                            onClick={() => {
+                                                const next = on ? list.filter(c => c !== ctx) : [...list, ctx];
+                                                handlePmChange(pm.key, 'contexts', next.join(','));
+                                            }}
+                                            style={{
+                                                padding: '6px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
+                                                background: on ? `${pm.color}1f` : 'var(--bg-elevated)',
+                                                color: on ? pm.color : 'var(--text-muted)',
+                                                border: `1px solid ${on ? pm.color : 'var(--border-color)'}`,
+                                            }}>
+                                            {on ? '✓ ' : ''}{lbl}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
                         {/* Sort order */}
                         <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>Ordem:</span>
