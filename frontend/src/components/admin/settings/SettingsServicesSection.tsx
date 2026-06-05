@@ -1,9 +1,8 @@
-import { getErrorMessage } from '../utils/errors';
-import React, { useState, useEffect } from 'react';
-import { Sparkles, Check } from 'lucide-react';
-import { pricingApi, AddOnConfig } from '../api/client';
-import AdminPageHeader from '../components/admin/AdminPageHeader';
-import LoadingSpinner from '../components/ui/LoadingSpinner';
+import { getErrorMessage } from '../../../utils/errors';
+import { useState, useEffect } from 'react';
+import { pricingApi, AddOnConfig } from '../../../api/client';
+import LoadingSpinner from '../../ui/LoadingSpinner';
+import SettingsSaveBar, { SettingsMessages } from './SettingsSaveBar';
 
 function AddonEditorCard({ addon, onUpdate }: { addon: AddOnConfig; onUpdate: (key: string, field: string, value: string) => void }) {
     const [localName, setLocalName] = useState(addon.name);
@@ -34,10 +33,10 @@ function AddonEditorCard({ addon, onUpdate }: { addon: AddOnConfig; onUpdate: (k
 
             <div className="form-group">
                 <label className="form-label">Nome Público</label>
-                <input className="form-input" 
-                    value={localName} 
-                    onChange={e => setLocalName(e.target.value)} 
-                    onBlur={() => handleBlur('name', localName)} 
+                <input className="form-input"
+                    value={localName}
+                    onChange={e => setLocalName(e.target.value)}
+                    onBlur={() => handleBlur('name', localName)}
                 />
             </div>
 
@@ -46,13 +45,13 @@ function AddonEditorCard({ addon, onUpdate }: { addon: AddOnConfig; onUpdate: (k
                 <div style={{ position: 'relative' }}>
                     <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontWeight: 600 }}>R$</span>
                     <input className="form-input" style={{ paddingLeft: 40, fontWeight: 700, fontSize: '1.125rem' }}
-                        type="text" 
+                        type="text"
                         value={localPrice}
                         onChange={e => {
                             // basic mask behavior - allow typing digits and comma
                             const clean = e.target.value.replace(/[^0-9,]/g, '');
                             setLocalPrice(clean);
-                        }} 
+                        }}
                         onBlur={() => {
                             // formatting back properly on blur
                             handleBlur('price', localPrice);
@@ -64,19 +63,24 @@ function AddonEditorCard({ addon, onUpdate }: { addon: AddOnConfig; onUpdate: (k
             <div className="form-group">
                 <label className="form-label">Descrição</label>
                 <textarea className="form-input" style={{ minHeight: 60, resize: 'vertical', fontFamily: 'inherit', fontSize: '0.8125rem' }}
-                    value={localDesc} 
-                    onChange={e => setLocalDesc(e.target.value)} 
-                    onBlur={() => handleBlur('description', localDesc)} 
+                    value={localDesc}
+                    onChange={e => setLocalDesc(e.target.value)}
+                    onBlur={() => handleBlur('description', localDesc)}
                 />
             </div>
         </div>
     );
 }
 
-export default function AdminServicesPage() {
+/**
+ * Self-contained add-on (services) editor — moved verbatim from
+ * AdminServicesPage. Per-episode + monthly add-ons, saved via
+ * pricingApi.updateAddons. Owns its own dirty flag + floating save bar.
+ */
+export default function SettingsServicesSection() {
     const [addons, setAddons] = useState<AddOnConfig[]>([]);
     const [addonEdited, setAddonEdited] = useState(false);
-    
+
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [success, setSuccess] = useState('');
@@ -86,11 +90,12 @@ export default function AdminServicesPage() {
 
     const loadAddons = async () => {
         setLoading(true);
-        try { 
-            const res = await pricingApi.getAddons(); 
-            setAddons(res.addons); 
-        } catch (err) { 
-            console.error(err); 
+        try {
+            const res = await pricingApi.getAddons();
+            setAddons(res.addons);
+            setAddonEdited(false);
+        } catch (err) {
+            console.error(err);
             setError('Não foi possível carregar os serviços adicionais.');
         } finally {
             setLoading(false);
@@ -110,14 +115,14 @@ export default function AdminServicesPage() {
 
     const handleSaveAddons = async () => {
         setSaving(true); setError('');
-        try { 
-            await pricingApi.updateAddons(addons); 
-            showMsg('Serviços atualizados com sucesso!');
-            setAddonEdited(false); 
-        } catch (err: unknown) { 
-            setError(getErrorMessage(err)); 
-        } finally { 
-            setSaving(false); 
+        try {
+            await pricingApi.updateAddons(addons);
+            showMsg('✅ Serviços atualizados com sucesso!');
+            setAddonEdited(false);
+        } catch (err: unknown) {
+            setError(getErrorMessage(err));
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -136,7 +141,7 @@ export default function AdminServicesPage() {
                     </h2>
                     <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{desc}</p>
                 </div>
-                
+
                 <div style={{ display: 'grid', gap: '16px', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
                     {groupAddons.map(addon => (
                         <AddonEditorCard key={addon.key} addon={addon} onUpdate={handleAddonChange} />
@@ -148,38 +153,19 @@ export default function AdminServicesPage() {
 
     return (
         <div>
-            {/* ─── HEADER ─── */}
-            <AdminPageHeader
-                icon={Sparkles}
-                title="Serviços"
-                subtitle="Adicionais por episódio e mensais"
-                actions={
-                    <button className="btn btn-primary" onClick={handleSaveAddons} disabled={!addonEdited || saving} style={{ width: 140 }}>
-                        {saving ? '⏳...' : addonEdited ? '💾 Salvar' : '✅ Salvo'}
-                    </button>
-                }
-            />
+            <div style={{ marginBottom: '20px' }}>
+                <h2 style={{ fontSize: '1.125rem', fontWeight: 800, marginBottom: '2px' }}>Serviços</h2>
+                <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Adicionais por episódio e mensais.</p>
+            </div>
 
-            {/* ─── MESSAGES ─── */}
-            {error && (
-                <div style={{
-                    padding: '12px 16px', marginBottom: '16px', borderRadius: '12px',
-                    background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
-                    color: '#ef4444', fontSize: '0.8125rem', fontWeight: 600
-                }}>⚠️ {error}</div>
-            )}
-            {success && (
-                <div style={{
-                    padding: '12px 16px', marginBottom: '16px', borderRadius: '12px',
-                    background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)',
-                    color: '#10b981', fontSize: '0.8125rem', fontWeight: 600,
-                    display: 'flex', alignItems: 'center', gap: '6px'
-                }}><Check size={16} /> {success}</div>
-            )}
+            <SettingsMessages error={error} success={success} />
 
             {renderAddonGroup('Serviços por Episódio', 'Clientes podem adicionar esses serviços pontualmente a cada agendamento feito.', '🎙️', perEpisodeAddons)}
             {renderAddonGroup('Serviços Mensais', 'Serviços contínuos geralmente linkados a contratos mais englobados.', '📅', monthlyAddons)}
-            
+
+            {addonEdited && (
+                <SettingsSaveBar saving={saving} onSave={handleSaveAddons} onDiscard={loadAddons} />
+            )}
         </div>
     );
 }

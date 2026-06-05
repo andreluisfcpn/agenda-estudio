@@ -12,7 +12,7 @@ import {
     CreditCard,
     BarChart3,
     MoreHorizontal,
-    Plug,
+    Settings,
     type LucideIcon,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -42,8 +42,8 @@ const ADMIN_MORE_TABS: TabItem[] = [
     { to: '/admin/bookings', icon: Clapperboard, label: 'Agendamentos' },
     { to: '/admin/contracts', icon: FileText, label: 'Contratos' },
     { to: '/admin/finance', icon: CreditCard, label: 'Financeiro' },
-    { to: '/admin/integrations', icon: Plug, label: 'Integrações' },
     { to: '/admin/reports', icon: BarChart3, label: 'Relatórios' },
+    { to: '/admin/configuracoes', icon: Settings, label: 'Configurações' },
 ];
 
 export default function BottomTabBar() {

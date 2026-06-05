@@ -11,7 +11,6 @@ import {
     ClipboardList,
     Users,
     FileSignature,
-    BadgeDollarSign,
     CreditCard,
     BarChart3,
     LucideIcon,
@@ -20,8 +19,7 @@ import {
     Pencil,
     LogOut,
     Wallet,
-    Sparkles,
-    Plug,
+    Settings,
 } from 'lucide-react';
 
 interface NavItemProps {
@@ -202,11 +200,9 @@ export default function Sidebar({ collapsed, onProfileClick }: SidebarProps) {
                         <NavItem to="/admin/bookings" icon={ClipboardList} label="Agendamentos" collapsed={collapsed} />
                         <NavItem to="/admin/clients" icon={Users} label="Clientes" collapsed={collapsed} />
                         <NavItem to="/admin/contracts" icon={FileSignature} label="Contratos" collapsed={collapsed} />
-                        <NavItem to="/admin/pricing" icon={BadgeDollarSign} label="Planos & Valores" collapsed={collapsed} />
-                        <NavItem to="/admin/services" icon={Sparkles} label="Serviços" collapsed={collapsed} />
                         <NavItem to="/admin/finance" icon={CreditCard} label="Financeiro" collapsed={collapsed} />
-                        <NavItem to="/admin/integrations" icon={Plug} label="Integrações" collapsed={collapsed} />
                         <NavItem to="/admin/reports" icon={BarChart3} label="Relatórios" collapsed={collapsed} />
+                        <NavItem to="/admin/configuracoes" icon={Settings} label="Configurações" collapsed={collapsed} />
                     </>
                 )}
             </nav>

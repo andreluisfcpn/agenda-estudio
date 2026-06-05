@@ -26,12 +26,10 @@ const MyPaymentsPage = React.lazy(() => import('./pages/MyPaymentsPage'));
 const AdminClientsPage = React.lazy(() => import('./pages/AdminClientsPage'));
 const AdminBookingsPage = React.lazy(() => import('./pages/AdminBookingsPage'));
 const AdminContractsPage = React.lazy(() => import('./pages/AdminContractsPage'));
-const AdminPricingPage = React.lazy(() => import('./pages/AdminPricingPage'));
-const AdminServicesPage = React.lazy(() => import('./pages/AdminServicesPage'));
 const AdminTodayPage = React.lazy(() => import('./pages/AdminTodayPage'));
 const AdminFinancePage = React.lazy(() => import('./pages/AdminFinancePage'));
 const AdminReportsPage = React.lazy(() => import('./pages/AdminReportsPage'));
-const AdminIntegrationsPage = React.lazy(() => import('./pages/AdminIntegrationsPage'));
+const AdminSettingsPage = React.lazy(() => import('./pages/AdminSettingsPage'));
 const ClientProfilePage = React.lazy(() => import('./pages/ClientProfilePage'));
 
 // Preload the page chunks while the browser is idle so navigation is instant
@@ -50,11 +48,9 @@ function preloadPages() {
         () => import('./pages/AdminBookingsPage'),
         () => import('./pages/AdminClientsPage'),
         () => import('./pages/AdminContractsPage'),
-        () => import('./pages/AdminPricingPage'),
-        () => import('./pages/AdminServicesPage'),
         () => import('./pages/AdminFinancePage'),
         () => import('./pages/AdminReportsPage'),
-        () => import('./pages/AdminIntegrationsPage'),
+        () => import('./pages/AdminSettingsPage'),
         () => import('./pages/ClientProfilePage'),
     ];
     // Stagger so we don't compete with the initial render's network/CPU.
@@ -207,14 +203,15 @@ function AppRoutes() {
             <Route path="/admin/clients" element={<ProtectedRoute><AdminRoute><AdminClientsPage /></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/clients/:id" element={<ProtectedRoute><AdminRoute><ClientProfilePage /></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/contracts" element={<ProtectedRoute><AdminRoute><AdminContractsPage /></AdminRoute></ProtectedRoute>} />
-            <Route path="/admin/pricing" element={<ProtectedRoute><AdminRoute><AdminPricingPage /></AdminRoute></ProtectedRoute>} />
-            <Route path="/admin/services" element={<ProtectedRoute><AdminRoute><AdminServicesPage /></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/finance" element={<ProtectedRoute><AdminRoute><AdminFinancePage /></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/reports" element={<ProtectedRoute><AdminRoute><AdminReportsPage /></AdminRoute></ProtectedRoute>} />
-            <Route path="/admin/integrations" element={<ProtectedRoute><AdminRoute><AdminIntegrationsPage /></AdminRoute></ProtectedRoute>} />
+            <Route path="/admin/configuracoes" element={<ProtectedRoute><AdminRoute><AdminSettingsPage /></AdminRoute></ProtectedRoute>} />
 
             {/* Legacy redirects */}
             <Route path="/clients" element={<Navigate to="/admin/clients" replace />} />
+            <Route path="/admin/pricing" element={<Navigate to="/admin/configuracoes?sec=financeiro" replace />} />
+            <Route path="/admin/services" element={<Navigate to="/admin/configuracoes?sec=servicos" replace />} />
+            <Route path="/admin/integrations" element={<Navigate to="/admin/configuracoes?sec=integracoes" replace />} />
 
             <Route path="*" element={<Navigate to={user ? '/dashboard' : '/login'} replace />} />
         </Routes>

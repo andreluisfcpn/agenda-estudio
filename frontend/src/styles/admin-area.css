@@ -33,6 +33,88 @@
     margin-bottom: 20px;
 }
 
+/* ── Consolidated Settings page (/admin/configuracoes) ──────────
+   Left-rail sub-nav on desktop, scrollable segmented pills on mobile. */
+.admin-settings {
+    display: grid;
+    grid-template-columns: 232px 1fr;
+    gap: 24px;
+    align-items: start;
+}
+.admin-settings-rail {
+    position: sticky;
+    top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+}
+.admin-settings-rail-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 12px;
+    border: none;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+.admin-settings-rail-item:hover {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+}
+.admin-settings-rail-item--active {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    box-shadow: inset 3px 0 0 var(--accent, #2dd4bf);
+}
+.admin-settings-rail-icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    color: var(--accent, #2dd4bf);
+}
+.admin-settings-panel {
+    min-width: 0;
+}
+@media (max-width: 900px) {
+    .admin-settings {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+    .admin-settings-rail {
+        position: static;
+        flex-direction: row;
+        gap: 6px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding: 6px;
+        scrollbar-width: none;
+    }
+    .admin-settings-rail::-webkit-scrollbar { display: none; }
+    .admin-settings-rail-item {
+        width: auto;
+        flex-shrink: 0;
+        white-space: nowrap;
+    }
+    .admin-settings-rail-item--active {
+        box-shadow: none;
+        background: var(--accent, #2dd4bf);
+        color: #00222a;
+    }
+    .admin-settings-rail-item--active .admin-settings-rail-icon {
+        color: #00222a;
+    }
+}
+
 /* ── Floating "unsaved changes" save bar ────────────────────────
    Desktop: respects the sidebar width (220px expanded / 52px collapsed).
    Mobile: full-width, pinned above the BottomTabBar + safe-area. */
@@ -56,11 +138,18 @@
 .app-layout--sidebar-collapsed .admin-save-bar {
     left: 52px;
 }
+/* Second save bar (financeiro: tiers + business config) stacks above the base. */
+.admin-save-bar--stacked {
+    bottom: 92px;
+}
 @media (max-width: 768px) {
     .admin-save-bar,
     .app-layout--sidebar-collapsed .admin-save-bar {
         left: 12px;
         right: 12px;
         bottom: calc(64px + env(safe-area-inset-bottom, 0px) + 12px);
+    }
+    .admin-save-bar--stacked {
+        bottom: calc(64px + env(safe-area-inset-bottom, 0px) + 12px + 76px);
     }
 }
