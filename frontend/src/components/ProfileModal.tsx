@@ -3,6 +3,7 @@ import BottomSheetModal from './BottomSheetModal';
 import ImageCropper from './ImageCropper';
 import { useAuth } from '../context/AuthContext';
 import { authApi } from '../api/client';
+import { maskCpfCnpj, isValidCpfCnpj } from '../utils/mask';
 
 interface ProfileModalProps {
     isOpen?: boolean;
@@ -15,7 +16,7 @@ export default function ProfileModal({ isOpen = true, onClose, onSuccess }: Prof
     const [name, setName] = useState(user?.name || '');
     const [phone, setPhone] = useState(user?.phone || '');
     const [password, setPassword] = useState('');
-    const [cpfCnpj, setCpfCnpj] = useState(user?.cpfCnpj || '');
+    const [cpfCnpj, setCpfCnpj] = useState(user?.cpfCnpj ? maskCpfCnpj(user.cpfCnpj) : '');
     const [address, setAddress] = useState(user?.address || '');
     const [city, setCity] = useState(user?.city || '');
     const [state, setState] = useState(user?.state || '');
@@ -45,7 +46,15 @@ export default function ProfileModal({ isOpen = true, onClose, onSuccess }: Prof
             if (name && name !== user?.name) data.name = name;
             if (phone !== (user?.phone || '')) data.phone = phone;
             if (password) data.password = password;
-            if (cpfCnpj !== (user?.cpfCnpj || '')) data.cpfCnpj = cpfCnpj;
+            const cpfDigits = cpfCnpj.replace(/\D/g, '');
+            if (cpfDigits !== (user?.cpfCnpj || '').replace(/\D/g, '')) {
+                if (cpfDigits && !isValidCpfCnpj(cpfDigits)) {
+                    setError('CPF/CNPJ inválido. Confira os números.');
+                    setSaving(false);
+                    return;
+                }
+                data.cpfCnpj = cpfDigits;
+            }
             if (address !== (user?.address || '')) data.address = address;
             if (city !== (user?.city || '')) data.city = city;
             if (state !== (user?.state || '')) data.state = state;
@@ -179,7 +188,7 @@ export default function ProfileModal({ isOpen = true, onClose, onSuccess }: Prof
 
                     <div className="form-group">
                         <label className="form-label">CPF / CNPJ</label>
-                        <input className="form-input" value={cpfCnpj} onChange={e => setCpfCnpj(e.target.value)} placeholder="000.000.000-00" />
+                        <input className="form-input" value={cpfCnpj} onChange={e => setCpfCnpj(maskCpfCnpj(e.target.value))} inputMode="numeric" placeholder="000.000.000-00" />
                     </div>
 
                     <div className="form-group">

@@ -10,6 +10,9 @@ import StripeCardForm from './StripeCardForm';
 import { stripeApi, paymentsApi, type SavedCard } from '../api/client';
 import { getClientPaymentMethods, getPaymentMethods, type PaymentMethodKey } from '../constants/paymentMethods';
 import { Copy, Check, Lock, QrCode, CreditCard, Plus, ShieldCheck } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { isValidCpfCnpj } from '../utils/mask';
+import CpfCnpjPrompt from './CpfCnpjPrompt';
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -108,6 +111,10 @@ export default function InlineCheckout({
     const pollIntervalRef = useRef<number | null>(null);
     // PAY-H1 FIX: Prevent double-init from rapid clicks
     const initGuardRef = useRef(false);
+    // PIX requires a CPF/CNPJ on file (Cora invoice). Gate the charge behind an
+    // inline collection step when the user has no valid document.
+    const { user } = useAuth();
+    const [needsCpf, setNeedsCpf] = useState(false);
     // Sandbox testing: when PIX is in sandbox, offer a "simulate payment" button
     const [pixSandbox, setPixSandbox] = useState(false);
     const [simulating, setSimulating] = useState(false);
@@ -282,7 +289,17 @@ export default function InlineCheckout({
 
     // ─── PIX ────────────────────────────────────────────
 
-    const initPixPayment = async () => {
+    // Gate: PIX needs a valid CPF/CNPJ. If absent, show the inline collection
+    // step instead of round-tripping to the server only to fail.
+    const initPixPayment = () => {
+        if (!isValidCpfCnpj(user?.cpfCnpj)) {
+            setNeedsCpf(true);
+            return;
+        }
+        proceedPix();
+    };
+
+    const proceedPix = async () => {
         if (initGuardRef.current) return;
         initGuardRef.current = true;
         setProcessing(true);
@@ -360,6 +377,7 @@ export default function InlineCheckout({
                                     } else {
                                         setClientSecret(null);
                                         setPaymentIntentId(null);
+                                        setNeedsCpf(false);
                                     }
                                 }}
                                 className={`checkout-tab ${tabClass} ${isActive ? 'checkout-tab--active' : ''}`}
@@ -548,6 +566,13 @@ export default function InlineCheckout({
             {activeTab === 'PIX' && (
                 <div>
                     {!pixString ? (
+                        needsCpf ? (
+                            <CpfCnpjPrompt
+                                saveLabel={`Salvar e gerar PIX - ${formatBRL(amount)}`}
+                                onSaved={() => { setNeedsCpf(false); proceedPix(); }}
+                                onCancel={() => setNeedsCpf(false)}
+                            />
+                        ) : (
                         <div className="checkout-pix-intro">
                             <div className="checkout-pix-icon">
                                 <QrCode size={24} />
@@ -568,6 +593,7 @@ export default function InlineCheckout({
                                 )}
                             </button>
                         </div>
+                        )
                     ) : (
                         <div className="checkout-pix-result">
                             {pixQrBase64 ? (

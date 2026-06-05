@@ -195,6 +195,32 @@ router.put('/:provider', authenticate, authorize('ADMIN'), async (req: Request, 
 
         const data = saveIntegrationSchema.parse(req.body);
 
+        // Stripe key sanity: reject swapped/empty keys early with a clear message
+        // so the client checkout never ends up with a broken publishable key.
+        if (provider === 'STRIPE') {
+            const isReal = (v: any) => typeof v === 'string' && v && !v.includes('...') && !v.startsWith('***');
+            const checkSub = (sub: any, envLabel: string): string | null => {
+                if (!sub) return null;
+                if (isReal(sub.secretKey) && !/^(sk|rk)_/.test(sub.secretKey)) {
+                    return `A Secret Key (${envLabel}) deve começar com "sk_" (ou "rk_" para chave restrita). Verifique se você não inverteu os campos.`;
+                }
+                if (isReal(sub.publishableKey) && !sub.publishableKey.startsWith('pk_')) {
+                    return `A Publishable Key (${envLabel}) deve começar com "pk_" (não a sk_). Verifique se você não inverteu os campos.`;
+                }
+                return null;
+            };
+            let keyErr: string | null = null;
+            if ((data.config as any).sandbox || (data.config as any).production) {
+                keyErr = checkSub((data.config as any).sandbox, 'sandbox') || checkSub((data.config as any).production, 'produção');
+            } else {
+                keyErr = checkSub(data.config, 'atual');
+            }
+            if (keyErr) {
+                res.status(400).json({ error: keyErr });
+                return;
+            }
+        }
+
         // Generate webhook URL
         const baseUrl = process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3001}`;
         const webhookUrl = `${baseUrl}/api/webhooks/${provider.toLowerCase()}`;

@@ -6,6 +6,9 @@ import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import { getClientPaymentMethods, type PaymentMethodKey } from '../constants/paymentMethods';
 import InlineCheckout from './InlineCheckout';
 import StripeCardForm from './StripeCardForm';
+import CpfCnpjPrompt from './CpfCnpjPrompt';
+import { useAuth } from '../context/AuthContext';
+import { isValidCpfCnpj } from '../utils/mask';
 import { X, Pin, Shuffle, CalendarDays, Clock, Lock, CheckCircle2, XCircle, AlertTriangle, ChevronLeft, ChevronRight, Sparkles, Film, TrendingUp, FileText, Receipt, Mic, Tag, CreditCard, ScrollText, ShieldCheck } from 'lucide-react';
 
 export interface ContractWizardProps {
@@ -32,7 +35,11 @@ function formatBRL(cents: number): string {
 }
 
 export default function ContractWizard({ pricing, onClose, onComplete, onOpenCustom }: ContractWizardProps) {
+    const { user } = useAuth();
     const [step, setStep] = useState<WizardStep>(1);
+    // PIX needs a CPF/CNPJ — gate the contract creation when it's missing.
+    const [showCpfPrompt, setShowCpfPrompt] = useState(false);
+    const pendingResolutions = useRef<any[]>([]);
 
     // Step 1: Tier + Plan selection
     const [selectedTier, setSelectedTier] = useState<string>(pricing[0]?.tier || 'COMERCIAL');
@@ -113,7 +120,13 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
         }
     }, [step, firstDate, tierConfig]);
 
-    const executeCreation = async (resolutions: any[] = []) => {
+    const executeCreation = async (resolutions: any[] = [], cpfChecked = false) => {
+        // PIX is emitted as a Cora invoice in the user's name → requires a CPF/CNPJ.
+        if (!cpfChecked && paymentMethod === 'PIX' && !isValidCpfCnpj(user?.cpfCnpj)) {
+            pendingResolutions.current = resolutions;
+            setShowCpfPrompt(true);
+            return;
+        }
         setSubmitting(true);
         setError('');
         setStep(5);
@@ -200,6 +213,17 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
     return (
         <BottomSheetModal isOpen={true} onClose={onClose} title="✨ Nova Contratação" preventClose={submitting} maxWidth="540px">
             <div className="wizard-modal-inner">
+                {showCpfPrompt && (
+                    <div className="wizard-cancel-overlay" onClick={() => setShowCpfPrompt(false)}>
+                        <div className="wizard-cancel-modal" onClick={e => e.stopPropagation()}>
+                            <CpfCnpjPrompt
+                                saveLabel="Salvar e continuar"
+                                onSaved={() => { setShowCpfPrompt(false); executeCreation(pendingResolutions.current, true); }}
+                                onCancel={() => setShowCpfPrompt(false)}
+                            />
+                        </div>
+                    </div>
+                )}
                 {/* Progress */}
                 <div className="wizard-progress">
                     {[1, 2, 3, 4].map(s => (

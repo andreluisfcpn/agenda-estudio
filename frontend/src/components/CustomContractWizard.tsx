@@ -1,5 +1,5 @@
 import { getErrorMessage } from "../utils/errors";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import BottomSheetModal from "./BottomSheetModal";
 import {
   PricingConfig,
@@ -14,6 +14,9 @@ import {
 import { useBusinessConfig } from "../hooks/useBusinessConfig";
 import { getClientPaymentMethods } from "../constants/paymentMethods";
 import StripeCardForm from "./StripeCardForm";
+import CpfCnpjPrompt from "./CpfCnpjPrompt";
+import { useAuth } from "../context/AuthContext";
+import { isValidCpfCnpj } from "../utils/mask";
 import {
   CheckCircle2,
   CreditCard,
@@ -88,7 +91,11 @@ export default function CustomContractWizard({
   onClose,
   onComplete,
 }: CustomContractWizardProps) {
+  const { user } = useAuth();
   const [step, setStep] = useState<WizardStep>(1);
+  // PIX needs a CPF/CNPJ — gate the contract creation when it's missing.
+  const [showCpfPrompt, setShowCpfPrompt] = useState(false);
+  const pendingResolutions = useRef<any[]>([]);
 
   // Step 1
   const [selectedTier, setSelectedTier] = useState<string>(
@@ -216,7 +223,13 @@ export default function CustomContractWizard({
   const startDateStr = tomorrow.toISOString().split("T")[0];
 
   // ─── Handlers ────────────────────────────────────────
-  const executeCreation = async (resolutions: any[] = []) => {
+  const executeCreation = async (resolutions: any[] = [], cpfChecked = false) => {
+    // PIX is emitted as a Cora invoice in the user's name → requires a CPF/CNPJ.
+    if (!cpfChecked && paymentMethod === "PIX" && !isValidCpfCnpj(user?.cpfCnpj)) {
+      pendingResolutions.current = resolutions;
+      setShowCpfPrompt(true);
+      return;
+    }
     setSubmitting(true);
     setError("");
     setStep(5);
@@ -311,6 +324,17 @@ export default function CustomContractWizard({
   return (
     <BottomSheetModal isOpen={true} onClose={onClose} title="🎨 Plano Personalizado" preventClose={submitting} maxWidth="600px">
       <div className="wizard-modal-inner">
+        {showCpfPrompt && (
+          <div className="wizard-cancel-overlay" onClick={() => setShowCpfPrompt(false)}>
+            <div className="wizard-cancel-modal" onClick={e => e.stopPropagation()}>
+              <CpfCnpjPrompt
+                saveLabel="Salvar e continuar"
+                onSaved={() => { setShowCpfPrompt(false); executeCreation(pendingResolutions.current, true); }}
+                onCancel={() => setShowCpfPrompt(false)}
+              />
+            </div>
+          </div>
+        )}
         {/* Progress */}
         <div className="wizard-progress">
           {[1, 2, 3, 4].map((s) => (

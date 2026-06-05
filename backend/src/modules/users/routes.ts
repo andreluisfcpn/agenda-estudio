@@ -3,8 +3,20 @@ import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../../lib/prisma.js';
 import { authenticate, authorize } from '../../middleware/auth.js';
+import { cleanDocument, isValidCpfCnpj } from '../../utils/document.js';
 
 const router = Router();
+
+/**
+ * Normalizes a CPF/CNPJ to digits-only and validates the check digits.
+ * Returns { ok:false } when present-but-invalid so callers can 400.
+ */
+function normalizeCpfCnpj(value: string | null | undefined): { ok: true; value: string | null } | { ok: false } {
+    if (value === undefined) return { ok: true, value: null };
+    const digits = cleanDocument(value);
+    if (digits && !isValidCpfCnpj(digits)) return { ok: false };
+    return { ok: true, value: digits || null };
+}
 
 // ─── GET /api/users (ADMIN) ─────────────────────────────
 
@@ -158,6 +170,12 @@ router.post('/', authenticate, authorize('ADMIN'), async (req: Request, res: Res
             return;
         }
 
+        const cpf = normalizeCpfCnpj(data.cpfCnpj);
+        if (!cpf.ok) {
+            res.status(400).json({ error: 'CPF/CNPJ inválido. Confira os números.' });
+            return;
+        }
+
         const passwordHash = await bcrypt.hash(data.password, 10);
 
         const user = await prisma.user.create({
@@ -168,7 +186,7 @@ router.post('/', authenticate, authorize('ADMIN'), async (req: Request, res: Res
                 phone: data.phone,
                 role: data.role as any,
                 ...(data.notes ? { notes: data.notes } : {}),
-                ...(data.cpfCnpj !== undefined ? { cpfCnpj: data.cpfCnpj } : {}),
+                ...(cpf.value !== null ? { cpfCnpj: cpf.value } : {}),
                 ...(data.tags ? { tags: data.tags } : {}),
                 ...(data.socialLinks !== undefined ? { socialLinks: data.socialLinks } : {}),
                 ...(data.clientStatus ? { clientStatus: data.clientStatus as any } : {}),
@@ -180,6 +198,10 @@ router.post('/', authenticate, authorize('ADMIN'), async (req: Request, res: Res
     } catch (err) {
         if (err instanceof z.ZodError) {
             res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
+            return;
+        }
+        if (err && typeof err === 'object' && (err as { code?: string }).code === 'P2002') {
+            res.status(409).json({ error: 'Este CPF/CNPJ já está cadastrado em outra conta.' });
             return;
         }
         throw err;
@@ -230,7 +252,14 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
         if (data.phone !== undefined) updateData.phone = data.phone;
         if (data.role) updateData.role = data.role;
         if (data.notes !== undefined) updateData.notes = data.notes;
-        if (data.cpfCnpj !== undefined) updateData.cpfCnpj = data.cpfCnpj;
+        if (data.cpfCnpj !== undefined) {
+            const cpf = normalizeCpfCnpj(data.cpfCnpj);
+            if (!cpf.ok) {
+                res.status(400).json({ error: 'CPF/CNPJ inválido. Confira os números.' });
+                return;
+            }
+            updateData.cpfCnpj = cpf.value;
+        }
         if (data.address !== undefined) updateData.address = data.address;
         if (data.city !== undefined) updateData.city = data.city;
         if (data.state !== undefined) updateData.state = data.state;
@@ -251,6 +280,10 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
     } catch (err) {
         if (err instanceof z.ZodError) {
             res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
+            return;
+        }
+        if (err && typeof err === 'object' && (err as { code?: string }).code === 'P2002') {
+            res.status(409).json({ error: 'Este CPF/CNPJ já está cadastrado em outra conta.' });
             return;
         }
         throw err;

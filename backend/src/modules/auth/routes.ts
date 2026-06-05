@@ -16,6 +16,7 @@ import { authenticate } from '../../middleware/auth.js';
 import { OAuth2Client } from 'google-auth-library';
 import { otpService } from '../../lib/otp.js';
 import { Prisma } from '../../generated/prisma/client.js';
+import { isValidCpfCnpj } from '../../utils/document.js';
 import { getErrorMessage } from '../../utils/errors.js';
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID);
@@ -578,7 +579,14 @@ router.patch('/profile', authenticate, async (req: Request, res: Response) => {
         if (data.name) updateData.name = data.name;
         if (data.phone !== undefined) updateData.phone = data.phone;
         if (data.password) updateData.passwordHash = await bcrypt.hash(data.password, 12);
-        if (data.cpfCnpj !== undefined) updateData.cpfCnpj = data.cpfCnpj;
+        if (data.cpfCnpj !== undefined) {
+            const digits = data.cpfCnpj.replace(/\D/g, '');
+            if (digits && !isValidCpfCnpj(digits)) {
+                res.status(400).json({ error: 'CPF/CNPJ inválido. Confira os números.' });
+                return;
+            }
+            updateData.cpfCnpj = digits || null;
+        }
         if (data.address !== undefined) updateData.address = data.address;
         if (data.city !== undefined) updateData.city = data.city;
         if (data.state !== undefined) updateData.state = data.state;
@@ -594,6 +602,11 @@ router.patch('/profile', authenticate, async (req: Request, res: Response) => {
     } catch (err) {
         if (err instanceof z.ZodError) {
             res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
+            return;
+        }
+        // Unique constraint (cpfCnpj already used by another account)
+        if (err && typeof err === 'object' && (err as { code?: string }).code === 'P2002') {
+            res.status(409).json({ error: 'Este CPF/CNPJ já está cadastrado em outra conta.' });
             return;
         }
         throw err;

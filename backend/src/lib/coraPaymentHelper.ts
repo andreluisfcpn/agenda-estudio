@@ -5,6 +5,7 @@
 
 import { prisma } from './prisma.js';
 import { coraCreateBoleto, isCoraEnabled, type CoraBoletoResult } from './coraService.js';
+import { cleanDocument, isValidCpfCnpj } from '../utils/document.js';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -53,8 +54,8 @@ function parseUserAddress(user: { address?: string | null; city?: string | null;
 // ─── CPF/CNPJ Validator ──────────────────────────────────
 
 function validateDocument(cpfCnpj: string | null | undefined): { docStr: string; docType: 'CPF' | 'CNPJ' } | null {
-    const docStr = cpfCnpj ? cpfCnpj.replace(/\D/g, '') : '';
-    if (docStr.length !== 11 && docStr.length !== 14) return null;
+    const docStr = cleanDocument(cpfCnpj);
+    if (!isValidCpfCnpj(docStr)) return null;
     return { docStr, docType: docStr.length === 14 ? 'CNPJ' : 'CPF' };
 }
 

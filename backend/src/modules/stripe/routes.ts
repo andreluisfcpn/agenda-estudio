@@ -26,8 +26,10 @@ const router = Router();
 router.get('/publishable-key', authenticate, async (_req: Request, res: Response) => {
     try {
         const key = await stripeGetPublishableKey();
-        if (!key) {
-            res.status(503).json({ error: 'Stripe não está configurado.' });
+        // Only ever return a real publishable key — never leak a secret (sk_)
+        // to the browser if it was mistakenly entered in the publishable field.
+        if (!key || !key.startsWith('pk_')) {
+            res.status(503).json({ error: 'Chave publicável do Stripe ausente ou inválida. No painel Admin → Integrações, cole a Publishable Key (pk_test_… ou pk_live_…).' });
             return;
         }
         res.json({ publishableKey: key });

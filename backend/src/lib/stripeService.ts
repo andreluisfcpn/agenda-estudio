@@ -203,15 +203,33 @@ export async function stripeTestConnection(): Promise<{ success: boolean; messag
         const balance = await stripe.balance.retrieve();
         const available = balance.available.find(b => b.currency === 'brl');
         const amountStr = available ? `R$ ${(available.amount / 100).toFixed(2)}` : 'N/A';
+
+        // The balance call above only proves the SECRET key works. The client
+        // checkout also needs a valid Publishable Key (pk_) to load Stripe.js —
+        // validate it here so a swapped/empty pk doesn't pass the test silently.
+        const pk = setup?.config.publishableKey || '';
+        if (!pk.startsWith('pk_')) {
+            return {
+                success: false,
+                message: 'Secret Key OK, mas a Publishable Key está ausente ou inválida. Cole a chave que começa com "pk_" (não a sk_) no campo Publishable Key.',
+            };
+        }
+        // Soft check: warn (don't fail) on test/live mismatch — legacy flat
+        // configs legitimately mix prefixes, so this must never block a save.
+        const expectedPkPrefix = env === 'production' ? 'pk_live_' : 'pk_test_';
+        const envNote = pk.startsWith(expectedPkPrefix)
+            ? ''
+            : ` ⚠️ A Publishable Key não parece ser do ambiente "${env}" (esperado "${expectedPkPrefix}").`;
+
         return {
             success: true,
-            message: `Conexão Stripe OK! Saldo: ${amountStr} (ambiente: ${env})`,
+            message: `Conexão Stripe OK! Saldo: ${amountStr} (ambiente: ${env}).${envNote}`,
         };
     } catch (err: unknown) {
         const msg = getErrorMessage(err);
         // Provide more helpful error messages
         if (msg.includes('Invalid API Key') || (err instanceof Stripe.errors.StripeAuthenticationError)) {
-            return { success: false, message: 'Secret Key inválida. Verifique se a chave começa com sk_test_ ou sk_live_.' };
+            return { success: false, message: 'Secret Key inválida. Verifique se a chave começa com sk_ (ou rk_ para chave restrita).' };
         }
         if (msg.includes('network') || msg.includes('ECONNREFUSED')) {
             return { success: false, message: 'Erro de rede. Verifique sua conexão com a internet.' };
@@ -331,9 +349,19 @@ export async function stripeCreatePaymentIntent(opts: CreatePaymentIntentOpts): 
         }
     }
 
-    // Idempotency key must include ALL varying params to prevent collisions
-    // when retrying with a different card or different amount
-    const idempotencyKey = `pi-${opts.paymentId}-${opts.amount}-${opts.savedPaymentMethodId || 'new'}`;
+    // Idempotency key must cover EVERY parameter that changes the PaymentIntent
+    // body — otherwise a retry that flips the save-card toggle, changes the
+    // installment plan, or switches on/off-session reuses a prior key with
+    // different params and Stripe rejects it ("Keys for idempotent requests can
+    // only be used with the same parameters they were first used with").
+    const idempotencyKey = [
+        'pi', opts.paymentId, opts.amount,
+        opts.savedPaymentMethodId || 'new',
+        opts.savePaymentMethod ? 'save' : 'nosave',
+        opts.installmentsEnabled ? 'inst' : 'noinst',
+        opts.offSession ? 'off' : 'on',
+        opts.paymentMethodTypes ? opts.paymentMethodTypes.join('.') : 'auto',
+    ].join('-');
 
     const intent = await stripe.paymentIntents.create(params, {
         idempotencyKey,
@@ -504,11 +532,17 @@ export async function stripeChargeOffSession(
     amount: number,
     metadata: Record<string, string>,
 ): Promise<PaymentIntentResult> {
+    // paymentId is the only field that makes two same-amount/same-card charges
+    // unique in the idempotency key — never default it to '' or two distinct
+    // charges would collide and the second would be silently skipped.
+    if (!metadata.paymentId) {
+        throw new Error('paymentId é obrigatório para cobrança off-session.');
+    }
     return stripeCreatePaymentIntent({
         amount,
         customerId,
         description: metadata.description || 'Cobrança automática',
-        paymentId: metadata.paymentId || '',
+        paymentId: metadata.paymentId,
         userId: metadata.userId || '',
         contractId: metadata.contractId,
         savedPaymentMethodId: paymentMethodId,
