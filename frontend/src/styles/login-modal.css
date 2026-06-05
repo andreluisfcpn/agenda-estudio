@@ -26,6 +26,39 @@
   color: #fff;
 }
 
+/* ── Inside the shared BottomSheetModal ──
+   The sheet (.bottom-sheet-card) already provides the chrome, the drag handle
+   and the viewport height cap. Neutralize the generic body wrapper and let
+   login-modal-card be the single flex/scroll container, so the full content
+   (incl. the Google button) is always reachable on short mobile screens and
+   there's no nested double-scroll. */
+.login-modal-sheet .bottom-sheet-body {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.login-modal-sheet .login-modal-card {
+  max-height: none;
+  flex: 1;
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.login-modal-sheet .login-modal-body-container {
+  min-height: 0;
+}
+
+.login-modal-sheet .login-modal-header {
+  padding-top: 4px;
+}
+
 /* ── Header (sticky) ── */
 .login-modal-header {
   padding: 12px 20px 0;

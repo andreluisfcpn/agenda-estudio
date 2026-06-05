@@ -44,33 +44,34 @@
 
 /* ── Head/Handle (mobile indicator) ── */
 .bottom-sheet-header {
-    padding: 12px 24px 16px;
+    padding: 4px 24px 16px;
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
     border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 
-/* Optional wrapper for framer-motion drag listeners if we only want handle draggable */
-.bottom-sheet-drag-area {
+/* Grab handle strip — the only element that starts the drag-to-dismiss gesture */
+.bottom-sheet-grabber {
     width: 100%;
     display: flex;
-    flex-direction: column;
+    justify-content: center;
     align-items: center;
+    padding: 12px 0 8px;
+    flex-shrink: 0;
     cursor: grab;
-    padding-bottom: 8px; /* Extra hit area */
+    touch-action: none;
 }
 
-.bottom-sheet-drag-area:active {
+.bottom-sheet-grabber:active {
     cursor: grabbing;
 }
 
 .bottom-sheet-handle {
     width: 44px;
     height: 5px;
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.16);
     border-radius: 3px;
-    margin-bottom: 16px;
 }
 
 .bottom-sheet-title-row {
@@ -140,14 +141,13 @@
         box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
     }
 
-    /* Hide the pill on desktop */
+    /* No drag handle / grabber on desktop */
     .bottom-sheet-handle {
         display: none;
     }
 
-    .bottom-sheet-drag-area {
-        cursor: default;
-        padding-bottom: 0;
+    .bottom-sheet-grabber {
+        display: none;
     }
 
     .bottom-sheet-close-btn {

@@ -107,13 +107,16 @@ export default function BottomSheetModal({
                         onDragEnd={handleDragEnd}
                         onMouseDown={(e) => e.stopPropagation()}
                     >
+                        {/* Grab handle (mobile) — sits outside the scroll body, so dragging it
+                            triggers the sheet's drag-to-dismiss while the body keeps scrolling. */}
+                        {!isDesktop && (
+                            <div className="bottom-sheet-grabber">
+                                <div className="bottom-sheet-handle" />
+                            </div>
+                        )}
+
                         {!hideHeader && (
                             <div className="bottom-sheet-header">
-                                {/* Drag Handle & Area for mobile */}
-                                <div className="bottom-sheet-drag-area">
-                                    <div className="bottom-sheet-handle" />
-                                </div>
-
                                 {(title || !isDesktop) && (
                                     <div className="bottom-sheet-title-row">
                                         <h2 className="bottom-sheet-title">{title}</h2>
@@ -129,7 +132,7 @@ export default function BottomSheetModal({
                             </div>
                         )}
 
-                        <div 
+                        <div
                             className="bottom-sheet-body"
                             onPointerDown={isDesktop ? undefined : (e) => e.stopPropagation()}
                         >

@@ -72,9 +72,14 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
         setFieldErrors({});
     };
 
-    // Focus first input when modal opens or view changes
+    // Focus first input when modal opens or view changes.
+    // On touch devices we DON'T autofocus — it pops the on-screen keyboard the
+    // moment the sheet opens, covering the modal and hurting UX. The user taps
+    // the field when they're ready.
     useEffect(() => {
         if (isOpen) {
+            const isTouch = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
+            if (isTouch) return;
             const timer = setTimeout(() => firstInputRef.current?.focus(), 350);
             return () => clearTimeout(timer);
         } else {
@@ -274,10 +279,8 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                         className="login-modal-card"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        {/* ── Sticky Header ── */}
+                        {/* ── Sticky Header (drag handle is provided by BottomSheetModal) ── */}
                         <div className="login-modal-header">
-                            <div className="login-modal-handle" />
-
                             <div className="login-modal-nav">
                                 {canGoBack ? (
                                     <button
