@@ -46,12 +46,12 @@ app.use(helmet({
     contentSecurityPolicy: config.nodeEnv === 'production' ? {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'"],
+            scriptSrc: ["'self'", "https://js.stripe.com"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
             fontSrc: ["'self'", "https://fonts.gstatic.com"],
-            imgSrc: ["'self'", "data:", "blob:", "https://buzios.digital", "https://agenda.buzios.digital", "https://*.stripe.com"],
-            connectSrc: ["'self'", "https://agenda.buzios.digital", "https://*.stripe.com", "https://matls-clients.api.cora.com.br"],
-            frameSrc: ["'self'", "https://*.stripe.com"],
+            imgSrc: ["'self'", "data:", "blob:", "https://buzios.digital", "https://app.buzios.digital", "https://*.stripe.com"],
+            connectSrc: ["'self'", "https://app.buzios.digital", "https://*.stripe.com", "https://matls-clients.api.cora.com.br"],
+            frameSrc: ["'self'", "https://js.stripe.com", "https://*.stripe.com"],
         },
     } : false,
     crossOriginEmbedderPolicy: false,
@@ -60,7 +60,7 @@ app.use(helmet({
 // CORS: accept FRONTEND_URL and production domain
 const allowedOrigins = [
     config.frontendUrl,
-    'https://agenda.buzios.digital',
+    'https://app.buzios.digital',
 ].filter(Boolean);
 
 app.use(cors({
