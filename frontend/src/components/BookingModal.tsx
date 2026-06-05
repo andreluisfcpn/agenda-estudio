@@ -4,6 +4,8 @@ import BottomSheetModal from './BottomSheetModal';
 import { bookingsApi, contractsApi, pricingApi, stripeApi, ContractWithStats } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import InlineCheckout from './InlineCheckout';
+import PaymentSuccess from './PaymentSuccess';
+import { XCircle } from 'lucide-react';
 
 interface BookingModalProps {
     isOpen?: boolean;
@@ -575,14 +577,11 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
                 {/* Done */}
                 {step === 'done' && (
                     <>
-                        <div style={{ textAlign: 'center', padding: '20px 0' }}>
-                            <div style={{ fontSize: '3rem', marginBottom: '12px' }}>🎉</div>
-                            <h2 className="modal-title" style={{ textAlign: 'center' }}>Agendamento Confirmado!</h2>
-                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-                                {dateDisplay} das {time} às {endTime}
-                            </p>
-                        </div>
-                        <div className="modal-actions" style={{ justifyContent: 'center' }}>
+                        <PaymentSuccess
+                            title="Agendamento confirmado!"
+                            subtitle={<>{dateDisplay} das {time} às {endTime}</>}
+                        />
+                        <div className="modal-actions" style={{ justifyContent: 'center', marginTop: 20 }}>
                             <button className="btn btn-primary" onClick={onBooked}>Concluir</button>
                         </div>
                     </>
@@ -591,9 +590,15 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
                 {/* Error */}
                 {step === 'error' && (
                     <>
-                        <div style={{ textAlign: 'center', padding: '20px 0' }}>
-                            <div style={{ fontSize: '3rem', marginBottom: '12px' }}>😞</div>
-                            <h2 className="modal-title" style={{ textAlign: 'center' }}>Ops!</h2>
+                        <div style={{ textAlign: 'center', padding: '12px 4px 4px' }}>
+                            <div style={{
+                                width: 72, height: 72, borderRadius: '50%', margin: '0 auto 18px',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                background: 'rgba(239,68,68,0.12)', color: '#ef4444',
+                            }}>
+                                <XCircle size={40} strokeWidth={2} />
+                            </div>
+                            <h2 style={{ fontSize: '1.15rem', fontWeight: 800, margin: '0 0 8px', color: 'var(--text-primary)' }}>Ops!</h2>
                             <div className="error-message">{error}</div>
                         </div>
                         <div className="modal-actions" style={{ justifyContent: 'center' }}>

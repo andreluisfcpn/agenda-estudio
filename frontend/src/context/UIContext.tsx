@@ -1,7 +1,11 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
+import { XCircle, CheckCircle2, AlertTriangle, Info, type LucideIcon } from 'lucide-react';
 import BottomSheetModal from '../components/BottomSheetModal';
 
 type ModalType = 'info' | 'error' | 'success' | 'warning';
+
+const MODAL_ICON: Record<ModalType, LucideIcon> = { info: Info, error: XCircle, success: CheckCircle2, warning: AlertTriangle };
+const MODAL_COLOR: Record<ModalType, string> = { info: '#3b82f6', error: '#ef4444', success: '#10b981', warning: '#f59e0b' };
 
 interface ModalOptions {
     title?: string;
@@ -76,9 +80,19 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
                 zIndex={10000}
             >
                 <div style={{ textAlign: 'center', padding: '0 4px' }}>
-                    <div style={{ fontSize: '3rem', marginBottom: '16px' }}>
-                        {modal?.type === 'error' ? '❌' : modal?.type === 'success' ? '✅' : modal?.type === 'warning' ? '⚠️' : 'ℹ️'}
-                    </div>
+                    {(() => {
+                        const t = modal?.type || 'info';
+                        const Icon = MODAL_ICON[t];
+                        return (
+                            <div style={{
+                                width: 56, height: 56, borderRadius: 16, margin: '0 auto 16px',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                background: `${MODAL_COLOR[t]}1f`, color: MODAL_COLOR[t],
+                            }}>
+                                <Icon size={28} />
+                            </div>
+                        );
+                    })()}
                     <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', lineHeight: 1.5 }}>
                         {modal?.message}
                     </p>
@@ -105,7 +119,7 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
                     animation: 'slideUp 0.3s ease-out', display: 'flex', alignItems: 'center', gap: '10px',
                     maxWidth: 'calc(100vw - 32px)',
                 }}>
-                    {toast.type === 'error' ? '❌' : '✅'} {toast.message}
+                    {toast.type === 'error' ? <XCircle size={18} /> : <CheckCircle2 size={18} />} {toast.message}
                 </div>
             )}
         </UIContext.Provider>

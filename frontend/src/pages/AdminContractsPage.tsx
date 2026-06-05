@@ -30,8 +30,6 @@ export default function AdminContractsPage() {
 
     const [showCreate, setShowCreate] = useState(false);
 
-    const [showCancelModalFor, setShowCancelModalFor] = useState<string | null>(null);
-    const [showResolveModalFor, setShowResolveModalFor] = useState<{ id: string, action: 'CHARGE_FEE' | 'WAIVE_FEE' } | null>(null);
 
     const [editContract, setEditContract] = useState<Contract | null>(null);
     const [editForm, setEditForm] = useState({ status: '', endDate: '', flexCreditsRemaining: '', contractUrl: '', paymentMethod: '' });
@@ -61,30 +59,36 @@ export default function AdminContractsPage() {
         } catch (err: unknown) { setEditError(getErrorMessage(err)); }
     };
 
-    const handleCancel = async (id: string) => {
-        setShowCancelModalFor(id);
+    const handleCancel = (id: string) => {
+        showConfirm({
+            title: 'Cancelar contrato?',
+            message: 'Deseja forçar o cancelamento deste contrato agora? Todos os agendamentos futuros não realizados também serão cancelados.',
+            onConfirm: () => doCancel(id),
+        });
     };
 
-    const confirmCancel = async () => {
-        if (!showCancelModalFor) return;
+    const doCancel = async (id: string) => {
         try {
-            await contractsApi.cancel(showCancelModalFor);
+            await contractsApi.cancel(id);
             showToast('Contrato cancelado com sucesso.');
-            setShowCancelModalFor(null);
             await reload();
         } catch (err: unknown) { showAlert({ message: getErrorMessage(err), type: 'error' }); }
     };
 
-    const handleResolveCancel = async (id: string, action: 'CHARGE_FEE' | 'WAIVE_FEE') => {
-        setShowResolveModalFor({ id, action });
+    const handleResolveCancel = (id: string, action: 'CHARGE_FEE' | 'WAIVE_FEE') => {
+        showConfirm({
+            title: action === 'CHARGE_FEE' ? 'Aplicar multa?' : 'Isentar multa?',
+            message: action === 'CHARGE_FEE'
+                ? `Tem certeza que deseja quebrar o contrato aplicando a MULTA INTEGRAL DE ${cancFine}% sobre o restante?`
+                : 'Tem certeza que deseja ISENTAR a multa e aceitar o cancelamento de modo amigável?',
+            onConfirm: () => doResolveCancel(id, action),
+        });
     };
 
-    const confirmResolveCancel = async () => {
-        if (!showResolveModalFor) return;
+    const doResolveCancel = async (id: string, action: 'CHARGE_FEE' | 'WAIVE_FEE') => {
         try {
-            const res = await contractsApi.resolveCancellation(showResolveModalFor.id, showResolveModalFor.action);
+            const res = await contractsApi.resolveCancellation(id, action);
             showToast(res.message);
-            setShowResolveModalFor(null);
             await reload();
         } catch (err: unknown) { showAlert({ message: getErrorMessage(err), type: 'error' }); }
     };
@@ -500,51 +504,6 @@ export default function AdminContractsPage() {
             )}
 
             {/* Cancel (Force) Modal */}
-            {showCancelModalFor && (
-                <ModalOverlay onClose={() => setShowCancelModalFor(null)}>
-                    <div className="modal" style={{ maxWidth: 400 }}>
-                        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-                            <div style={{ fontSize: '3rem', marginBottom: '10px' }}>🚫</div>
-                            <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Cancelar Contrato</h2>
-                        </div>
-                        <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '24px', lineHeight: 1.5, textAlign: 'center' }}>
-                            Deseja forçar o cancelamento deste contrato agora? <strong>Todos os agendamentos futuros não realizados também serão cancelados.</strong>
-                        </p>
-                        <div className="modal-actions">
-                            <button className="btn btn-secondary" onClick={() => setShowCancelModalFor(null)} style={{ flex: 1 }}>Voltar</button>
-                            <button className="btn btn-danger" onClick={confirmCancel} style={{ flex: 1 }}>Sim, Cancelar</button>
-                        </div>
-                    </div>
-                </ModalOverlay>
-            )}
-
-            {/* Resolve Cancellation Modal */}
-            {showResolveModalFor && (
-                <ModalOverlay onClose={() => setShowResolveModalFor(null)}>
-                    <div className="modal" style={{ maxWidth: 400 }}>
-                        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-                            <div style={{ fontSize: '3rem', marginBottom: '10px' }}>
-                                {showResolveModalFor.action === 'CHARGE_FEE' ? '💰' : '🤝'}
-                            </div>
-                            <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>
-                                {showResolveModalFor.action === 'CHARGE_FEE' ? 'Aplicar Multa' : 'Isentar Multa'}
-                            </h2>
-                        </div>
-                        <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '24px', lineHeight: 1.5, textAlign: 'center' }}>
-                            {showResolveModalFor.action === 'CHARGE_FEE'
-                                ? `Tem certeza que deseja quebrar o contrato aplicando a MULTA INTEGRAL DE ${cancFine}% sobre o restante?`
-                                : 'Tem certeza que deseja ISENTAR a multa e aceitar o cancelamento de modo amigável?'}
-                        </p>
-                        <div className="modal-actions">
-                            <button className="btn btn-secondary" onClick={() => setShowResolveModalFor(null)} style={{ flex: 1 }}>Voltar</button>
-                            <button className={showResolveModalFor.action === 'CHARGE_FEE' ? "btn btn-danger" : "btn btn-primary"} onClick={confirmResolveCancel} style={{ flex: 1 }}>
-                                Confirmar Ação
-                            </button>
-                        </div>
-                    </div>
-                </ModalOverlay>
-            )}
-
             {/* -------------------------------------------------------
                CUSTOM CONTRACT WIZARD
             ------------------------------------------------------- */}

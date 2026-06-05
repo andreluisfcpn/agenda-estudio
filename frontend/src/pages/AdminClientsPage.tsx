@@ -5,7 +5,6 @@ import { Users } from 'lucide-react';
 import { usersApi, UserSummary } from '../api/client';
 import { useUI } from '../context/UIContext';
 import { useAdminClients } from '../hooks/useAdminClients';
-import ModalOverlay from '../components/ModalOverlay';
 import AdminPageHeader from '../components/admin/AdminPageHeader';
 import CreateClientModal from '../components/admin/clients/CreateClientModal';
 import EditClientModal from '../components/admin/clients/EditClientModal';
@@ -26,26 +25,27 @@ function getUserType(u: UserSummary): string {
 
 export default function AdminClientsPage() {
     const navigate = useNavigate();
-    const { showAlert } = useUI();
+    const { showAlert, showConfirm, showToast } = useUI();
     const { users, loading, search, setSearch, typeFilter, setTypeFilter, reload } = useAdminClients();
 
     const [showCreate, setShowCreate] = useState(false);
     const [editUser, setEditUser] = useState<UserSummary | null>(null);
 
-    const [deleteUser, setDeleteUser] = useState<UserSummary | null>(null);
-    const [deleteLoading, setDeleteLoading] = useState(false);
+    const confirmDelete = (u: UserSummary) => {
+        showConfirm({
+            title: 'Excluir cliente?',
+            message: `Tem certeza que deseja excluir ${u.name}? Todos os contratos e agendamentos vinculados serão cancelados e os dados removidos permanentemente.`,
+            onConfirm: () => handleDelete(u),
+        });
+    };
 
-    const handleDelete = async () => {
-        if (!deleteUser) return;
-        setDeleteLoading(true);
+    const handleDelete = async (u: UserSummary) => {
         try {
-            await usersApi.remove(deleteUser.id);
-            setDeleteUser(null);
+            await usersApi.remove(u.id);
             await reload();
+            showToast('Cliente excluído.');
         } catch (err: unknown) {
             showAlert({ message: getErrorMessage(err) || 'Erro ao excluir usuário', type: 'error' });
-        } finally {
-            setDeleteLoading(false);
         }
     };
 
@@ -320,7 +320,7 @@ export default function AdminClientsPage() {
                                                         onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
                                                         onMouseLeave={e => (e.currentTarget.style.opacity = '0.7')}
                                                         title="Excluir"
-                                                        onClick={() => setDeleteUser(u)}>🗑️</button>
+                                                        onClick={() => confirmDelete(u)}>🗑️</button>
                                                     )}
                                                 </div>
                                             </td>
@@ -356,29 +356,6 @@ export default function AdminClientsPage() {
                 />
             )}
 
-            {/* Delete Confirmation Modal */}
-            {deleteUser && (
-                <ModalOverlay onClose={() => setDeleteUser(null)}>
-                    <div className="modal" style={{ maxWidth: 400 }}>
-                        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-                            <div style={{ fontSize: '3rem', marginBottom: '10px' }}>⚠️</div>
-                            <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Excluir Usuário</h2>
-                        </div>
-                        <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '8px', textAlign: 'center' }}>
-                            Tem certeza que deseja excluir <strong>{deleteUser.name}</strong>?
-                        </p>
-                        <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginBottom: '24px', lineHeight: 1.5, textAlign: 'center' }}>
-                            Todos os contratos e agendamentos vinculados serão cancelados e os dados removidos permanentemente.
-                        </p>
-                        <div className="modal-actions">
-                            <button className="btn btn-secondary" onClick={() => setDeleteUser(null)} disabled={deleteLoading} style={{ flex: 1 }}>Voltar</button>
-                            <button className="btn btn-danger" onClick={handleDelete} disabled={deleteLoading} style={{ flex: 1 }}>
-                                {deleteLoading ? 'Excluindo...' : 'Sim, Excluir'}
-                            </button>
-                        </div>
-                    </div>
-                </ModalOverlay>
-            )}
         </div>
     );
 }
