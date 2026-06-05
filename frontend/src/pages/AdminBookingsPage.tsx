@@ -4,6 +4,11 @@ import { bookingsApi, usersApi, contractsApi, BookingWithUser, UserSummary, Cont
 import { useNavigate } from 'react-router-dom';
 import { useUI } from '../context/UIContext';
 import ModalOverlay from '../components/ModalOverlay';
+import { ClipboardList } from 'lucide-react';
+import AdminPageHeader from '../components/admin/AdminPageHeader';
+import { HeroSkeleton, TableSkeleton } from '../components/ui/SkeletonLoader';
+import StatusBadge from '../components/ui/StatusBadge';
+import { TIER_META, BOOKING_STATUS_META, getMeta } from '../constants/adminMeta';
 
 function formatBRL(cents: number): string {
     return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
@@ -171,20 +176,17 @@ export default function AdminBookingsPage() {
     return (
         <div>
             {/* --- HEADER --- */}
-            <div style={{ marginBottom: '28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-                <div>
-                    <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontSize: '1.75rem' }}>📋</span> Agendamentos
-                    </h1>
-                    <p className="page-subtitle" style={{ marginTop: '4px' }}>
-                        Gerencie todos os agendamentos do estúdio
-                    </p>
-                </div>
-                <button className="btn btn-primary" onClick={() => setShowCreate(true)}
-                    style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 24px', borderRadius: '12px', fontWeight: 700 }}>
-                    <span style={{ fontSize: '1.1rem' }}>+</span> Novo Agendamento
-                </button>
-            </div>
+            <AdminPageHeader
+                icon={ClipboardList}
+                title="Agendamentos"
+                subtitle="Gerencie todos os agendamentos do estúdio"
+                actions={
+                    <button className="btn btn-primary" onClick={() => setShowCreate(true)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 24px', borderRadius: '12px', fontWeight: 700 }}>
+                        <span style={{ fontSize: '1.1rem' }}>+</span> Novo Agendamento
+                    </button>
+                }
+            />
 
             {/* --- KPI CARDS --- */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginBottom: '24px' }}>
@@ -309,7 +311,7 @@ export default function AdminBookingsPage() {
 
             {/* --- BOOKINGS TABLE --- */}
             {loading ? (
-                <div className="loading-spinner"><div className="spinner" /></div>
+                <div><HeroSkeleton /><TableSkeleton rows={6} cols={7} /></div>
             ) : (
                 <div style={{ borderRadius: '16px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', overflow: 'hidden' }}>
                     {filtered.length === 0 ? (
@@ -320,6 +322,7 @@ export default function AdminBookingsPage() {
                         </div>
                     ) : (
                         <div className="table-container" style={{ margin: 0 }}>
+                            <div className="admin-table-wrap">
                             <table>
                                 <thead>
                                     <tr>
@@ -334,7 +337,7 @@ export default function AdminBookingsPage() {
                                 </thead>
                                 <tbody>
                                     {filtered.map((b, i) => {
-                                        const sc = STATUS_CONFIG[b.status] || STATUS_CONFIG.RESERVED;
+                                        const sc = getMeta(BOOKING_STATUS_META, b.status);
                                         const dateObj = new Date(b.date);
                                         const dayStr = dateObj.toLocaleDateString('pt-BR', { timeZone: 'UTC', weekday: 'short', day: '2-digit', month: '2-digit' });
                                         const createdStr = b.createdAt ? new Date(b.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
@@ -383,14 +386,7 @@ export default function AdminBookingsPage() {
                                                 <td>
                                                     {b.contract ? (
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                            <span style={{
-                                                                display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                                                padding: '3px 8px', borderRadius: '6px', fontSize: '0.6875rem', fontWeight: 600,
-                                                                background: TIER_COLORS[b.contract.tier]?.bg || 'var(--bg-elevated)',
-                                                                color: TIER_COLORS[b.contract.tier]?.color || 'var(--text-muted)',
-                                                            }}>
-                                                                {TIER_EMOJI[b.contract.tier]} {b.contract.name}
-                                                            </span>
+                                                            <StatusBadge meta={getMeta(TIER_META, b.contract.tier)} label={b.contract.name} />
                                                         </div>
                                                     ) : (
                                                         <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>—</span>
@@ -441,8 +437,8 @@ export default function AdminBookingsPage() {
                                                                 e.currentTarget.style.borderColor = `rgba(255,255,255,0.08)`;
                                                             }}
                                                         >
-                                                            {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
-                                                                <option key={key} value={key} style={{ background: '#0a1a1f', color: cfg.color, padding: '6px' }}>{cfg.icon} {cfg.label}</option>
+                                                            {Object.entries(BOOKING_STATUS_META).filter(([key]) => key !== 'HELD').map(([key, cfg]) => (
+                                                                <option key={key} value={key} style={{ background: '#0a1a1f', color: cfg.color, padding: '6px' }}>{cfg.label}</option>
                                                             ))}
                                                         </select>
                                                     </div>
@@ -481,6 +477,7 @@ export default function AdminBookingsPage() {
                                     })}
                                 </tbody>
                             </table>
+                            </div>
                         </div>
                     )}
                 </div>

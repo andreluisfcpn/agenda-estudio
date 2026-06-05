@@ -1,21 +1,19 @@
 import { getErrorMessage } from '../utils/errors';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Users } from 'lucide-react';
 import { usersApi, UserSummary, ApiError } from '../api/client';
 import { useUI } from '../context/UIContext';
 import ModalOverlay from '../components/ModalOverlay';
+import AdminPageHeader from '../components/admin/AdminPageHeader';
+import { HeroSkeleton, TableSkeleton } from '../components/ui/SkeletonLoader';
+import StatusBadge from '../components/ui/StatusBadge';
+import { USER_TYPE_META, getMeta } from '../constants/adminMeta';
 import { maskPhone, maskEmail, maskCpfCnpj, translateError } from '../utils/mask';
 
 function formatBRL(cents: number): string {
     return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
 }
-
-const TYPE_CONFIG: Record<string, { label: string; color: string; bg: string; icon: string }> = {
-    ADMIN:  { label: 'Admin',  color: '#f59e0b', bg: 'rgba(245,158,11,0.12)',  icon: '🛡️' },
-    FIXO:   { label: 'Fixo',   color: '#818cf8', bg: 'rgba(99,102,241,0.12)',   icon: '📌' },
-    FLEX:   { label: 'Flex',   color: '#34d399', bg: 'rgba(16,185,129,0.12)',   icon: '🔄' },
-    AVULSO: { label: 'Avulso', color: '#f97316', bg: 'rgba(249,115,22,0.12)',   icon: '🎫' },
-};
 
 function getUserType(u: UserSummary): string {
     if (u.role === 'ADMIN') return 'ADMIN';
@@ -215,28 +213,25 @@ export default function AdminClientsPage() {
         return result;
     }, [users, typeFilter, search]);
 
-    if (loading) return <div className="loading-spinner"><div className="spinner" /></div>;
+    if (loading) return <div><HeroSkeleton /><TableSkeleton rows={6} cols={7} /></div>;
 
     return (
         <div>
             {/* --- HEADER --- */}
-            <div style={{ marginBottom: '28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-                <div>
-                    <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontSize: '1.75rem' }}>👥</span> Clientes
-                    </h1>
-                    <p className="page-subtitle" style={{ marginTop: '4px' }}>
-                        Gerencie os usuários e clientes do sistema
-                    </p>
-                </div>
-                <button className="btn btn-primary" onClick={() => { setShowCreate(true); setCreateError(''); }}
-                    style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 24px', borderRadius: '12px', fontWeight: 700 }}>
-                    <span style={{ fontSize: '1.1rem' }}>+</span> Novo Cliente
-                </button>
-            </div>
+            <AdminPageHeader
+                icon={Users}
+                title="Clientes"
+                subtitle="Diretório de clientes e contratos"
+                actions={
+                    <button className="btn btn-primary" onClick={() => { setShowCreate(true); setCreateError(''); }}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 24px', borderRadius: '12px', fontWeight: 700 }}>
+                        <span style={{ fontSize: '1.1rem' }}>+</span> Novo Cliente
+                    </button>
+                }
+            />
 
             {/* --- KPI CARDS --- */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px', marginBottom: '24px' }}>
+            <div className="admin-kpi-grid" style={{ marginBottom: '24px' }}>
                 {([
                     { key: 'ALL' as const, label: 'Total', count: clientUsers.length, desc: 'clientes cadastrados', icon: '👥', color: '#6366f1', gradient: 'rgba(99,102,241,0.08)' },
                     { key: 'ACTIVE' as const, label: 'Ativos', count: activeCount, desc: 'com contrato ativo', icon: '✅', color: '#10b981', gradient: 'rgba(16,185,129,0.08)' },
@@ -335,6 +330,7 @@ export default function AdminClientsPage() {
                     </div>
                 ) : (
                     <div className="table-container" style={{ margin: 0 }}>
+                        <div className="admin-table-wrap">
                         <table>
                             <thead>
                                 <tr>
@@ -376,9 +372,12 @@ export default function AdminClientsPage() {
                                                         {u.name.charAt(0).toUpperCase()}
                                                     </div>
                                                     <div>
-                                                        <div style={{ fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', color: 'var(--accent-primary)' }}
-                                                            onClick={() => navigate(`/admin/clients/${u.id}`)}>
-                                                            {u.name}
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                                            <div style={{ fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', color: 'var(--accent-primary)' }}
+                                                                onClick={() => navigate(`/admin/clients/${u.id}`)}>
+                                                                {u.name}
+                                                            </div>
+                                                            <StatusBadge meta={getMeta(USER_TYPE_META, getUserType(u))} />
                                                         </div>
                                                         <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                                             <span>{u.email}</span>
@@ -465,6 +464,7 @@ export default function AdminClientsPage() {
                                 })}
                             </tbody>
                         </table>
+                        </div>
                     </div>
                 )}
             </div>

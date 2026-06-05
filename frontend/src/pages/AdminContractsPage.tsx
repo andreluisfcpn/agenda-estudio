@@ -4,7 +4,12 @@ import { useNavigate } from 'react-router-dom';
 import { contractsApi, usersApi, pricingApi, Contract, UserSummary, CreateContractData, PricingConfig, AddOnConfig, CustomContractData } from '../api/client';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import { useUI } from '../context/UIContext';
+import { FileText } from 'lucide-react';
 import ModalOverlay from '../components/ModalOverlay';
+import AdminPageHeader from '../components/admin/AdminPageHeader';
+import { HeroSkeleton, TableSkeleton } from '../components/ui/SkeletonLoader';
+import StatusBadge from '../components/ui/StatusBadge';
+import { CONTRACT_STATUS_META, getMeta } from '../constants/adminMeta';
 import { getPaymentMethods, getPaymentBadge } from '../constants/paymentMethods';
 
 function formatBRL(cents: number): string {
@@ -12,14 +17,6 @@ function formatBRL(cents: number): string {
 }
 
 const DAY_NAMES_FULL = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-
-const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: string }> = {
-    ACTIVE:               { label: 'Ativo',       color: '#10b981', bg: 'rgba(16,185,129,0.12)',  icon: '🟢' },
-    EXPIRED:              { label: 'Expirado',    color: '#6b7280', bg: 'rgba(107,114,128,0.12)', icon: '🔒' },
-    CANCELLED:            { label: 'Cancelado',   color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   icon: '🚫' },
-    PENDING_CANCELLATION: { label: 'Pend. Cancel', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', icon: '⏳' },
-    PAUSED:               { label: 'Pausado',     color: '#14b8a6', bg: 'rgba(45,212,191,0.12)',  icon: '⏸️' },
-};
 
 export default function AdminContractsPage() {
     const navigate = useNavigate();
@@ -220,45 +217,42 @@ export default function AdminContractsPage() {
     const expiringIn30 = activeContracts.filter(c => getDaysToExpiry(c.endDate) <= 30 && getDaysToExpiry(c.endDate) > 0).length;
     const pendingCancellation = contracts.filter(c => c.status === 'PENDING_CANCELLATION').length;
 
-    if (loading) return <div className="loading-spinner"><div className="spinner" /></div>;
+    if (loading) return <div><HeroSkeleton /><TableSkeleton rows={6} cols={7} /></div>;
 
     return (
         <div>
             {/* --- HEADER --- */}
-            <div style={{ marginBottom: '28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-                <div>
-                    <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontSize: '1.75rem' }}>📄</span> Contratos
-                    </h1>
-                    <p className="page-subtitle" style={{ marginTop: '4px' }}>
-                        Gerencie contratos de fidelidade e pacotes de episódios
-                    </p>
-                </div>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                    <button className="btn btn-primary" onClick={() => { setShowCreate(true); setCreateError(''); setCreateSuccess(''); }}
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 24px', borderRadius: '12px', fontWeight: 700 }}>
-                        <span style={{ fontSize: '1.1rem' }}>+</span> Novo Contrato
-                    </button>
-                    <button onClick={() => {
-                        setShowCustom(true); setCustomStep(1); setCustomError(''); setCustomSuccess('');
-                        setCustomForm({ userId: '', name: '', tier: 'COMERCIAL', durationMonths: 3, startDate: new Date().toISOString().split('T')[0], selectedDays: [], dayTimes: {}, paymentMethod: '', frequency: 'WEEKLY', weekPattern: [1, 3], customDates: [] });
-                        setCustomAddonConfig({});
-                        setCalMonth({ year: new Date().getFullYear(), month: new Date().getMonth() });
-                        pricingApi.getAddons().then(res => setCustomAddons(res.addons)).catch(console.error);
-                    }}
-                        style={{
-                            display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 24px', borderRadius: '12px', fontWeight: 700,
-                            background: 'linear-gradient(135deg, rgba(45,212,191,0.15), rgba(59,130,246,0.1))',
-                            border: '1px solid rgba(45,212,191,0.3)', color: '#2dd4bf', cursor: 'pointer',
-                            fontSize: '0.875rem', transition: 'all 0.2s',
-                        }}>
-                        <span style={{ fontSize: '1.1rem' }}>✨</span> Contrato Personalizado
-                    </button>
-                </div>
-            </div>
+            <AdminPageHeader
+                icon={FileText}
+                title="Contratos"
+                subtitle="Gestão do ciclo de vida dos contratos"
+                actions={
+                    <>
+                        <button className="btn btn-primary" onClick={() => { setShowCreate(true); setCreateError(''); setCreateSuccess(''); }}
+                            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 24px', borderRadius: '12px', fontWeight: 700 }}>
+                            <span style={{ fontSize: '1.1rem' }}>+</span> Novo Contrato
+                        </button>
+                        <button onClick={() => {
+                            setShowCustom(true); setCustomStep(1); setCustomError(''); setCustomSuccess('');
+                            setCustomForm({ userId: '', name: '', tier: 'COMERCIAL', durationMonths: 3, startDate: new Date().toISOString().split('T')[0], selectedDays: [], dayTimes: {}, paymentMethod: '', frequency: 'WEEKLY', weekPattern: [1, 3], customDates: [] });
+                            setCustomAddonConfig({});
+                            setCalMonth({ year: new Date().getFullYear(), month: new Date().getMonth() });
+                            pricingApi.getAddons().then(res => setCustomAddons(res.addons)).catch(console.error);
+                        }}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 24px', borderRadius: '12px', fontWeight: 700,
+                                background: 'linear-gradient(135deg, rgba(45,212,191,0.15), rgba(59,130,246,0.1))',
+                                border: '1px solid rgba(45,212,191,0.3)', color: '#2dd4bf', cursor: 'pointer',
+                                fontSize: '0.875rem', transition: 'all 0.2s',
+                            }}>
+                            <span style={{ fontSize: '1.1rem' }}>✨</span> Contrato Personalizado
+                        </button>
+                    </>
+                }
+            />
 
             {/* --- KPI CARDS --- */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '24px' }}>
+            <div className="admin-kpi-grid" style={{ marginBottom: '24px' }}>
                 {/* Active */}
                 <div onClick={() => setFilter('ACTIVE')} style={{
                     padding: '20px', borderRadius: '14px', cursor: 'pointer',
@@ -375,7 +369,7 @@ export default function AdminContractsPage() {
                         <div style={{ fontSize: '0.8125rem', marginTop: '4px' }}>Tente ajustar os filtros ou busca</div>
                     </div>
                 ) : (
-                    <div className="table-container" style={{ margin: 0 }}>
+                    <div className="table-container admin-table-wrap" style={{ margin: 0 }}>
                         <table>
                             <thead>
                                 <tr>
@@ -391,7 +385,6 @@ export default function AdminContractsPage() {
                             <tbody>
                                 {filtered.map((c, i) => {
                                     const venc = getVencimentoBadge(c);
-                                    const sc = STATUS_CONFIG[c.status] || STATUS_CONFIG.ACTIVE;
                                     return (
                                         <tr key={c.id}
                                             style={{
@@ -505,13 +498,7 @@ export default function AdminContractsPage() {
 
                                             {/* Status */}
                                             <td style={{ textAlign: 'center' }}>
-                                                <span style={{
-                                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                                    padding: '4px 10px', borderRadius: '20px', fontSize: '0.6875rem', fontWeight: 700,
-                                                    background: sc.bg, color: sc.color, letterSpacing: '0.02em'
-                                                }}>
-                                                    {sc.icon} {sc.label}
-                                                </span>
+                                                <StatusBadge meta={getMeta(CONTRACT_STATUS_META, c.status)} size="md" />
                                             </td>
 
                                             {/* Actions */}

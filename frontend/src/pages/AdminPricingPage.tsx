@@ -1,7 +1,10 @@
 import { getErrorMessage } from '../utils/errors';
 import React, { useState, useEffect } from 'react';
+import { BadgeDollarSign, Save, Loader2 } from 'lucide-react';
 import { pricingApi, PricingConfig, BusinessConfigItem, PaymentMethodConfigItem } from '../api/client';
 import { setPaymentMethods as setCachedPaymentMethods } from '../constants/paymentMethods';
+import AdminPageHeader from '../components/admin/AdminPageHeader';
+import LoadingSpinner from '../components/ui/LoadingSpinner';
 
 
 function formatBRL(cents: number): string {
@@ -130,21 +133,17 @@ export default function AdminPricingPage() {
     const isEdited = tab === 'tiers' ? tierEdited : tab === 'rules' ? configEdited : tab === 'payments' ? pmEdited : false;
     const handleSave = tab === 'tiers' ? handleSaveTiers : tab === 'rules' ? handleSaveConfigs : handleSavePaymentMethods;
 
-    if (loading) return <div className="loading-spinner"><div className="spinner" /></div>;
+    if (loading) return <LoadingSpinner />;
 
     return (
         <div>
             {/* ─── HEADER ─── */}
-            <div style={{ marginBottom: '28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-                <div>
-                    <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontSize: '1.75rem' }}>💰</span> Planos & Valores
-                    </h1>
-                    <p className="page-subtitle" style={{ marginTop: '4px' }}>
-                        Configure preços, serviços extras e regras de negócio
-                    </p>
-                </div>
-            </div>
+            <AdminPageHeader
+                icon={BadgeDollarSign}
+                title="Planos & Valores"
+                subtitle="Faixas de preço, regras e métodos de pagamento"
+                variant="default"
+            />
 
             {/* ─── MESSAGES ─── */}
             {error && (
@@ -504,14 +503,13 @@ export default function AdminPricingPage() {
 
             {/* ─── FLOATING SAVE BAR ─── */}
             {isEdited && (
-                <div style={{
-                    position: 'fixed', bottom: 24, right: 24, left: 264,
+                <div className="admin-save-bar" style={{
                     display: 'flex', justifyContent: 'flex-end', gap: '12px',
                     padding: '14px 24px',
                     background: 'var(--bg-secondary)',
                     borderRadius: '14px',
                     boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-                    border: '1px solid rgba(16,185,129,0.3)', zIndex: 100,
+                    border: '1px solid rgba(16,185,129,0.3)',
                 }}>
                     <span style={{
                         alignSelf: 'center', fontSize: '0.8125rem', marginRight: 'auto',
@@ -525,8 +523,10 @@ export default function AdminPricingPage() {
                     </span>
                     <button className="btn btn-secondary" onClick={loadAll} style={{ borderRadius: '10px' }}>Descartar</button>
                     <button className="btn btn-primary" onClick={handleSave} disabled={saving}
-                        style={{ borderRadius: '10px', padding: '8px 20px', fontWeight: 700 }}>
-                        {saving ? '⏳ Salvando...' : '💾 Salvar Alterações'}
+                        style={{ borderRadius: '10px', padding: '8px 20px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        {saving
+                            ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Salvando...</>
+                            : <><Save size={16} /> Salvar Alterações</>}
                     </button>
                 </div>
             )}

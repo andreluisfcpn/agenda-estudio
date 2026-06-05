@@ -1,6 +1,9 @@
 import { getErrorMessage } from '../utils/errors';
 import React, { useState, useEffect } from 'react';
+import { Sparkles, Check } from 'lucide-react';
 import { pricingApi, AddOnConfig } from '../api/client';
+import AdminPageHeader from '../components/admin/AdminPageHeader';
+import LoadingSpinner from '../components/ui/LoadingSpinner';
 
 function AddonEditorCard({ addon, onUpdate }: { addon: AddOnConfig; onUpdate: (key: string, field: string, value: string) => void }) {
     const [localName, setLocalName] = useState(addon.name);
@@ -109,7 +112,7 @@ export default function AdminServicesPage() {
         setSaving(true); setError('');
         try { 
             await pricingApi.updateAddons(addons); 
-            showMsg('✅ Serviços atualizados com sucesso!'); 
+            showMsg('Serviços atualizados com sucesso!');
             setAddonEdited(false); 
         } catch (err: unknown) { 
             setError(getErrorMessage(err)); 
@@ -118,7 +121,7 @@ export default function AdminServicesPage() {
         }
     };
 
-    if (loading) return <div className="loading-spinner"><div className="spinner" /></div>;
+    if (loading) return <LoadingSpinner />;
 
     const perEpisodeAddons = addons.filter(a => !a.monthly);
     const monthlyAddons = addons.filter(a => a.monthly);
@@ -146,21 +149,16 @@ export default function AdminServicesPage() {
     return (
         <div>
             {/* ─── HEADER ─── */}
-            <div style={{ marginBottom: '28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-                <div>
-                    <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontSize: '1.75rem' }}>✨</span> Serviços
-                    </h1>
-                    <p className="page-subtitle" style={{ marginTop: '4px' }}>
-                        Gerencie os serviços adicionais pagos por episódio ou mensalmente
-                    </p>
-                </div>
-                <div>
+            <AdminPageHeader
+                icon={Sparkles}
+                title="Serviços"
+                subtitle="Adicionais por episódio e mensais"
+                actions={
                     <button className="btn btn-primary" onClick={handleSaveAddons} disabled={!addonEdited || saving} style={{ width: 140 }}>
                         {saving ? '⏳...' : addonEdited ? '💾 Salvar' : '✅ Salvo'}
                     </button>
-                </div>
-            </div>
+                }
+            />
 
             {/* ─── MESSAGES ─── */}
             {error && (
@@ -174,8 +172,9 @@ export default function AdminServicesPage() {
                 <div style={{
                     padding: '12px 16px', marginBottom: '16px', borderRadius: '12px',
                     background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)',
-                    color: '#10b981', fontSize: '0.8125rem', fontWeight: 600
-                }}>{success}</div>
+                    color: '#10b981', fontSize: '0.8125rem', fontWeight: 600,
+                    display: 'flex', alignItems: 'center', gap: '6px'
+                }}><Check size={16} /> {success}</div>
             )}
 
             {renderAddonGroup('Serviços por Episódio', 'Clientes podem adicionar esses serviços pontualmente a cada agendamento feito.', '🎙️', perEpisodeAddons)}

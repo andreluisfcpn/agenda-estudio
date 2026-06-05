@@ -136,6 +136,37 @@ export function HeroSkeleton() {
     );
 }
 
+/** Skeleton for a data table — rows × cols, rendered inside `.admin-table-wrap`
+ *  so the loading and loaded states share geometry (no layout jump). */
+export function TableSkeleton({ rows = 6, cols = 5 }: { rows?: number; cols?: number }) {
+    return (
+        <div className="admin-table-wrap" aria-hidden="true">
+            <table style={{ width: '100%' }}>
+                <thead>
+                    <tr>
+                        {Array.from({ length: cols }).map((_, i) => (
+                            <th key={i} style={{ padding: '12px 16px', textAlign: 'left' }}>
+                                <Skeleton width={i === 0 ? 120 : 70} height={12} />
+                            </th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody>
+                    {Array.from({ length: rows }).map((_, r) => (
+                        <tr key={r}>
+                            {Array.from({ length: cols }).map((_, c) => (
+                                <td key={c} style={{ padding: '14px 16px' }}>
+                                    <Skeleton width={c === 0 ? '70%' : '50%'} height={14} />
+                                </td>
+                            ))}
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
 /** Full-page loading skeleton for Contracts */
 export function ContractsSkeleton() {
     return (

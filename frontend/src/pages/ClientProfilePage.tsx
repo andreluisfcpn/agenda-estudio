@@ -2,13 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { usersApi, bookingsApi, UserDetail, Booking, Contract } from '../api/client';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
+import LoadingSpinner from '../components/ui/LoadingSpinner';
+import StatusBadge from '../components/ui/StatusBadge';
+import { TIER_META, BOOKING_STATUS_META, CONTRACT_STATUS_META, getMeta } from '../constants/adminMeta';
 
 function formatBRL(cents: number): string {
     return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
 }
-
-const TIER_EMOJI: Record<string, string> = { COMERCIAL: '🏢', AUDIENCIA: '🎤', SABADO: '🌟' };
-const STATUS_LABELS: Record<string, string> = { COMPLETED: '✅ Concluído', CONFIRMED: '✅ Confirmado', RESERVED: '⏳ Reservado', CANCELLED: '❌ Cancelado', FALTA: '❌ Falta', NAO_REALIZADO: '🔄 Não Realizado' };
 
 // ── Inline-edit field ───────────────────────────────
 function FieldItem({ label, value, field, userId, onSaved }: { label: string; value: string | null; field: string; userId: string; onSaved: () => void }) {
@@ -190,7 +190,7 @@ export default function ClientProfilePage() {
         finally { setBookingNotesSaving(false); }
     };
 
-    if (loading) return <div className="loading-spinner"><div className="spinner" /></div>;
+    if (loading) return <LoadingSpinner />;
     if (!user) return <div className="card"><div className="empty-state"><div className="empty-state-text">Usuário não encontrado</div></div></div>;
 
     const contractBookings = user.bookings.filter(b => b.contractId);
@@ -208,11 +208,11 @@ export default function ClientProfilePage() {
                     </div>
                 </td>
                 <td style={{ fontWeight: 600 }}>{b.startTime}–{b.endTime}</td>
-                <td><span className={`badge badge-${b.tierApplied.toLowerCase()}`}>{TIER_EMOJI[b.tierApplied]} {b.tierApplied}</span></td>
+                <td><StatusBadge meta={getMeta(TIER_META, b.tierApplied)} /></td>
                 <td>{formatBRL(b.price)}</td>
                 <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span className={`badge badge-${b.status.toLowerCase()}`}>{STATUS_LABELS[b.status]}</span>
+                        <StatusBadge meta={getMeta(BOOKING_STATUS_META, b.status)} />
                         {(b.adminNotes || b.clientNotes) && <span style={{ fontSize: '0.7rem' }} title="Possui observações">📝</span>}
                     </div>
                 </td>
@@ -475,9 +475,9 @@ export default function ClientProfilePage() {
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                                     <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                                         <span className={`badge ${c.type === 'FIXO' ? 'badge-confirmed' : 'badge-reserved'}`}>{c.type === 'FIXO' ? '📌 Fixo' : '🔄 Flex'}</span>
-                                        <span className={`badge badge-${c.tier.toLowerCase()}`}>{TIER_EMOJI[c.tier]} {c.tier}</span>
+                                        <StatusBadge meta={getMeta(TIER_META, c.tier)} />
                                     </div>
-                                    <span className={`badge badge-${c.status.toLowerCase()}`}>{c.status}</span>
+                                    <StatusBadge meta={getMeta(CONTRACT_STATUS_META, c.status)} />
                                 </div>
                                 <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
                                     <div>{c.durationMonths}m · {c.discountPct}% desconto · {c.durationMonths === 3 ? getRule('episodes_3months') : getRule('episodes_6months')} gravações</div>
@@ -530,10 +530,12 @@ export default function ClientProfilePage() {
                             📋 Vinculados a Contrato ({contractBookings.length})
                         </div>
                         <div className="table-container">
-                            <table>
-                                <thead><tr><th>Data</th><th>Horário</th><th>Faixa</th><th>Valor</th><th>Status</th></tr></thead>
-                                <tbody>{contractBookings.map(renderBookingRow)}</tbody>
-                            </table>
+                            <div className="admin-table-wrap">
+                                <table>
+                                    <thead><tr><th>Data</th><th>Horário</th><th>Faixa</th><th>Valor</th><th>Status</th></tr></thead>
+                                    <tbody>{contractBookings.map(renderBookingRow)}</tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -545,10 +547,12 @@ export default function ClientProfilePage() {
                             👤 Avulsos ({avulsoBookings.length})
                         </div>
                         <div className="table-container">
-                            <table>
-                                <thead><tr><th>Data</th><th>Horário</th><th>Faixa</th><th>Valor</th><th>Status</th></tr></thead>
-                                <tbody>{avulsoBookings.map(renderBookingRow)}</tbody>
-                            </table>
+                            <div className="admin-table-wrap">
+                                <table>
+                                    <thead><tr><th>Data</th><th>Horário</th><th>Faixa</th><th>Valor</th><th>Status</th></tr></thead>
+                                    <tbody>{avulsoBookings.map(renderBookingRow)}</tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 )}

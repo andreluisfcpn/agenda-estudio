@@ -1,4 +1,4 @@
-import { CheckCircle, Clock, XCircle, AlertTriangle, Pause, Ban, CalendarCheck, Loader2 } from 'lucide-react';
+import { CheckCircle, Clock, XCircle, AlertTriangle, Pause, Ban, CalendarCheck, Loader2, type LucideIcon } from 'lucide-react';
 
 type StatusType =
     | 'CONFIRMED' | 'RESERVED' | 'CANCELLED' | 'COMPLETED'
@@ -23,12 +23,28 @@ const CONFIG: Record<StatusType, { icon: React.ReactNode; label: string; color: 
 };
 
 interface StatusBadgeProps {
-    status: string;
+    status?: string;
     label?: string;
     size?: 'sm' | 'md';
+    /** Admin override: render from a metadata entry (see constants/adminMeta.ts)
+     *  for statuses outside the built-in client union. */
+    meta?: { label: string; color: string; bg: string; icon: LucideIcon };
 }
 
-export default function StatusBadge({ status, label, size = 'sm' }: StatusBadgeProps) {
+export default function StatusBadge({ status = '', label, size = 'sm', meta }: StatusBadgeProps) {
+    if (meta) {
+        const Icon = meta.icon;
+        return (
+            <span
+                className={`status-badge status-badge--${size}`}
+                style={{ color: meta.color, background: meta.bg }}
+            >
+                <Icon size={13} />
+                {label || meta.label}
+            </span>
+        );
+    }
+
     const config = CONFIG[status as StatusType] || {
         icon: <Clock size={13} />, label: status, color: 'var(--text-muted)', bg: 'rgba(148,163,184,0.1)'
     };

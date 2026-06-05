@@ -11,6 +11,7 @@ import './styles/checkout.css';
 import './styles/modals.css';
 import './styles/my-bookings.css';
 import './styles/client-area.css';
+import './styles/admin-area.css';
 import './styles/bottom-sheet.css';
 import './styles/contract-wizard.css';
 import './styles/page-transition.css';

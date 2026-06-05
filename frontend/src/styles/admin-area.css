@@ -1,0 +1,66 @@
+/* ═══════════════════════════════════════════════════════════════
+   admin-area.css — shared layout helpers for the admin pages
+   Brings the admin area to parity with the client design system without
+   restructuring each page. Mobile-safe ("works, doesn't break").
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Responsive data tables ─────────────────────────────────────
+   Wrap any admin <table> so wide tables scroll horizontally instead of
+   overflowing the page invisibly on small screens. */
+.admin-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-radius: var(--radius-lg);
+}
+.admin-table-wrap table {
+    min-width: 640px; /* keeps columns legible; the wrapper scrolls */
+}
+.admin-table-wrap::-webkit-scrollbar {
+    height: 8px;
+}
+.admin-table-wrap::-webkit-scrollbar-thumb {
+    background: var(--border-default);
+    border-radius: 8px;
+}
+
+/* ── Responsive KPI grid ────────────────────────────────────────
+   Replaces hardcoded `repeat(N, 1fr)` grids that overflow on mobile. */
+.admin-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+/* ── Floating "unsaved changes" save bar ────────────────────────
+   Desktop: respects the sidebar width (220px expanded / 52px collapsed).
+   Mobile: full-width, pinned above the BottomTabBar + safe-area. */
+.admin-save-bar {
+    position: fixed;
+    left: 220px;
+    right: 24px;
+    bottom: 24px;
+    z-index: 90;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 20px;
+    background: var(--bg-elevated, #004250);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.app-layout--sidebar-collapsed .admin-save-bar {
+    left: 52px;
+}
+@media (max-width: 768px) {
+    .admin-save-bar,
+    .app-layout--sidebar-collapsed .admin-save-bar {
+        left: 12px;
+        right: 12px;
+        bottom: calc(64px + env(safe-area-inset-bottom, 0px) + 12px);
+    }
+}

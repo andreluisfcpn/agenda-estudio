@@ -4,6 +4,10 @@ import {
     TierBreakdownItem, AudienceMetrics, ClientRankItem,
 } from '../api/client';
 import { useNavigate } from 'react-router-dom';
+import { BarChart3 } from 'lucide-react';
+import AdminPageHeader from '../components/admin/AdminPageHeader';
+import { HeroSkeleton, TableSkeleton } from '../components/ui/SkeletonLoader';
+import { TIER_META, getMeta } from '../constants/adminMeta';
 
 function formatBRL(cents: number): string {
     return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
@@ -14,12 +18,6 @@ function formatBRLCompact(cents: number): string {
     if (v >= 1000) return `R$ ${(v / 1000).toFixed(1).replace('.', ',')}k`;
     return `R$ ${v.toFixed(0)}`;
 }
-
-const TIER_META: Record<string, { emoji: string; color: string; bg: string; label: string }> = {
-    COMERCIAL: { emoji: '🏢', color: '#10b981', bg: 'rgba(16,185,129,0.10)', label: 'Comercial' },
-    AUDIENCIA: { emoji: '🎤', color: '#2dd4bf', bg: 'rgba(45,212,191,0.10)', label: 'Audiência' },
-    SABADO:    { emoji: '🌟', color: '#fbbf24', bg: 'rgba(245,158,11,0.10)', label: 'Sábado' },
-};
 
 type Period = '7d' | '30d' | '90d' | '365d';
 
@@ -88,61 +86,58 @@ export default function AdminReportsPage() {
         URL.revokeObjectURL(url);
     };
 
-    if (loading || !summary) return <div className="loading-spinner"><div className="spinner" /></div>;
+    if (loading || !summary) return <div><HeroSkeleton /><TableSkeleton rows={6} cols={7} /></div>;
 
     return (
         <div aria-label="Relatórios administrativos">
             {/* ─── HEADER ─── */}
-            <div style={{ marginBottom: '28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-                <div>
-                    <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontSize: '1.75rem' }}>📈</span> Relatórios & Métricas
-                    </h1>
-                    <p className="page-subtitle" style={{ marginTop: '4px' }}>
-                        Visão estratégica do desempenho do estúdio
-                    </p>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    {/* Period pills */}
-                    <div style={{ display: 'flex', gap: '2px', padding: '3px', background: 'var(--bg-elevated)', borderRadius: '10px' }}>
-                        {([
-                            { key: '7d' as Period, label: '7 dias' },
-                            { key: '30d' as Period, label: '30 dias' },
-                            { key: '90d' as Period, label: '90 dias' },
-                            { key: '365d' as Period, label: '1 ano' },
-                        ]).map(p => (
-                            <button key={p.key}
-                                onClick={() => setPeriod(p.key)}
-                                style={{
-                                    padding: '5px 12px', borderRadius: '8px', fontSize: '0.6875rem',
-                                    fontWeight: period === p.key ? 700 : 500, border: 'none', cursor: 'pointer',
-                                    background: period === p.key ? 'var(--bg-secondary)' : 'transparent',
-                                    color: period === p.key ? 'var(--text-primary)' : 'var(--text-muted)',
-                                    boxShadow: period === p.key ? '0 1px 3px rgba(0,0,0,0.2)' : 'none',
-                                    transition: 'all 0.2s'
-                                }}
-                            >
-                                {p.label}
-                            </button>
-                        ))}
+            <AdminPageHeader
+                icon={BarChart3}
+                title="Relatórios"
+                subtitle="Métricas, ocupação e ranking"
+                actions={
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        {/* Period pills */}
+                        <div style={{ display: 'flex', gap: '2px', padding: '3px', background: 'var(--bg-elevated)', borderRadius: '10px' }}>
+                            {([
+                                { key: '7d' as Period, label: '7 dias' },
+                                { key: '30d' as Period, label: '30 dias' },
+                                { key: '90d' as Period, label: '90 dias' },
+                                { key: '365d' as Period, label: '1 ano' },
+                            ]).map(p => (
+                                <button key={p.key}
+                                    onClick={() => setPeriod(p.key)}
+                                    style={{
+                                        padding: '5px 12px', borderRadius: '8px', fontSize: '0.6875rem',
+                                        fontWeight: period === p.key ? 700 : 500, border: 'none', cursor: 'pointer',
+                                        background: period === p.key ? 'var(--bg-secondary)' : 'transparent',
+                                        color: period === p.key ? 'var(--text-primary)' : 'var(--text-muted)',
+                                        boxShadow: period === p.key ? '0 1px 3px rgba(0,0,0,0.2)' : 'none',
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    {p.label}
+                                </button>
+                            ))}
+                        </div>
+                        <button onClick={handleExportCSV}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '6px',
+                                background: 'var(--bg-elevated)', border: '1px solid var(--border-color)',
+                                color: 'var(--text-secondary)', padding: '6px 14px', borderRadius: '8px',
+                                cursor: 'pointer', fontSize: '0.6875rem', fontWeight: 600, transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.borderColor = '#10b981'; e.currentTarget.style.color = '#10b981'; }}
+                            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-color)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                        >
+                            📥 Exportar CSV
+                        </button>
                     </div>
-                    <button onClick={handleExportCSV}
-                        style={{
-                            display: 'flex', alignItems: 'center', gap: '6px',
-                            background: 'var(--bg-elevated)', border: '1px solid var(--border-color)',
-                            color: 'var(--text-secondary)', padding: '6px 14px', borderRadius: '8px',
-                            cursor: 'pointer', fontSize: '0.6875rem', fontWeight: 600, transition: 'all 0.2s'
-                        }}
-                        onMouseEnter={e => { e.currentTarget.style.borderColor = '#10b981'; e.currentTarget.style.color = '#10b981'; }}
-                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-color)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
-                    >
-                        📥 Exportar CSV
-                    </button>
-                </div>
-            </div>
+                }
+            />
 
             {/* ─── KPI CARDS ─── */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '14px', marginBottom: '24px' }}>
+            <div className="admin-kpi-grid" style={{ marginBottom: '24px' }}>
                 <div style={{
                     padding: '20px', borderRadius: '14px',
                     background: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(67,56,202,0.04))',
@@ -247,15 +242,16 @@ export default function AdminReportsPage() {
                     </h3>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                         {tierBreakdown.map(t => {
-                            const meta = TIER_META[t.tier] || { emoji: '•', color: '#888', bg: 'rgba(136,136,136,0.1)', label: t.tier };
+                            const meta = getMeta(TIER_META, t.tier);
+                            const TierIcon = meta.icon;
                             return (
                                 <div key={t.tier} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                     <div style={{
                                         width: 36, height: 36, borderRadius: '10px',
-                                        background: meta.bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        fontSize: '1.125rem', flexShrink: 0,
+                                        background: meta.bg, color: meta.color, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        flexShrink: 0,
                                     }}>
-                                        {meta.emoji}
+                                        <TierIcon size={18} strokeWidth={1.8} />
                                     </div>
                                     <div style={{ flex: 1 }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
@@ -322,6 +318,7 @@ export default function AdminReportsPage() {
                     </div>
                 ) : (
                     <div className="table-container" style={{ margin: 0 }}>
+                      <div className="admin-table-wrap">
                         <table>
                             <thead>
                                 <tr>
@@ -383,6 +380,7 @@ export default function AdminReportsPage() {
                                 ))}
                             </tbody>
                         </table>
+                      </div>
                     </div>
                 )}
             </div>

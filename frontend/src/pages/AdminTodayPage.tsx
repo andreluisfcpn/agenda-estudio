@@ -1,27 +1,18 @@
 import { getErrorMessage } from '../utils/errors';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { CalendarClock } from 'lucide-react';
 import { bookingsApi, BookingWithUser } from '../api/client';
 import { useUI } from '../context/UIContext';
 import { useNavigate } from 'react-router-dom';
+import AdminPageHeader from '../components/admin/AdminPageHeader';
+import { HeroSkeleton } from '../components/ui/SkeletonLoader';
+import LoadingSpinner from '../components/ui/LoadingSpinner';
+import StatusBadge from '../components/ui/StatusBadge';
+import { TIER_META, BOOKING_STATUS_META, getMeta } from '../constants/adminMeta';
 
 function formatBRL(cents: number): string {
     return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
 }
-
-const TIER_META: Record<string, { emoji: string; color: string; bg: string; label: string }> = {
-    COMERCIAL: { emoji: '🏢', color: '#10b981', bg: 'rgba(16,185,129,0.10)', label: 'Comercial' },
-    AUDIENCIA: { emoji: '🎤', color: '#2dd4bf', bg: 'rgba(45,212,191,0.10)', label: 'Audiência' },
-    SABADO:    { emoji: '🌟', color: '#fbbf24', bg: 'rgba(245,158,11,0.10)', label: 'Sábado' },
-};
-
-const STATUS_META: Record<string, { icon: string; label: string; color: string; bg: string }> = {
-    RESERVED:      { icon: '⏳', label: 'Reservado',     color: '#d97706', bg: 'rgba(217,119,6,0.12)' },
-    CONFIRMED:     { icon: '✅',  label: 'Confirmado',    color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
-    COMPLETED:     { icon: '✅',  label: 'Concluído',     color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
-    FALTA:         { icon: '❌',  label: 'Falta',         color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
-    NAO_REALIZADO: { icon: '❌',  label: 'Não Realizado', color: '#14b8a6', bg: 'rgba(45,212,191,0.12)' },
-    CANCELLED:     { icon: '🚫',  label: 'Cancelado',     color: '#6b7280', bg: 'rgba(107,114,128,0.12)' },
-};
 
 interface SlotDef {
     id: string;
@@ -191,18 +182,20 @@ export default function AdminTodayPage() {
     }, []);
     const nowTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-    if (loading) return <div className="loading-spinner"><div className="spinner" /></div>;
+    if (loading) return <div><HeroSkeleton /><LoadingSpinner /></div>;
 
     return (
         <div>
             {/* --- HEADER --- */}
-            <div style={{ marginBottom: '28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-                <div>
-                    <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontSize: '1.75rem' }}>📊</span> Visão do Dia
-                    </h1>
-                    <p className="page-subtitle" style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        {now.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+            <AdminPageHeader
+                icon={CalendarClock}
+                title="Visão do Dia"
+                subtitle="Agenda do estúdio hoje, em tempo real"
+                actions={
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+                            {now.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+                        </span>
                         <span style={{
                             fontSize: '0.75rem', fontWeight: 700, color: '#10b981',
                             background: 'rgba(16,185,129,0.1)', padding: '2px 8px', borderRadius: '6px',
@@ -210,9 +203,9 @@ export default function AdminTodayPage() {
                         }}>
                             ⏰ {nowTime}:{String(now.getSeconds()).padStart(2, '0')}
                         </span>
-                    </p>
-                </div>
-            </div>
+                    </span>
+                }
+            />
 
             {/* --- KPI CARDS --- */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '14px', marginBottom: '24px' }}>
@@ -345,8 +338,8 @@ export default function AdminTodayPage() {
                         const isPast = nowTime > item.timeEnd;
                         const isNow = nowTime >= item.time && nowTime <= item.timeEnd;
                         const isExpanded = booking && expandedSlot === booking.id;
-                        const statusInfo = booking ? STATUS_META[booking.status] : null;
-                        const tierInfo = booking ? TIER_META[booking.tierApplied] : null;
+                        const tierInfo = booking ? getMeta(TIER_META, booking.tierApplied) : null;
+                        const TierIcon = tierInfo ? tierInfo.icon : null;
 
                         return (
                             <div key={item.id} style={{
@@ -457,8 +450,9 @@ export default function AdminTodayPage() {
                                                             <span style={{
                                                                 fontSize: '0.625rem', color: tierInfo.color, fontWeight: 700,
                                                                 background: tierInfo.bg, padding: '1px 6px', borderRadius: '4px',
+                                                                display: 'inline-flex', alignItems: 'center', gap: '4px',
                                                             }}>
-                                                                {tierInfo.emoji} {tierInfo.label}
+                                                                {TierIcon && <TierIcon size={11} />} {tierInfo.label}
                                                             </span>
                                                             <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', fontWeight: 600 }}>{formatBRL(booking.price)}</span>
                                                         </div>
@@ -473,14 +467,8 @@ export default function AdminTodayPage() {
 
                                         {/* Right side: Status + Quick Actions */}
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                                            {booking && statusInfo && (
-                                                <span style={{
-                                                    fontSize: '0.6875rem', fontWeight: 700, padding: '4px 10px',
-                                                    borderRadius: '20px', color: statusInfo.color,
-                                                    background: statusInfo.bg, letterSpacing: '0.02em',
-                                                }}>
-                                                    {statusInfo.icon} {statusInfo.label}
-                                                </span>
+                                            {booking && (
+                                                <StatusBadge meta={getMeta(BOOKING_STATUS_META, booking.status)} size="md" />
                                             )}
 
                                             {booking && !isExpanded && (booking.status === 'CONFIRMED' || booking.status === 'RESERVED') && !isPast && (
@@ -574,7 +562,7 @@ export default function AdminTodayPage() {
                                                         <span style={{ width: 20, height: 2, background: '#10b981', borderRadius: 1 }} />
                                                         Métricas Pós-Gravação
                                                     </div>
-                                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+                                                    <div className="admin-kpi-grid">
                                                         {[
                                                             { label: '⏱️ Duração (min)', value: durationMin, onChange: (v: string) => setDurationMin(v === '' ? '' : Number(v)), type: 'number', ph: 'Ex: 120' },
                                                             { label: '👁️ Pico Viewers', value: peakViewers, onChange: (v: string) => setPeakViewers(v === '' ? '' : Number(v)), type: 'number', ph: 'Ex: 1530' },

@@ -1,7 +1,13 @@
 import { getErrorMessage } from '../utils/errors';
 import React, { useState, useEffect, useMemo } from 'react';
+import { Wallet, CheckCircle2, Clock } from 'lucide-react';
 import { financeApi, FinanceClosingResponse, EnrichedPayment } from '../api/client';
 import { useUI } from '../context/UIContext';
+import AdminPageHeader from '../components/admin/AdminPageHeader';
+import { HeroSkeleton, TableSkeleton } from '../components/ui/SkeletonLoader';
+import StatusBadge from '../components/ui/StatusBadge';
+import StatCard from '../components/ui/StatCard';
+import { PAYMENT_STATUS_META, getMeta } from '../constants/adminMeta';
 
 function formatBRL(cents: number): string {
     return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
@@ -11,13 +17,6 @@ const MONTHS = [
     'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
     'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
 ];
-
-const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: string }> = {
-    PAID:     { label: 'Pago',       color: '#10b981', bg: 'rgba(16,185,129,0.12)',  icon: '✅' },
-    PENDING:  { label: 'Pendente',   color: '#f59e0b', bg: 'rgba(245,158,11,0.12)',  icon: '⏳' },
-    FAILED:   { label: 'Falhou',     color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   icon: '❌' },
-    REFUNDED: { label: 'Estornado',  color: '#14b8a6', bg: 'rgba(45,212,191,0.12)',  icon: '↩️' },
-};
 
 export default function AdminFinancePage() {
     const { showAlert } = useUI();
@@ -98,100 +97,70 @@ export default function AdminFinancePage() {
     return (
         <div>
             {/* --- HEADER --- */}
-            <div style={{ marginBottom: '28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-                <div>
-                    <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontSize: '1.75rem' }}>💰</span> Financeiro
-                    </h1>
-                    <p className="page-subtitle" style={{ marginTop: '4px' }}>
-                        Fechamento mensal e controle de pagamentos
-                    </p>
-                </div>
-                
-                {/* Month Navigator */}
-                <div style={{
-                    display: 'flex', alignItems: 'center', gap: '0',
-                    background: 'var(--bg-secondary)', borderRadius: '12px',
-                    border: '1px solid var(--border-color)', overflow: 'hidden'
-                }}>
-                    <button onClick={() => goMonth(-1)} style={{
-                        background: 'none', border: 'none', color: 'var(--text-secondary)',
-                        padding: '10px 14px', cursor: 'pointer', fontSize: '1rem',
-                        transition: 'all 0.2s'
-                    }} onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-elevated)')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
-                        ‹
-                    </button>
+            <AdminPageHeader
+                icon={Wallet}
+                title="Financeiro"
+                subtitle="Fechamento mensal e cobranças"
+                actions={
+                    /* Month Navigator */
                     <div style={{
-                        padding: '10px 20px', fontWeight: 700, fontSize: '0.9375rem',
-                        color: 'var(--text-primary)', borderLeft: '1px solid var(--border-color)',
-                        borderRight: '1px solid var(--border-color)', minWidth: '180px', textAlign: 'center',
-                        background: isCurrentMonth ? 'rgba(16,185,129,0.06)' : 'none'
+                        display: 'flex', alignItems: 'center', gap: '0',
+                        background: 'var(--bg-secondary)', borderRadius: '12px',
+                        border: '1px solid var(--border-color)', overflow: 'hidden'
                     }}>
-                        {MONTHS[selectedMonth - 1]} {selectedYear}
-                        {isCurrentMonth && <span style={{ fontSize: '0.6875rem', color: '#10b981', display: 'block', fontWeight: 500 }}>Mês Atual</span>}
+                        <button onClick={() => goMonth(-1)} style={{
+                            background: 'none', border: 'none', color: 'var(--text-secondary)',
+                            padding: '10px 14px', cursor: 'pointer', fontSize: '1rem',
+                            transition: 'all 0.2s'
+                        }} onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-elevated)')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                            ‹
+                        </button>
+                        <div style={{
+                            padding: '10px 20px', fontWeight: 700, fontSize: '0.9375rem',
+                            color: 'var(--text-primary)', borderLeft: '1px solid var(--border-color)',
+                            borderRight: '1px solid var(--border-color)', minWidth: '180px', textAlign: 'center',
+                            background: isCurrentMonth ? 'rgba(16,185,129,0.06)' : 'none'
+                        }}>
+                            {MONTHS[selectedMonth - 1]} {selectedYear}
+                            {isCurrentMonth && <span style={{ fontSize: '0.6875rem', color: '#10b981', display: 'block', fontWeight: 500 }}>Mês Atual</span>}
+                        </div>
+                        <button onClick={() => goMonth(1)} style={{
+                            background: 'none', border: 'none', color: 'var(--text-secondary)',
+                            padding: '10px 14px', cursor: 'pointer', fontSize: '1rem',
+                            transition: 'all 0.2s'
+                        }} onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-elevated)')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                            ›
+                        </button>
                     </div>
-                    <button onClick={() => goMonth(1)} style={{
-                        background: 'none', border: 'none', color: 'var(--text-secondary)',
-                        padding: '10px 14px', cursor: 'pointer', fontSize: '1rem',
-                        transition: 'all 0.2s'
-                    }} onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-elevated)')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
-                        ›
-                    </button>
-                </div>
-            </div>
+                }
+            />
 
             {loading ? (
-                <div className="loading-spinner"><div className="spinner" /></div>
+                <div><HeroSkeleton /><TableSkeleton rows={6} cols={8} /></div>
             ) : !data ? (
                 <div className="empty-state">Nenhum dado encontrado para este período.</div>
             ) : (
                 <>
                     {/* --- KPI HERO CARDS --- */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-                        
-                        {/* NET REVENUE — hero card */}
-                        <div style={{
-                            padding: '28px', borderRadius: '16px',
-                            background: 'linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(6,78,59,0.08) 100%)',
-                            border: '1px solid rgba(16,185,129,0.2)',
-                            position: 'relative', overflow: 'hidden'
-                        }}>
-                            <div style={{ position: 'absolute', top: '-20px', right: '-20px', fontSize: '6rem', opacity: 0.04, transform: 'rotate(15deg)' }}>💰</div>
-                            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
-                                Repasse Líquido
-                            </div>
-                            <div style={{ fontSize: '2.75rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.1, marginBottom: '6px' }}>
-                                {formatBRL(data.metrics.netRevenue)}
-                            </div>
-                            <p style={{ fontSize: '0.8125rem', color: 'rgba(16,185,129,0.8)', fontWeight: 500, margin: 0 }}>
-                                Na conta do Estúdio {isCurrentMonth && '(parcial)'}
-                            </p>
-                        </div>
+                    <div className="admin-kpi-grid" style={{ marginBottom: '24px' }}>
 
-                        {/* GROSS REVENUE */}
-                        <div style={{
-                            padding: '24px', borderRadius: '16px',
-                            background: 'var(--bg-secondary)', border: '1px solid var(--border-color)'
-                        }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                                    Faturamento Bruto
-                                </div>
-                                <span style={{ fontSize: '1.5rem', opacity: 0.6 }}>💵</span>
-                            </div>
-                            <div style={{ fontSize: '1.875rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: '10px' }}>
-                                {formatBRL(data.metrics.grossRevenue)}
-                            </div>
-                            <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span style={{
-                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                    padding: '3px 8px', borderRadius: '6px', fontSize: '0.6875rem', fontWeight: 600,
-                                    background: 'rgba(16,185,129,0.1)', color: '#10b981'
-                                }}>
-                                    ✅ {data.metrics.paidCount} pagos
-                                </span>
-                            </div>
-                        </div>
+                        {/* NET REVENUE */}
+                        <StatCard
+                            icon={Wallet}
+                            label="Repasse Líquido"
+                            value={formatBRL(data.metrics.netRevenue)}
+                            detail={`Na conta do Estúdio ${isCurrentMonth ? '(parcial)' : ''}`.trim()}
+                            accent="#10b981"
+                        />
+
+                        {/* GROSS REVENUE / PAID */}
+                        <StatCard
+                            icon={CheckCircle2}
+                            label="Faturamento Bruto"
+                            value={formatBRL(data.metrics.grossRevenue)}
+                            detail={`${data.metrics.paidCount} pagos`}
+                            accent="#10b981"
+                        />
 
                         {/* FEES */}
                         <div style={{
@@ -228,34 +197,13 @@ export default function AdminFinancePage() {
                         </div>
 
                         {/* PENDING / OVERDUE */}
-                        <div style={{
-                            padding: '24px', borderRadius: '16px',
-                            background: data.metrics.pendingRevenue > 0 
-                                ? 'linear-gradient(135deg, rgba(239,68,68,0.06), rgba(234,88,12,0.04))'
-                                : 'var(--bg-secondary)',
-                            border: data.metrics.pendingRevenue > 0 
-                                ? '1px solid rgba(239,68,68,0.2)' 
-                                : '1px solid var(--border-color)'
-                        }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                                    {isCurrentMonth ? 'A Receber' : 'Inadimplência'}
-                                </div>
-                                <span style={{ fontSize: '1.5rem', opacity: 0.6 }}>{data.metrics.pendingRevenue > 0 ? '⚠️' : '✅'}</span>
-                            </div>
-                            <div style={{ fontSize: '1.875rem', fontWeight: 800, color: data.metrics.pendingRevenue > 0 ? '#ea580c' : '#10b981', marginTop: '10px' }}>
-                                {data.metrics.pendingRevenue > 0 ? formatBRL(data.metrics.pendingRevenue) : 'R$ 0,00'}
-                            </div>
-                            <div style={{ marginTop: '10px' }}>
-                                <span style={{
-                                    padding: '3px 8px', borderRadius: '6px', fontSize: '0.6875rem', fontWeight: 600,
-                                    background: data.metrics.unpaidCount > 0 ? 'rgba(234,88,12,0.1)' : 'rgba(16,185,129,0.1)',
-                                    color: data.metrics.unpaidCount > 0 ? '#ea580c' : '#10b981'
-                                }}>
-                                    {data.metrics.unpaidCount} pendente{data.metrics.unpaidCount !== 1 ? 's' : ''}
-                                </span>
-                            </div>
-                        </div>
+                        <StatCard
+                            icon={Clock}
+                            label={isCurrentMonth ? 'A Receber' : 'Inadimplência'}
+                            value={data.metrics.pendingRevenue > 0 ? formatBRL(data.metrics.pendingRevenue) : 'R$ 0,00'}
+                            detail={`${data.metrics.unpaidCount} pendente${data.metrics.unpaidCount !== 1 ? 's' : ''}`}
+                            accent={data.metrics.pendingRevenue > 0 ? '#ea580c' : '#10b981'}
+                        />
                     </div>
 
                     {/* --- COLLECTION RATE BAR --- */}
@@ -364,6 +312,7 @@ export default function AdminFinancePage() {
                         ) : (
                             <>
                                 <div className="table-container" style={{ margin: 0 }}>
+                                  <div className="admin-table-wrap">
                                     <table>
                                         <thead>
                                             <tr>
@@ -379,7 +328,6 @@ export default function AdminFinancePage() {
                                         </thead>
                                         <tbody>
                                             {filteredPayments.map((p, i) => {
-                                                const sc = STATUS_CONFIG[p.status] || STATUS_CONFIG.PENDING;
                                                 return (
                                                     <tr key={p.id} style={{
                                                         background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
@@ -433,14 +381,7 @@ export default function AdminFinancePage() {
                                                             {p.status === 'PAID' ? formatBRL(p.netAmount) : '—'}
                                                         </td>
                                                         <td style={{ textAlign: 'center' }}>
-                                                            <span style={{
-                                                                display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                                                padding: '4px 10px', borderRadius: '20px', fontSize: '0.6875rem', fontWeight: 700,
-                                                                background: sc.bg, color: sc.color,
-                                                                letterSpacing: '0.02em'
-                                                            }}>
-                                                                {sc.icon} {sc.label}
-                                                            </span>
+                                                            <StatusBadge meta={getMeta(PAYMENT_STATUS_META, p.status)} size="md" />
                                                         </td>
                                                     </tr>
                                                 );
@@ -468,6 +409,7 @@ export default function AdminFinancePage() {
                                             </tfoot>
                                         )}
                                     </table>
+                                  </div>
                                 </div>
                             </>
                         )}
