@@ -46,12 +46,12 @@ app.use(helmet({
     contentSecurityPolicy: config.nodeEnv === 'production' ? {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "https://js.stripe.com"],
-            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+            scriptSrc: ["'self'", "https://js.stripe.com", "https://accounts.google.com"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://accounts.google.com"],
             fontSrc: ["'self'", "https://fonts.gstatic.com"],
-            imgSrc: ["'self'", "data:", "blob:", "https://buzios.digital", "https://app.buzios.digital", "https://*.stripe.com"],
-            connectSrc: ["'self'", "https://app.buzios.digital", "https://*.stripe.com", "https://matls-clients.api.cora.com.br"],
-            frameSrc: ["'self'", "https://js.stripe.com", "https://*.stripe.com"],
+            imgSrc: ["'self'", "data:", "blob:", "https://buzios.digital", "https://app.buzios.digital", "https://*.stripe.com", "https://*.googleusercontent.com"],
+            connectSrc: ["'self'", "https://app.buzios.digital", "https://*.stripe.com", "https://matls-clients.api.cora.com.br", "https://accounts.google.com", "https://oauth2.googleapis.com"],
+            frameSrc: ["'self'", "https://js.stripe.com", "https://*.stripe.com", "https://accounts.google.com"],
         },
     } : false,
     crossOriginEmbedderPolicy: false,
