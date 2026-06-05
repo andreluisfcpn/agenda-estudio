@@ -120,11 +120,27 @@ export function DashboardSkeleton() {
     );
 }
 
+/** Placeholder shaped like the page's hero header (icon + title + subtitle),
+ *  so the loading state matches the loaded layout and there's no jump/flicker. */
+export function HeroSkeleton() {
+    return (
+        <div className="client-hero client-hero--default" style={{ marginBottom: 20 }}>
+            <div className="client-hero__header client-hero__header--standalone">
+                <Skeleton variant="rounded" width={48} height={48} />
+                <div style={{ flex: 1 }}>
+                    <Skeleton width={180} height={22} style={{ marginBottom: 8 }} />
+                    <Skeleton width={240} height={14} />
+                </div>
+            </div>
+        </div>
+    );
+}
+
 /** Full-page loading skeleton for Contracts */
 export function ContractsSkeleton() {
     return (
         <div className="stagger-enter" style={{ display: 'grid', gap: 20 }}>
-            <Skeleton width={200} height={24} style={{ marginBottom: 4 }} />
+            <HeroSkeleton />
             <ContractCardSkeleton />
             <ContractCardSkeleton />
         </div>
@@ -135,7 +151,7 @@ export function ContractsSkeleton() {
 export function PaymentsSkeleton() {
     return (
         <div className="stagger-enter" style={{ display: 'grid', gap: 20 }}>
-            <Skeleton width={200} height={24} style={{ marginBottom: 4 }} />
+            <HeroSkeleton />
             {/* Saved card */}
             <Skeleton variant="rounded" width="100%" height={120} />
             {/* Payment history */}

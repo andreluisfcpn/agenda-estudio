@@ -11,10 +11,10 @@ function formatBRL(cents: number): string {
 }
 
 const TYPE_CONFIG: Record<string, { label: string; color: string; bg: string; icon: string }> = {
-    ADMIN:  { label: 'Admin',  color: '#f59e0b', bg: 'rgba(245,158,11,0.12)',  icon: '???' },
-    FIXO:   { label: 'Fixo',   color: '#818cf8', bg: 'rgba(99,102,241,0.12)',   icon: '??' },
-    FLEX:   { label: 'Flex',   color: '#34d399', bg: 'rgba(16,185,129,0.12)',   icon: '??' },
-    AVULSO: { label: 'Avulso', color: '#f97316', bg: 'rgba(249,115,22,0.12)',   icon: '??' },
+    ADMIN:  { label: 'Admin',  color: '#f59e0b', bg: 'rgba(245,158,11,0.12)',  icon: '🛡️' },
+    FIXO:   { label: 'Fixo',   color: '#818cf8', bg: 'rgba(99,102,241,0.12)',   icon: '📌' },
+    FLEX:   { label: 'Flex',   color: '#34d399', bg: 'rgba(16,185,129,0.12)',   icon: '🔄' },
+    AVULSO: { label: 'Avulso', color: '#f97316', bg: 'rgba(249,115,22,0.12)',   icon: '🎫' },
 };
 
 function getUserType(u: UserSummary): string {
@@ -119,7 +119,7 @@ export default function AdminClientsPage() {
             if (editForm.role && editForm.role !== editUser.role) data.role = editForm.role;
             if (editForm.password) data.password = editForm.password;
             if (editForm.clientStatus) data.clientStatus = editForm.clientStatus;
-            // Optional text fields � send if changed (compare to empty for summary-level data)
+            // Optional text fields — send if changed (compare to empty for summary-level data)
             data.notes = editForm.notes || null;
             data.cpfCnpj = editForm.cpfCnpj.replace(/\D/g, '') || null;
             data.address = editForm.address || null;
@@ -180,7 +180,7 @@ export default function AdminClientsPage() {
             setDeleteUser(null);
             await loadData();
         } catch (err: unknown) {
-            showAlert({ message: getErrorMessage(err) || 'Erro ao excluir usu�rio', type: 'error' });
+            showAlert({ message: getErrorMessage(err) || 'Erro ao excluir usuário', type: 'error' });
         } finally {
             setDeleteLoading(false);
         }
@@ -223,10 +223,10 @@ export default function AdminClientsPage() {
             <div style={{ marginBottom: '28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
                 <div>
                     <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontSize: '1.75rem' }}>??</span> Clientes
+                        <span style={{ fontSize: '1.75rem' }}>👥</span> Clientes
                     </h1>
                     <p className="page-subtitle" style={{ marginTop: '4px' }}>
-                        Gerencie os usu�rios e clientes do sistema
+                        Gerencie os usuários e clientes do sistema
                     </p>
                 </div>
                 <button className="btn btn-primary" onClick={() => { setShowCreate(true); setCreateError(''); }}
@@ -238,11 +238,11 @@ export default function AdminClientsPage() {
             {/* --- KPI CARDS --- */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px', marginBottom: '24px' }}>
                 {([
-                    { key: 'ALL' as const, label: 'Total', count: clientUsers.length, desc: 'clientes cadastrados', icon: '??', color: '#6366f1', gradient: 'rgba(99,102,241,0.08)' },
-                    { key: 'ACTIVE' as const, label: 'Ativos', count: activeCount, desc: 'com contrato ativo', icon: '?', color: '#10b981', gradient: 'rgba(16,185,129,0.08)' },
-                    { key: 'EX_CLIENT' as const, label: 'Ex-clientes', count: exClientCount, desc: 'contrato expirado', icon: '??', color: '#f59e0b', gradient: 'rgba(245,158,11,0.08)' },
-                    { key: 'NO_CONTRACT' as const, label: 'Sem Contrato', count: noContractCount, desc: 'nunca contrataram', icon: '??', color: '#94a3b8', gradient: 'rgba(148,163,184,0.08)' },
-                    { key: 'NO_ADDON' as const, label: 'Sem Add-on', count: noAddonCount, desc: 'sem servi�o extra', icon: '??', color: '#2dd4bf', gradient: 'rgba(45,212,191,0.08)' },
+                    { key: 'ALL' as const, label: 'Total', count: clientUsers.length, desc: 'clientes cadastrados', icon: '👥', color: '#6366f1', gradient: 'rgba(99,102,241,0.08)' },
+                    { key: 'ACTIVE' as const, label: 'Ativos', count: activeCount, desc: 'com contrato ativo', icon: '✅', color: '#10b981', gradient: 'rgba(16,185,129,0.08)' },
+                    { key: 'EX_CLIENT' as const, label: 'Ex-clientes', count: exClientCount, desc: 'contrato expirado', icon: '👋', color: '#f59e0b', gradient: 'rgba(245,158,11,0.08)' },
+                    { key: 'NO_CONTRACT' as const, label: 'Sem Contrato', count: noContractCount, desc: 'nunca contrataram', icon: '📭', color: '#94a3b8', gradient: 'rgba(148,163,184,0.08)' },
+                    { key: 'NO_ADDON' as const, label: 'Sem Add-on', count: noAddonCount, desc: 'sem serviço extra', icon: '🧩', color: '#2dd4bf', gradient: 'rgba(45,212,191,0.08)' },
                 ] as const).map(card => {
                     const isActive = typeFilter === card.key;
                     return (
@@ -305,9 +305,9 @@ export default function AdminClientsPage() {
                         onFocus={e => (e.currentTarget.style.borderColor = '#10b981')}
                         onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
                     />
-                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>??</span>
+                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🔎</span>
                 </div>
-                {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem' }}>?</button>}
+                {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem' }}>✖️</button>}
 
                 {typeFilter !== 'ALL' && (
                     <button onClick={() => setTypeFilter('ALL')} style={{
@@ -316,7 +316,7 @@ export default function AdminClientsPage() {
                         background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)',
                         color: '#ef4444', cursor: 'pointer', transition: 'all 0.2s'
                     }}>
-                        ? Limpar filtro
+                        🗑️ Limpar filtro
                     </button>
                 )}
 
@@ -329,7 +329,7 @@ export default function AdminClientsPage() {
             <div style={{ borderRadius: '16px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', overflow: 'hidden' }}>
                 {filtered.length === 0 ? (
                     <div style={{ padding: '48px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                        <div style={{ fontSize: '2.5rem', marginBottom: '12px', opacity: 0.4 }}>??</div>
+                        <div style={{ fontSize: '2.5rem', marginBottom: '12px', opacity: 0.4 }}>🔍</div>
                         <div style={{ fontWeight: 600 }}>Nenhum cliente encontrado</div>
                         <div style={{ fontSize: '0.8125rem', marginTop: '4px' }}>Tente ajustar busca ou filtros</div>
                     </div>
@@ -339,12 +339,12 @@ export default function AdminClientsPage() {
                             <thead>
                                 <tr>
                                     <th style={{ paddingLeft: '20px' }}>Cliente</th>
-                                    <th style={{ textAlign: 'center' }}>Sess�es</th>
+                                    <th style={{ textAlign: 'center' }}>Sessões</th>
                                     <th style={{ textAlign: 'center' }}>Contratos</th>
                                     <th style={{ textAlign: 'right' }}>Valor Pago</th>
                                     <th style={{ textAlign: 'right' }}>A Receber</th>
                                     <th>Desde</th>
-                                    <th style={{ textAlign: 'center' }}>A��es</th>
+                                    <th style={{ textAlign: 'center' }}>Ações</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -384,7 +384,7 @@ export default function AdminClientsPage() {
                                                             <span>{u.email}</span>
                                                             {u.phone && (
                                                                 <>
-                                                                    <span style={{ opacity: 0.3 }}>�</span>
+                                                                    <span style={{ opacity: 0.3 }}>•</span>
                                                                     <span>{maskPhone(u.phone)}</span>
                                                                 </>
                                                             )}
@@ -396,7 +396,7 @@ export default function AdminClientsPage() {
                                             {/* Sessions count */}
                                             <td style={{ textAlign: 'center' }}>
                                                 <div style={{ fontWeight: 700, fontSize: '1rem' }}>{u._count.bookings}</div>
-                                                <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)' }}>sess�es</div>
+                                                <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)' }}>sessões</div>
                                             </td>
 
                                             {/* Contracts count */}
@@ -412,7 +412,7 @@ export default function AdminClientsPage() {
                                                         {formatBRL(u.totalPaid)}
                                                     </span>
                                                 ) : (
-                                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>�</span>
+                                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>—</span>
                                                 )}
                                             </td>
 
@@ -423,7 +423,7 @@ export default function AdminClientsPage() {
                                                         {formatBRL(u.totalPending)}
                                                     </span>
                                                 ) : (
-                                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>�</span>
+                                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>—</span>
                                                 )}
                                             </td>
 
@@ -445,7 +445,7 @@ export default function AdminClientsPage() {
                                                     onMouseEnter={e => { e.currentTarget.style.borderColor = '#10b981'; e.currentTarget.style.color = '#10b981'; }}
                                                     onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-color)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
                                                     title="Editar"
-                                                    onClick={() => openEditModal(u)}>??</button>
+                                                    onClick={() => openEditModal(u)}>✏️</button>
 
                                                     {u.role !== 'ADMIN' && (
                                                         <button style={{
@@ -456,7 +456,7 @@ export default function AdminClientsPage() {
                                                         onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
                                                         onMouseLeave={e => (e.currentTarget.style.opacity = '0.7')}
                                                         title="Excluir"
-                                                        onClick={() => setDeleteUser(u)}>???</button>
+                                                        onClick={() => setDeleteUser(u)}>🗑️</button>
                                                     )}
                                                 </div>
                                             </td>
@@ -502,11 +502,11 @@ export default function AdminClientsPage() {
                                     <span style={{
                                         width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
                                         background: 'linear-gradient(135deg, #10b981, #11819B)', fontSize: '1rem'
-                                    }}>??</span>
+                                    }}>➕</span>
                                     Novo Cliente
                                 </h2>
                                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px', marginBottom: 0 }}>
-                                    Cadastre um novo cliente no sistema do est�dio
+                                    Cadastre um novo cliente no sistema do estúdio
                                 </p>
                             </div>
 
@@ -527,7 +527,7 @@ export default function AdminClientsPage() {
                                         <div>
                                             <label style={labelStyle}>Nome *</label>
                                             <div style={{ position: 'relative' }}>
-                                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>??</span>
+                                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>👤</span>
                                                 <input
                                                     value={createForm.name} onChange={e => setCreateForm({ ...createForm, name: e.target.value })}
                                                     placeholder="Nome completo" autoFocus
@@ -541,7 +541,7 @@ export default function AdminClientsPage() {
                                         <div>
                                             <label style={labelStyle}>E-mail *</label>
                                             <div style={{ position: 'relative' }}>
-                                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>??</span>
+                                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>📧</span>
                                                 <input
                                                     type="email" value={createForm.email}
                                                     onChange={e => setCreateForm({ ...createForm, email: maskEmail(e.target.value) })}
@@ -560,11 +560,11 @@ export default function AdminClientsPage() {
                                         <div>
                                             <label style={labelStyle}>Senha *</label>
                                             <div style={{ position: 'relative' }}>
-                                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>??</span>
+                                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🔒</span>
                                                 <input
                                                     type="password" value={createForm.password}
                                                     onChange={e => setCreateForm({ ...createForm, password: e.target.value })}
-                                                    placeholder="M�nimo 6 caracteres"
+                                                    placeholder="Mínimo 6 caracteres"
                                                     style={inputStyle(!!createFieldErrors.password)}
                                                     onFocus={e => (e.currentTarget.style.borderColor = '#10b981')}
                                                     onBlur={e => (e.currentTarget.style.borderColor = createFieldErrors.password ? 'rgba(239,68,68,0.5)' : 'var(--border-default)')}
@@ -575,7 +575,7 @@ export default function AdminClientsPage() {
                                         <div>
                                             <label style={labelStyle}>Telefone</label>
                                             <div style={{ position: 'relative' }}>
-                                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>??</span>
+                                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>📱</span>
                                                 <input
                                                     value={createForm.phone}
                                                     onChange={e => setCreateForm({ ...createForm, phone: maskPhone(e.target.value) })}
@@ -593,7 +593,7 @@ export default function AdminClientsPage() {
                                     <div style={{ marginTop: '14px' }}>
                                         <label style={labelStyle}>Tipo de conta</label>
                                         <div style={{ display: 'flex', gap: '6px' }}>
-                                            {[{ key: 'CLIENTE', label: '?? Cliente', desc: 'Acesso ao painel do cliente' }, { key: 'ADMIN', label: '??? Admin', desc: 'Acesso total ao sistema' }].map(r => (
+                                            {[{ key: 'CLIENTE', label: '👤 Cliente', desc: 'Acesso ao painel do cliente' }, { key: 'ADMIN', label: '🛡️ Admin', desc: 'Acesso total ao sistema' }].map(r => (
                                                 <button key={r.key}
                                                     onClick={() => setCreateForm({ ...createForm, role: r.key })}
                                                     style={{
@@ -626,7 +626,7 @@ export default function AdminClientsPage() {
                                             <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Dados Adicionais</span>
                                             <span style={{ fontSize: '0.5625rem', color: 'var(--text-muted)', fontWeight: 500, textTransform: 'none', letterSpacing: '0' }}>(opcional)</span>
                                         </span>
-                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', transition: 'transform 0.2s', transform: showAdvanced ? 'rotate(180deg)' : 'rotate(0)' }}>?</span>
+                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', transition: 'transform 0.2s', transform: showAdvanced ? 'rotate(180deg)' : 'rotate(0)' }}>▼</span>
                                     </button>
 
                                     {showAdvanced && (
@@ -636,7 +636,7 @@ export default function AdminClientsPage() {
                                                 <div>
                                                     <label style={labelStyle}>CPF/CNPJ</label>
                                                     <div style={{ position: 'relative' }}>
-                                                        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>??</span>
+                                                        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🪪</span>
                                                         <input
                                                             value={createForm.cpfCnpj}
                                                             onChange={e => setCreateForm({ ...createForm, cpfCnpj: maskCpfCnpj(e.target.value) })}
@@ -670,7 +670,7 @@ export default function AdminClientsPage() {
                                             <div style={{ marginBottom: '12px' }}>
                                                 <label style={labelStyle}>Redes Sociais</label>
                                                 <div style={{ position: 'relative' }}>
-                                                    <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>??</span>
+                                                    <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🌐</span>
                                                     <input
                                                         value={createForm.socialLinks}
                                                         onChange={e => setCreateForm({ ...createForm, socialLinks: e.target.value })}
@@ -684,11 +684,11 @@ export default function AdminClientsPage() {
 
                                             {/* Notes */}
                                             <div>
-                                                <label style={labelStyle}>?? Notas internas</label>
+                                                <label style={labelStyle}>📝 Notas internas</label>
                                                 <textarea
                                                     value={createForm.notes}
                                                     onChange={e => setCreateForm({ ...createForm, notes: e.target.value })}
-                                                    placeholder="Observa��es sobre o cliente..."
+                                                    placeholder="Observações sobre o cliente..."
                                                     rows={2}
                                                     style={{
                                                         width: '100%', padding: '10px 14px', borderRadius: '10px', fontSize: '0.8125rem',
@@ -715,7 +715,7 @@ export default function AdminClientsPage() {
                                             opacity: canCreate && !creating ? 1 : 0.5,
                                             display: 'flex', alignItems: 'center', gap: '8px',
                                         }}>
-                                        {creating ? '? Criando...' : '?? Cadastrar Cliente'}
+                                        {creating ? '⏳ Criando...' : '➕ Cadastrar Cliente'}
                                     </button>
                                 </div>
                             </div>
@@ -751,11 +751,11 @@ export default function AdminClientsPage() {
                                 <span style={{
                                     width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
                                     background: 'linear-gradient(135deg, #10b981, #11819B)', fontSize: '1rem'
-                                }}>??</span>
+                                }}>✏️</span>
                                 Editar Cliente
                             </h2>
                             <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px', marginBottom: 0 }}>
-                                Atualize as informa��es de <strong style={{ color: 'var(--text-primary)' }}>{editUser.name}</strong>
+                                Atualize as informações de <strong style={{ color: 'var(--text-primary)' }}>{editUser.name}</strong>
                             </p>
                         </div>
 
@@ -782,7 +782,7 @@ export default function AdminClientsPage() {
                                     <div>
                                         <label style={editLabelStyle}>Nome *</label>
                                         <div style={{ position: 'relative' }}>
-                                            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>??</span>
+                                            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>👤</span>
                                             <input
                                                 value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })}
                                                 placeholder="Nome completo"
@@ -796,7 +796,7 @@ export default function AdminClientsPage() {
                                     <div>
                                         <label style={editLabelStyle}>CPF / CNPJ</label>
                                         <div style={{ position: 'relative' }}>
-                                            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>??</span>
+                                            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🪪</span>
                                             <input
                                                 value={editForm.cpfCnpj} onChange={e => setEditForm({ ...editForm, cpfCnpj: maskCpfCnpj(e.target.value) })}
                                                 placeholder="000.000.000-00"
@@ -830,7 +830,7 @@ export default function AdminClientsPage() {
                                 <div style={{ marginTop: '14px' }}>
                                     <label style={editLabelStyle}>Tipo de conta</label>
                                     <div style={{ display: 'flex', gap: '6px' }}>
-                                        {[{ key: 'CLIENTE', label: '?? Cliente', desc: 'Acesso ao painel do cliente' }, { key: 'ADMIN', label: '??? Admin', desc: 'Acesso total ao sistema' }].map(r => (
+                                        {[{ key: 'CLIENTE', label: '👤 Cliente', desc: 'Acesso ao painel do cliente' }, { key: 'ADMIN', label: '🛡️ Admin', desc: 'Acesso total ao sistema' }].map(r => (
                                             <button key={r.key}
                                                 onClick={() => setEditForm({ ...editForm, role: r.key })}
                                                 style={{
@@ -848,11 +848,11 @@ export default function AdminClientsPage() {
                                 </div>
                             </div>
 
-                            {/* --- SECTION 2: Contato & Endere�o --- */}
+                            {/* --- SECTION 2: Contato & Endereço --- */}
                             <div style={{ marginBottom: '20px' }}>
                                 <div style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                     <span style={{ width: 18, height: 18, borderRadius: '50%', background: '#3b82f6', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.5rem', fontWeight: 800 }}>2</span>
-                                    Contato & Endere�o
+                                    Contato & Endereço
                                 </div>
 
                                 {/* Email + Phone */}
@@ -860,7 +860,7 @@ export default function AdminClientsPage() {
                                     <div>
                                         <label style={editLabelStyle}>E-mail *</label>
                                         <div style={{ position: 'relative' }}>
-                                            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>??</span>
+                                            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>📧</span>
                                             <input
                                                 type="email" value={editForm.email}
                                                 onChange={e => setEditForm({ ...editForm, email: maskEmail(e.target.value) })}
@@ -875,7 +875,7 @@ export default function AdminClientsPage() {
                                     <div>
                                         <label style={editLabelStyle}>Telefone</label>
                                         <div style={{ position: 'relative' }}>
-                                            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>??</span>
+                                            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>📱</span>
                                             <input
                                                 value={editForm.phone}
                                                 onChange={e => setEditForm({ ...editForm, phone: maskPhone(e.target.value) })}
@@ -893,7 +893,7 @@ export default function AdminClientsPage() {
                                 <div style={{ marginBottom: '12px' }}>
                                     <label style={editLabelStyle}>Redes Sociais</label>
                                     <div style={{ position: 'relative' }}>
-                                        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>??</span>
+                                        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🌐</span>
                                         <input
                                             value={editForm.socialLinks}
                                             onChange={e => setEditForm({ ...editForm, socialLinks: e.target.value })}
@@ -907,13 +907,13 @@ export default function AdminClientsPage() {
 
                                 {/* Address row */}
                                 <div style={{ marginBottom: '12px' }}>
-                                    <label style={editLabelStyle}>Endere�o</label>
+                                    <label style={editLabelStyle}>Endereço</label>
                                     <div style={{ position: 'relative' }}>
-                                        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>??</span>
+                                        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>📍</span>
                                         <input
                                             value={editForm.address}
                                             onChange={e => setEditForm({ ...editForm, address: e.target.value })}
-                                            placeholder="Rua, n�mero, complemento"
+                                            placeholder="Rua, número, complemento"
                                             style={editInputStyle(false)}
                                             onFocus={e => (e.currentTarget.style.borderColor = '#3b82f6')}
                                             onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-default)')}
@@ -926,7 +926,7 @@ export default function AdminClientsPage() {
                                     <div>
                                         <label style={editLabelStyle}>Cidade</label>
                                         <div style={{ position: 'relative' }}>
-                                            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>???</span>
+                                            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🏙️</span>
                                             <input
                                                 value={editForm.city}
                                                 onChange={e => setEditForm({ ...editForm, city: e.target.value })}
@@ -940,7 +940,7 @@ export default function AdminClientsPage() {
                                     <div>
                                         <label style={editLabelStyle}>UF</label>
                                         <div style={{ position: 'relative' }}>
-                                            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>??</span>
+                                            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🗺️</span>
                                             <input
                                                 value={editForm.state}
                                                 onChange={e => setEditForm({ ...editForm, state: e.target.value })}
@@ -954,11 +954,11 @@ export default function AdminClientsPage() {
                                 </div>
                             </div>
 
-                            {/* --- SECTION 3: Seguran�a & Notas --- */}
+                            {/* --- SECTION 3: Segurança & Notas --- */}
                             <div style={{ marginBottom: '18px' }}>
                                 <div style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                     <span style={{ width: 18, height: 18, borderRadius: '50%', background: 'rgba(45,212,191,0.15)', color: '#2dd4bf', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.5rem', fontWeight: 800 }}>3</span>
-                                    <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Seguran�a & Notas</span>
+                                    <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Segurança & Notas</span>
                                     <span style={{ fontSize: '0.5625rem', color: 'var(--text-muted)', fontWeight: 500, textTransform: 'none', letterSpacing: '0' }}>(opcional)</span>
                                 </div>
 
@@ -967,11 +967,11 @@ export default function AdminClientsPage() {
                                     <div style={{ marginBottom: '12px' }}>
                                         <label style={editLabelStyle}>Nova Senha <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0, color: 'var(--text-muted)' }}>(vazio = manter atual)</span></label>
                                         <div style={{ position: 'relative' }}>
-                                            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>??</span>
+                                            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🔒</span>
                                             <input
                                                 type="password" value={editForm.password}
                                                 onChange={e => setEditForm({ ...editForm, password: e.target.value })}
-                                                placeholder="M�nimo 6 caracteres"
+                                                placeholder="Mínimo 6 caracteres"
                                                 style={editInputStyle(!!editFieldErrors.password)}
                                                 onFocus={e => (e.currentTarget.style.borderColor = '#2dd4bf')}
                                                 onBlur={e => (e.currentTarget.style.borderColor = editFieldErrors.password ? 'rgba(239,68,68,0.5)' : 'var(--border-default)')}
@@ -982,11 +982,11 @@ export default function AdminClientsPage() {
 
                                     {/* Notes */}
                                     <div>
-                                        <label style={editLabelStyle}>?? Notas internas</label>
+                                        <label style={editLabelStyle}>📝 Notas internas</label>
                                         <textarea
                                             value={editForm.notes}
                                             onChange={e => setEditForm({ ...editForm, notes: e.target.value })}
-                                            placeholder="Observa��es sobre o cliente..."
+                                            placeholder="Observações sobre o cliente..."
                                             rows={2}
                                             style={{
                                                 width: '100%', padding: '10px 14px', borderRadius: '10px', fontSize: '0.8125rem',
@@ -1012,7 +1012,7 @@ export default function AdminClientsPage() {
                                         opacity: !editLoading ? 1 : 0.5,
                                         display: 'flex', alignItems: 'center', gap: '8px',
                                     }}>
-                                    {editLoading ? '? Salvando...' : '?? Salvar Altera��es'}
+                                    {editLoading ? '⏳ Salvando...' : '💾 Salvar Alterações'}
                                 </button>
                             </div>
                         </div>
@@ -1027,14 +1027,14 @@ export default function AdminClientsPage() {
                 <ModalOverlay onClose={() => setDeleteUser(null)}>
                     <div className="modal" style={{ maxWidth: 400 }}>
                         <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-                            <div style={{ fontSize: '3rem', marginBottom: '10px' }}>??</div>
-                            <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Excluir Usu�rio</h2>
+                            <div style={{ fontSize: '3rem', marginBottom: '10px' }}>⚠️</div>
+                            <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Excluir Usuário</h2>
                         </div>
                         <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '8px', textAlign: 'center' }}>
                             Tem certeza que deseja excluir <strong>{deleteUser.name}</strong>?
                         </p>
                         <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginBottom: '24px', lineHeight: 1.5, textAlign: 'center' }}>
-                            Todos os contratos e agendamentos vinculados ser�o cancelados e os dados removidos permanentemente.
+                            Todos os contratos e agendamentos vinculados serão cancelados e os dados removidos permanentemente.
                         </p>
                         <div className="modal-actions">
                             <button className="btn btn-secondary" onClick={() => setDeleteUser(null)} disabled={deleteLoading} style={{ flex: 1 }}>Voltar</button>

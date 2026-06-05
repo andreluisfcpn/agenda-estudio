@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { UIProvider } from './context/UIContext';
-import { NavigationProvider, useNavigation } from './context/NavigationContext';
+import { NavigationProvider } from './context/NavigationContext';
 import LoginPage from './pages/LoginPage';
 import LandingPage from './pages/LandingPage';
 import AmbientBackground from './components/AmbientBackground';
@@ -34,6 +34,33 @@ const AdminReportsPage = React.lazy(() => import('./pages/AdminReportsPage'));
 const AdminIntegrationsPage = React.lazy(() => import('./pages/AdminIntegrationsPage'));
 const ClientProfilePage = React.lazy(() => import('./pages/ClientProfilePage'));
 
+// Preload the page chunks while the browser is idle so navigation is instant
+// (avoids the first-visit "download the chunk" delay / flicker).
+let pagesPreloaded = false;
+function preloadPages() {
+    if (pagesPreloaded) return;
+    pagesPreloaded = true;
+    const loaders = [
+        () => import('./pages/DashboardPage'),
+        () => import('./pages/CalendarPage'),
+        () => import('./pages/MyBookingsPage'),
+        () => import('./pages/MyContractsPage'),
+        () => import('./pages/MyPaymentsPage'),
+        () => import('./pages/AdminTodayPage'),
+        () => import('./pages/AdminBookingsPage'),
+        () => import('./pages/AdminClientsPage'),
+        () => import('./pages/AdminContractsPage'),
+        () => import('./pages/AdminPricingPage'),
+        () => import('./pages/AdminServicesPage'),
+        () => import('./pages/AdminFinancePage'),
+        () => import('./pages/AdminReportsPage'),
+        () => import('./pages/AdminIntegrationsPage'),
+        () => import('./pages/ClientProfilePage'),
+    ];
+    // Stagger so we don't compete with the initial render's network/CPU.
+    loaders.forEach((load, i) => setTimeout(() => { load().catch(() => {}); }, i * 120));
+}
+
 // ─── Success Toast ──────────────────────────────────────
 
 function SuccessToast({ message, onDone }: { message: string; onDone: () => void }) {
@@ -62,7 +89,6 @@ function SuccessToast({ message, onDone }: { message: string; onDone: () => void
 function Layout({ children }: { children: React.ReactNode }) {
     const [showProfile, setShowProfile] = useState(false);
     const [toast, setToast] = useState('');
-    const { isTransitioning, isExiting } = useNavigation();
     usePushSubscription();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
         try { return localStorage.getItem('sidebar-collapsed') === 'true'; } catch { return false; }
@@ -100,9 +126,6 @@ function Layout({ children }: { children: React.ReactNode }) {
                 collapsed={sidebarCollapsed} 
                 onProfileClick={() => setShowProfile(true)}
             />
-
-            {/* Transition overlay — shown BEFORE route change */}
-            {isTransitioning && <PageTransitionLoader exiting={isExiting} />}
 
             <main className="main-content">
                 <Suspense fallback={<PageTransitionLoader />}>
@@ -149,9 +172,15 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 function AppRoutes() {
     const { user, loading } = useAuth();
 
-    // Load payment methods from API on app init
+    // Load payment methods + preload page chunks (on idle) once authenticated,
+    // so navigating between tabs is instant instead of downloading on first click.
     useEffect(() => {
-        if (user) { loadPaymentMethods(); }
+        if (!user) return;
+        loadPaymentMethods();
+        const ric: (cb: () => void) => void =
+            (window as unknown as { requestIdleCallback?: (cb: () => void) => void }).requestIdleCallback
+            || ((cb) => window.setTimeout(cb, 1500));
+        ric(() => preloadPages());
     }, [user]);
 
     if (loading) {

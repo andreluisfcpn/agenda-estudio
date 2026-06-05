@@ -9,18 +9,18 @@ function formatBRL(cents: number): string {
 }
 
 const TIER_META: Record<string, { emoji: string; color: string; bg: string; label: string }> = {
-    COMERCIAL: { emoji: '??', color: '#10b981', bg: 'rgba(16,185,129,0.10)', label: 'Comercial' },
-    AUDIENCIA: { emoji: '??', color: '#2dd4bf', bg: 'rgba(45,212,191,0.10)', label: 'AudiÍncia' },
-    SABADO:    { emoji: '??', color: '#fbbf24', bg: 'rgba(245,158,11,0.10)', label: 'S·bado' },
+    COMERCIAL: { emoji: 'üè¢', color: '#10b981', bg: 'rgba(16,185,129,0.10)', label: 'Comercial' },
+    AUDIENCIA: { emoji: 'üé§', color: '#2dd4bf', bg: 'rgba(45,212,191,0.10)', label: 'Audi√™ncia' },
+    SABADO:    { emoji: 'üåü', color: '#fbbf24', bg: 'rgba(245,158,11,0.10)', label: 'S√°bado' },
 };
 
 const STATUS_META: Record<string, { icon: string; label: string; color: string; bg: string }> = {
-    RESERVED:      { icon: '?', label: 'Reservado',     color: '#d97706', bg: 'rgba(217,119,6,0.12)' },
-    CONFIRMED:     { icon: '?',  label: 'Confirmado',    color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
-    COMPLETED:     { icon: '?',  label: 'ConcluÌdo',     color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
-    FALTA:         { icon: '?',  label: 'Falta',         color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
-    NAO_REALIZADO: { icon: '?',  label: 'N„o Realizado', color: '#14b8a6', bg: 'rgba(45,212,191,0.12)' },
-    CANCELLED:     { icon: '?',  label: 'Cancelado',     color: '#6b7280', bg: 'rgba(107,114,128,0.12)' },
+    RESERVED:      { icon: '‚è≥', label: 'Reservado',     color: '#d97706', bg: 'rgba(217,119,6,0.12)' },
+    CONFIRMED:     { icon: '‚úÖ',  label: 'Confirmado',    color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
+    COMPLETED:     { icon: '‚úÖ',  label: 'Conclu√≠do',     color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
+    FALTA:         { icon: '‚ùå',  label: 'Falta',         color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
+    NAO_REALIZADO: { icon: '‚ùå',  label: 'N√£o Realizado', color: '#14b8a6', bg: 'rgba(45,212,191,0.12)' },
+    CANCELLED:     { icon: 'üö´',  label: 'Cancelado',     color: '#6b7280', bg: 'rgba(107,114,128,0.12)' },
 };
 
 interface SlotDef {
@@ -34,15 +34,15 @@ interface SlotDef {
 }
 
 const TIMELINE: SlotDef[] = [
-    { id: 'S1', type: 'SLOT',  time: '10:00', timeEnd: '12:00', label: '10h ó 12h' },
-    { id: 'T1', type: 'BREAK', time: '12:00', timeEnd: '13:00', label: '12:00 ó 13:00', breakLabel: 'Intervalo para AlmoÁo', breakIcon: '?' },
-    { id: 'S2', type: 'SLOT',  time: '13:00', timeEnd: '15:00', label: '13h ó 15h' },
-    { id: 'T2', type: 'BREAK', time: '15:00', timeEnd: '15:30', label: '15:00 ó 15:30', breakLabel: 'HigienizaÁ„o', breakIcon: '??' },
-    { id: 'S3', type: 'SLOT',  time: '15:30', timeEnd: '17:30', label: '15h30 ó 17h30' },
-    { id: 'T3', type: 'BREAK', time: '17:30', timeEnd: '18:00', label: '17:30 ó 18:00', breakLabel: 'HigienizaÁ„o', breakIcon: '??' },
-    { id: 'S4', type: 'SLOT',  time: '18:00', timeEnd: '20:00', label: '18h ó 20h' },
-    { id: 'T4', type: 'BREAK', time: '20:00', timeEnd: '20:30', label: '20:00 ó 20:30', breakLabel: 'HigienizaÁ„o', breakIcon: '??' },
-    { id: 'S5', type: 'SLOT',  time: '20:30', timeEnd: '22:30', label: '20h30 ó 22h30' },
+    { id: 'S1', type: 'SLOT',  time: '10:00', timeEnd: '12:00', label: '10h ‚Äî 12h' },
+    { id: 'T1', type: 'BREAK', time: '12:00', timeEnd: '13:00', label: '12:00 ‚Äî 13:00', breakLabel: 'Intervalo para Almo√ßo', breakIcon: 'üçΩÔ∏è' },
+    { id: 'S2', type: 'SLOT',  time: '13:00', timeEnd: '15:00', label: '13h ‚Äî 15h' },
+    { id: 'T2', type: 'BREAK', time: '15:00', timeEnd: '15:30', label: '15:00 ‚Äî 15:30', breakLabel: 'Higieniza√ß√£o', breakIcon: 'üßπ' },
+    { id: 'S3', type: 'SLOT',  time: '15:30', timeEnd: '17:30', label: '15h30 ‚Äî 17h30' },
+    { id: 'T3', type: 'BREAK', time: '17:30', timeEnd: '18:00', label: '17:30 ‚Äî 18:00', breakLabel: 'Higieniza√ß√£o', breakIcon: 'üßπ' },
+    { id: 'S4', type: 'SLOT',  time: '18:00', timeEnd: '20:00', label: '18h ‚Äî 20h' },
+    { id: 'T4', type: 'BREAK', time: '20:00', timeEnd: '20:30', label: '20:00 ‚Äî 20:30', breakLabel: 'Higieniza√ß√£o', breakIcon: 'üßπ' },
+    { id: 'S5', type: 'SLOT',  time: '20:30', timeEnd: '22:30', label: '20h30 ‚Äî 22h30' },
 ];
 
 function getToday(): string {
@@ -133,8 +133,8 @@ export default function AdminTodayPage() {
 
     const handleCancel = (bookingId: string, clientName: string) => {
         showConfirm({
-            title: '?? Cancelar Agendamento',
-            message: `Tem certeza que deseja cancelar a sess„o de ${clientName}?`,
+            title: 'üö´ Cancelar Agendamento',
+            message: `Tem certeza que deseja cancelar a sess√£o de ${clientName}?`,
             onConfirm: async () => {
                 try {
                     await bookingsApi.cancel(bookingId);
@@ -166,7 +166,7 @@ export default function AdminTodayPage() {
                 chatMessages: chatMessages === '' ? null : Number(chatMessages),
                 audienceOrigin: audienceOrigin || null,
             });
-            showToast('MÈtricas salvas com sucesso! ?');
+            showToast('M√©tricas salvas com sucesso! ‚úÖ');
             await loadData();
         } catch (err: unknown) { console.error(err); }
         finally { setSaving(false); }
@@ -199,7 +199,7 @@ export default function AdminTodayPage() {
             <div style={{ marginBottom: '28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
                 <div>
                     <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontSize: '1.75rem' }}>??</span> Vis„o do Dia
+                        <span style={{ fontSize: '1.75rem' }}>üìä</span> Vis√£o do Dia
                     </h1>
                     <p className="page-subtitle" style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                         {now.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
@@ -208,7 +208,7 @@ export default function AdminTodayPage() {
                             background: 'rgba(16,185,129,0.1)', padding: '2px 8px', borderRadius: '6px',
                             animation: 'today-pulse 2s infinite'
                         }}>
-                            ?? {nowTime}:{String(now.getSeconds()).padStart(2, '0')}
+                            ‚è∞ {nowTime}:{String(now.getSeconds()).padStart(2, '0')}
                         </span>
                     </p>
                 </div>
@@ -221,7 +221,7 @@ export default function AdminTodayPage() {
                     background: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(67,56,202,0.04))',
                     border: '1px solid rgba(99,102,241,0.2)',
                 }}>
-                    <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Sessıes</div>
+                    <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Sess√µes</div>
                     <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)' }}>{kpis.total}</div>
                     <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>agendadas hoje</div>
                 </div>
@@ -238,7 +238,7 @@ export default function AdminTodayPage() {
                     background: kpis.completed > 0 ? 'linear-gradient(135deg, rgba(16,185,129,0.08), rgba(6,78,59,0.04))' : 'var(--bg-secondary)',
                     border: kpis.completed > 0 ? '1px solid rgba(16,185,129,0.2)' : '1px solid var(--border-color)',
                 }}>
-                    <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>ConcluÌdas</div>
+                    <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Conclu√≠das</div>
                     <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)' }}>{kpis.completed}</div>
                     <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>finalizadas</div>
                 </div>
@@ -249,7 +249,7 @@ export default function AdminTodayPage() {
                 }}>
                     <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: kpis.falta > 0 ? '#ef4444' : 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Faltas</div>
                     <div style={{ fontSize: '2rem', fontWeight: 800, color: kpis.falta > 0 ? '#ef4444' : 'var(--text-primary)' }}>{kpis.falta}</div>
-                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>n„o compareceram</div>
+                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>n√£o compareceram</div>
                 </div>
                 <div style={{
                     padding: '20px', borderRadius: '14px',
@@ -258,7 +258,7 @@ export default function AdminTodayPage() {
                 }}>
                     <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Receita</div>
                     <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#10b981' }}>{formatBRL(kpis.revenue)}</div>
-                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>confirmado + concluÌdo</div>
+                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>confirmado + conclu√≠do</div>
                 </div>
             </div>
 
@@ -271,10 +271,10 @@ export default function AdminTodayPage() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                             <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                                {kpis.resolved} de {kpis.total} sessıes finalizadas
+                                {kpis.resolved} de {kpis.total} sess√µes finalizadas
                             </span>
-                            {kpis.completed > 0 && <span style={{ fontSize: '0.6875rem', color: '#10b981', fontWeight: 700, background: 'rgba(16,185,129,0.1)', padding: '2px 8px', borderRadius: '6px' }}>? {kpis.completed}</span>}
-                            {kpis.falta > 0 && <span style={{ fontSize: '0.6875rem', color: '#ef4444', fontWeight: 700, background: 'rgba(239,68,68,0.1)', padding: '2px 8px', borderRadius: '6px' }}>? {kpis.falta}</span>}
+                            {kpis.completed > 0 && <span style={{ fontSize: '0.6875rem', color: '#10b981', fontWeight: 700, background: 'rgba(16,185,129,0.1)', padding: '2px 8px', borderRadius: '6px' }}>‚úÖ {kpis.completed}</span>}
+                            {kpis.falta > 0 && <span style={{ fontSize: '0.6875rem', color: '#ef4444', fontWeight: 700, background: 'rgba(239,68,68,0.1)', padding: '2px 8px', borderRadius: '6px' }}>‚ùå {kpis.falta}</span>}
                         </div>
                         <span style={{ fontSize: '0.875rem', fontWeight: 800, color: kpis.progressPct === 100 ? '#10b981' : 'var(--text-primary)' }}>{kpis.progressPct}%</span>
                     </div>
@@ -297,9 +297,9 @@ export default function AdminTodayPage() {
                     padding: '64px 24px', textAlign: 'center', borderRadius: '16px',
                     background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
                 }}>
-                    <div style={{ fontSize: '4rem', marginBottom: '16px' }}>???</div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>Est˙dio fechado aos domingos</div>
-                    <p style={{ color: 'var(--text-muted)', marginTop: '8px', fontSize: '0.9375rem' }}>Descanse bem. A semana comeÁa amanh„! ??</p>
+                    <div style={{ fontSize: '4rem', marginBottom: '16px' }}>üò¥</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>Est√∫dio fechado aos domingos</div>
+                    <p style={{ color: 'var(--text-muted)', marginTop: '8px', fontSize: '0.9375rem' }}>Descanse bem. A semana come√ßa amanh√£! üéâ</p>
                 </div>
             ) : (
                 /* --- TIMELINE --- */
@@ -466,7 +466,7 @@ export default function AdminTodayPage() {
                                                 </>
                                             ) : (
                                                 <span style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>
-                                                    {isPast ? 'ó Encerrado ó' : '?? Hor·rio disponÌvel'}
+                                                    {isPast ? '‚Äî Encerrado ‚Äî' : 'üîì Hor√°rio dispon√≠vel'}
                                                 </span>
                                             )}
                                         </div>
@@ -488,19 +488,19 @@ export default function AdminTodayPage() {
                                                     {booking.status === 'RESERVED' && (
                                                         <button className="today-action-btn" title="Confirmar"
                                                             style={{ background: 'rgba(59,130,246,0.12)', color: '#3b82f6', padding: '4px 10px', fontSize: '0.6875rem' }}
-                                                            onClick={(e) => { e.stopPropagation(); handleStatusChange(booking.id, 'CONFIRMED', '? ConfirmaÁ„o'); }}>
+                                                            onClick={(e) => { e.stopPropagation(); handleStatusChange(booking.id, 'CONFIRMED', '‚úÖ Confirma√ß√£o'); }}>
                                                             Confirmar
                                                         </button>
                                                     )}
                                                     <button className="today-action-btn" title="Concluir"
                                                         style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981', padding: '4px 8px', fontSize: '0.75rem' }}
-                                                        onClick={(e) => { e.stopPropagation(); handleStatusChange(booking.id, 'COMPLETED', '?? Conclus„o'); }}>
-                                                        ?
+                                                        onClick={(e) => { e.stopPropagation(); handleStatusChange(booking.id, 'COMPLETED', '‚úÖ Conclus√£o'); }}>
+                                                        ‚úÖ
                                                     </button>
                                                     <button className="today-action-btn" title="Falta"
                                                         style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444', padding: '4px 8px', fontSize: '0.75rem' }}
-                                                        onClick={(e) => { e.stopPropagation(); handleStatusChange(booking.id, 'FALTA', '? Falta'); }}>
-                                                        ?
+                                                        onClick={(e) => { e.stopPropagation(); handleStatusChange(booking.id, 'FALTA', '‚ùå Falta'); }}>
+                                                        ‚ùå
                                                     </button>
                                                 </div>
                                             )}
@@ -511,7 +511,7 @@ export default function AdminTodayPage() {
                                                     transform: isExpanded ? 'rotate(90deg)' : 'none',
                                                     transition: 'transform 0.25s ease',
                                                     display: 'inline-block', marginLeft: '2px',
-                                                }}>?</span>
+                                                }}>‚ñ∂</span>
                                             )}
                                         </div>
                                     </div>
@@ -535,30 +535,30 @@ export default function AdminTodayPage() {
                                                     {booking.status === 'RESERVED' && (
                                                         <button className="today-action-btn"
                                                             style={{ background: 'rgba(59,130,246,0.12)', color: '#3b82f6' }}
-                                                            onClick={() => handleStatusChange(booking.id, 'CONFIRMED', '? ConfirmaÁ„o')}>
-                                                            ? Confirmar PresenÁa
+                                                            onClick={() => handleStatusChange(booking.id, 'CONFIRMED', '‚úÖ Confirma√ß√£o')}>
+                                                            ‚úÖ Confirmar Presen√ßa
                                                         </button>
                                                     )}
                                                     <button className="today-action-btn"
                                                         style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981' }}
-                                                        onClick={() => handleStatusChange(booking.id, 'COMPLETED', '?? Conclus„o')}>
-                                                        ?? ConcluÌda
+                                                        onClick={() => handleStatusChange(booking.id, 'COMPLETED', '‚úÖ Conclus√£o')}>
+                                                        ‚úÖ Conclu√≠da
                                                     </button>
                                                     <button className="today-action-btn"
                                                         style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}
-                                                        onClick={() => handleStatusChange(booking.id, 'FALTA', '? Falta')}>
-                                                        ? Falta
+                                                        onClick={() => handleStatusChange(booking.id, 'FALTA', '‚ùå Falta')}>
+                                                        ‚ùå Falta
                                                     </button>
                                                     <button className="today-action-btn"
                                                         style={{ background: 'rgba(45,212,191,0.08)', color: '#14b8a6' }}
-                                                        onClick={() => handleStatusChange(booking.id, 'NAO_REALIZADO', '?? N„o Realizado')}>
-                                                        ?? N„o Realizado
+                                                        onClick={() => handleStatusChange(booking.id, 'NAO_REALIZADO', '‚ùå N√£o Realizado')}>
+                                                        ‚ùå N√£o Realizado
                                                     </button>
                                                     <div style={{ flex: 1 }} />
                                                     <button className="today-action-btn"
                                                         style={{ background: 'rgba(239,68,68,0.06)', color: '#ef4444' }}
                                                         onClick={() => handleCancel(booking.id, booking.user.name)}>
-                                                        ?? Cancelar
+                                                        üö´ Cancelar
                                                     </button>
                                                 </div>
                                             )}
@@ -572,14 +572,14 @@ export default function AdminTodayPage() {
                                                         marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px',
                                                     }}>
                                                         <span style={{ width: 20, height: 2, background: '#10b981', borderRadius: 1 }} />
-                                                        MÈtricas PÛs-GravaÁ„o
+                                                        M√©tricas P√≥s-Grava√ß√£o
                                                     </div>
                                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
                                                         {[
-                                                            { label: '?? DuraÁ„o (min)', value: durationMin, onChange: (v: string) => setDurationMin(v === '' ? '' : Number(v)), type: 'number', ph: 'Ex: 120' },
-                                                            { label: '??? Pico Viewers', value: peakViewers, onChange: (v: string) => setPeakViewers(v === '' ? '' : Number(v)), type: 'number', ph: 'Ex: 1530' },
-                                                            { label: '?? Mensagens', value: chatMessages, onChange: (v: string) => setChatMessages(v === '' ? '' : Number(v)), type: 'number', ph: 'Ex: 2400' },
-                                                            { label: '?? Origem', value: audienceOrigin, onChange: setAudienceOrigin, type: 'text', ph: 'Ex: SP Capital' },
+                                                            { label: '‚è±Ô∏è Dura√ß√£o (min)', value: durationMin, onChange: (v: string) => setDurationMin(v === '' ? '' : Number(v)), type: 'number', ph: 'Ex: 120' },
+                                                            { label: 'üëÅÔ∏è Pico Viewers', value: peakViewers, onChange: (v: string) => setPeakViewers(v === '' ? '' : Number(v)), type: 'number', ph: 'Ex: 1530' },
+                                                            { label: 'üí¨ Mensagens', value: chatMessages, onChange: (v: string) => setChatMessages(v === '' ? '' : Number(v)), type: 'number', ph: 'Ex: 2400' },
+                                                            { label: 'üåé Origem', value: audienceOrigin, onChange: setAudienceOrigin, type: 'text', ph: 'Ex: SP Capital' },
                                                         ].map(f => (
                                                             <div key={f.label}>
                                                                 <label style={{ display: 'block', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px' }}>{f.label}</label>
@@ -597,11 +597,11 @@ export default function AdminTodayPage() {
                                                 <div>
                                                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.6875rem', fontWeight: 700, color: '#2dd4bf', marginBottom: '8px' }}>
                                                         <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#2dd4bf' }} />
-                                                        ObservaÁ„o Interna (Admin)
+                                                        Observa√ß√£o Interna (Admin)
                                                     </label>
                                                     <textarea className="form-input"
                                                         style={{ minHeight: 80, resize: 'vertical', fontFamily: 'inherit', fontSize: '0.8125rem', background: 'var(--bg-elevated)' }}
-                                                        placeholder="Notas privadas sobre a sess„o..."
+                                                        placeholder="Notas privadas sobre a sess√£o..."
                                                         value={adminNotes}
                                                         onChange={e => setAdminNotes(e.target.value)} />
                                                 </div>
@@ -612,7 +612,7 @@ export default function AdminTodayPage() {
                                                     </label>
                                                     <textarea className="form-input"
                                                         style={{ minHeight: 80, resize: 'vertical', fontFamily: 'inherit', fontSize: '0.8125rem', background: 'var(--bg-elevated)' }}
-                                                        placeholder="VisÌvel no painel do cliente..."
+                                                        placeholder="Vis√≠vel no painel do cliente..."
                                                         value={clientNotes}
                                                         onChange={e => setClientNotes(e.target.value)} />
                                                 </div>
@@ -626,13 +626,13 @@ export default function AdminTodayPage() {
                                                 <button className="today-action-btn"
                                                     style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}
                                                     onClick={() => navigate(`/admin/clients/${booking.user.id}`)}>
-                                                    ?? Ver Perfil
+                                                    üë§ Ver Perfil
                                                 </button>
                                                 <button className="today-action-btn"
                                                     style={{ background: 'linear-gradient(135deg, #10b981, #059669)', color: '#fff', fontWeight: 700, padding: '8px 20px' }}
                                                     onClick={() => handleSaveMetrics(booking.id)}
                                                     disabled={saving}>
-                                                    {saving ? '? Salvando...' : '?? Salvar AlteraÁıes'}
+                                                    {saving ? '‚è≥ Salvando...' : 'üíæ Salvar Altera√ß√µes'}
                                                 </button>
                                             </div>
                                         </div>

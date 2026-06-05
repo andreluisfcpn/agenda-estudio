@@ -4,7 +4,7 @@ import { bookingsApi, Booking } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
 import { Clapperboard, ChevronDown } from 'lucide-react';
-import { DashboardSkeleton } from '../components/ui/SkeletonLoader';
+import Skeleton from '../components/ui/SkeletonLoader';
 
 const PLATFORMS = [
     { key: 'YOUTUBE', label: 'YouTube', color: '#FF0000' },
@@ -118,10 +118,6 @@ export default function MyBookingsPage() {
         }
     };
 
-    if (loading) {
-        return <DashboardSkeleton />;
-    }
-
     const now = Date.now();
     const finalized = bookings.filter(b => {
         if (b.status !== 'COMPLETED' && b.status !== 'FALTA') return false;
@@ -150,7 +146,24 @@ export default function MyBookingsPage() {
                 </div>
             </div>
 
-            {finalized.length === 0 ? (
+            {loading ? (
+                <div className="bookings-list">
+                    {[0, 1, 2].map(i => (
+                        <div key={i} className="card booking-card">
+                            <div className="booking-card__row" style={{ cursor: 'default' }}>
+                                <div className="booking-card__left">
+                                    <Skeleton variant="rounded" width={40} height={40} />
+                                    <div>
+                                        <Skeleton width={150} height={14} style={{ marginBottom: 6 }} />
+                                        <Skeleton width={110} height={12} />
+                                    </div>
+                                </div>
+                                <Skeleton variant="rounded" width={72} height={20} />
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ) : finalized.length === 0 ? (
                 <div className="bookings-list">
                     <div className="card">
                         <div className="empty-state">
