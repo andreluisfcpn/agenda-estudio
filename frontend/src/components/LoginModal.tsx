@@ -104,7 +104,9 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                 setLoading(false);
             }
         },
-        onError: () => setError('Falha no login com Google')
+        onError: () => setError('Falha no login com Google'),
+        // Garante que o access_token tenha email+perfil (o backend lê o e-mail via userinfo)
+        scope: 'openid email profile',
     });
 
     const handleSubmit = async (e: FormEvent) => {
