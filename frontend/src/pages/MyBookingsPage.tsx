@@ -15,6 +15,7 @@ export default function MyBookingsPage() {
     const [addons, setAddons] = useState<AddOnConfig[]>([]);
     const [loading, setLoading] = useState(true);
     const [detail, setDetail] = useState<Booking | null>(null);
+    const [failedCovers, setFailedCovers] = useState<Set<string>>(new Set());
 
     useEffect(() => { loadBookings(); }, []);
     useEffect(() => {
@@ -120,8 +121,8 @@ export default function MyBookingsPage() {
                         return (
                             <button key={b.id} className="rec-card animate-card-enter" style={{ '--i': i } as React.CSSProperties} onClick={() => setDetail(b)}>
                                 <div className="rec-card__cover">
-                                    {b.coverImageUrl
-                                        ? <img src={b.coverImageUrl} alt={title} loading="lazy" />
+                                    {b.coverImageUrl && !failedCovers.has(b.id)
+                                        ? <img src={b.coverImageUrl} alt={title} loading="lazy" onError={() => setFailedCovers(s => new Set(s).add(b.id))} />
                                         : <div className="rec-card__cover-ph"><Clapperboard size={30} /></div>}
                                     {b.isLivestream && <span className="rec-card__live"><Radio size={11} /> AO VIVO</span>}
                                     <span className="rec-card__status" style={{ color: b.status === 'COMPLETED' ? '#10b981' : 'var(--text-muted)' }}>{statusLabel(b.status)}</span>

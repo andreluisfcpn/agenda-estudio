@@ -277,7 +277,7 @@ export default function BookingDetailModal({
                     <div className="bdm-section">
                         <div className="bdm-section__title"><ImageIcon size={14} /> Capa do episódio</div>
                         <div className={`bdm-cover ${coverUrl ? 'bdm-cover--has' : ''}`}>
-                            {coverUrl ? <img className="bdm-cover__img" src={coverUrl} alt="Capa do episódio" /> : (
+                            {coverUrl ? <img className="bdm-cover__img" src={coverUrl} alt="Capa do episódio" onError={() => setCoverUrl('')} /> : (
                                 <div className="bdm-cover__placeholder"><ImageIcon size={28} /><span>Sem capa</span></div>
                             )}
                             <button className="bdm-cover__btn" onClick={() => fileRef.current?.click()} disabled={uploadingCover}>

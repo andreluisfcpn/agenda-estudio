@@ -68,7 +68,7 @@ const PAST: RecSpec[] = [
             INSTAGRAM: { views: 3100, peak: 87, likes: 450, comments: 124 },
         },
         durationMinutes: 118, audienceOrigin: 'SP, RJ, MG', clientNotes: 'Episódio com convidado especial — ótima repercussão.',
-        title: 'Entrevista com convidado especial', cover: 'https://picsum.photos/seed/buzios-ep1/1280/720',
+        title: 'Entrevista com convidado especial',
     },
     {
         daysAgo: 14, start: '13:00', tier: 'COMERCIAL', status: BookingStatus.COMPLETED, isLivestream: true,
@@ -79,7 +79,7 @@ const PAST: RecSpec[] = [
             INSTAGRAM: { views: 2400, peak: 54, likes: 320, comments: 71 },
         },
         durationMinutes: 122, audienceOrigin: 'SP Capital',
-        title: 'Bastidores do estúdio', cover: 'https://picsum.photos/seed/buzios-ep2/1280/720',
+        title: 'Bastidores do estúdio',
     },
     {
         daysAgo: 21, start: '20:30', tier: 'AUDIENCIA', status: BookingStatus.COMPLETED, isLivestream: true,
@@ -95,7 +95,7 @@ const PAST: RecSpec[] = [
             FACEBOOK: { views: 3200, peak: 70, likes: 140, comments: 55 },
         },
         durationMinutes: 130, audienceOrigin: 'Brasil', clientNotes: 'Maior audiência até agora!',
-        title: 'Especial de aniversário', cover: 'https://picsum.photos/seed/buzios-ep3/1280/720',
+        title: 'Especial de aniversário',
     },
     {
         daysAgo: 30, start: '10:00', tier: 'SABADO', status: BookingStatus.COMPLETED, isLivestream: false,

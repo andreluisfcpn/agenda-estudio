@@ -163,6 +163,9 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   cursor: pointer;
+  /* <button> resets — inherit theme text color (otherwise renders black) + font */
+  color: var(--text-primary);
+  font: inherit;
   transition: border-color 0.2s ease, transform 0.15s ease;
   -webkit-tap-highlight-color: transparent;
 }
@@ -195,7 +198,7 @@
 }
 .rec-card__body { padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; }
 .rec-card__title {
-  font-weight: 800; font-size: 1rem; line-height: 1.25;
+  font-weight: 800; font-size: 1rem; line-height: 1.25; color: var(--text-primary);
   overflow: hidden; text-overflow: ellipsis; display: -webkit-box;
   -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
