@@ -144,7 +144,10 @@
   color: #ef4444;
 }
 .rec-chip--platform {
-  color: #fff;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  font-weight: 600;
 }
 .rec-chip--addon {
   background: var(--tier-audiencia-bg);

@@ -2,12 +2,16 @@ import HeroAmbient from '../components/client/HeroAmbient';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { bookingsApi, pricingApi, Booking, AddOnConfig } from '../api/client';
-import { Clapperboard, Radio, BarChart3, Eye, TrendingUp, Heart } from 'lucide-react';
+import { Clapperboard, Radio, BarChart3, Eye, TrendingUp, Heart, Youtube, Instagram, Facebook, Music2, type LucideIcon } from 'lucide-react';
 import StatCard from '../components/ui/StatCard';
 import Skeleton from '../components/ui/SkeletonLoader';
 import BookingDetailModal from '../components/BookingDetailModal';
 import { studioSlotDate } from '../utils/time';
 import { PLATFORM_BY_KEY, parseStreamMetrics, parsePlatforms } from '../constants/platforms';
+
+const PLATFORM_ICON: Record<string, LucideIcon> = {
+    YOUTUBE: Youtube, INSTAGRAM: Instagram, FACEBOOK: Facebook, TIKTOK: Music2,
+};
 
 export default function MyBookingsPage() {
     const navigate = useNavigate();
@@ -134,11 +138,15 @@ export default function MyBookingsPage() {
                                     </div>
                                     {recPlatforms.length > 0 && (
                                         <div className="rec-chips">
-                                            {recPlatforms.map(k => (
-                                                <span key={k} className="rec-chip rec-chip--platform" style={{ background: PLATFORM_BY_KEY[k]?.color || 'var(--accent-primary)' }}>
-                                                    {PLATFORM_BY_KEY[k]?.label || k}
-                                                </span>
-                                            ))}
+                                            {recPlatforms.map(k => {
+                                                const Icon = PLATFORM_ICON[k];
+                                                return (
+                                                    <span key={k} className="rec-chip rec-chip--platform">
+                                                        {Icon && <Icon size={12} style={{ color: PLATFORM_BY_KEY[k]?.color }} />}
+                                                        {PLATFORM_BY_KEY[k]?.label || k}
+                                                    </span>
+                                                );
+                                            })}
                                         </div>
                                     )}
                                 </div>
