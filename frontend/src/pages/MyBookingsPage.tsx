@@ -1,4 +1,5 @@
 import { getErrorMessage } from '../utils/errors';
+import HeroAmbient from '../components/client/HeroAmbient';
 import { useState, useEffect } from 'react';
 import { bookingsApi, pricingApi, Booking } from '../api/client';
 import { useAuth } from '../context/AuthContext';
@@ -147,6 +148,7 @@ export default function MyBookingsPage() {
         <div>
             {/* Hero */}
             <div className="client-hero client-hero--default animate-card-enter">
+                <HeroAmbient variant="gravacoes" />
                 <div className="client-hero__header client-hero__header--standalone">
                     <div className="client-hero__icon-wrapper" style={{
                         background: 'linear-gradient(135deg, rgba(59,130,246,0.2), rgba(59,130,246,0.05))',

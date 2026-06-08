@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import HeroAmbient from '../components/client/HeroAmbient';
 import { bookingsApi, blockedSlotsApi, pricingApi, contractsApi, Slot, BookingWithUser, MyBookingSlot, PricingConfig, AddOnConfig, ContractWithStats } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
@@ -554,6 +555,7 @@ export default function CalendarPage() {
             {/* ─── CLIENT HERO ─── */}
             {!isAdmin && (
                 <div className="client-hero client-hero--default animate-card-enter">
+                    <HeroAmbient variant="agenda" />
                     <div className="client-hero__header" style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
                         <div className="client-hero__icon-wrapper">
                             <CalendarDays size={24} />

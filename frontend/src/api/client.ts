@@ -183,6 +183,19 @@ export const pricingApi = {
         request<{ durationMonths: number; monthlyAmount: number; monthlyTotal: number; fullPix: number; fullCard: number; maxInstallments: number; freeUpTo: number; installmentPlans: InstallmentPlan[]; services: ServiceBreakdownItem[]; servicesPerRecordingCents: number }>('/pricing/checkout-quote', { method: 'POST', body: JSON.stringify(body) }),
 };
 
+// ─── Ambient (hero weather + day/night) ─────────────────
+export interface AmbientWeather {
+    isDay: boolean;
+    condition: 'clear' | 'clouds' | 'rain' | 'storm' | 'fog' | 'snow' | string;
+    label: string;
+    tempC: number | null;
+    city: string;
+    updatedAt: string;
+}
+export const ambientApi = {
+    getWeather: () => request<{ enabled: boolean; weather: AmbientWeather | null }>('/ambient/weather'),
+};
+
 // ─── Public (No Auth) ───────────────────────────────────
 export const publicApi = {
     getWeekAvailability: (startDate: string, days: number = 7) =>

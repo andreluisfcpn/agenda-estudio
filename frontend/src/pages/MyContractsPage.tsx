@@ -1,4 +1,5 @@
 import { getErrorMessage } from '../utils/errors';
+import HeroAmbient from '../components/client/HeroAmbient';
 import { useState, useEffect } from 'react';
 import { contractsApi, bookingsApi, ContractWithStats, ContractBooking, pricingApi, PricingConfig, stripeApi, SavedCard, PaymentSummary, AddOnConfig } from '../api/client';
 import ContractWizard from '../components/ContractWizard';
@@ -298,6 +299,7 @@ export default function MyContractsPage() {
         <div>
             {/* ─── Hero Banner ─── */}
             <div className="client-hero client-hero--default animate-card-enter">
+                <HeroAmbient variant="contratos" />
                 <div className="client-hero__header" style={{ marginBottom: '16px' }}>
                     <div className="client-hero__icon-wrapper" style={{
                         background: 'linear-gradient(135deg, rgba(17,129,155,0.22), rgba(17,129,155,0.06))',

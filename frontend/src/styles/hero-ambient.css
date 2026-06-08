@@ -1,0 +1,147 @@
+/* ═══════════════════════════════════════════════════════════
+   Hero Ambient — camada atrás do client-hero
+   Tema por aba (cor/wash/glow) + clima/dia-noite (sol, nuvens, chuva, estrelas).
+   Apresentação · pointer-events:none · respeita prefers-reduced-motion.
+   Elegante, porém perceptível.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Conteúdo do hero sempre acima da camada ambiente */
+.client-hero > *:not(.hero-ambient) { position: relative; z-index: 1; }
+
+.hero-ambient {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: inherit;
+  --amb: #11819B;
+  /* Wash temático: tinge o hero inteiro com a cor da aba (perceptível, mas suave) */
+  background:
+    radial-gradient(130% 120% at 100% 0%, color-mix(in srgb, var(--amb) 26%, transparent), transparent 68%),
+    linear-gradient(135deg, color-mix(in srgb, var(--amb) 12%, transparent), transparent 60%);
+}
+
+/* ── Cor/tema por aba (hues bem distintos) ── */
+.hero-ambient--inicio    { --amb: #11819B; } /* teal — boas-vindas */
+.hero-ambient--agenda    { --amb: #3b82f6; } /* azul — agenda */
+.hero-ambient--gravacoes { --amb: #8b5cf6; } /* violeta — gravação */
+.hero-ambient--contratos { --amb: #f59e0b; } /* âmbar — contratos */
+.hero-ambient--pagar     { --amb: #22c55e; } /* verde — pagamentos */
+
+/* ── Glow temático (deriva lenta) ── */
+.hero-ambient__glow {
+  position: absolute;
+  top: -45%;
+  right: -15%;
+  width: 75%;
+  height: 170%;
+  background: radial-gradient(circle at center, color-mix(in srgb, var(--amb) 75%, transparent), transparent 60%);
+  opacity: 0.34;
+  filter: blur(6px);
+  animation: amb-drift 24s ease-in-out infinite;
+}
+
+/* Sheen diagonal sutil */
+.hero-ambient__sheen {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent 38%, rgba(255, 255, 255, 0.07) 50%, transparent 62%);
+  background-size: 250% 100%;
+  animation: amb-sheen 13s linear infinite;
+}
+
+@keyframes amb-drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%      { transform: translate(-7%, 5%) scale(1.1); }
+}
+@keyframes amb-sheen {
+  0%   { background-position: 150% 0; }
+  100% { background-position: -150% 0; }
+}
+
+/* ── Dia / Noite ── */
+.hero-ambient--day::after,
+.hero-ambient--night::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.hero-ambient--day::after   { background: radial-gradient(circle at 85% -10%, rgba(255, 210, 130, 0.16), transparent 55%); }
+.hero-ambient--night::after { background: linear-gradient(180deg, rgba(10, 22, 52, 0.42), rgba(10, 22, 52, 0.12)); }
+
+/* Sol quente em dia limpo */
+.hero-ambient--clear.hero-ambient--day .hero-ambient__glow {
+  background: radial-gradient(circle at center, rgba(255, 196, 92, 0.7), transparent 58%);
+  opacity: 0.5;
+}
+/* À noite o glow esfria um pouco (mas continua visível) */
+.hero-ambient--night .hero-ambient__glow { opacity: 0.22; }
+
+/* ── Chuva (estrias diagonais) ── */
+.hero-ambient__rain { position: absolute; inset: 0; }
+.hero-ambient__rain i {
+  position: absolute;
+  top: -20%;
+  left: calc(5% + var(--n) * 9.5%);
+  width: 1.5px;
+  height: 26px;
+  background: linear-gradient(transparent, rgba(190, 218, 255, 0.7));
+  transform: rotate(14deg);
+  opacity: 0.5;
+  animation: amb-rain 0.85s linear infinite;
+  animation-delay: calc(var(--n) * -0.11s);
+}
+@keyframes amb-rain {
+  0%   { transform: translateY(-40%) rotate(14deg); opacity: 0; }
+  20%  { opacity: 0.55; }
+  100% { transform: translateY(190%) rotate(14deg); opacity: 0; }
+}
+
+/* ── Nuvens (blobs suaves à deriva) ── */
+.hero-ambient__clouds i {
+  position: absolute;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.11);
+  filter: blur(6px);
+}
+.hero-ambient__clouds i:nth-child(1) { width: 130px; height: 42px; top: 14%; left: -35%; animation: amb-cloud 38s linear infinite; }
+.hero-ambient__clouds i:nth-child(2) { width: 95px;  height: 32px; top: 50%; left: -35%; animation: amb-cloud 52s linear infinite; animation-delay: -16s; opacity: 0.8; }
+@keyframes amb-cloud {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(190vw); }
+}
+
+/* ── Estrelas (noite) ── */
+.hero-ambient__stars i {
+  position: absolute;
+  width: 2.5px;
+  height: 2.5px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.8);
+  left: calc(5% + var(--n) * 8%);
+  opacity: 0.6;
+  animation: amb-twinkle 3s ease-in-out infinite;
+  animation-delay: calc(var(--n) * -0.33s);
+}
+.hero-ambient__stars i:nth-child(3n)   { top: 20%; }
+.hero-ambient__stars i:nth-child(3n+1) { top: 42%; width: 2px; height: 2px; }
+.hero-ambient__stars i:nth-child(3n+2) { top: 64%; width: 1.5px; height: 1.5px; }
+@keyframes amb-twinkle {
+  0%, 100% { opacity: 0.25; }
+  50%      { opacity: 0.95; }
+}
+
+/* ── Acessibilidade: sem movimento → tints/glow estáticos (ainda visíveis) ── */
+@media (prefers-reduced-motion: reduce) {
+  .hero-ambient__glow,
+  .hero-ambient__sheen,
+  .hero-ambient__rain i,
+  .hero-ambient__clouds i,
+  .hero-ambient__stars i {
+    animation: none !important;
+  }
+  .hero-ambient__sheen { display: none; }
+}

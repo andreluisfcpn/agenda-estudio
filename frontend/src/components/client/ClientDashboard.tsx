@@ -1,4 +1,5 @@
 import { getErrorMessage } from '../../utils/errors';
+import HeroAmbient from './HeroAmbient';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { bookingsApi, contractsApi, Booking, ContractWithStats, PaymentSummary } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
@@ -254,6 +255,7 @@ export default function ClientDashboard() {
             </div>
 
             <div className={`${heroClass} animate-card-enter`}>
+                <HeroAmbient variant="inicio" />
                 <div className="client-hero__header" style={{ marginBottom: '16px' }}>
                     <div className="client-hero__icon-wrapper" style={{
                         background: stats.overdueCount > 0

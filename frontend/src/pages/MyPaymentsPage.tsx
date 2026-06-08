@@ -1,4 +1,5 @@
 import { getErrorMessage } from '../utils/errors';
+import HeroAmbient from '../components/client/HeroAmbient';
 import { useState, useEffect, useCallback } from 'react';
 import { stripeApi, contractsApi, SavedCard, ContractWithStats, PaymentSummary } from '../api/client';
 import StripeCardForm from '../components/StripeCardForm';
@@ -342,6 +343,7 @@ export default function MyPaymentsPage() {
         <div>
             {/* ─── Hero Banner (same convention as Contratos/Agenda) ─── */}
             <div className={`client-hero ${hasOverdue ? 'client-hero--alert' : 'client-hero--default'} animate-card-enter`}>
+                <HeroAmbient variant="pagar" />
                 <div className="client-hero__header" style={{ marginBottom: '16px' }}>
                     <div className="client-hero__icon-wrapper" style={{
                         background: hasOverdue

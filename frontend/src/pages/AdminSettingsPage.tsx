@@ -9,6 +9,7 @@ import {
     Sparkles,
     CreditCard,
     Plug,
+    Cloud,
     ChevronLeft,
     ChevronRight,
     type LucideIcon,
@@ -28,6 +29,7 @@ type SectionId =
     | 'politicas'
     | 'servicos'
     | 'pagamentos'
+    | 'ambiente'
     | 'integracoes';
 
 interface SectionDef {
@@ -106,6 +108,18 @@ const SECTIONS: SectionDef[] = [
         label: 'Pagamentos',
         icon: CreditCard,
         render: () => <SettingsPaymentMethodsSection />,
+    },
+    {
+        id: 'ambiente',
+        label: 'Ambiente',
+        icon: Cloud,
+        render: () => (
+            <SettingsBusinessConfigSection
+                groups={['ambient']}
+                title="Ambiente do Hero"
+                subtitle="Animação por aba + clima/dia-noite no topo das telas do cliente. Defina a cidade do clima."
+            />
+        ),
     },
     {
         id: 'integracoes',

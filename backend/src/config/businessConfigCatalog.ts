@@ -44,6 +44,11 @@ export const BUSINESS_CONFIG_CATALOG: ConfigCatalogItem[] = [
     { key: 'studio_location',   value: 'Búzios, RJ',             type: 'string', label: 'Localização',       group: 'studio' },
     { key: 'studio_logo_url',   value: 'https://buzios.digital/wp-content/uploads/2025/01/logo-site-branca.svg', type: 'string', label: 'URL do Logo', group: 'studio' },
     { key: 'studio_hero_image', value: 'https://buzios.digital/wp-content/uploads/elementor/thumbs/bd-estudio-enhanced-sr-r9lm9twze86yo0wxu68fp1e0yf8baho28zrniyf1o0.jpg', type: 'string', label: 'Imagem Principal', group: 'studio' },
+    // ── Ambiente (hero animado por aba + clima/dia-noite) — só apresentação ──
+    // toggles usam value 'true'/'false' (o admin renderiza como switch pela detecção de valor).
+    { key: 'ambient_enabled',         value: 'true',        type: 'string', label: 'Animação Ambiente no Hero',                 group: 'ambient' },
+    { key: 'ambient_weather_enabled', value: 'true',        type: 'string', label: 'Refletir o Clima (Open-Meteo)',             group: 'ambient' },
+    { key: 'ambient_location',        value: 'Búzios, RJ',  type: 'string', label: 'Cidade para o Clima',                       group: 'ambient' },
 ];
 
 /** key → default value (string), derived from the catalog. */
