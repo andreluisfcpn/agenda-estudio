@@ -10,6 +10,7 @@ import {
     CreditCard,
     Plug,
     Cloud,
+    Clapperboard,
     ChevronLeft,
     ChevronRight,
     type LucideIcon,
@@ -30,6 +31,7 @@ type SectionId =
     | 'servicos'
     | 'pagamentos'
     | 'ambiente'
+    | 'gravacoes'
     | 'integracoes';
 
 interface SectionDef {
@@ -118,6 +120,18 @@ const SECTIONS: SectionDef[] = [
                 groups={['ambient']}
                 title="Ambiente do Hero"
                 subtitle="Animação por aba + clima/dia-noite no topo das telas do cliente. Defina a cidade do clima."
+            />
+        ),
+    },
+    {
+        id: 'gravacoes',
+        label: 'Gravações',
+        icon: Clapperboard,
+        render: () => (
+            <SettingsBusinessConfigSection
+                groups={['recordings']}
+                title="Gravações & Transmissão"
+                subtitle="Habilite ou desabilite as plataformas de transmissão oferecidas ao cliente."
             />
         ),
     },

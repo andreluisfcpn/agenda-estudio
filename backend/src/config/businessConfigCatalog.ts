@@ -49,6 +49,11 @@ export const BUSINESS_CONFIG_CATALOG: ConfigCatalogItem[] = [
     { key: 'ambient_enabled',         value: 'true',        type: 'string', label: 'Animação Ambiente no Hero',                 group: 'ambient' },
     { key: 'ambient_weather_enabled', value: 'true',        type: 'string', label: 'Refletir o Clima (Open-Meteo)',             group: 'ambient' },
     { key: 'ambient_location',        value: 'Búzios, RJ',  type: 'string', label: 'Cidade para o Clima',                       group: 'ambient' },
+    // ── Gravações (plataformas de transmissão habilitadas) — toggles 'true'/'false' ──
+    { key: 'platform_youtube_enabled',   value: 'true', type: 'string', label: 'Plataforma: YouTube',   group: 'recordings' },
+    { key: 'platform_instagram_enabled', value: 'true', type: 'string', label: 'Plataforma: Instagram', group: 'recordings' },
+    { key: 'platform_facebook_enabled',  value: 'true', type: 'string', label: 'Plataforma: Facebook',  group: 'recordings' },
+    { key: 'platform_tiktok_enabled',    value: 'true', type: 'string', label: 'Plataforma: TikTok',    group: 'recordings' },
 ];
 
 /** key → default value (string), derived from the catalog. */

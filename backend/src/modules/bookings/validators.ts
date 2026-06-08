@@ -77,8 +77,11 @@ export const completeBookingSchema = z.object({
 
 export const clientUpdateBookingSchema = z.object({
     clientNotes: z.string().optional(),
+    episodeTitle: z.string().max(140).optional(),
+    episodeDescription: z.string().max(4000).optional(),
+    // Planned broadcast networks (client picks where it will air). The actual broadcast
+    // LINKS are admin-only (set in the finalize/complete flow), so platformLinks is not here.
     platforms: z.string().optional(),
-    platformLinks: z.string().optional(),
     durationMinutes: z.number().optional().nullable(),
     peakViewers: z.number().optional().nullable(),
     chatMessages: z.number().optional().nullable(),

@@ -58,8 +58,15 @@ export function useBusinessConfig() {
         const raw = cachedRawConfig?.[key];
         return (raw && typeof raw === 'object') ? raw as T : null;
     };
+    // Boolean toggles are stored as 'true'/'false' strings (not in the numeric `config` map).
+    // Absent key → defaultVal (the public config only returns DB rows; unsaved → default).
+    const getBool = (key: string, defaultVal = true): boolean => {
+        const raw = cachedRawConfig?.[key];
+        if (raw === undefined || raw === null) return defaultVal;
+        return raw === true || raw === 'true';
+    };
 
-    return { config, get, getJson, loaded };
+    return { config, get, getJson, getBool, loaded };
 }
 
 /** Call this after admin saves business config to invalidate the module-level cache */

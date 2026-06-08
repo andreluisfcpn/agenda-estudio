@@ -17,6 +17,8 @@ import './styles/bottom-sheet.css';
 import './styles/contract-wizard.css';
 import './styles/page-transition.css';
 import './styles/booking-fullscreen.css';
+import './styles/booking-detail-modal.css';
+import './styles/my-results.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>

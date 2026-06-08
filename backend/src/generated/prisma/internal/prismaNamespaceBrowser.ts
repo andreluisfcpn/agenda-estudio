@@ -189,6 +189,9 @@ export const BookingScalarFieldEnum = {
   audienceOrigin: 'audienceOrigin',
   isLivestream: 'isLivestream',
   streamMetrics: 'streamMetrics',
+  episodeTitle: 'episodeTitle',
+  episodeDescription: 'episodeDescription',
+  coverImageUrl: 'coverImageUrl',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const

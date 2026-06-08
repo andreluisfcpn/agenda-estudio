@@ -1,11 +1,18 @@
 import { getErrorMessage } from '../utils/errors';
-import { useState, useEffect, useCallback } from 'react';
-import { bookingsApi, AddOnConfig } from '../api/client';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { bookingsApi, AddOnConfig, Booking } from '../api/client';
 import { useUI } from '../context/UIContext';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import BottomSheetModal from './BottomSheetModal';
 import PaymentModal from './PaymentModal';
-import { ArrowLeft, CalendarDays, Clock, Tag, Youtube, FileText, Sparkles, Plus, Check, ChevronLeft, RefreshCw } from 'lucide-react';
+import StreamMetricsChart from './client/StreamMetricsChart';
+import { PLATFORMS, parsePlatforms, parsePlatformLinks, parseStreamMetrics } from '../constants/platforms';
+import {
+    CalendarDays, Clock, Tag, FileText, Sparkles, Plus, Check, ChevronLeft, RefreshCw,
+    ImageIcon, Upload, Youtube, Instagram, Facebook, Music2, FolderOpen, Radio, ExternalLink,
+    type LucideIcon,
+} from 'lucide-react';
 import { formatBRL } from '../utils/format';
 
 export interface BookingDetailData {
@@ -20,12 +27,18 @@ export interface BookingDetailData {
     adminNotes?: string | null;
     platforms?: string | null;
     platformLinks?: string | null;
+    episodeTitle?: string | null;
+    episodeDescription?: string | null;
+    coverImageUrl?: string | null;
+    streamMetrics?: string | null;
+    isLivestream?: boolean | null;
     addOns?: string[];
     durationMinutes?: number | null;
     peakViewers?: number | null;
     chatMessages?: number | null;
     audienceOrigin?: string | null;
     holdExpiresAt?: string | null;
+    contract?: { id: string; name: string; type: string; tier?: string; discountPct?: number; addOns?: string[] } | null;
 }
 
 interface BookingDetailModalProps {
@@ -38,95 +51,77 @@ interface BookingDetailModalProps {
     contractAddOns?: string[];
 }
 
+const PLATFORM_ICON: Record<string, LucideIcon> = {
+    YOUTUBE: Youtube, INSTAGRAM: Instagram, FACEBOOK: Facebook, TIKTOK: Music2,
+};
+const PLATFORM_CFG: Record<string, string> = {
+    YOUTUBE: 'platform_youtube_enabled', INSTAGRAM: 'platform_instagram_enabled',
+    FACEBOOK: 'platform_facebook_enabled', TIKTOK: 'platform_tiktok_enabled',
+};
+const ADDON_ICONS: Record<string, string> = {
+    EDICAO_VIDEO: '🎬', CORTES_REELS: '📱', CAPA_YOUTUBE: '🖼️', GESTAO_SOCIAL: '📊',
+};
+const CONTRACT_TYPE_LABEL: Record<string, string> = {
+    FIXO: 'Plano Fixo', FLEX: 'Plano Flex', AVULSO: 'Avulso', SERVICO: 'Serviço', CUSTOM: 'Personalizado',
+};
+
+function statusLabel(s: string) {
+    switch (s) {
+        case 'COMPLETED': return 'Concluída';
+        case 'CONFIRMED': return 'Confirmada';
+        case 'RESERVED': return 'Reservada';
+        case 'FALTA': return 'Falta';
+        case 'NAO_REALIZADO': return 'Não realizada';
+        default: return 'Cancelada';
+    }
+}
+function statusColor(s: string) {
+    if (s === 'COMPLETED') return '#10b981';
+    if (s === 'CONFIRMED') return '#2dd4bf';
+    if (s === 'RESERVED') return '#f59e0b';
+    return 'var(--text-muted)';
+}
+
 function HoldBanner({ expiresAt, onExpire }: { expiresAt: string; onExpire: () => void }) {
-    const [remaining, setRemaining] = useState(() => {
-        const diff = new Date(expiresAt).getTime() - Date.now();
-        return Math.max(0, Math.floor(diff / 1000));
-    });
-
+    const [remaining, setRemaining] = useState(() => Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000)));
     useEffect(() => {
-        const timer = setInterval(() => {
-            const diff = new Date(expiresAt).getTime() - Date.now();
-            const secs = Math.max(0, Math.floor(diff / 1000));
-            setRemaining(secs);
-            if (secs <= 0) { clearInterval(timer); onExpire(); }
+        const t = setInterval(() => {
+            const s = Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
+            setRemaining(s);
+            if (s <= 0) { clearInterval(t); onExpire(); }
         }, 1000);
-        return () => clearInterval(timer);
+        return () => clearInterval(t);
     }, [expiresAt, onExpire]);
-
-    const mins = Math.floor(remaining / 60);
-    const secs = remaining % 60;
-    const pct = Math.max(0, (remaining / 600) * 100);
+    const mins = Math.floor(remaining / 60), secs = remaining % 60;
     const color = remaining <= 60 ? '#ef4444' : remaining <= 180 ? '#f59e0b' : '#d97706';
-
     return (
-        <div className="hold-banner">
-            <div className="hold-banner__content">
-                <div style={{ flex: 1 }}>
-                    <div className="hold-banner__title">Aguardando Pagamento</div>
-                    <p className="hold-banner__desc">
-                        Complete o pagamento para confirmar. Se o tempo esgotar, o horário volta a ficar disponível.
-                    </p>
-                </div>
-                <div className="hold-banner__timer" style={{ color }}>
-                    <span>{String(mins).padStart(2, '0')}</span>
-                    <span className="hold-banner__timer-sep">:</span>
-                    <span>{String(secs).padStart(2, '0')}</span>
-                </div>
-            </div>
-            <div className="hold-banner__progress">
-                <div className="hold-banner__progress-fill" style={{ width: `${pct}%`, background: color }} />
-            </div>
+        <div className="info-box info-box--warning" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+            <span>Aguardando pagamento — conclua para confirmar.</span>
+            <strong style={{ color, fontVariantNumeric: 'tabular-nums' }}>{String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}</strong>
         </div>
     );
 }
 
-const ADDON_ICONS: Record<string, string> = {
-    EDICAO_VIDEO: '🎬',
-    CORTES_REELS: '📱',
-    CAPA_YOUTUBE: '🖼️',
-    GESTAO_SOCIAL: '📊',
-};
-
-function getStatusClass(s: string) {
-    if (s === 'CONFIRMED' || s === 'COMPLETED') return 'confirmed';
-    if (s === 'RESERVED') return 'reserved';
-    if (s === 'CANCELLED') return 'cancelled';
-    return 'cancelled';
-}
-
-function getStatusLabel(s: string) {
-    switch (s) {
-        case 'COMPLETED': return 'Concluído';
-        case 'CONFIRMED': return 'Confirmado';
-        case 'RESERVED': return 'Reservado';
-        case 'FALTA': return 'Falta';
-        case 'NAO_REALIZADO': return 'Não Realizado';
-        default: return 'Cancelado';
-    }
-}
-
 export default function BookingDetailModal({
-    isOpen = true,
-    booking,
-    onClose,
-    onSaved,
-    allAddons = [],
-    contractDiscountPct = 0,
-    contractAddOns = [],
+    isOpen = true, booking, onClose, onSaved,
+    allAddons = [], contractDiscountPct = 0, contractAddOns = [],
 }: BookingDetailModalProps) {
     const { showAlert, showToast } = useUI();
-    const { get: getRule } = useBusinessConfig();
+    const { get: getRule, getBool } = useBusinessConfig();
+    const navigate = useNavigate();
 
-    const [clientNotes, setClientNotes] = useState(booking.clientNotes || '');
-    const [youtubeLink, setYoutubeLink] = useState(() => {
-        try {
-            const links = booking.platformLinks ? JSON.parse(booking.platformLinks) : {};
-            return links.YOUTUBE || '';
-        } catch { return ''; }
-    });
-    const [saving, setSaving] = useState(false);
+    // Hydrate full booking (contract/cover/episode/metrics) regardless of caller's data.
+    const [full, setFull] = useState<Booking | null>(null);
+    const src = (full || booking) as BookingDetailData;
+
+    const [episodeTitle, setEpisodeTitle] = useState(booking.episodeTitle || '');
+    const [episodeDescription, setEpisodeDescription] = useState(booking.episodeDescription || '');
+    const [platforms, setPlatforms] = useState<string[]>(parsePlatforms(booking.platforms));
+    const [coverUrl, setCoverUrl] = useState(booking.coverImageUrl || '');
     const [localAddOns, setLocalAddOns] = useState<string[]>(booking.addOns || []);
+    const [saving, setSaving] = useState(false);
+    const [uploadingCover, setUploadingCover] = useState(false);
+    const fileRef = useRef<HTMLInputElement>(null);
 
     // Reschedule
     const [showReschedule, setShowReschedule] = useState(false);
@@ -135,370 +130,322 @@ export default function BookingDetailModal({
     const [rescheduleError, setRescheduleError] = useState('');
     const [rescheduling, setRescheduling] = useState(false);
 
-    // Services sheet
+    // Services sheet + payment
     const [showServicesSheet, setShowServicesSheet] = useState(false);
     const [servicesStep, setServicesStep] = useState<1 | 2>(1);
     const [selectedNewAddons, setSelectedNewAddons] = useState<string[]>([]);
-
-    // Payment
     const [payingAddon, setPayingAddon] = useState<{ paymentId: string; amount: number; description: string; addonKeys: string[] } | null>(null);
 
-    const dateStr = booking.date.split('T')[0];
+    useEffect(() => {
+        let alive = true;
+        bookingsApi.getOne(booking.id).then(r => {
+            if (!alive) return;
+            setFull(r.booking);
+            setEpisodeTitle(r.booking.episodeTitle || '');
+            setEpisodeDescription(r.booking.episodeDescription || '');
+            setPlatforms(parsePlatforms(r.booking.platforms));
+            setCoverUrl(r.booking.coverImageUrl || '');
+            setLocalAddOns(r.booking.addOns || []);
+        }).catch(() => {});
+        return () => { alive = false; };
+    }, [booking.id]);
 
-    const canModify = useCallback((): boolean => {
-        if (booking.status !== 'RESERVED' && booking.status !== 'CONFIRMED') return false;
-        const bookingDateTime = new Date(`${dateStr}T${booking.startTime}:00`);
-        return (bookingDateTime.getTime() - Date.now()) / (1000 * 60 * 60) >= 24;
-    }, [booking.status, dateStr, booking.startTime]);
+    const dateStr = src.date.split('T')[0];
+    const isCompleted = src.status === 'COMPLETED';
+    const contract = full?.contract || booking.contract || null;
+    const discountPct = contract?.discountPct ?? contractDiscountPct ?? 0;
+    const ctrAddOns = contract?.addOns ?? contractAddOns ?? [];
+
+    const canReschedule = useCallback((): boolean => {
+        if (src.status !== 'RESERVED' && src.status !== 'CONFIRMED') return false;
+        const dt = new Date(`${dateStr}T${src.startTime}:00-03:00`);
+        return (dt.getTime() - Date.now()) / (1000 * 60 * 60) >= 24;
+    }, [src.status, dateStr, src.startTime]);
+
+    const togglePlatform = (key: string) => setPlatforms(prev => prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key]);
+
+    const handleCoverFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setUploadingCover(true);
+        try {
+            const r = await bookingsApi.uploadCover(booking.id, file);
+            setCoverUrl(r.coverImageUrl);
+            showToast('Capa atualizada!');
+        } catch (err: unknown) {
+            showAlert({ message: getErrorMessage(err), type: 'error' });
+        } finally {
+            setUploadingCover(false);
+            if (fileRef.current) fileRef.current.value = '';
+        }
+    };
 
     const handleSave = async () => {
         setSaving(true);
         try {
-            const platforms = youtubeLink.trim() ? '["YOUTUBE"]' : '[]';
-            const platformLinks = youtubeLink.trim() ? JSON.stringify({ YOUTUBE: youtubeLink.trim() }) : '{}';
-            await bookingsApi.clientUpdate(booking.id, { clientNotes, platforms, platformLinks });
+            await bookingsApi.clientUpdate(booking.id, {
+                episodeTitle: episodeTitle.trim(),
+                episodeDescription: episodeDescription.trim(),
+                platforms: JSON.stringify(platforms),
+            });
             showToast('Gravação atualizada!');
             onSaved();
         } catch (err: unknown) {
             showAlert({ message: getErrorMessage(err), type: 'error' });
-        } finally {
-            setSaving(false);
-        }
+        } finally { setSaving(false); }
     };
 
     const handleReschedule = async () => {
-        setRescheduling(true);
-        setRescheduleError('');
+        setRescheduling(true); setRescheduleError('');
         try {
             await bookingsApi.reschedule(booking.id, { date: rescheduleDate, startTime: rescheduleTime });
             showToast('Reagendado com sucesso!');
             onSaved();
-        } catch (err: unknown) {
-            setRescheduleError(getErrorMessage(err));
-        } finally {
-            setRescheduling(false);
-        }
+        } catch (err: unknown) { setRescheduleError(getErrorMessage(err)); }
+        finally { setRescheduling(false); }
     };
 
-    // Purchase addon(s) → single batch request → open PaymentModal if needed
     const handleConfirmAddons = async () => {
         setSaving(true);
         try {
-            // Send ALL selected addons in one request
-            // Backend splits contract (free) vs paid and creates ONE combined payment
             const res = await bookingsApi.purchaseAddon(booking.id, selectedNewAddons);
-
-            // Activate contract addons locally (already activated on backend)
-            if (res.activatedKeys?.length > 0) {
-                setLocalAddOns(prev => [...prev, ...res.activatedKeys]);
-            }
-
+            if (res.activatedKeys?.length > 0) setLocalAddOns(prev => [...prev, ...res.activatedKeys]);
             if (res.paymentId && res.amount > 0) {
-                // Has paid addons → open PaymentModal
-                setPayingAddon({
-                    paymentId: res.paymentId,
-                    amount: res.amount,
-                    description: `${res.pendingKeys.length} serviço${res.pendingKeys.length > 1 ? 's' : ''} — ${formatBRL(res.amount)}`,
-                    addonKeys: res.pendingKeys,
-                });
+                setPayingAddon({ paymentId: res.paymentId, amount: res.amount, description: `${res.pendingKeys.length} serviço(s) — ${formatBRL(res.amount)}`, addonKeys: res.pendingKeys });
             } else {
-                // All were contract addons (free)
                 showToast('Serviços ativados com sucesso!');
                 onSaved();
             }
-
-            setShowServicesSheet(false);
-            setServicesStep(1);
-            setSelectedNewAddons([]);
+            setShowServicesSheet(false); setServicesStep(1); setSelectedNewAddons([]);
         } catch (err: unknown) {
             showAlert({ message: getErrorMessage(err), type: 'error' });
-        } finally {
-            setSaving(false);
-        }
+        } finally { setSaving(false); }
     };
 
     const displayDate = (() => {
         const d = new Date(dateStr + 'T12:00:00');
-        return d.toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: 'long', year: 'numeric' });
+        return d.toLocaleDateString('pt-BR', { timeZone: 'UTC', weekday: 'long', day: '2-digit', month: 'long' });
     })();
 
     const episodeAddons = allAddons.filter(a => !a.monthly);
-    const activeAddons = episodeAddons.filter(a => localAddOns.includes(a.key) || contractAddOns.includes(a.key));
-    const availableForPurchase = episodeAddons.filter(a => !localAddOns.includes(a.key) && !contractAddOns.includes(a.key));
-    const contractAvailable = episodeAddons.filter(a => contractAddOns.includes(a.key) && !localAddOns.includes(a.key));
+    const activeAddons = episodeAddons.filter(a => localAddOns.includes(a.key) || ctrAddOns.includes(a.key));
+    const availableForPurchase = episodeAddons.filter(a => !localAddOns.includes(a.key) && !ctrAddOns.includes(a.key));
+    const contractAvailable = episodeAddons.filter(a => ctrAddOns.includes(a.key) && !localAddOns.includes(a.key));
 
-    // Step 2 calculations
-    const selectedContractItems = selectedNewAddons.filter(k => contractAddOns.includes(k));
-    const selectedPaidItems = selectedNewAddons.filter(k => !contractAddOns.includes(k));
-    const totalPaid = selectedPaidItems.reduce((sum, key) => {
-        const addon = episodeAddons.find(a => a.key === key);
-        if (!addon) return sum;
-        return sum + Math.round(addon.price * (1 - contractDiscountPct / 100));
+    const totalPaid = selectedNewAddons.filter(k => !ctrAddOns.includes(k)).reduce((s, k) => {
+        const a = episodeAddons.find(x => x.key === k); return a ? s + Math.round(a.price * (1 - discountPct / 100)) : s;
     }, 0);
-    const totalSavings = selectedPaidItems.reduce((sum, key) => {
-        const addon = episodeAddons.find(a => a.key === key);
-        if (!addon) return sum;
-        return sum + (addon.price - Math.round(addon.price * (1 - contractDiscountPct / 100)));
-    }, 0);
+
+    // Platforms shown: admin-enabled ∪ already-selected.
+    const visiblePlatforms = PLATFORMS.filter(p => getBool(PLATFORM_CFG[p.key], true) || platforms.includes(p.key));
+    const liveLinks = parsePlatformLinks(src.platformLinks);
+    const liveLinkKeys = Object.keys(liveLinks).filter(k => liveLinks[k]);
 
     if (!isOpen) return null;
 
     return (
         <>
-            {/* ═══ FULLSCREEN OVERLAY ═══ */}
-            <div className="booking-fullscreen-overlay">
-                <div className="bfs-container">
-                    {/* Header */}
-                    <div className="bfs-header">
-                        <button className="bfs-header__back" onClick={onClose} aria-label="Voltar">
-                            <ArrowLeft size={20} />
-                        </button>
-                        <h2 className="bfs-header__title">Meu Agendamento</h2>
-                        <span className={`bfs-header__status bfs-header__status--${getStatusClass(booking.status)}`}>
-                            {getStatusLabel(booking.status)}
+            <BottomSheetModal isOpen={isOpen} onClose={onClose} title="Detalhes da Gravação" maxWidth="560px" preventClose={saving || rescheduling || uploadingCover}>
+                <div className="bdm">
+                    {/* Hold banner */}
+                    {src.holdExpiresAt && new Date(src.holdExpiresAt).getTime() > Date.now() && (
+                        <HoldBanner expiresAt={src.holdExpiresAt} onExpire={onSaved} />
+                    )}
+
+                    {/* Contract origin + status */}
+                    <div className="bdm-top">
+                        <div className="bdm-contract">
+                            <span className="bdm-contract__icon"><FolderOpen size={14} /></span>
+                            <div>
+                                <div className="bdm-contract__name">{contract?.name || 'Avulso'}</div>
+                                <div className="bdm-contract__type">{CONTRACT_TYPE_LABEL[contract?.type || 'AVULSO'] || contract?.type}</div>
+                            </div>
+                        </div>
+                        <span className="bdm-status" style={{ color: statusColor(src.status), background: `${statusColor(src.status)}1f` }}>
+                            {statusLabel(src.status)}
                         </span>
                     </div>
 
-                    {/* Scrollable Body */}
-                    <div className="bfs-body">
-                        {/* Hold Banner */}
-                        {booking.holdExpiresAt && new Date(booking.holdExpiresAt).getTime() > Date.now() && (
-                            <HoldBanner expiresAt={booking.holdExpiresAt} onExpire={onSaved} />
-                        )}
-
-                        {/* Info Card */}
-                        <div className="bfs-info-card">
-                            <div className="bfs-info-card__row">
-                                <div className="bfs-info-card__icon">
-                                    <CalendarDays size={20} />
-                                </div>
-                                <div>
-                                    <div className="bfs-info-card__label">Data</div>
-                                    <div className="bfs-info-card__value">{displayDate}</div>
-                                </div>
-                            </div>
-                            <div className="bfs-info-card__divider" />
-                            <div className="bfs-info-card__meta">
-                                <div className="bfs-info-card__meta-item">
-                                    <span className="bfs-info-card__label"><Clock size={12} style={{ display: 'inline', marginRight: 4 }} />Horário</span>
-                                    <span className="bfs-info-card__value">{booking.startTime} — {booking.endTime}</span>
-                                </div>
-                                <div className="bfs-info-card__meta-item">
-                                    <span className="bfs-info-card__label"><Tag size={12} style={{ display: 'inline', marginRight: 4 }} />Faixa</span>
-                                    <span className="bfs-info-card__value">{booking.tierApplied}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Observação */}
-                        <div className="bfs-section">
-                            <div className="bfs-section__title">
-                                <span className="bfs-section__title-icon" style={{ background: 'rgba(59,130,246,0.12)', color: '#60a5fa' }}>
-                                    <FileText size={14} />
-                                </span>
-                                Observação
-                            </div>
-                            <textarea
-                                className="form-input"
-                                rows={3}
-                                value={clientNotes}
-                                onChange={e => setClientNotes(e.target.value)}
-                                placeholder="Anotações pessoais sobre esta sessão..."
-                                style={{ resize: 'vertical', borderRadius: '12px' }}
-                            />
-                        </div>
-
-                        {/* Admin Notes (read-only) */}
-                        {booking.adminNotes && (
-                            <div className="bfs-section">
-                                <div className="bfs-section__title" style={{ color: 'var(--text-muted)' }}>
-                                    Observação do Estúdio
-                                </div>
-                                <div className="booking-modal__admin-note" style={{ borderRadius: '12px', padding: '12px 14px' }}>
-                                    {booking.adminNotes}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* YouTube Link */}
-                        <div className="bfs-section">
-                            <div className="bfs-section__title">
-                                <span className="bfs-section__title-icon" style={{ background: 'rgba(255,0,0,0.1)', color: '#ff4444' }}>
-                                    <Youtube size={14} />
-                                </span>
-                                Link do YouTube
-                            </div>
-                            <div className="bfs-youtube-input">
-                                <div className="bfs-youtube-input__icon">
-                                    <Youtube size={16} />
-                                </div>
-                                <input
-                                    value={youtubeLink}
-                                    onChange={e => setYoutubeLink(e.target.value)}
-                                    placeholder="https://youtube.com/watch?v=..."
-                                />
-                            </div>
-                        </div>
-
-                        {/* Serviços */}
-                        <div className="bfs-section">
-                            <div className="bfs-section__title">
-                                <span className="bfs-section__title-icon" style={{ background: 'rgba(16,185,129,0.12)', color: '#34d399' }}>
-                                    <Sparkles size={14} />
-                                </span>
-                                Serviços
-                            </div>
-
-                            <div className="bfs-services-summary">
-                                {activeAddons.length > 0 ? (
-                                    activeAddons.map(addon => {
-                                        const isContract = contractAddOns.includes(addon.key);
-                                        return (
-                                            <div key={addon.key} className="bfs-services-summary__item">
-                                                <div className={`bfs-services-summary__icon ${isContract ? 'bfs-services-summary__icon--contract' : 'bfs-services-summary__icon--purchased'}`}>
-                                                    {ADDON_ICONS[addon.key] || <Sparkles size={14} />}
-                                                </div>
-                                                <span className="bfs-services-summary__name">{addon.name}</span>
-                                                <span className={`bfs-services-summary__badge ${isContract ? 'bfs-services-summary__badge--contract' : 'bfs-services-summary__badge--purchased'}`}>
-                                                    {isContract ? 'Plano' : 'Ativo'}
-                                                </span>
-                                            </div>
-                                        );
-                                    })
-                                ) : (
-                                    <div className="bfs-services-summary__item" style={{ color: 'var(--text-muted)', fontSize: '0.875rem', justifyContent: 'center' }}>
-                                        Nenhum serviço ativo
-                                    </div>
-                                )}
-
-                                {(availableForPurchase.length > 0 || contractAvailable.length > 0) && canModify() && (
-                                    <button className="bfs-services-add-btn" onClick={() => { setShowServicesSheet(true); setServicesStep(1); setSelectedNewAddons([]); }}>
-                                        <Plus size={16} />
-                                        Adicionar serviço
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Reschedule Panel */}
-                        {showReschedule && booking.status === 'CONFIRMED' && (
-                            <div className="bfs-reschedule">
-                                <h4 className="bfs-reschedule__title">Reagendar</h4>
-                                <p className="bfs-reschedule__note">
-                                    Máx. {getRule('reschedule_max_days') || '7'} dias · Mesma faixa ({booking.tierApplied})
-                                </p>
-                                <div className="bfs-reschedule__form">
-                                    <input type="date" className="form-input" value={rescheduleDate}
-                                        onChange={e => setRescheduleDate(e.target.value)}
-                                        min={new Date().toISOString().split('T')[0]}
-                                        max={new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]} />
-                                    <input type="time" className="form-input" value={rescheduleTime}
-                                        onChange={e => setRescheduleTime(e.target.value)} step={3600} style={{ width: 120 }} />
-                                </div>
-                                <button className="btn btn-primary btn-sm" onClick={handleReschedule}
-                                    disabled={rescheduling || !rescheduleDate || !rescheduleTime}
-                                    style={{ minHeight: 44, borderRadius: 12 }}>
-                                    {rescheduling ? 'Aguarde...' : 'Confirmar Reagendamento'}
-                                </button>
-                                {rescheduleError && <div className="error-message">{rescheduleError}</div>}
-                            </div>
-                        )}
+                    {/* Date / time / tier */}
+                    <div className="bdm-meta">
+                        <div className="bdm-meta__item"><CalendarDays size={14} /><span style={{ textTransform: 'capitalize' }}>{displayDate}</span></div>
+                        <div className="bdm-meta__item"><Clock size={14} />{src.startTime} — {src.endTime}</div>
+                        <div className="bdm-meta__item"><Tag size={14} />{src.tierApplied}</div>
                     </div>
 
-                    {/* Footer */}
-                    <div className="bfs-footer">
-                        {booking.status === 'RESERVED' && booking.holdExpiresAt && new Date(booking.holdExpiresAt).getTime() > Date.now() ? (
-                            /* Awaiting payment → show pay button */
-                            <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => {
-                                // Navigate to payment — use onSaved to trigger parent reload + payment flow
-                                onClose();
-                                window.location.href = `/meus-pagamentos`;
-                            }}>
-                                💳 Pagar Agora
+                    {/* Cover */}
+                    <div className="bdm-section">
+                        <div className="bdm-section__title"><ImageIcon size={14} /> Capa do episódio</div>
+                        <div className={`bdm-cover ${coverUrl ? 'bdm-cover--has' : ''}`}>
+                            {coverUrl ? <img className="bdm-cover__img" src={coverUrl} alt="Capa do episódio" /> : (
+                                <div className="bdm-cover__placeholder"><ImageIcon size={28} /><span>Sem capa</span></div>
+                            )}
+                            <button className="bdm-cover__btn" onClick={() => fileRef.current?.click()} disabled={uploadingCover}>
+                                <Upload size={14} /> {uploadingCover ? 'Enviando...' : coverUrl ? 'Trocar capa' : 'Enviar capa'}
                             </button>
+                            <input ref={fileRef} type="file" accept="image/*" hidden onChange={handleCoverFile} />
+                        </div>
+                    </div>
+
+                    {/* Episode title + description */}
+                    <div className="bdm-section">
+                        <div className="bdm-section__title"><FileText size={14} /> Episódio</div>
+                        <input className="form-input" value={episodeTitle} maxLength={140}
+                            onChange={e => setEpisodeTitle(e.target.value)} placeholder="Título do episódio" />
+                        <textarea className="form-input" rows={3} value={episodeDescription}
+                            onChange={e => setEpisodeDescription(e.target.value)} placeholder="Descrição do episódio..."
+                            style={{ resize: 'vertical', marginTop: 8 }} />
+                    </div>
+
+                    {/* Admin notes (read-only) */}
+                    {src.adminNotes && (
+                        <div className="bdm-section">
+                            <div className="bdm-section__title" style={{ color: 'var(--text-muted)' }}>Observação do estúdio</div>
+                            <div className="booking-modal__admin-note">{src.adminNotes}</div>
+                        </div>
+                    )}
+
+                    {/* Planned broadcast platforms (subdued icons, no links). Hidden once completed —
+                        the "Resultados da transmissão" block below shows the real links/metrics. */}
+                    {!isCompleted && (
+                        <div className="bdm-section">
+                            <div className="bdm-section__title"><Radio size={14} /> Onde vai transmitir</div>
+                            <div className="bdm-platforms">
+                                {visiblePlatforms.map(p => {
+                                    const Icon = PLATFORM_ICON[p.key] || Radio;
+                                    const active = platforms.includes(p.key);
+                                    return (
+                                        <button key={p.key} type="button" className={`bdm-plat ${active ? 'bdm-plat--active' : ''}`} onClick={() => togglePlatform(p.key)}>
+                                            <Icon size={16} /> {p.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Services */}
+                    <div className="bdm-section">
+                        <div className="bdm-section__title"><Sparkles size={14} /> Serviços</div>
+                        <div className="bdm-services">
+                            {activeAddons.length > 0 ? activeAddons.map(a => {
+                                const isContract = ctrAddOns.includes(a.key);
+                                return (
+                                    <div key={a.key} className="bdm-service">
+                                        <span className="bdm-service__icon">{ADDON_ICONS[a.key] || <Sparkles size={13} />}</span>
+                                        <span className="bdm-service__name">{a.name}</span>
+                                        <span className={`bdm-service__tag ${isContract ? 'bdm-service__tag--plan' : ''}`}>{isContract ? 'Plano' : 'Ativo'}</span>
+                                    </div>
+                                );
+                            }) : <div className="bdm-service bdm-service--empty">Nenhum serviço ativo</div>}
+
+                            {(availableForPurchase.length > 0 || contractAvailable.length > 0) && ['RESERVED', 'CONFIRMED', 'COMPLETED'].includes(src.status) && (
+                                <button className="bdm-service-add" onClick={() => { setShowServicesSheet(true); setServicesStep(1); setSelectedNewAddons([]); }}>
+                                    <Plus size={15} /> Adicionar serviço
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Metrics (completed) — read-only */}
+                    {isCompleted && (
+                        <div className="bdm-section">
+                            <div className="bdm-section__title"><Radio size={14} style={{ color: '#ef4444' }} /> Resultados da transmissão</div>
+                            <div className="metrics-grid">
+                                <div className="metric-card"><div className="metric-card__label">Duração</div><div className="metric-card__value">{src.durationMinutes ? `${src.durationMinutes} min` : '--'}</div></div>
+                                <div className="metric-card"><div className="metric-card__label">Pico ao vivo</div><div className="metric-card__value">{src.peakViewers ? src.peakViewers.toLocaleString('pt-BR') : '--'}</div></div>
+                                <div className="metric-card"><div className="metric-card__label">Chat</div><div className="metric-card__value">{src.chatMessages ? src.chatMessages.toLocaleString('pt-BR') : '--'}</div></div>
+                                <div className="metric-card"><div className="metric-card__label">Origem</div><div className="metric-card__value" style={{ fontSize: '1rem' }}>{src.audienceOrigin || '--'}</div></div>
+                            </div>
+                            {liveLinkKeys.length > 0 && (
+                                <div className="bdm-platforms" style={{ marginTop: 10 }}>
+                                    {liveLinkKeys.map(k => {
+                                        const Icon = PLATFORM_ICON[k] || ExternalLink;
+                                        return <a key={k} className="bdm-plat bdm-plat--link" href={liveLinks[k]} target="_blank" rel="noopener noreferrer"><Icon size={15} /> {k} <ExternalLink size={12} /></a>;
+                                    })}
+                                </div>
+                            )}
+                            {Object.keys(parseStreamMetrics(src.streamMetrics)).length > 0 && (
+                                <div style={{ marginTop: 12 }}><StreamMetricsChart streamMetrics={src.streamMetrics} /></div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Reschedule */}
+                    {showReschedule && canReschedule() && (
+                        <div className="reschedule-panel" style={{ marginTop: 4 }}>
+                            <h4 className="reschedule-panel__title">Reagendar</h4>
+                            <p className="reschedule-panel__note">Máx. {getRule('reschedule_max_days') || 7} dias · Mesma faixa ({src.tierApplied})</p>
+                            <div className="reschedule-panel__form">
+                                <input type="date" className="form-input" value={rescheduleDate} onChange={e => setRescheduleDate(e.target.value)}
+                                    min={new Date().toISOString().split('T')[0]} max={new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]} style={{ flex: 1 }} />
+                                <input type="time" className="form-input" value={rescheduleTime} onChange={e => setRescheduleTime(e.target.value)} step={3600} style={{ width: 120 }} />
+                                <button className="btn btn-primary btn-sm" onClick={handleReschedule} disabled={rescheduling || !rescheduleDate || !rescheduleTime}>Confirmar</button>
+                            </div>
+                            {rescheduleError && <div className="error-message" style={{ marginTop: 8 }}>{rescheduleError}</div>}
+                        </div>
+                    )}
+
+                    {/* Footer */}
+                    <div className="bdm-footer">
+                        {src.status === 'RESERVED' && src.holdExpiresAt && new Date(src.holdExpiresAt).getTime() > Date.now() ? (
+                            <button className="btn btn-primary" onClick={() => { onClose(); navigate('/meus-pagamentos'); }}>💳 Pagar agora</button>
                         ) : (
                             <>
-                                {booking.status === 'CONFIRMED' && canModify() && (
-                                    <button className="btn btn-secondary" onClick={() => setShowReschedule(!showReschedule)}>
-                                        <RefreshCw size={16} /> Reagendar
-                                    </button>
+                                {canReschedule() && (
+                                    <button className="btn btn-secondary" onClick={() => setShowReschedule(v => !v)}><RefreshCw size={15} /> Reagendar</button>
                                 )}
-                                <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-                                    {saving ? 'Salvando...' : 'Salvar'}
-                                </button>
+                                <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</button>
                             </>
                         )}
                     </div>
                 </div>
-            </div>
+            </BottomSheetModal>
 
-            {/* ═══ SERVICES BOTTOM SHEET ═══ */}
-            <BottomSheetModal
-                isOpen={showServicesSheet}
-                onClose={() => { setShowServicesSheet(false); setServicesStep(1); setSelectedNewAddons([]); }}
-                title={servicesStep === 1 ? 'Serviços para este Episódio' : 'Confirmação'}
-                zIndex={1100}
-            >
+            {/* Services bottom sheet */}
+            <BottomSheetModal isOpen={showServicesSheet} onClose={() => { setShowServicesSheet(false); setServicesStep(1); setSelectedNewAddons([]); }}
+                title={servicesStep === 1 ? 'Serviços para este episódio' : 'Confirmação'} zIndex={1100}>
                 {servicesStep === 1 ? (
                     <div className="svc-catalog">
-                        {/* Contract addons */}
                         {contractAvailable.length > 0 && (
                             <>
                                 <p className="svc-catalog__group-title">Inclusos no seu plano</p>
                                 <div className="svc-catalog__list">
-                                    {contractAvailable.map(addon => {
-                                        const isSelected = selectedNewAddons.includes(addon.key);
+                                    {contractAvailable.map(a => {
+                                        const sel = selectedNewAddons.includes(a.key);
                                         return (
-                                            <div key={addon.key}
-                                                className={`svc-card svc-card--contract ${isSelected ? 'svc-card--selected' : ''}`}
-                                                onClick={() => setSelectedNewAddons(prev => prev.includes(addon.key) ? prev.filter(k => k !== addon.key) : [...prev, addon.key])}
-                                            >
+                                            <div key={a.key} className={`svc-card svc-card--contract ${sel ? 'svc-card--selected' : ''}`} onClick={() => setSelectedNewAddons(p => p.includes(a.key) ? p.filter(k => k !== a.key) : [...p, a.key])}>
                                                 <div className="svc-card__header">
-                                                    <div className="svc-card__icon">{ADDON_ICONS[addon.key] || '✨'}</div>
-                                                    <div className="svc-card__info">
-                                                        <p className="svc-card__name">{addon.name}</p>
-                                                        {addon.description && <p className="svc-card__desc">{addon.description}</p>}
-                                                    </div>
+                                                    <div className="svc-card__icon">{ADDON_ICONS[a.key] || '✨'}</div>
+                                                    <div className="svc-card__info"><p className="svc-card__name">{a.name}</p>{a.description && <p className="svc-card__desc">{a.description}</p>}</div>
                                                     <div className="svc-card__check"><Check size={14} /></div>
                                                 </div>
-                                                <div className="svc-card__footer">
-                                                    <span className="svc-card__contract-badge">Disponível — Incluso no plano</span>
-                                                </div>
+                                                <div className="svc-card__footer"><span className="svc-card__contract-badge">Incluso no plano</span></div>
                                             </div>
                                         );
                                     })}
                                 </div>
                             </>
                         )}
-
-                        {/* Paid addons */}
                         {availableForPurchase.length > 0 && (
                             <>
                                 <p className="svc-catalog__group-title">Serviços avulsos</p>
                                 <div className="svc-catalog__list">
-                                    {availableForPurchase.map(addon => {
-                                        const isSelected = selectedNewAddons.includes(addon.key);
-                                        const finalPrice = Math.round(addon.price * (1 - contractDiscountPct / 100));
-                                        const hasDiscount = contractDiscountPct > 0;
-
+                                    {availableForPurchase.map(a => {
+                                        const sel = selectedNewAddons.includes(a.key);
+                                        const finalPrice = Math.round(a.price * (1 - discountPct / 100));
                                         return (
-                                            <div key={addon.key}
-                                                className={`svc-card ${isSelected ? 'svc-card--selected' : ''}`}
-                                                onClick={() => setSelectedNewAddons(prev => prev.includes(addon.key) ? prev.filter(k => k !== addon.key) : [...prev, addon.key])}
-                                            >
+                                            <div key={a.key} className={`svc-card ${sel ? 'svc-card--selected' : ''}`} onClick={() => setSelectedNewAddons(p => p.includes(a.key) ? p.filter(k => k !== a.key) : [...p, a.key])}>
                                                 <div className="svc-card__header">
-                                                    <div className="svc-card__icon">{ADDON_ICONS[addon.key] || '✨'}</div>
-                                                    <div className="svc-card__info">
-                                                        <p className="svc-card__name">{addon.name}</p>
-                                                        {addon.description && <p className="svc-card__desc">{addon.description}</p>}
-                                                    </div>
+                                                    <div className="svc-card__icon">{ADDON_ICONS[a.key] || '✨'}</div>
+                                                    <div className="svc-card__info"><p className="svc-card__name">{a.name}</p>{a.description && <p className="svc-card__desc">{a.description}</p>}</div>
                                                     <div className="svc-card__check"><Check size={14} /></div>
                                                 </div>
                                                 <div className="svc-card__footer">
                                                     <div className="svc-card__price">
-                                                        {hasDiscount && <span className="svc-card__price-original">{formatBRL(addon.price)}</span>}
+                                                        {discountPct > 0 && <span className="svc-card__price-original">{formatBRL(a.price)}</span>}
                                                         <span className="svc-card__price-final">{formatBRL(finalPrice)}</span>
-                                                        {hasDiscount && <span className="svc-card__price-discount">{contractDiscountPct}% desc.</span>}
+                                                        {discountPct > 0 && <span className="svc-card__price-discount">{discountPct}% desc.</span>}
                                                     </div>
                                                 </div>
                                             </div>
@@ -507,64 +454,39 @@ export default function BookingDetailModal({
                                 </div>
                             </>
                         )}
-
-                        {/* CTA */}
                         {selectedNewAddons.length > 0 && (
                             <div className="svc-catalog__cta">
-                                <button className="btn btn-primary" onClick={() => setServicesStep(2)}>
-                                    Continuar ({selectedNewAddons.length} selecionado{selectedNewAddons.length > 1 ? 's' : ''})
-                                </button>
+                                <button className="btn btn-primary" onClick={() => setServicesStep(2)}>Continuar ({selectedNewAddons.length})</button>
                             </div>
                         )}
                     </div>
                 ) : (
-                    /* ═══ STEP 2: SUMMARY ═══ */
                     <div className="svc-summary">
                         <div className="svc-summary__list">
                             {selectedNewAddons.map(key => {
-                                const addon = episodeAddons.find(a => a.key === key);
-                                if (!addon) return null;
-                                const isContract = contractAddOns.includes(key);
-                                const finalPrice = isContract ? 0 : Math.round(addon.price * (1 - contractDiscountPct / 100));
+                                const a = episodeAddons.find(x => x.key === key); if (!a) return null;
+                                const isContract = ctrAddOns.includes(key);
+                                const finalPrice = isContract ? 0 : Math.round(a.price * (1 - discountPct / 100));
                                 return (
                                     <div key={key} className="svc-summary__item">
-                                        <span className="svc-summary__item-name">
-                                            {ADDON_ICONS[key] || '✨'} {addon.name}
-                                        </span>
-                                        <span className={`svc-summary__item-price ${isContract ? 'svc-summary__item-price--free' : ''}`}>
-                                            {isContract ? 'Incluso' : formatBRL(finalPrice)}
-                                        </span>
+                                        <span className="svc-summary__item-name">{ADDON_ICONS[key] || '✨'} {a.name}</span>
+                                        <span className={`svc-summary__item-price ${isContract ? 'svc-summary__item-price--free' : ''}`}>{isContract ? 'Incluso' : formatBRL(finalPrice)}</span>
                                     </div>
                                 );
                             })}
                         </div>
-
                         {totalPaid > 0 && (
-                            <div className="svc-summary__total">
-                                <span className="svc-summary__total-label">Total a pagar</span>
-                                <span className="svc-summary__total-value">{formatBRL(totalPaid)}</span>
-                            </div>
+                            <div className="svc-summary__total"><span className="svc-summary__total-label">Total a pagar</span><span className="svc-summary__total-value">{formatBRL(totalPaid)}</span></div>
                         )}
-
-                        {totalSavings > 0 && (
-                            <div className="svc-summary__savings">
-                                Economia de {formatBRL(totalSavings)} com desconto do contrato
-                            </div>
-                        )}
-
                         <div className="svc-summary__actions">
-                            <button className="btn btn-primary" onClick={handleConfirmAddons} disabled={saving}>
-                                {saving ? 'Processando...' : totalPaid > 0 ? `Pagar ${formatBRL(totalPaid)}` : 'Confirmar Ativação'}
-                            </button>
-                            <button className="btn btn-secondary" onClick={() => setServicesStep(1)}>
-                                <ChevronLeft size={16} /> Voltar ao catálogo
-                            </button>
+                            <button className="btn btn-primary" onClick={handleConfirmAddons} disabled={saving}>{saving ? 'Processando...' : totalPaid > 0 ? `Pagar ${formatBRL(totalPaid)}` : 'Confirmar Ativação'}</button>
+                            <button className="btn btn-secondary" onClick={() => setServicesStep(1)}><ChevronLeft size={16} /> Voltar</button>
                         </div>
                     </div>
                 )}
             </BottomSheetModal>
 
-            {/* ═══ PAYMENT MODAL ═══ */}
+            {/* Payment */}
             {payingAddon && (
                 <PaymentModal
                     title="Pagar Serviço"
@@ -572,20 +494,9 @@ export default function BookingDetailModal({
                     paymentId={payingAddon.paymentId}
                     description={payingAddon.description}
                     allowedMethods={['CARTAO', 'PIX']}
-                    onSuccess={() => {
-                        // Payment confirmed! Add addons to local state
-                        if (payingAddon.addonKeys) {
-                            setLocalAddOns(prev => [...prev, ...payingAddon.addonKeys]);
-                        }
-                        setPayingAddon(null);
-                        showToast('Serviço pago e ativado com sucesso!');
-                        onSaved();
-                    }}
+                    onSuccess={() => { setLocalAddOns(prev => [...prev, ...payingAddon.addonKeys]); setPayingAddon(null); showToast('Serviço pago e ativado!'); onSaved(); }}
                     onError={(msg) => showAlert({ message: msg, type: 'error' })}
-                    onClose={() => {
-                        setPayingAddon(null);
-                        showToast('Pagamento não concluído. O serviço só será ativado após a confirmação do pagamento.');
-                    }}
+                    onClose={() => { setPayingAddon(null); showToast('Pagamento não concluído. O serviço só ativa após o pagamento.'); }}
                 />
             )}
         </>

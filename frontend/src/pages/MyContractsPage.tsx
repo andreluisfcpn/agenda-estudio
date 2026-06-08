@@ -226,7 +226,7 @@ export default function MyContractsPage() {
         setSaving(true);
         try {
             await bookingsApi.clientUpdate(detailBooking.id, {
-                clientNotes, platforms: JSON.stringify(platforms), platformLinks: JSON.stringify(platformLinks),
+                clientNotes, platforms: JSON.stringify(platforms),
             });
             showToast('Gravação atualizada!');
             setDetailBooking(null);

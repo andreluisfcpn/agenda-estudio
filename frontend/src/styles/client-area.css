@@ -497,14 +497,28 @@
   /* Quase tela cheia, 1 por vez, com "espiada" no próximo cartão */
   width: min(86vw, 560px);
 }
+/* Desktop: vira LISTA VERTICAL (um card abaixo do outro), mais compacta */
 @media (min-width: 768px) {
-  .client-scroll-section > * { width: min(60vw, 640px); }
+  .client-scroll-section {
+    flex-direction: column;
+    overflow-x: visible;
+    scroll-snap-type: none;
+    gap: 10px;
+    margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0;
+    -webkit-mask-image: none; mask-image: none;
+  }
+  .client-scroll-section > * { width: 100%; }
+  .client-scroll-section .client-booking-card--scroll { min-height: auto; padding: 16px 18px; }
+  .client-scroll-section .client-booking-card__date-badge { min-width: 54px; padding: 8px 6px; }
+  .client-scroll-section .client-booking-card__day-number { font-size: 1.0625rem; }
+  .client-scroll-section .client-booking-card__contract-name { font-size: 0.9375rem; }
+  .client-scroll-section .client-booking-card__time { font-size: 0.8125rem; margin-top: 2px; }
 }
 
-/* ── Enlarged booking cards inside the horizontal scroll ─── */
+/* ── Enlarged booking cards inside the horizontal scroll (mobile: mais alto p/ toque) ─── */
 .client-scroll-section .client-booking-card--scroll {
-  min-height: 150px;
-  padding: 26px 24px;
+  min-height: 190px;
+  padding: 30px 26px;
 }
 
 .client-scroll-section .client-booking-card--scroll:active {

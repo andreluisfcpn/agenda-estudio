@@ -1,9 +1,15 @@
 import { useState, useEffect } from 'react';
 import { bookingsApi } from '../../../api/client';
 import { useUI } from '../../../context/UIContext';
+import { useBusinessConfig } from '../../../hooks/useBusinessConfig';
 import { getErrorMessage } from '../../../utils/errors';
 import BottomSheetModal from '../../BottomSheetModal';
 import { PLATFORMS, METRIC_FIELDS, parsePlatforms, parsePlatformLinks, parseStreamMetrics, type PlatformMetric } from '../../../constants/platforms';
+
+const PLATFORM_CFG: Record<string, string> = {
+    YOUTUBE: 'platform_youtube_enabled', INSTAGRAM: 'platform_instagram_enabled',
+    FACEBOOK: 'platform_facebook_enabled', TIKTOK: 'platform_tiktok_enabled',
+};
 
 interface FinalizeBooking {
     id: string;
@@ -42,6 +48,7 @@ export default function FinalizeRecordingModal({ isOpen, booking, onClose, onSav
     const [clientNotes, setClientNotes] = useState('');
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
+    const { getBool } = useBusinessConfig();
 
     // Initialize from the booking each time it opens (pre-fills when editing a finalized one).
     useEffect(() => {
@@ -143,7 +150,7 @@ export default function FinalizeRecordingModal({ isOpen, booking, onClose, onSav
                         {/* Platform multiselect */}
                         <label style={labelCss}>Redes da transmissão</label>
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-                            {PLATFORMS.map(p => {
+                            {PLATFORMS.filter(p => getBool(PLATFORM_CFG[p.key] ?? '', true) || selected.includes(p.key)).map(p => {
                                 const on = selected.includes(p.key);
                                 return (
                                     <button key={p.key} type="button" onClick={() => togglePlatform(p.key)}

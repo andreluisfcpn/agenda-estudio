@@ -152,6 +152,62 @@
   font-weight: 600;
 }
 
+/* ─── Recording card (capa) — carrossel no mobile, lista no desktop ─── */
+.rec-card {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  padding: 0;
+  overflow: hidden;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: border-color 0.2s ease, transform 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.rec-card:hover { border-color: rgba(139, 92, 246, 0.4); }
+.rec-card:active { transform: scale(0.985); }
+
+.rec-card__cover {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--bg-elevated);
+  flex-shrink: 0;
+}
+.rec-card__cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.rec-card__cover-ph {
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted); opacity: 0.4;
+}
+.rec-card__live {
+  position: absolute; top: 8px; left: 8px;
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 0.625rem; font-weight: 800; padding: 2px 8px; border-radius: 999px;
+  background: rgba(239, 68, 68, 0.9); color: #fff;
+}
+.rec-card__status {
+  position: absolute; top: 8px; right: 8px;
+  font-size: 0.625rem; font-weight: 800; padding: 2px 8px; border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(3px);
+}
+.rec-card__body { padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; }
+.rec-card__title {
+  font-weight: 800; font-size: 1rem; line-height: 1.25;
+  overflow: hidden; text-overflow: ellipsis; display: -webkit-box;
+  -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.rec-card__meta { font-size: 0.8125rem; color: var(--text-muted); }
+
+/* Desktop: lista horizontal compacta (capa à esquerda) */
+@media (min-width: 768px) {
+  .rec-card { flex-direction: row; align-items: stretch; }
+  .rec-card__cover { width: 200px; aspect-ratio: 16 / 9; }
+  .rec-card__body { flex: 1; justify-content: center; }
+}
+
 /* ─── Detalhe expandido ────────────────────────────────────── */
 .booking-card__detail {
   border-top: 1px solid var(--border-subtle);

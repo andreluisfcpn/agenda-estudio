@@ -21,6 +21,7 @@ import { loadPaymentMethods } from './constants/paymentMethods';
 const DashboardPage = React.lazy(() => import('./pages/DashboardPage'));
 const CalendarPage = React.lazy(() => import('./pages/CalendarPage'));
 const MyBookingsPage = React.lazy(() => import('./pages/MyBookingsPage'));
+const MyResultsPage = React.lazy(() => import('./pages/MyResultsPage'));
 const MyContractsPage = React.lazy(() => import('./pages/MyContractsPage'));
 const MyPaymentsPage = React.lazy(() => import('./pages/MyPaymentsPage'));
 const AdminClientsPage = React.lazy(() => import('./pages/AdminClientsPage'));
@@ -197,6 +198,7 @@ function AppRoutes() {
             <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
             <Route path="/calendar" element={<ProtectedRoute><CalendarPage /></ProtectedRoute>} />
             <Route path="/my-bookings" element={<ProtectedRoute><MyBookingsPage /></ProtectedRoute>} />
+            <Route path="/meus-resultados" element={<ProtectedRoute><MyResultsPage /></ProtectedRoute>} />
             <Route path="/my-contracts" element={<ProtectedRoute><MyContractsPage /></ProtectedRoute>} />
             <Route path="/meus-pagamentos" element={<ProtectedRoute><MyPaymentsPage /></ProtectedRoute>} />
 

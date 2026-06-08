@@ -1,5 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
+import multer from 'multer';
+import sharp from 'sharp';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { prisma } from '../../lib/prisma.js';
 import { authenticate, authorize } from '../../middleware/auth.js';
 import { releaseMultiSlotLock } from '../../lib/redis.js';
@@ -23,6 +28,35 @@ import {
     addOnPurchaseSchema,
 } from './validators.js';
 import { restoreCredit, deductCredit } from './booking.service.js';
+
+// ─── Cover image upload (memory storage → optimized with sharp) ──────────────
+const __dirname_bm = path.dirname(fileURLToPath(import.meta.url));
+const UPLOADS_DIR = path.resolve(__dirname_bm, '../../../uploads');
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+const COVER_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/heic'];
+const coverUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 12 * 1024 * 1024 }, // 12MB raw
+    fileFilter: (_req, file, cb) => {
+        // Raster allowlist only — reject SVG and other vector/unknown types.
+        if (COVER_MIME.includes(file.mimetype)) cb(null, true);
+        else cb(new Error('Formato inválido. Envie JPG, PNG, WEBP, AVIF ou HEIC.'));
+    },
+});
+// Run multer and translate its errors into clean 4xx responses (instead of a generic 500).
+function coverUploadMw(req: Request, res: Response, next: () => void) {
+    coverUpload.single('cover')(req, res, (err: unknown) => {
+        if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') { res.status(413).json({ error: 'Imagem muito grande (máx. 12MB).' }); return; }
+        if (err) { res.status(400).json({ error: err instanceof Error ? err.message : 'Falha no upload.' }); return; }
+        next();
+    });
+}
+
+// Minimal per-network metrics parse (backend mirror of the frontend helper).
+function parseMetrics(json: string | null | undefined): Record<string, { views?: number; peak?: number; likes?: number; comments?: number }> {
+    if (!json) return {};
+    try { const v = JSON.parse(json); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
+}
 
 export function registerManagementRoutes(router: Router) {
 
@@ -140,19 +174,107 @@ router.get('/my', authenticate, async (req: Request, res: Response) => {
             audienceOrigin: true,
             isLivestream: true,
             streamMetrics: true,
+            episodeTitle: true,
+            episodeDescription: true,
+            coverImageUrl: true,
             addOns: true,
             contract: {
                 select: {
                     id: true,
                     name: true,
                     type: true,
-                    tier: true
+                    tier: true,
+                    discountPct: true,
+                    addOns: true
                 }
             }
         },
     });
 
     res.json({ bookings });
+});
+
+// ─── GET /api/bookings/my/results (Client analytics) ────
+// Aggregates the client's COMPLETED recordings over a period: overall timeline + totals
+// and a per-contract breakdown, for the "Resultados" charts. Registered before /:id routes.
+router.get('/my/results', authenticate, async (req: Request, res: Response) => {
+    const userId = req.user!.userId;
+    const days = Math.min(730, Math.max(1, Number(req.query.days) || 90));
+    const since = new Date();
+    since.setUTCHours(0, 0, 0, 0);
+    since.setUTCDate(since.getUTCDate() - days + 1);
+
+    const bookings = await prisma.booking.findMany({
+        where: { userId, status: 'COMPLETED', date: { gte: since } },
+        orderBy: { date: 'asc' },
+        select: {
+            id: true, date: true, streamMetrics: true, isLivestream: true,
+            contract: { select: { id: true, name: true } },
+        },
+    });
+
+    const totals = { sessions: 0, live: 0, views: 0, likes: 0, comments: 0, peakSum: 0, peakCount: 0 };
+    const timelineMap = new Map<string, { date: string; views: number; peak: number; likes: number; comments: number }>();
+    const contractMap = new Map<string, { contractId: string; contractName: string; sessions: number; views: number; likes: number; comments: number; peakSum: number; peakCount: number; series: { date: string; views: number; peak: number }[] }>();
+
+    for (const b of bookings) {
+        const m = parseMetrics(b.streamMetrics);
+        let views = 0, likes = 0, comments = 0, peak = 0;
+        for (const pm of Object.values(m)) {
+            views += Number(pm.views) || 0;
+            likes += Number(pm.likes) || 0;
+            comments += Number(pm.comments) || 0;
+            peak = Math.max(peak, Number(pm.peak) || 0);
+        }
+        const dateStr = b.date.toISOString().split('T')[0];
+        totals.sessions++; totals.views += views; totals.likes += likes; totals.comments += comments;
+        if (b.isLivestream) totals.live++;
+        if (peak > 0) { totals.peakSum += peak; totals.peakCount++; }
+
+        const t = timelineMap.get(dateStr) || { date: dateStr, views: 0, peak: 0, likes: 0, comments: 0 };
+        t.views += views; t.peak = Math.max(t.peak, peak); t.likes += likes; t.comments += comments;
+        timelineMap.set(dateStr, t);
+
+        const cid = b.contract?.id || 'avulso';
+        const c = contractMap.get(cid) || { contractId: cid, contractName: b.contract?.name || 'Avulso', sessions: 0, views: 0, likes: 0, comments: 0, peakSum: 0, peakCount: 0, series: [] };
+        c.sessions++; c.views += views; c.likes += likes; c.comments += comments;
+        if (peak > 0) { c.peakSum += peak; c.peakCount++; }
+        c.series.push({ date: dateStr, views, peak });
+        contractMap.set(cid, c);
+    }
+
+    res.json({
+        overall: {
+            sessions: totals.sessions, live: totals.live, views: totals.views, likes: totals.likes, comments: totals.comments,
+            avgPeak: totals.peakCount ? Math.round(totals.peakSum / totals.peakCount) : 0,
+            timeline: Array.from(timelineMap.values()).sort((a, b) => a.date.localeCompare(b.date)),
+        },
+        byContract: Array.from(contractMap.values()).map(c => ({
+            contractId: c.contractId, contractName: c.contractName, sessions: c.sessions,
+            views: c.views, likes: c.likes, comments: c.comments,
+            avgPeak: c.peakCount ? Math.round(c.peakSum / c.peakCount) : 0, series: c.series,
+        })),
+    });
+});
+
+// ─── GET /api/bookings/:id (Client, owner) ──────────────
+// Full single booking (with source contract incl. discount/addons) to hydrate the detail
+// modal regardless of which list opened it. Registered AFTER /my and /my/results.
+router.get('/:id', authenticate, async (req: Request, res: Response) => {
+    const booking = await prisma.booking.findFirst({
+        where: { id: req.params.id as string, userId: req.user!.userId },
+        select: {
+            id: true, date: true, startTime: true, endTime: true, status: true,
+            tierApplied: true, price: true, contractId: true,
+            adminNotes: true, clientNotes: true, platforms: true, platformLinks: true,
+            episodeTitle: true, episodeDescription: true, coverImageUrl: true,
+            durationMinutes: true, peakViewers: true, chatMessages: true, audienceOrigin: true,
+            isLivestream: true, streamMetrics: true, addOns: true, holdExpiresAt: true,
+            contract: { select: { id: true, name: true, type: true, tier: true, discountPct: true, addOns: true } },
+        },
+    });
+    if (!booking) { res.status(404).json({ error: 'Agendamento não encontrado.' }); return; }
+    res.json({ booking });
 });
 
 // ─── GET /api/bookings (ADMIN) ──────────────────────────
@@ -301,8 +423,10 @@ router.patch('/:id/client-update', authenticate, async (req: Request, res: Respo
 
         const updateData: Prisma.BookingUncheckedUpdateInput = {};
         if (data.clientNotes !== undefined) updateData.clientNotes = data.clientNotes;
+        if (data.episodeTitle !== undefined) updateData.episodeTitle = data.episodeTitle;
+        if (data.episodeDescription !== undefined) updateData.episodeDescription = data.episodeDescription;
+        // Planned broadcast networks (client). Actual broadcast LINKS are admin-only (complete flow).
         if (data.platforms !== undefined) updateData.platforms = data.platforms;
-        if (data.platformLinks !== undefined) updateData.platformLinks = data.platformLinks;
 
         // Phase 2 Metrics Logic
         const hasMetricsPayload = data.durationMinutes !== undefined || data.peakViewers !== undefined || data.chatMessages !== undefined || data.audienceOrigin !== undefined;
@@ -325,6 +449,7 @@ router.patch('/:id/client-update', authenticate, async (req: Request, res: Respo
                 id: true, date: true, startTime: true, endTime: true,
                 status: true, tierApplied: true, price: true, contractId: true,
                 adminNotes: true, clientNotes: true, platforms: true, platformLinks: true,
+                episodeTitle: true, episodeDescription: true, coverImageUrl: true,
                 durationMinutes: true, peakViewers: true, chatMessages: true, audienceOrigin: true,
                 isLivestream: true, streamMetrics: true,
             },
@@ -337,6 +462,39 @@ router.patch('/:id/client-update', authenticate, async (req: Request, res: Respo
             return;
         }
         throw err;
+    }
+});
+
+// ─── POST /api/bookings/:id/cover-image (Client) ────────
+// Upload + optimize (sharp) the episode cover. Stored under /uploads and shown in recordings.
+router.post('/:id/cover-image', authenticate, coverUploadMw, async (req: Request, res: Response) => {
+    try {
+        const id = req.params.id as string;
+        const file = req.file;
+        if (!file) { res.status(400).json({ error: 'Nenhuma imagem enviada.' }); return; }
+
+        const booking = await prisma.booking.findFirst({ where: { id, userId: req.user!.userId } });
+        if (!booking) { res.status(404).json({ error: 'Agendamento não encontrado.' }); return; }
+
+        const safeId = id.replace(/[^a-zA-Z0-9\-_]/g, '');
+        const filename = `cover_${safeId}_${Date.now()}.jpg`;
+        await sharp(file.buffer)
+            .resize(1280, 720, { fit: 'cover', position: 'centre' })
+            .jpeg({ quality: 82 })
+            .toFile(path.join(UPLOADS_DIR, filename));
+
+        const coverImageUrl = `/uploads/${filename}`;
+        await prisma.booking.update({ where: { id }, data: { coverImageUrl } });
+
+        // Best-effort cleanup of the previous cover file (avoid orphan accumulation).
+        if (booking.coverImageUrl && booking.coverImageUrl.startsWith('/uploads/')) {
+            const oldName = path.basename(booking.coverImageUrl);
+            fs.promises.unlink(path.join(UPLOADS_DIR, oldName)).catch(() => {});
+        }
+        res.json({ coverImageUrl, message: 'Capa atualizada com sucesso.' });
+    } catch (err: unknown) {
+        console.error('Cover upload error:', err);
+        res.status(500).json({ error: 'Erro ao processar a imagem.' });
     }
 });
 
@@ -537,8 +695,10 @@ router.post('/:id/addons', authenticate, async (req: Request, res: Response) => 
         // Normalize: accept single addonKey or array of addonKeys
         const keys: string[] = data.addonKeys || (data.addonKey ? [data.addonKey] : []);
 
+        // Services can be hired for upcoming sessions AND for completed recordings
+        // (post-production add-ons like cortes/capa). Only FALTA/NAO_REALIZADO/CANCELLED are blocked.
         const booking = await prisma.booking.findFirst({
-            where: { id, userId, status: { in: ['RESERVED', 'CONFIRMED'] } },
+            where: { id, userId, status: { in: ['RESERVED', 'CONFIRMED', 'COMPLETED'] } },
             include: { contract: true }
         });
 

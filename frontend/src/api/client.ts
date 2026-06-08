@@ -98,6 +98,7 @@ export const bookingsApi = {
     complete: (id: string, data?: { durationMinutes?: number | null; isLivestream?: boolean | null; platforms?: string | null; platformLinks?: string | null; streamMetrics?: string | null; audienceOrigin?: string | null; adminNotes?: string | null; clientNotes?: string | null; peakViewers?: number | null; chatMessages?: number | null }) => request<{ booking: Booking; message: string }>(`/bookings/${id}/complete`, { method: 'PUT', body: JSON.stringify(data || {}) }),
     markFalta: (id: string) => request<{ booking: Booking; message: string }>(`/bookings/${id}/mark-falta`, { method: 'PUT' }),
     getMy: () => request<{ bookings: Booking[] }>('/bookings/my'),
+    getOne: (id: string) => request<{ booking: Booking }>(`/bookings/${id}`),
     getAll: (date?: string, status?: string) => {
         const params = new URLSearchParams();
         if (date) params.set('date', date);
@@ -105,8 +106,16 @@ export const bookingsApi = {
         const qs = params.toString();
         return request<{ bookings: BookingWithUser[] }>(`/bookings${qs ? `?${qs}` : ''}`);
     },
-    clientUpdate: (id: string, data: { clientNotes?: string; platforms?: string; platformLinks?: string }) =>
+    clientUpdate: (id: string, data: { clientNotes?: string; episodeTitle?: string; episodeDescription?: string; platforms?: string }) =>
         request<{ booking: Booking; message: string }>(`/bookings/${id}/client-update`, { method: 'PATCH', body: JSON.stringify(data) }),
+    uploadCover: async (id: string, file: File): Promise<{ coverImageUrl: string; message: string }> => {
+        const formData = new FormData();
+        formData.append('cover', file);
+        const res = await fetch(`${API_BASE}/bookings/${id}/cover-image`, { method: 'POST', credentials: 'include', body: formData });
+        if (!res.ok) { const body = await res.json().catch(() => ({ error: 'Erro' })); throw new ApiError(body.error || 'Erro ao enviar capa', res.status); }
+        return res.json();
+    },
+    getMyResults: (days = 90) => request<BookingResults>(`/bookings/my/results?days=${days}`),
     reschedule: (id: string, data: { date: string; startTime: string }) =>
         request<{ booking: Booking; message: string }>(`/bookings/${id}/reschedule`, { method: 'PATCH', body: JSON.stringify(data) }),
     purchaseAddon: (id: string, addonKeyOrKeys: string | string[]) =>
@@ -115,6 +124,20 @@ export const bookingsApi = {
             { method: 'POST', body: JSON.stringify(Array.isArray(addonKeyOrKeys) ? { addonKeys: addonKeyOrKeys } : { addonKey: addonKeyOrKeys }) }
         ),
 };
+
+// Client analytics ("Resultados") — overall timeline + per-contract breakdown.
+export interface ResultsContract {
+    contractId: string; contractName: string; sessions: number;
+    views: number; likes: number; comments: number; avgPeak: number;
+    series: { date: string; views: number; peak: number }[];
+}
+export interface BookingResults {
+    overall: {
+        sessions: number; live: number; views: number; likes: number; comments: number; avgPeak: number;
+        timeline: { date: string; views: number; peak: number; likes: number; comments: number }[];
+    };
+    byContract: ResultsContract[];
+}
 
 // ─── Contracts ──────────────────────────────────────────
 export const contractsApi = {
@@ -226,6 +249,9 @@ export interface Booking {
     audienceOrigin?: string | null;
     isLivestream?: boolean | null;
     streamMetrics?: string | null; // JSON: { [platform]: { views, peak, likes, comments } }
+    episodeTitle?: string | null;
+    episodeDescription?: string | null;
+    coverImageUrl?: string | null;
     addOns?: string[];
     holdExpiresAt?: string | null;
     contract?: {
@@ -233,6 +259,8 @@ export interface Booking {
         name: string;
         type: 'FIXO' | 'FLEX' | 'AVULSO' | 'SERVICO';
         tier: 'COMERCIAL' | 'AUDIENCIA' | 'SABADO';
+        discountPct?: number;
+        addOns?: string[];
     } | null;
     paymentIntentId?: string | null;
     createdAt: string;

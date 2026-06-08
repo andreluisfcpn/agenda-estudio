@@ -243,6 +243,11 @@ model Booking {
   isLivestream  Boolean? @map("is_livestream")
   streamMetrics String?  @map("stream_metrics") @db.Text
 
+  // Episode metadata (client-editable) + optimized cover image shown in recordings.
+  episodeTitle       String? @map("episode_title")
+  episodeDescription String? @map("episode_description") @db.Text
+  coverImageUrl      String? @map("cover_image_url")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
