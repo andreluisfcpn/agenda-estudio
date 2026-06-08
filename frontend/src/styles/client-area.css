@@ -492,15 +492,19 @@
 }
 
 .client-scroll-section > * {
-  scroll-snap-align: center;
+  scroll-snap-align: start;
   flex: 0 0 auto;
-  width: calc(100vw - 48px);
-  max-width: 320px;
+  /* Quase tela cheia, 1 por vez, com "espiada" no próximo cartão */
+  width: min(86vw, 560px);
+}
+@media (min-width: 768px) {
+  .client-scroll-section > * { width: min(60vw, 640px); }
 }
 
 /* ── Enlarged booking cards inside the horizontal scroll ─── */
-.client-scroll-section .client-booking-card {
-  /* Extra specificity overrides handled by --scroll modifier class directly */
+.client-scroll-section .client-booking-card--scroll {
+  min-height: 150px;
+  padding: 26px 24px;
 }
 
 .client-scroll-section .client-booking-card--scroll:active {
@@ -513,10 +517,10 @@
 
 /* Bigger date badge */
 .client-scroll-section .client-booking-card__date-badge {
-  min-width: 56px;
-  padding: 10px 6px;
+  min-width: 68px;
+  padding: 14px 10px;
   border-radius: var(--radius-lg);
-  gap: 2px;
+  gap: 3px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -524,26 +528,26 @@
 
 /* More prominent date text */
 .client-scroll-section .client-booking-card__day-name {
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
 }
 
 .client-scroll-section .client-booking-card__day-number {
-  font-size: 1.0625rem;
+  font-size: 1.375rem;
   letter-spacing: -0.03em;
 }
 
 /* Contract name larger in scroll section */
 .client-scroll-section .client-booking-card__contract-name {
-  font-size: 1rem;
+  font-size: 1.2rem;
   letter-spacing: -0.02em;
 }
 
 /* Time becomes a refined sub-label */
 .client-scroll-section .client-booking-card__time {
-  font-size: 0.875rem;
+  font-size: 1rem;
   font-weight: 700;
   color: var(--text-muted);
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
 /* ── Empty State ─────────────────────────────────────────── */

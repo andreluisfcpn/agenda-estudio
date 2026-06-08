@@ -345,6 +345,25 @@ app.listen(config.port, async () => {
         setTimeout(runAutoCharge, 20000); // run once shortly after boot
         console.log('   💳 Auto-charge job registered (daily)');
     }).catch(err => console.error('[AUTO-CHARGE] Failed to load:', err));
+
+    // Daily Confirmation Cronjob — at 07:00 (São Paulo), notifies clients about the day's
+    // recording: paid ⇒ "confirmada", not paid ⇒ "pague para confirmar". Runs hourly; the
+    // job itself only acts at 7am SP and guards a once-per-day Redis marker.
+    import('./jobs/dailyConfirmationJob.js').then(({ runDailyConfirmationJob }) => {
+        const runDailyConfirm = async () => {
+            const lockKey = 'cron:daily-confirm:lock';
+            const lockAcquired = await redis.set(lockKey, 'running', 'EX', 280, 'NX');
+            if (lockAcquired !== 'OK') return;
+            try {
+                await runDailyConfirmationJob();
+            } finally {
+                await redis.del(lockKey);
+            }
+        };
+        setInterval(runDailyConfirm, 30 * 60 * 1000); // every 30min (acts only at 7am SP)
+        setTimeout(runDailyConfirm, 25000); // check shortly after boot
+        console.log('   🌅 Daily confirmation job registered (every 30min, fires at 7am SP)');
+    }).catch(err => console.error('[DAILY-CONFIRM] Failed to load:', err));
 });
 
 export default app;

@@ -53,7 +53,7 @@ async function main() {
     { key: "card_installment_surcharges", value: JSON.stringify({ "1": 0, "2": 6, "3": 8, "4": 9, "5": 10, "6": 12, "7": 13, "8": 14, "9": 16, "10": 17, "11": 19, "12": 20 }), type: "json", label: "Taxas de Parcelamento Cartão (%)", group: "gateway" },
     { key: "first_booking_min_days", value: "1", type: "number", label: "Dias mín. p/ 1º agendamento", group: "schedule" },
     { key: "first_booking_max_days", value: "14", type: "number", label: "Dias máx. p/ 1º agendamento", group: "schedule" },
-    { key: "booking_min_advance_minutes", value: "30", type: "number", label: "Antecedência mínima (min)", group: "schedule" },
+    { key: "booking_min_advance_hours", value: "12", type: "number", label: "Antecedência mínima para agendar (horas)", group: "policies" },
     { key: "reschedule_min_hours", value: "24", type: "number", label: "Antecedência mín. p/ reagendar (h)", group: "schedule" },
     { key: "reschedule_max_days", value: "7", type: "number", label: "Janela de reagendamento (dias)", group: "schedule" },
     { key: "sessions_per_month", value: "4", type: "number", label: "Sessões por mês", group: "schedule" },

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import { authenticate, authorize } from '../../middleware/auth.js';
 import { ContractStatus, BookingStatus } from '../../generated/prisma/client.js';
-import { getBasePriceDynamic, applyDiscount, calculateEndTime } from '../../utils/pricing.js';
+import { getBasePriceDynamic, applyDiscount, calculateEndTime, studioDateTime } from '../../utils/pricing.js';
 import { getConfig } from '../../lib/businessConfig.js';
 import { createPayment as gatewayCreatePayment, updatePaymentWithGatewayResult, validatePaymentMethod, getProviderForMethod, PaymentMethodDisabledError } from '../../lib/paymentGateway.js';
 import { createContractSchema, selfContractSchema, customContractSchema } from './validators.js';
@@ -224,6 +224,18 @@ router.post('/self', authenticate, async (req: Request, res: Response) => {
         if (diffDays < firstBookingMinDays || diffDays > firstBookingMaxDays) {
             res.status(400).json({ error: `A primeira gravação deve ser agendada para os próximos ${firstBookingMinDays} a ${firstBookingMaxDays} dias.` });
             return;
+        }
+
+        // Minimum advance notice (studio timezone). Same rule as avulso; admin contract
+        // creation uses a separate endpoint and bypasses entirely.
+        if (req.user!.role !== 'ADMIN') {
+            const minAdvanceHours = await getConfig('booking_min_advance_hours');
+            const firstSlotDateTime = studioDateTime(data.firstBookingDate, data.firstBookingTime);
+            const diffHours = (firstSlotDateTime.getTime() - Date.now()) / (1000 * 60 * 60);
+            if (diffHours < minAdvanceHours) {
+                res.status(400).json({ error: `A primeira gravação deve ser agendada com pelo menos ${minAdvanceHours} horas de antecedência.` });
+                return;
+            }
         }
 
         // Infer fixedDayOfWeek for FIXO

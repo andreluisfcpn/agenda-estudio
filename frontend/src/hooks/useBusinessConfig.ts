@@ -16,7 +16,7 @@ const DEFAULTS: Record<string, number> = {
     first_booking_max_days: 15,
     reschedule_max_days: 7,
     reschedule_min_hours: 24,
-    booking_min_advance_minutes: 30,
+    booking_min_advance_hours: 12,
 };
 
 // Module-level cache so the request is only made once across all components

@@ -113,6 +113,9 @@ async function computeUserNotifications(
 
     for (const b of unconfirmedBookings) {
         const isToday = new Date(b.date).toISOString().split('T')[0] === today.toISOString().split('T')[0];
+        // For clients, today's session signal is owned by the 7am dailyConfirmationJob
+        // (paid-aware). Avoid the 5-min job pre-empting that push and shadowing it.
+        if (isToday && !isAdmin) continue;
         notifications.push({
             type: 'BOOKING_UNCONFIRMED',
             severity: isToday ? 'critical' : 'warning',

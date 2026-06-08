@@ -181,12 +181,13 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
             // Backend-authoritative amount of the first charge → drives the checkout.
             if (typeof res.amount === 'number') setCheckoutAmount(res.amount);
 
+            // CARTÃO has no clientSecret from /self by design — the inline checkout creates the
+            // PaymentIntent with the chosen installments. PIX returns its QR up-front. Either
+            // way, advance to the checkout step (otherwise the flow hangs on "Gerando pagamento").
             if (res.clientSecret && paymentMethod === 'CARTAO') {
                 setCardClientSecret(res.clientSecret);
-                setStep(8);
-            } else if (paymentMethod === 'PIX') {
-                setStep(8);
             }
+            setStep(8);
         } catch (err: unknown) {
             setError(getErrorMessage(err) || 'Erro ao processar criação do contrato');
             setStep(conflicts.length > 0 ? 7 : 4);

@@ -44,6 +44,16 @@ function CardFormInner({ mode, clientSecret, onSuccess, onError, onCancel, submi
     const [formReady, setFormReady] = useState(false);
     const [saveCard, setSaveCard] = useState(true);
 
+    // Safety net: PaymentElement.onReady can fail to fire on remount/race conditions,
+    // which would leave the submit button permanently disabled (the "button disappeared"
+    // bug). Force-enable after a short timeout — confirmPayment still validates incomplete
+    // fields and returns a friendly error, so enabling early is safe.
+    useEffect(() => {
+        if (formReady) return;
+        const t = setTimeout(() => setFormReady(true), 2500);
+        return () => clearTimeout(t);
+    }, [formReady]);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!stripe || !elements) return;

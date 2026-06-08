@@ -33,13 +33,16 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
         const dateObj = new Date(data.date + 'T00:00:00');
         const dayOfWeek = dateObj.getUTCDay();
 
-        // Validate: Past Time Booking Check (studio timezone, consistent across server TZs)
-        const slotDateTime = studioDateTime(data.date, data.startTime);
-        const minAdvanceMinutes = await getConfig('booking_min_advance_minutes');
-        const diffMinutes = (slotDateTime.getTime() - Date.now()) / (1000 * 60);
-        if (diffMinutes < minAdvanceMinutes) {
-            res.status(400).json({ error: `Não é possível agendar um horário no passado ou com menos de ${minAdvanceMinutes} minutos de antecedência.` });
-            return;
+        // Validate: minimum advance notice (studio timezone, consistent across server TZs).
+        // Admin (POST /admin) bypasses entirely; the role guard here is defense-in-depth.
+        if (req.user!.role !== 'ADMIN') {
+            const slotDateTime = studioDateTime(data.date, data.startTime);
+            const minAdvanceHours = await getConfig('booking_min_advance_hours');
+            const diffHours = (slotDateTime.getTime() - Date.now()) / (1000 * 60 * 60);
+            if (diffHours < minAdvanceHours) {
+                res.status(400).json({ error: `Não é possível agendar um horário no passado ou com menos de ${minAdvanceHours} horas de antecedência.` });
+                return;
+            }
         }
 
         // Validate: operating day
@@ -496,18 +499,21 @@ router.post('/bulk', authenticate, async (req: Request, res: Response) => {
 
         const validBookings = [];
         const locksAcquired: { date: string; slots: string[] }[] = [];
-        const bulkMinAdvance = await getConfig('booking_min_advance_minutes');
+        const isAdmin = req.user!.role === 'ADMIN';
+        const bulkMinHours = await getConfig('booking_min_advance_hours');
 
         try {
             for (const slot of data.slots) {
                 const dateObj = new Date(slot.date + 'T00:00:00');
                 const dayOfWeek = dateObj.getUTCDay();
 
-                // Validate: Past Time Booking Check
-                const slotDateTime = new Date(`${slot.date}T${slot.startTime}:00`);
-                const diffMinutes = (slotDateTime.getTime() - Date.now()) / (1000 * 60);
-                if (diffMinutes < bulkMinAdvance) {
-                    throw new Error(`Não é possível agendar o horário ${slot.startTime} no dia ${slot.date} (antecedência mínima de ${bulkMinAdvance} minutos não respeitada).`);
+                // Validate: minimum advance notice (studio timezone). Admin bypasses.
+                if (!isAdmin) {
+                    const slotDateTime = studioDateTime(slot.date, slot.startTime);
+                    const diffHours = (slotDateTime.getTime() - Date.now()) / (1000 * 60 * 60);
+                    if (diffHours < bulkMinHours) {
+                        throw new Error(`Não é possível agendar o horário ${slot.startTime} no dia ${slot.date} (antecedência mínima de ${bulkMinHours} horas não respeitada).`);
+                    }
                 }
 
                 const slotTier = await getSlotTier(dayOfWeek, slot.startTime);

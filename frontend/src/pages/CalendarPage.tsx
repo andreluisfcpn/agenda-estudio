@@ -9,6 +9,8 @@ import BookingModal from '../components/BookingModal';
 import ContractWizard from '../components/ContractWizard';
 import CustomContractWizard from '../components/CustomContractWizard';
 import BottomSheetModal from '../components/BottomSheetModal';
+import { useBusinessConfig } from '../hooks/useBusinessConfig';
+import { studioSlotDate, todayStrSaoPaulo } from '../utils/time';
 import { CalendarDays, ChevronLeft, ChevronRight, Mic, Clock, List } from 'lucide-react';
 
 function useIsMobile(breakpoint = 768) {
@@ -119,6 +121,10 @@ export default function CalendarPage() {
     const location = useLocation();
     const isAdmin = user?.role === 'ADMIN';
     const isMobile = useIsMobile();
+    const { get: getConfigNum } = useBusinessConfig();
+    // Minimum advance notice for clients (admin books any time). Slots closer than this
+    // are greyed out to match the backend rule.
+    const minAdvanceHours = getConfigNum('booking_min_advance_hours') || 12;
     const [currentWeek, setCurrentWeek] = useState(new Date());
     const [weekDates, setWeekDates] = useState<Date[]>(getWeekDates(new Date()));
 
@@ -438,8 +444,8 @@ export default function CalendarPage() {
     // Compute weekly summary
     const weekSummary = (() => {
         let booked = 0, available = 0, total = 0;
-        const now = new Date();
-        const cutoff = new Date(now.getTime() + 30 * 60 * 1000); // 30 min from now
+        // Clients must respect the minimum advance notice; admin can book any time.
+        const cutoffMs = Date.now() + (isAdmin ? 0 : minAdvanceHours * 60 * 60 * 1000);
         weekDates.forEach(d => {
             const dateStr = formatDate(d);
             const slots = slotsMap[dateStr] || [];
@@ -450,9 +456,9 @@ export default function CalendarPage() {
                     if (dayBookings[s.time]) {
                         booked++;
                     } else if (s.available) {
-                        // Only count as available if slot starts >= 30min from now
-                        const slotStart = new Date(`${dateStr}T${s.time}:00`);
-                        if (slotStart >= cutoff) available++;
+                        // Only count as available if the slot starts after the cutoff (São Paulo)
+                        const slotStart = studioSlotDate(dateStr, s.time);
+                        if (slotStart.getTime() >= cutoffMs) available++;
                     }
                 }
             });
@@ -512,7 +518,7 @@ export default function CalendarPage() {
         allMyBookings.forEach(b => {
             if (b.status === 'RESERVED' && b.holdExpiresAt && new Date(b.holdExpiresAt).getTime() <= Date.now()) return;
             const dateStr = b.date.split('T')[0];
-            const slotDatetime = new Date(`${dateStr}T${b.startTime}:00`);
+            const slotDatetime = studioSlotDate(dateStr, b.startTime);
             if (slotDatetime >= now && (b.status === 'RESERVED' || b.status === 'CONFIRMED')) {
                 map.set(b.id, { booking: b, date: dateStr, dateObj: slotDatetime });
             }
@@ -522,7 +528,7 @@ export default function CalendarPage() {
         for (const [dateStr, bookings] of Object.entries(myBookingsMap)) {
             for (const b of bookings) {
                 if (b.status === 'RESERVED' && b.holdExpiresAt && new Date(b.holdExpiresAt).getTime() <= Date.now()) continue;
-                const slotDatetime = new Date(`${dateStr}T${b.startTime}:00`);
+                const slotDatetime = studioSlotDate(dateStr, b.startTime);
                 if (slotDatetime >= now && (b.status === 'RESERVED' || b.status === 'CONFIRMED')) {
                     map.set(b.id, { booking: b, date: dateStr, dateObj: slotDatetime });
                 }
@@ -679,8 +685,7 @@ export default function CalendarPage() {
                                     {upcomingBookings.map((item, i) => {
                                         const dayLabel = DAY_NAMES_FULL[item.dateObj.getUTCDay()];
                                         const dateLabel = item.dateObj.toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit' });
-                                        const now = new Date();
-                                        const isToday = formatDate(item.dateObj) === formatDate(now);
+                                        const isToday = item.date === todayStrSaoPaulo();
                                         return (
                                             <div key={`${item.date}-${item.booking.startTime}`}
                                                 className={`client-booking-card client-booking-card--scroll animate-card-enter ${isToday ? 'client-booking-card--today' : ''}`}
@@ -816,8 +821,10 @@ export default function CalendarPage() {
                                 const isAvailable = slot?.available && slot?.tier;
                                 const lookup = buildBookingLookup(displayDateStr);
                                 const info = lookup[row.time];
-                                const slotDateTime = new Date(`${displayDateStr}T${row.time}:00`);
-                                const isPast = (slotDateTime.getTime() - Date.now()) / (1000 * 60) < 30;
+                                const slotDateTime = studioSlotDate(displayDateStr, row.time);
+                                // Clients need the minimum advance notice; admin can book any time (0).
+                                const minAheadMinutes = isAdmin ? 0 : minAdvanceHours * 60;
+                                const isPast = (slotDateTime.getTime() - Date.now()) / (1000 * 60) < minAheadMinutes;
                                 const tierKey = slot?.tier?.toLowerCase() || '';
                                 const tierMeta = TIER_COLORS[tierKey];
 
@@ -1044,8 +1051,10 @@ export default function CalendarPage() {
                                     }
 
                                     const slotNotAvailable = slot && !slot.available;
-                                    const slotDateTime = new Date(`${dateStr}T${row.time}:00`);
-                                    const isPast = (slotDateTime.getTime() - Date.now()) / (1000 * 60) < 30;
+                                    const slotDateTime = studioSlotDate(dateStr, row.time);
+                                    // Clients need the minimum advance notice; admin can book any time (0).
+                                    const minAheadMinutes = isAdmin ? 0 : minAdvanceHours * 60;
+                                    const isPast = (slotDateTime.getTime() - Date.now()) / (1000 * 60) < minAheadMinutes;
 
                                     const tierKey = slot?.tier?.toLowerCase() || '';
                                     const tierMeta = TIER_COLORS[tierKey];

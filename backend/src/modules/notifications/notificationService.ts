@@ -13,6 +13,7 @@ export interface CreateNotificationInput {
     entityId?: string;
     actionUrl?: string;
     sendPush?: boolean; // default: true for critical/warning
+    dedupKey?: string;  // override the default userId+type+entityId dedup identity
 }
 
 /**
@@ -33,8 +34,10 @@ export async function createNotification(input: CreateNotificationInput): Promis
         if (pref?.essentialNotificationsOnly) return '';
     }
 
-    // Dedup key: same type + entity within a window
-    const dedupKey = `notif:dedup:${userId}:${type}:${entityId || 'global'}`;
+    // Dedup key: same type + entity within a window (or a caller-provided identity)
+    const dedupKey = input.dedupKey
+        ? `notif:dedup:${input.dedupKey}`
+        : `notif:dedup:${userId}:${type}:${entityId || 'global'}`;
     const alreadyExists = await redis.get(dedupKey);
     if (alreadyExists) return alreadyExists; // return existing notification ID
 

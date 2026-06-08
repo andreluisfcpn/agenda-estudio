@@ -32,7 +32,7 @@ export default function HeroAmbient({ variant }: { variant: HeroVariant }) {
 
             {timeOfDay === 'night' && (
                 <span className="hero-ambient__stars">
-                    {Array.from({ length: 12 }).map((_, i) => <i key={i} style={{ '--n': i } as CSSProperties} />)}
+                    {Array.from({ length: 14 }).map((_, i) => <i key={i} style={{ '--n': i } as CSSProperties} />)}
                 </span>
             )}
         </div>

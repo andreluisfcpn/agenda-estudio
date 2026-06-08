@@ -601,7 +601,7 @@ export default function InlineCheckout({
                                 {/* New Card Option */}
                                 <div className="checkout-saved-cards" style={filteredCards.length > 0 ? { marginTop: 0 } : undefined}>
                                     <button
-                                        onClick={() => setSelectedCard('new')}
+                                        onClick={() => { setSelectedCard('new'); setClientSecret(null); setError(''); initGuardRef.current = false; }}
                                         className={`checkout-saved-card checkout-saved-card--new ${selectedCard === 'new' ? 'checkout-saved-card--active' : ''}`}
                                     >
                                         <div className="checkout-saved-card-info">

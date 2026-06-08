@@ -1039,19 +1039,28 @@
 .wizard-terms-v2__accept {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   cursor: pointer;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  padding: 10px 0 2px;
-  border-top: 1px dashed var(--border-subtle);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  padding: 14px 16px;
+  margin-top: 12px;
+  border: 1.5px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  transition: border-color 0.2s, background 0.2s;
   -webkit-tap-highlight-color: transparent;
 }
 
+.wizard-terms-v2__accept:has(.wizard-terms-v2__checkbox--checked) {
+  border-color: var(--accent-primary);
+  background: rgba(17, 129, 155, 0.08);
+}
+
 .wizard-terms-v2__checkbox {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
   border: 2px solid var(--border-subtle);
   display: flex;
   align-items: center;

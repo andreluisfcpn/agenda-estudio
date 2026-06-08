@@ -18,8 +18,8 @@
   --amb: #11819B;
   /* Wash temático: tinge o hero inteiro com a cor da aba (perceptível, mas suave) */
   background:
-    radial-gradient(130% 120% at 100% 0%, color-mix(in srgb, var(--amb) 26%, transparent), transparent 68%),
-    linear-gradient(135deg, color-mix(in srgb, var(--amb) 12%, transparent), transparent 60%);
+    radial-gradient(130% 120% at 100% 0%, color-mix(in srgb, var(--amb) 34%, transparent), transparent 70%),
+    linear-gradient(135deg, color-mix(in srgb, var(--amb) 18%, transparent), transparent 62%);
 }
 
 /* ── Cor/tema por aba (hues bem distintos) ── */
@@ -36,8 +36,8 @@
   right: -15%;
   width: 75%;
   height: 170%;
-  background: radial-gradient(circle at center, color-mix(in srgb, var(--amb) 75%, transparent), transparent 60%);
-  opacity: 0.34;
+  background: radial-gradient(circle at center, color-mix(in srgb, var(--amb) 82%, transparent), transparent 60%);
+  opacity: 0.45;
   filter: blur(6px);
   animation: amb-drift 24s ease-in-out infinite;
 }
@@ -68,16 +68,16 @@
   inset: 0;
   pointer-events: none;
 }
-.hero-ambient--day::after   { background: radial-gradient(circle at 85% -10%, rgba(255, 210, 130, 0.16), transparent 55%); }
-.hero-ambient--night::after { background: linear-gradient(180deg, rgba(10, 22, 52, 0.42), rgba(10, 22, 52, 0.12)); }
+.hero-ambient--day::after   { background: radial-gradient(circle at 85% -10%, rgba(255, 210, 130, 0.24), transparent 58%); }
+.hero-ambient--night::after { background: linear-gradient(180deg, rgba(10, 22, 52, 0.5), rgba(10, 22, 52, 0.16)); }
 
 /* Sol quente em dia limpo */
 .hero-ambient--clear.hero-ambient--day .hero-ambient__glow {
-  background: radial-gradient(circle at center, rgba(255, 196, 92, 0.7), transparent 58%);
-  opacity: 0.5;
+  background: radial-gradient(circle at center, rgba(255, 196, 92, 0.82), transparent 60%);
+  opacity: 0.62;
 }
-/* À noite o glow esfria um pouco (mas continua visível) */
-.hero-ambient--night .hero-ambient__glow { opacity: 0.22; }
+/* À noite o glow esfria um pouco (mas continua bem visível) */
+.hero-ambient--night .hero-ambient__glow { opacity: 0.32; }
 
 /* ── Chuva (estrias diagonais) ── */
 .hero-ambient__rain { position: absolute; inset: 0; }
@@ -87,9 +87,9 @@
   left: calc(5% + var(--n) * 9.5%);
   width: 1.5px;
   height: 26px;
-  background: linear-gradient(transparent, rgba(190, 218, 255, 0.7));
+  background: linear-gradient(transparent, rgba(190, 218, 255, 0.8));
   transform: rotate(14deg);
-  opacity: 0.5;
+  opacity: 0.62;
   animation: amb-rain 0.85s linear infinite;
   animation-delay: calc(var(--n) * -0.11s);
 }
@@ -103,7 +103,7 @@
 .hero-ambient__clouds i {
   position: absolute;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.11);
+  background: rgba(255, 255, 255, 0.16);
   filter: blur(6px);
 }
 .hero-ambient__clouds i:nth-child(1) { width: 130px; height: 42px; top: 14%; left: -35%; animation: amb-cloud 38s linear infinite; }
@@ -120,9 +120,9 @@
   height: 2.5px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 0 4px rgba(255, 255, 255, 0.8);
-  left: calc(5% + var(--n) * 8%);
-  opacity: 0.6;
+  box-shadow: 0 0 5px rgba(255, 255, 255, 0.9);
+  left: calc(4% + var(--n) * 6.8%);
+  opacity: 0.75;
   animation: amb-twinkle 3s ease-in-out infinite;
   animation-delay: calc(var(--n) * -0.33s);
 }
@@ -130,8 +130,8 @@
 .hero-ambient__stars i:nth-child(3n+1) { top: 42%; width: 2px; height: 2px; }
 .hero-ambient__stars i:nth-child(3n+2) { top: 64%; width: 1.5px; height: 1.5px; }
 @keyframes amb-twinkle {
-  0%, 100% { opacity: 0.25; }
-  50%      { opacity: 0.95; }
+  0%, 100% { opacity: 0.4; }
+  50%      { opacity: 1; }
 }
 
 /* ── Acessibilidade: sem movimento → tints/glow estáticos (ainda visíveis) ── */

@@ -16,7 +16,7 @@ const DEFAULTS: Record<string, string> = {
     first_booking_max_days: '15',
     reschedule_max_days: '7',
     reschedule_min_hours: '24',
-    booking_min_advance_minutes: '30',
+    booking_min_advance_hours: '12',
     // ── payments ──
     pix_extra_discount_pct: '10',
     service_discount_3months: '30',

@@ -119,17 +119,21 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
 
         // 3. Unconfirmed bookings — TODAY only (action needed now). Tomorrow's session is
         // already covered by the 24h BOOKING_REMINDER job, so we don't double-notify.
+        // ADMIN-only: for clients, the 7am dailyConfirmationJob owns today's session signal
+        // (paid → "confirmada" / unpaid → "pague para confirmar") and would otherwise be
+        // shadowed by this computed one (same type+entityId).
         const tomorrow = new Date(today);
         tomorrow.setDate(tomorrow.getDate() + 1);
 
-        const unconfirmedBookings = await prisma.booking.findMany({
-            where: {
-                status: 'RESERVED',
-                date: { gte: today, lt: tomorrow },
-                ...(userRole !== 'ADMIN' ? { userId } : {}),
-            },
-            include: { user: { select: { name: true } } },
-        });
+        const unconfirmedBookings = userRole === 'ADMIN'
+            ? await prisma.booking.findMany({
+                where: {
+                    status: 'RESERVED',
+                    date: { gte: today, lt: tomorrow },
+                },
+                include: { user: { select: { name: true } } },
+            })
+            : [];
 
         for (const b of unconfirmedBookings) {
             notifications.push({
