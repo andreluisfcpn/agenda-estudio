@@ -19,7 +19,8 @@ export const createBookingSchema = z.object({
     contractId: z.string().uuid().optional(),
     addOns: z.array(z.string()).optional(),
     paymentMethod: z.enum(['CARTAO', 'PIX']).optional(),
-    installments: z.number().int().min(1).max(3).optional(),
+    // Avulso ("paid now") may split the card into up to 12x (juros above 1x) — unified policy.
+    installments: z.number().int().min(1).max(12).optional(),
     paymentType: z.enum(['CREDIT', 'DEBIT']).optional(),
 });
 
@@ -55,6 +56,23 @@ export const adminUpdateBookingSchema = z.object({
     peakViewers: z.number().optional().nullable(),
     chatMessages: z.number().optional().nullable(),
     audienceOrigin: z.string().optional().nullable(),
+    isLivestream: z.boolean().optional().nullable(),
+    streamMetrics: z.string().optional().nullable(),
+});
+
+// Finalize a recording (mark COMPLETED) capturing all session/livestream data in one call.
+export const completeBookingSchema = z.object({
+    durationMinutes: z.number().int().min(0).optional().nullable(),
+    isLivestream: z.boolean().optional().nullable(),
+    platforms: z.string().optional().nullable(),
+    platformLinks: z.string().optional().nullable(),
+    streamMetrics: z.string().optional().nullable(),
+    audienceOrigin: z.string().optional().nullable(),
+    adminNotes: z.string().optional().nullable(),
+    clientNotes: z.string().optional().nullable(),
+    // Optional explicit aggregates; otherwise derived from streamMetrics.
+    peakViewers: z.number().int().min(0).optional().nullable(),
+    chatMessages: z.number().int().min(0).optional().nullable(),
 });
 
 export const clientUpdateBookingSchema = z.object({

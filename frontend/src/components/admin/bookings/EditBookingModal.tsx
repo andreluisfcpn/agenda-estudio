@@ -1,15 +1,11 @@
 import { getErrorMessage } from '../../../utils/errors';
 import { useState, useEffect } from 'react';
 import { bookingsApi, BookingWithUser } from '../../../api/client';
-import ModalOverlay from '../../ModalOverlay';
+import BottomSheetModal from '../../BottomSheetModal';
 import { formatBRL } from '../../../utils/format';
+import { TIER_META } from '../../../constants/adminMeta';
 
 const TIER_EMOJI: Record<string, string> = { COMERCIAL: '🏢', AUDIENCIA: '🎤', SABADO: '🌟' };
-const TIER_COLORS: Record<string, { color: string; bg: string }> = {
-    COMERCIAL: { color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
-    AUDIENCIA: { color: '#2dd4bf', bg: 'rgba(45,212,191,0.12)' },
-    SABADO: { color: '#fbbf24', bg: 'rgba(245,158,11,0.12)' },
-};
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: string }> = {
     COMPLETED:     { label: 'Concluído',      color: '#10b981', bg: 'rgba(16,185,129,0.12)',  icon: '✅' },
@@ -54,8 +50,7 @@ export default function EditBookingModal({ booking, onClose, onSaved }: EditBook
     if (!booking) return null;
 
     return (
-        <ModalOverlay onClose={onClose}>
-            <div className="modal" style={{ maxWidth: 520, padding: 0, overflow: 'hidden' }}>
+        <BottomSheetModal isOpen onClose={onClose} hideHeader maxWidth="520px" className="admin-sheet" title="Editar Agendamento">
                 {/* Header */}
                 <div style={{ padding: '24px 28px 0' }}>
                     <h2 style={{ fontSize: '1.125rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -85,8 +80,8 @@ export default function EditBookingModal({ booking, onClose, onSaved }: EditBook
                             <span style={{
                                 marginLeft: 'auto', fontSize: '0.625rem', fontWeight: 700,
                                 padding: '2px 8px', borderRadius: '6px',
-                                background: TIER_COLORS[booking.contract.tier]?.bg || 'var(--bg-elevated)',
-                                color: TIER_COLORS[booking.contract.tier]?.color || 'var(--text-muted)',
+                                background: TIER_META[booking.contract.tier]?.bg || 'var(--bg-elevated)',
+                                color: TIER_META[booking.contract.tier]?.color || 'var(--text-muted)',
                             }}>
                                 {TIER_EMOJI[booking.contract.tier]} {booking.contract.name}
                             </span>
@@ -174,7 +169,6 @@ export default function EditBookingModal({ booking, onClose, onSaved }: EditBook
                         </button>
                     </div>
                 </div>
-            </div>
-        </ModalOverlay>
+        </BottomSheetModal>
     );
 }

@@ -28,10 +28,12 @@ export type AggregateAddOnConfig = {
 
 export type AddOnConfigAvgAggregateOutputType = {
   price: number | null
+  sortOrder: number | null
 }
 
 export type AddOnConfigSumAggregateOutputType = {
   price: number | null
+  sortOrder: number | null
 }
 
 export type AddOnConfigMinAggregateOutputType = {
@@ -40,6 +42,14 @@ export type AddOnConfigMinAggregateOutputType = {
   price: number | null
   description: string | null
   monthly: boolean | null
+  active: boolean | null
+  sortOrder: number | null
+  icon: string | null
+  showOnLanding: boolean | null
+  benefits: string | null
+  durationsOffered: string | null
+  plansAllowed: string | null
+  billingCadence: string | null
   updatedAt: Date | null
 }
 
@@ -49,6 +59,14 @@ export type AddOnConfigMaxAggregateOutputType = {
   price: number | null
   description: string | null
   monthly: boolean | null
+  active: boolean | null
+  sortOrder: number | null
+  icon: string | null
+  showOnLanding: boolean | null
+  benefits: string | null
+  durationsOffered: string | null
+  plansAllowed: string | null
+  billingCadence: string | null
   updatedAt: Date | null
 }
 
@@ -58,6 +76,14 @@ export type AddOnConfigCountAggregateOutputType = {
   price: number
   description: number
   monthly: number
+  active: number
+  sortOrder: number
+  icon: number
+  showOnLanding: number
+  benefits: number
+  durationsOffered: number
+  plansAllowed: number
+  billingCadence: number
   updatedAt: number
   _all: number
 }
@@ -65,10 +91,12 @@ export type AddOnConfigCountAggregateOutputType = {
 
 export type AddOnConfigAvgAggregateInputType = {
   price?: true
+  sortOrder?: true
 }
 
 export type AddOnConfigSumAggregateInputType = {
   price?: true
+  sortOrder?: true
 }
 
 export type AddOnConfigMinAggregateInputType = {
@@ -77,6 +105,14 @@ export type AddOnConfigMinAggregateInputType = {
   price?: true
   description?: true
   monthly?: true
+  active?: true
+  sortOrder?: true
+  icon?: true
+  showOnLanding?: true
+  benefits?: true
+  durationsOffered?: true
+  plansAllowed?: true
+  billingCadence?: true
   updatedAt?: true
 }
 
@@ -86,6 +122,14 @@ export type AddOnConfigMaxAggregateInputType = {
   price?: true
   description?: true
   monthly?: true
+  active?: true
+  sortOrder?: true
+  icon?: true
+  showOnLanding?: true
+  benefits?: true
+  durationsOffered?: true
+  plansAllowed?: true
+  billingCadence?: true
   updatedAt?: true
 }
 
@@ -95,6 +139,14 @@ export type AddOnConfigCountAggregateInputType = {
   price?: true
   description?: true
   monthly?: true
+  active?: true
+  sortOrder?: true
+  icon?: true
+  showOnLanding?: true
+  benefits?: true
+  durationsOffered?: true
+  plansAllowed?: true
+  billingCadence?: true
   updatedAt?: true
   _all?: true
 }
@@ -191,6 +243,14 @@ export type AddOnConfigGroupByOutputType = {
   price: number
   description: string | null
   monthly: boolean
+  active: boolean
+  sortOrder: number
+  icon: string | null
+  showOnLanding: boolean
+  benefits: string | null
+  durationsOffered: string
+  plansAllowed: string
+  billingCadence: string
   updatedAt: Date
   _count: AddOnConfigCountAggregateOutputType | null
   _avg: AddOnConfigAvgAggregateOutputType | null
@@ -223,6 +283,14 @@ export type AddOnConfigWhereInput = {
   price?: Prisma.IntFilter<"AddOnConfig"> | number
   description?: Prisma.StringNullableFilter<"AddOnConfig"> | string | null
   monthly?: Prisma.BoolFilter<"AddOnConfig"> | boolean
+  active?: Prisma.BoolFilter<"AddOnConfig"> | boolean
+  sortOrder?: Prisma.IntFilter<"AddOnConfig"> | number
+  icon?: Prisma.StringNullableFilter<"AddOnConfig"> | string | null
+  showOnLanding?: Prisma.BoolFilter<"AddOnConfig"> | boolean
+  benefits?: Prisma.StringNullableFilter<"AddOnConfig"> | string | null
+  durationsOffered?: Prisma.StringFilter<"AddOnConfig"> | string
+  plansAllowed?: Prisma.StringFilter<"AddOnConfig"> | string
+  billingCadence?: Prisma.StringFilter<"AddOnConfig"> | string
   updatedAt?: Prisma.DateTimeFilter<"AddOnConfig"> | Date | string
 }
 
@@ -232,6 +300,14 @@ export type AddOnConfigOrderByWithRelationInput = {
   price?: Prisma.SortOrder
   description?: Prisma.SortOrderInput | Prisma.SortOrder
   monthly?: Prisma.SortOrder
+  active?: Prisma.SortOrder
+  sortOrder?: Prisma.SortOrder
+  icon?: Prisma.SortOrderInput | Prisma.SortOrder
+  showOnLanding?: Prisma.SortOrder
+  benefits?: Prisma.SortOrderInput | Prisma.SortOrder
+  durationsOffered?: Prisma.SortOrder
+  plansAllowed?: Prisma.SortOrder
+  billingCadence?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
 
@@ -244,6 +320,14 @@ export type AddOnConfigWhereUniqueInput = Prisma.AtLeast<{
   price?: Prisma.IntFilter<"AddOnConfig"> | number
   description?: Prisma.StringNullableFilter<"AddOnConfig"> | string | null
   monthly?: Prisma.BoolFilter<"AddOnConfig"> | boolean
+  active?: Prisma.BoolFilter<"AddOnConfig"> | boolean
+  sortOrder?: Prisma.IntFilter<"AddOnConfig"> | number
+  icon?: Prisma.StringNullableFilter<"AddOnConfig"> | string | null
+  showOnLanding?: Prisma.BoolFilter<"AddOnConfig"> | boolean
+  benefits?: Prisma.StringNullableFilter<"AddOnConfig"> | string | null
+  durationsOffered?: Prisma.StringFilter<"AddOnConfig"> | string
+  plansAllowed?: Prisma.StringFilter<"AddOnConfig"> | string
+  billingCadence?: Prisma.StringFilter<"AddOnConfig"> | string
   updatedAt?: Prisma.DateTimeFilter<"AddOnConfig"> | Date | string
 }, "key">
 
@@ -253,6 +337,14 @@ export type AddOnConfigOrderByWithAggregationInput = {
   price?: Prisma.SortOrder
   description?: Prisma.SortOrderInput | Prisma.SortOrder
   monthly?: Prisma.SortOrder
+  active?: Prisma.SortOrder
+  sortOrder?: Prisma.SortOrder
+  icon?: Prisma.SortOrderInput | Prisma.SortOrder
+  showOnLanding?: Prisma.SortOrder
+  benefits?: Prisma.SortOrderInput | Prisma.SortOrder
+  durationsOffered?: Prisma.SortOrder
+  plansAllowed?: Prisma.SortOrder
+  billingCadence?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   _count?: Prisma.AddOnConfigCountOrderByAggregateInput
   _avg?: Prisma.AddOnConfigAvgOrderByAggregateInput
@@ -270,6 +362,14 @@ export type AddOnConfigScalarWhereWithAggregatesInput = {
   price?: Prisma.IntWithAggregatesFilter<"AddOnConfig"> | number
   description?: Prisma.StringNullableWithAggregatesFilter<"AddOnConfig"> | string | null
   monthly?: Prisma.BoolWithAggregatesFilter<"AddOnConfig"> | boolean
+  active?: Prisma.BoolWithAggregatesFilter<"AddOnConfig"> | boolean
+  sortOrder?: Prisma.IntWithAggregatesFilter<"AddOnConfig"> | number
+  icon?: Prisma.StringNullableWithAggregatesFilter<"AddOnConfig"> | string | null
+  showOnLanding?: Prisma.BoolWithAggregatesFilter<"AddOnConfig"> | boolean
+  benefits?: Prisma.StringNullableWithAggregatesFilter<"AddOnConfig"> | string | null
+  durationsOffered?: Prisma.StringWithAggregatesFilter<"AddOnConfig"> | string
+  plansAllowed?: Prisma.StringWithAggregatesFilter<"AddOnConfig"> | string
+  billingCadence?: Prisma.StringWithAggregatesFilter<"AddOnConfig"> | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"AddOnConfig"> | Date | string
 }
 
@@ -279,6 +379,14 @@ export type AddOnConfigCreateInput = {
   price: number
   description?: string | null
   monthly?: boolean
+  active?: boolean
+  sortOrder?: number
+  icon?: string | null
+  showOnLanding?: boolean
+  benefits?: string | null
+  durationsOffered?: string
+  plansAllowed?: string
+  billingCadence?: string
   updatedAt?: Date | string
 }
 
@@ -288,6 +396,14 @@ export type AddOnConfigUncheckedCreateInput = {
   price: number
   description?: string | null
   monthly?: boolean
+  active?: boolean
+  sortOrder?: number
+  icon?: string | null
+  showOnLanding?: boolean
+  benefits?: string | null
+  durationsOffered?: string
+  plansAllowed?: string
+  billingCadence?: string
   updatedAt?: Date | string
 }
 
@@ -297,6 +413,14 @@ export type AddOnConfigUpdateInput = {
   price?: Prisma.IntFieldUpdateOperationsInput | number
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   monthly?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  active?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  sortOrder?: Prisma.IntFieldUpdateOperationsInput | number
+  icon?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  showOnLanding?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  benefits?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  durationsOffered?: Prisma.StringFieldUpdateOperationsInput | string
+  plansAllowed?: Prisma.StringFieldUpdateOperationsInput | string
+  billingCadence?: Prisma.StringFieldUpdateOperationsInput | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -306,6 +430,14 @@ export type AddOnConfigUncheckedUpdateInput = {
   price?: Prisma.IntFieldUpdateOperationsInput | number
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   monthly?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  active?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  sortOrder?: Prisma.IntFieldUpdateOperationsInput | number
+  icon?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  showOnLanding?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  benefits?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  durationsOffered?: Prisma.StringFieldUpdateOperationsInput | string
+  plansAllowed?: Prisma.StringFieldUpdateOperationsInput | string
+  billingCadence?: Prisma.StringFieldUpdateOperationsInput | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -315,6 +447,14 @@ export type AddOnConfigCreateManyInput = {
   price: number
   description?: string | null
   monthly?: boolean
+  active?: boolean
+  sortOrder?: number
+  icon?: string | null
+  showOnLanding?: boolean
+  benefits?: string | null
+  durationsOffered?: string
+  plansAllowed?: string
+  billingCadence?: string
   updatedAt?: Date | string
 }
 
@@ -324,6 +464,14 @@ export type AddOnConfigUpdateManyMutationInput = {
   price?: Prisma.IntFieldUpdateOperationsInput | number
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   monthly?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  active?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  sortOrder?: Prisma.IntFieldUpdateOperationsInput | number
+  icon?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  showOnLanding?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  benefits?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  durationsOffered?: Prisma.StringFieldUpdateOperationsInput | string
+  plansAllowed?: Prisma.StringFieldUpdateOperationsInput | string
+  billingCadence?: Prisma.StringFieldUpdateOperationsInput | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -333,6 +481,14 @@ export type AddOnConfigUncheckedUpdateManyInput = {
   price?: Prisma.IntFieldUpdateOperationsInput | number
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   monthly?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  active?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  sortOrder?: Prisma.IntFieldUpdateOperationsInput | number
+  icon?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  showOnLanding?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  benefits?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  durationsOffered?: Prisma.StringFieldUpdateOperationsInput | string
+  plansAllowed?: Prisma.StringFieldUpdateOperationsInput | string
+  billingCadence?: Prisma.StringFieldUpdateOperationsInput | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -342,11 +498,20 @@ export type AddOnConfigCountOrderByAggregateInput = {
   price?: Prisma.SortOrder
   description?: Prisma.SortOrder
   monthly?: Prisma.SortOrder
+  active?: Prisma.SortOrder
+  sortOrder?: Prisma.SortOrder
+  icon?: Prisma.SortOrder
+  showOnLanding?: Prisma.SortOrder
+  benefits?: Prisma.SortOrder
+  durationsOffered?: Prisma.SortOrder
+  plansAllowed?: Prisma.SortOrder
+  billingCadence?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
 
 export type AddOnConfigAvgOrderByAggregateInput = {
   price?: Prisma.SortOrder
+  sortOrder?: Prisma.SortOrder
 }
 
 export type AddOnConfigMaxOrderByAggregateInput = {
@@ -355,6 +520,14 @@ export type AddOnConfigMaxOrderByAggregateInput = {
   price?: Prisma.SortOrder
   description?: Prisma.SortOrder
   monthly?: Prisma.SortOrder
+  active?: Prisma.SortOrder
+  sortOrder?: Prisma.SortOrder
+  icon?: Prisma.SortOrder
+  showOnLanding?: Prisma.SortOrder
+  benefits?: Prisma.SortOrder
+  durationsOffered?: Prisma.SortOrder
+  plansAllowed?: Prisma.SortOrder
+  billingCadence?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
 
@@ -364,11 +537,20 @@ export type AddOnConfigMinOrderByAggregateInput = {
   price?: Prisma.SortOrder
   description?: Prisma.SortOrder
   monthly?: Prisma.SortOrder
+  active?: Prisma.SortOrder
+  sortOrder?: Prisma.SortOrder
+  icon?: Prisma.SortOrder
+  showOnLanding?: Prisma.SortOrder
+  benefits?: Prisma.SortOrder
+  durationsOffered?: Prisma.SortOrder
+  plansAllowed?: Prisma.SortOrder
+  billingCadence?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
 
 export type AddOnConfigSumOrderByAggregateInput = {
   price?: Prisma.SortOrder
+  sortOrder?: Prisma.SortOrder
 }
 
 
@@ -379,6 +561,14 @@ export type AddOnConfigSelect<ExtArgs extends runtime.Types.Extensions.InternalA
   price?: boolean
   description?: boolean
   monthly?: boolean
+  active?: boolean
+  sortOrder?: boolean
+  icon?: boolean
+  showOnLanding?: boolean
+  benefits?: boolean
+  durationsOffered?: boolean
+  plansAllowed?: boolean
+  billingCadence?: boolean
   updatedAt?: boolean
 }, ExtArgs["result"]["addOnConfig"]>
 
@@ -388,6 +578,14 @@ export type AddOnConfigSelectCreateManyAndReturn<ExtArgs extends runtime.Types.E
   price?: boolean
   description?: boolean
   monthly?: boolean
+  active?: boolean
+  sortOrder?: boolean
+  icon?: boolean
+  showOnLanding?: boolean
+  benefits?: boolean
+  durationsOffered?: boolean
+  plansAllowed?: boolean
+  billingCadence?: boolean
   updatedAt?: boolean
 }, ExtArgs["result"]["addOnConfig"]>
 
@@ -397,6 +595,14 @@ export type AddOnConfigSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.E
   price?: boolean
   description?: boolean
   monthly?: boolean
+  active?: boolean
+  sortOrder?: boolean
+  icon?: boolean
+  showOnLanding?: boolean
+  benefits?: boolean
+  durationsOffered?: boolean
+  plansAllowed?: boolean
+  billingCadence?: boolean
   updatedAt?: boolean
 }, ExtArgs["result"]["addOnConfig"]>
 
@@ -406,10 +612,18 @@ export type AddOnConfigSelectScalar = {
   price?: boolean
   description?: boolean
   monthly?: boolean
+  active?: boolean
+  sortOrder?: boolean
+  icon?: boolean
+  showOnLanding?: boolean
+  benefits?: boolean
+  durationsOffered?: boolean
+  plansAllowed?: boolean
+  billingCadence?: boolean
   updatedAt?: boolean
 }
 
-export type AddOnConfigOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"key" | "name" | "price" | "description" | "monthly" | "updatedAt", ExtArgs["result"]["addOnConfig"]>
+export type AddOnConfigOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"key" | "name" | "price" | "description" | "monthly" | "active" | "sortOrder" | "icon" | "showOnLanding" | "benefits" | "durationsOffered" | "plansAllowed" | "billingCadence" | "updatedAt", ExtArgs["result"]["addOnConfig"]>
 
 export type $AddOnConfigPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "AddOnConfig"
@@ -420,6 +634,14 @@ export type $AddOnConfigPayload<ExtArgs extends runtime.Types.Extensions.Interna
     price: number
     description: string | null
     monthly: boolean
+    active: boolean
+    sortOrder: number
+    icon: string | null
+    showOnLanding: boolean
+    benefits: string | null
+    durationsOffered: string
+    plansAllowed: string
+    billingCadence: string
     updatedAt: Date
   }, ExtArgs["result"]["addOnConfig"]>
   composites: {}
@@ -849,6 +1071,14 @@ export interface AddOnConfigFieldRefs {
   readonly price: Prisma.FieldRef<"AddOnConfig", 'Int'>
   readonly description: Prisma.FieldRef<"AddOnConfig", 'String'>
   readonly monthly: Prisma.FieldRef<"AddOnConfig", 'Boolean'>
+  readonly active: Prisma.FieldRef<"AddOnConfig", 'Boolean'>
+  readonly sortOrder: Prisma.FieldRef<"AddOnConfig", 'Int'>
+  readonly icon: Prisma.FieldRef<"AddOnConfig", 'String'>
+  readonly showOnLanding: Prisma.FieldRef<"AddOnConfig", 'Boolean'>
+  readonly benefits: Prisma.FieldRef<"AddOnConfig", 'String'>
+  readonly durationsOffered: Prisma.FieldRef<"AddOnConfig", 'String'>
+  readonly plansAllowed: Prisma.FieldRef<"AddOnConfig", 'String'>
+  readonly billingCadence: Prisma.FieldRef<"AddOnConfig", 'String'>
   readonly updatedAt: Prisma.FieldRef<"AddOnConfig", 'DateTime'>
 }
     

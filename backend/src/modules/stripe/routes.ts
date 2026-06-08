@@ -17,7 +17,8 @@ import {
     stripeGetInstallmentPlans,
     stripeGetPaymentIntent,
 } from '../../lib/stripeService.js';
-import { fulfillContractFromPayment } from '../../lib/contractFulfillment.js';
+import { onPaymentConfirmed } from '../../lib/paymentEffects.js';
+import { getInstallmentPolicy, policyInputsFromPayment } from '../../lib/paymentPolicy.js';
 
 const router = Router();
 
@@ -225,29 +226,35 @@ const createPaymentSchema = z.object({
     installments: z.number().min(1).max(12).optional(),
     savedPaymentMethodId: z.string().optional(),
     savePaymentMethod: z.boolean().optional(),
-    paymentMethod: z.enum(['cartao', 'pix']).optional().default('cartao'),
+    paymentMethod: z.enum(['cartao', 'pix', 'boleto']).optional().default('cartao'),
 });
 
 router.post('/create-payment', authenticate, async (req: Request, res: Response) => {
     try {
         const data = createPaymentSchema.parse(req.body);
         const userId = req.user!.userId;
+        const isAdmin = req.user!.role === 'ADMIN';
 
-        // Global guard: reject if the payment method is disabled by admin
-        const { validatePaymentMethod, PaymentMethodDisabledError } = await import('../../lib/paymentGateway.js');
-        try {
-            await validatePaymentMethod(data.paymentMethod);
-        } catch (err) {
-            if (err instanceof PaymentMethodDisabledError) {
-                res.status(400).json({ error: err.message });
-                return;
+        // Global guard: reject if the payment method is disabled by admin.
+        // Boleto is exempt here — it is released per-contract (boletoAllowed),
+        // not globally, so it is authorized below after we load the payment.
+        if (data.paymentMethod !== 'boleto') {
+            const { validatePaymentMethod, PaymentMethodDisabledError } = await import('../../lib/paymentGateway.js');
+            try {
+                await validatePaymentMethod(data.paymentMethod);
+            } catch (err) {
+                if (err instanceof PaymentMethodDisabledError) {
+                    res.status(400).json({ error: err.message });
+                    return;
+                }
+                throw err;
             }
-            throw err;
         }
 
-        // Get our internal payment
+        // Get our internal payment. Admins may act on ANY payment (charge on behalf of the
+        // client, e.g. card-present); clients only on their own.
         const payment = await prisma.payment.findFirst({
-            where: { id: data.paymentId, userId },
+            where: { id: data.paymentId, ...(isAdmin ? {} : { userId }) },
             include: { contract: true },
         });
 
@@ -256,13 +263,22 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
             return;
         }
 
+        // The PAYER is the payment's owner (the client). Resolve the Stripe customer / Cora
+        // CPF from payment.userId so an admin charges with the CLIENT's card/CPF, not their own.
+        const payerUserId = payment.userId;
+
         if (payment.status === 'PAID') {
             res.status(400).json({ error: 'Este pagamento já foi realizado.' });
             return;
         }
 
-        // Get or create Stripe Customer
-        const customerId = await stripeGetOrCreateCustomer(userId);
+        if (payment.status === 'CANCELLED') {
+            res.status(400).json({ error: 'Este pagamento foi cancelado (contrato encerrado) e não pode mais ser pago.' });
+            return;
+        }
+
+        // Get or create Stripe Customer for the PAYER (client), not the requester.
+        const customerId = await stripeGetOrCreateCustomer(payerUserId);
 
         if (data.paymentMethod === 'pix') {
             // Use centralized Cora helper for PIX
@@ -270,10 +286,11 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
 
             try {
                 const coraRes = await createCoraPayment({
-                    userId,
+                    userId: payerUserId,
                     amount: payment.amount,
                     description: `Pagamento PIX - ${payment.contract?.name || 'Avulso'}`,
                     withPixQrCode: true,
+                    idempotencyKey: payment.id,
                 });
 
                 await prisma.payment.update({
@@ -299,14 +316,57 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
             return;
         }
 
-        // Determine amount (with installment fees if applicable)
-        let amount = payment.amount;
-        let contractMonths = payment.contract?.durationMonths || 0;
-        let installments = data.installments || 1;
+        if (data.paymentMethod === 'boleto') {
+            // Boleto is released per contract only — never globally available to clients.
+            if (!payment.contract?.boletoAllowed) {
+                res.status(400).json({ error: 'Boleto não está liberado para este contrato.' });
+                return;
+            }
+            const { createCoraPayment } = await import('../../lib/coraPaymentHelper.js');
+            try {
+                const coraRes = await createCoraPayment({
+                    userId: payerUserId,
+                    amount: payment.amount,
+                    description: `Boleto - ${payment.contract?.name || 'Contrato'}`,
+                    withPixQrCode: false,
+                    idempotencyKey: payment.id,
+                });
 
-        if (data.paymentMethod === 'cartao' && installments > 1 && installments > contractMonths) {
-            // Client pays fees — get rate from BusinessConfig
-            const plans = await stripeGetInstallmentPlans(amount, contractMonths);
+                await prisma.payment.update({
+                    where: { id: payment.id },
+                    data: {
+                        providerRef: coraRes.result.id,
+                        provider: 'CORA',
+                        installments: 1,
+                        boletoUrl: coraRes.boletoUrl,
+                    },
+                });
+
+                res.json({
+                    provider: 'CORA',
+                    boletoUrl: coraRes.boletoUrl,
+                    barcode: coraRes.barcode,
+                    paymentId: payment.id,
+                });
+            } catch (e: unknown) {
+                const msg = e instanceof Error ? e.message : 'Erro ao gerar boleto.';
+                res.status(400).json({ error: msg });
+            }
+            return;
+        }
+
+        // Determine amount + installments via the SINGLE installment policy.
+        //  - Monthly installment  → 1x only (no surcharge).
+        //  - À-vista (FULL) on a contract → 1–12x, free up to durationMonths, juros above.
+        //  - Avulso ("paid now")  → 1–12x, free in 1x, juros 2–12x.
+        // Amounts here are pre-surcharge bases (the surcharge is no longer baked at creation),
+        // so applying the juros once is correct and parity (persisted==charged) is preserved.
+        let amount = payment.amount;
+        const policy = getInstallmentPolicy(policyInputsFromPayment(payment));
+        let installments = Math.min(data.installments || 1, policy.maxInstallments);
+
+        if (data.paymentMethod === 'cartao' && installments > policy.freeUpTo) {
+            const plans = await stripeGetInstallmentPlans(amount, policy.freeUpTo);
             const plan = plans.find(p => p.count === installments);
             if (plan) amount = plan.total;
         }
@@ -317,19 +377,23 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
             customerId,
             description: `Pagamento - ${payment.contract?.name || 'Avulso'}`,
             paymentId: payment.id,
-            userId,
+            userId: payerUserId,
             contractId: payment.contractId || undefined,
             installmentsEnabled: true,
             savedPaymentMethodId: data.savedPaymentMethodId,
             savePaymentMethod: data.savePaymentMethod,
         });
 
-        // Update our payment with the Stripe reference
+        // Update our payment with the Stripe reference AND the fee-adjusted amount actually
+        // charged. Without persisting `amount`, the webhook/verify amount-parity check
+        // (pi.amount !== payment.amount) would reject confirmation when installment fees applied —
+        // charging the customer but leaving the payment stuck PENDING.
         await prisma.payment.update({
             where: { id: payment.id },
             data: {
                 providerRef: result.paymentIntentId,
                 provider: 'STRIPE',
+                amount,
                 installments,
             },
         });
@@ -361,12 +425,14 @@ router.post('/installment-plans', authenticate, async (req: Request, res: Respon
     try {
         const data = installmentSchema.parse(req.body);
         let amount = data.amount || 0;
-        let contractMonths = data.contractDurationMonths || 0;
+        let policy: { maxInstallments: number; freeUpTo: number };
 
-        // If a paymentId is given, derive amount and contract duration
+        // Derive the installment policy: from the payment's contract (plan/type/duration)
+        // when a paymentId is given; otherwise treat it as an à-vista (FULL) preview over the
+        // given duration (used by the wizards before a payment exists).
         if (data.paymentId) {
             const payment = await prisma.payment.findFirst({
-                where: { id: data.paymentId, userId: req.user!.userId },
+                where: { id: data.paymentId, ...(req.user!.role === 'ADMIN' ? {} : { userId: req.user!.userId }) },
                 include: { contract: true },
             });
             if (!payment) {
@@ -374,7 +440,9 @@ router.post('/installment-plans', authenticate, async (req: Request, res: Respon
                 return;
             }
             amount = payment.amount;
-            contractMonths = payment.contract?.durationMonths || 0;
+            policy = getInstallmentPolicy(policyInputsFromPayment(payment));
+        } else {
+            policy = getInstallmentPolicy({ plan: 'FULL', durationMonths: data.contractDurationMonths || 1 });
         }
 
         if (amount <= 0) {
@@ -382,7 +450,8 @@ router.post('/installment-plans', authenticate, async (req: Request, res: Respon
             return;
         }
 
-        const plans = await stripeGetInstallmentPlans(amount, contractMonths);
+        const plans = (await stripeGetInstallmentPlans(amount, policy.freeUpTo))
+            .filter(p => p.count <= policy.maxInstallments);
         res.json({ plans });
     } catch (err: any) {
         if (err instanceof z.ZodError) {
@@ -447,7 +516,10 @@ router.post('/verify-payment', authenticate, async (req: Request, res: Response)
         const data = verifyPaymentSchema.parse(req.body);
         const userId = req.user!.userId;
 
-        const payment = await prisma.payment.findUnique({ where: { id: data.paymentId, userId } });
+        // Admins may verify any payment (charged on behalf of a client); clients only their own.
+        const payment = await prisma.payment.findFirst({
+            where: { id: data.paymentId, ...(req.user!.role === 'ADMIN' ? {} : { userId }) },
+        });
         if (!payment) {
             res.status(404).json({ error: 'Pagamento não encontrado.' });
             return;
@@ -455,6 +527,11 @@ router.post('/verify-payment', authenticate, async (req: Request, res: Response)
 
         if (payment.status === 'PAID') {
             res.json({ status: 'PAID', message: 'Já pago.' });
+            return;
+        }
+
+        if (payment.status === 'CANCELLED') {
+            res.status(400).json({ error: 'Este pagamento foi cancelado (contrato encerrado) e não pode ser confirmado.' });
             return;
         }
 
@@ -486,86 +563,13 @@ router.post('/verify-payment', authenticate, async (req: Request, res: Response)
                 },
             });
 
-            // Activate addon(s) on booking if this payment is for an addon purchase
-            if (payment.bookingId && payment.paymentUrl) {
-                try {
-                    const meta = JSON.parse(payment.paymentUrl);
-                    const keys: string[] = meta.addonKeys || (meta.addonKey ? [meta.addonKey] : []);
-                    if (keys.length > 0) {
-                        const booking = await prisma.booking.findUnique({ where: { id: payment.bookingId } });
-                        if (booking) {
-                            const toActivate = keys.filter(k => !booking.addOns.includes(k));
-                            if (toActivate.length > 0) {
-                                await prisma.booking.update({
-                                    where: { id: payment.bookingId },
-                                    data: { addOns: { push: toActivate } },
-                                });
-                                console.log(`[Stripe:Verify] Activated addon(s) ${toActivate.join(', ')} on booking ${payment.bookingId}`);
-                            }
-                        }
-                    }
-                } catch { /* not addon metadata, ignore */ }
-            }
-
-            // FIX: Confirm the booking and clear hold timer when payment is for a booking (avulso)
-            if (payment.bookingId) {
-                const bookingUpdated = await prisma.booking.updateMany({
-                    where: {
-                        id: payment.bookingId,
-                        status: { in: ['RESERVED', 'HELD'] },
-                    },
-                    data: {
-                        status: 'CONFIRMED',
-                        holdExpiresAt: null,
-                    },
-                });
-                if (bookingUpdated.count > 0) {
-                    console.log(`[Stripe:Verify] Confirmed booking ${payment.bookingId} (cleared hold timer)`);
-                }
-
-                // Also activate the avulso micro-contract if still AWAITING_PAYMENT
-                if (payment.contractId) {
-                    await prisma.contract.updateMany({
-                        where: { id: payment.contractId, status: 'AWAITING_PAYMENT' },
-                        data: { status: 'ACTIVE', paymentDeadline: null },
-                    });
-                }
-            }
-
-            // Fulfill pending contract if this is the first payment
-            await fulfillContractFromPayment(payment.id);
-
-            // Unlock progressive bookings if needed
-            if (payment.contractId) {
-                try {
-                    const contract = await prisma.contract.findUnique({
-                        where: { id: payment.contractId },
-                        select: { accessMode: true, startDate: true },
-                    });
-
-                    if (contract && contract.accessMode === 'PROGRESSIVE') {
-                        const reservedBookings = await prisma.booking.findMany({
-                            where: { contractId: payment.contractId, status: 'RESERVED' },
-                            orderBy: { date: 'asc' }, take: 20,
-                        });
-
-                        if (reservedBookings.length > 0) {
-                            const firstDate = reservedBookings[0].date;
-                            const cycleEnd = new Date(firstDate);
-                            cycleEnd.setDate(cycleEnd.getDate() + 28);
-                            const toConfirm = reservedBookings.filter(b => b.date < cycleEnd);
-
-                            if (toConfirm.length > 0) {
-                                await prisma.booking.updateMany({
-                                    where: { id: { in: toConfirm.map(b => b.id) } },
-                                    data: { status: 'CONFIRMED' },
-                                });
-                            }
-                        }
-                    }
-                } catch (err) {
-                    console.error('[Stripe:Verify] Error unlocking bookings:', err);
-                }
+            // Run the SINGLE source of confirmation effects (addon activation, booking confirm,
+            // contract activate/fulfill, renewal-booking generation, push notification, progressive
+            // unlock) — only if THIS call won the atomic PENDING→PAID race (otherwise the webhook
+            // already ran them). Centralizing here keeps verify/webhook/reconcile in lockstep and
+            // restores the two effects the old inline copy was missing (push + renewal bookings).
+            if (updated.count > 0) {
+                await onPaymentConfirmed(payment.id);
             }
 
             console.log(`[Stripe:Verify] Manually verified payment ${payment.id} as PAID`);

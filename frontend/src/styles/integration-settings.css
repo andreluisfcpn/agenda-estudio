@@ -900,10 +900,11 @@
   }
 
   .int-cards-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 20px;
-    align-items: start;
+    /* Accordion cards have divergent heights — a rigid 2-col grid left a big
+       empty area beside the colapsed card. Stacking full-width prevents that. */
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
   }
 
   .int-card-header {
@@ -928,5 +929,32 @@
 @media (min-width: 1024px) {
   .int-card-content {
     padding: 0 24px 28px;
+  }
+}
+
+/* ─── Pairs of short fields side-by-side on tablet+ ─── */
+.int-field-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+}
+@media (min-width: 768px) {
+  .int-field-row {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4);
+  }
+}
+/* int-field margins inside a row collapse — the grid gap handles spacing. */
+.int-field-row > .int-field { margin-bottom: 0; }
+
+/* ─── Compact upload zones (mobile keeps vertical real estate sane) ─── */
+.int-upload-zone {
+  min-height: 56px;
+  padding: var(--space-3-5);
+}
+@media (min-width: 768px) {
+  .int-upload-zone {
+    min-height: 72px;
+    padding: var(--space-4);
   }
 }

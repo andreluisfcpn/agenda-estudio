@@ -8,11 +8,9 @@ import PaymentModal from '../components/PaymentModal';
 import StatCard from '../components/ui/StatCard';
 import StatusBadge from '../components/ui/StatusBadge';
 import NotificationBanner from '../components/NotificationBanner';
+import { DashboardSkeleton } from '../components/ui/SkeletonLoader';
 import { Wallet, CalendarDays, Clapperboard, FileText, Package, AlertTriangle, ArrowRight, XCircle, Clock, CheckCircle } from 'lucide-react';
-
-function formatBRL(cents: number): string {
-    return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
-}
+import { formatBRL } from '../utils/format';
 
 function formatContractOrigin(booking: Booking): string {
     if (!booking.contract) return 'Avulso';
@@ -103,7 +101,7 @@ function AdminDashboard() {
         } catch (err: unknown) { showToast(getErrorMessage(err) || 'Erro ao atualizar.'); }
     };
 
-    if (loading) return <div className="loading-spinner"><div className="spinner" /></div>;
+    if (loading) return <DashboardSkeleton />;
 
     const today = getToday();
     const now = new Date();

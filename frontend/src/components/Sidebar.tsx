@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import {
@@ -53,6 +53,96 @@ function NavItem({ to, icon: Icon, label, collapsed }: NavItemProps) {
                 <div className="sidebar-tooltip">
                     {label}
                     <div className="sidebar-tooltip-arrow" />
+                </div>
+            )}
+        </div>
+    );
+}
+
+/** Sub-sections of the Settings page, mirrored from AdminSettingsPage's SECTIONS. */
+const SETTINGS_SUBITEMS: { sec: string; label: string }[] = [
+    { sec: 'gerais', label: 'Gerais' },
+    { sec: 'horarios', label: 'Horários' },
+    { sec: 'financeiro', label: 'Financeiro' },
+    { sec: 'politicas', label: 'Políticas' },
+    { sec: 'servicos', label: 'Serviços' },
+    { sec: 'pagamentos', label: 'Pagamentos' },
+    { sec: 'integracoes', label: 'Integrações' },
+];
+
+/** Group header (reuses the existing divider markup; the label hides when collapsed via CSS). */
+function SidebarSection({ label }: { label: string }) {
+    return (
+        <div className="sidebar-section-divider">
+            <div className="sidebar-section-line" />
+            <span className="sidebar-section-label">{label}</span>
+            <div className="sidebar-section-line" />
+        </div>
+    );
+}
+
+interface ExpandableNavItemProps {
+    to: string;
+    icon: LucideIcon;
+    label: string;
+    collapsed: boolean;
+    subItems: { sec: string; label: string }[];
+}
+
+/**
+ * A parent nav item (e.g. Configurações) that reveals its `?sec=` sub-sections
+ * indented below it. Expansion is derived from the route (auto-opens when on the
+ * page) and can be toggled manually. `?sec=` is the single source of truth for the
+ * active sub-item — read here and in AdminSettingsPage, so they never desync.
+ */
+function ExpandableNavItem({ to, icon: Icon, label, collapsed, subItems }: ExpandableNavItemProps) {
+    const { navigateTo } = useNavigation();
+    const location = useLocation();
+    const [searchParams] = useSearchParams();
+    const onPage = location.pathname === to;
+    const activeSec = searchParams.get('sec') ?? subItems[0]?.sec;
+    const [manualOpen, setManualOpen] = useState<boolean | null>(null);
+    const expanded = collapsed ? false : (manualOpen ?? onPage);
+
+    const handleParentClick = () => {
+        if (!onPage) navigateTo(to);
+        setManualOpen(prev => (prev === null ? !onPage : !prev));
+    };
+
+    return (
+        <div className="sidebar-group">
+            <button
+                className={`sidebar-link sidebar-link--parent ${onPage ? 'active' : ''}`}
+                onClick={handleParentClick}
+                aria-expanded={expanded}
+            >
+                <span className="sidebar-link-icon">
+                    <Icon size={20} strokeWidth={1.8} />
+                </span>
+                <span className="sidebar-link-label">{label}</span>
+                {!collapsed && (
+                    <ChevronRight
+                        size={14}
+                        className={`sidebar-link-caret ${expanded ? 'sidebar-link-caret--open' : ''}`}
+                    />
+                )}
+            </button>
+
+            {expanded && (
+                <div className="sidebar-subnav" role="group" aria-label={label}>
+                    {subItems.map(si => {
+                        const isActive = onPage && activeSec === si.sec;
+                        return (
+                            <button
+                                key={si.sec}
+                                className={`sidebar-sublink ${isActive ? 'active' : ''}`}
+                                onClick={() => navigateTo(`${to}?sec=${si.sec}`)}
+                            >
+                                <span className="sidebar-sublink-dot" aria-hidden />
+                                <span className="sidebar-sublink-label">{si.label}</span>
+                            </button>
+                        );
+                    })}
                 </div>
             )}
         </div>
@@ -190,19 +280,24 @@ export default function Sidebar({ collapsed, onProfileClick }: SidebarProps) {
 
                 {isAdmin && (
                     <>
-                        <div className="sidebar-section-divider">
-                            <div className="sidebar-section-line" />
-                            <span className="sidebar-section-label">Admin</span>
-                            <div className="sidebar-section-line" />
-                        </div>
-
+                        <SidebarSection label="Operação" />
                         <NavItem to="/admin/today" icon={MapPin} label="Hoje" collapsed={collapsed} />
                         <NavItem to="/admin/bookings" icon={ClipboardList} label="Agendamentos" collapsed={collapsed} />
                         <NavItem to="/admin/clients" icon={Users} label="Clientes" collapsed={collapsed} />
+
+                        <SidebarSection label="Gestão" />
                         <NavItem to="/admin/contracts" icon={FileSignature} label="Contratos" collapsed={collapsed} />
                         <NavItem to="/admin/finance" icon={CreditCard} label="Financeiro" collapsed={collapsed} />
                         <NavItem to="/admin/reports" icon={BarChart3} label="Relatórios" collapsed={collapsed} />
-                        <NavItem to="/admin/configuracoes" icon={Settings} label="Configurações" collapsed={collapsed} />
+
+                        <SidebarSection label="Sistema" />
+                        <ExpandableNavItem
+                            to="/admin/configuracoes"
+                            icon={Settings}
+                            label="Configurações"
+                            collapsed={collapsed}
+                            subItems={SETTINGS_SUBITEMS}
+                        />
                     </>
                 )}
             </nav>

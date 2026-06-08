@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import { RedisStore } from 'rate-limit-redis';
 import cookieParser from 'cookie-parser';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,6 +29,7 @@ import stripeRoutes from './modules/stripe/routes.js';
 import pushRoutes from './modules/push/routes.js';
 
 import { prisma } from './lib/prisma.js';
+import { redis } from './lib/redis.js';
 
 
 const app = express();
@@ -80,10 +82,21 @@ app.use(cors({
 }));
 
 // ─── Rate Limiting ──────────────────────────────────────
+// Backed by Redis so limits are enforced GLOBALLY across all app instances (an in-memory store
+// would let an attacker bypass limits by spreading requests across instances). Each limiter gets
+// its own key prefix. The app already hard-depends on Redis (locks, OTP), so this adds no new
+// single point of failure.
+
+const rlStore = (prefix: string) => new RedisStore({
+    // ioredis: forward the raw command to the shared client.
+    sendCommand: (...args: string[]) => (redis as unknown as { call: (...a: string[]) => Promise<unknown> }).call(...args) as Promise<never>,
+    prefix,
+});
 
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 15,
+    store: rlStore('rl:auth:'),
     message: { error: 'Muitas tentativas. Tente novamente em 15 minutos.' },
     standardHeaders: true,
     legacyHeaders: false,
@@ -92,6 +105,7 @@ const authLimiter = rateLimit({
 const otpLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 5,
+    store: rlStore('rl:otp:'),
     message: { error: 'Muitos códigos solicitados. Aguarde 15 minutos.' },
     standardHeaders: true,
     legacyHeaders: false,
@@ -100,6 +114,7 @@ const otpLimiter = rateLimit({
 const apiLimiter = rateLimit({
     windowMs: 1 * 60 * 1000, // 1 minute
     max: 300,
+    store: rlStore('rl:api:'),
     message: { error: 'Requisições excessivas. Aguarde 1 minuto.' },
     standardHeaders: true,
     legacyHeaders: false,
@@ -109,7 +124,18 @@ const apiLimiter = rateLimit({
 const paymentLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 20, // max 20 payment operations in 15 min per IP
+    store: rlStore('rl:pay:'),
     message: { error: 'Muitas tentativas de pagamento. Aguarde 15 minutos.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
+// Refresh-token endpoint limiter (was unprotected) — modest cap to blunt token-grind attempts.
+const refreshLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 60,
+    store: rlStore('rl:refresh:'),
+    message: { error: 'Muitas tentativas. Aguarde alguns minutos.' },
     standardHeaders: true,
     legacyHeaders: false,
 });
@@ -140,6 +166,7 @@ app.get('/api/health', (_req, res) => {
 
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/refresh', refreshLimiter);
 app.use('/api/auth/otp', otpLimiter);
 app.use('/api/auth/register/send-code', otpLimiter);
 app.use('/api/stripe/create-payment', paymentLimiter);
@@ -188,6 +215,15 @@ app.use(errorHandler);
 app.listen(config.port, async () => {
     console.log(`🎙️  Studio Scheduler API running on http://localhost:${config.port}`);
     console.log(`   Environment: ${config.nodeEnv}`);
+
+    // Loud, visible warning if the OTP dev-bypass flag is enabled — it must NEVER be on outside dev
+    // (it's already double-gated by NODE_ENV !== 'production', but a silent flag is easy to miss).
+    if (process.env.ALLOW_OTP_BYPASS === 'true') {
+        console.warn(`⚠️  [SECURITY] OTP bypass (code 999999) is ENABLED (env ALLOW_OTP_BYPASS=true) in ${config.nodeEnv}. Remove it for any non-development environment.`);
+    }
+    if (config.jwt.secret === 'dev-secret' || config.jwt.refreshSecret === 'dev-refresh-secret') {
+        console.warn('⚠️  [SECURITY] Using the DEFAULT dev JWT secret(s) — set JWT_SECRET and JWT_REFRESH_SECRET. (Production startup already hard-requires them; this guards misconfigured non-prod envs.)');
+    }
 
     const { redis } = await import('./lib/redis.js');
 
@@ -240,6 +276,23 @@ app.listen(config.port, async () => {
         console.log('   🔔 Booking reminder job registered (every 30min)');
     }).catch(err => console.error('[REMINDER-JOB] Failed to load:', err));
 
+    // FLEX Credit Expiry Cronjob — forfeits weekly credits when a window closes behind pace
+    import('./jobs/flexCreditExpiryJob.js').then(({ runFlexCreditExpiryJob }) => {
+        const runFlexExpiry = async () => {
+            const lockKey = 'cron:flex-credit-expiry:lock';
+            const lockAcquired = await redis.set(lockKey, 'running', 'EX', 1500, 'NX');
+            if (lockAcquired !== 'OK') return;
+            try {
+                await runFlexCreditExpiryJob();
+            } finally {
+                await redis.del(lockKey);
+            }
+        };
+        setInterval(runFlexExpiry, 6 * 60 * 60 * 1000); // every 6h
+        setTimeout(runFlexExpiry, 8000); // run once on boot
+        console.log('   🎟️ FLEX credit expiry job registered (every 6h)');
+    }).catch(err => console.error('[FLEX-EXPIRY] Failed to load:', err));
+
     // Notification Cleanup Cronjob — removes old read/unread notifications daily
     import('./jobs/notificationCleanupJob.js').then(({ runNotificationCleanupJob }) => {
         const runCleanupJob = async () => {
@@ -273,6 +326,23 @@ app.listen(config.port, async () => {
         setTimeout(runReconcile, 15000); // run once shortly after boot
         console.log('   💸 Cora reconciliation job registered (every 2min)');
     }).catch(err => console.error('[CORA-RECONCILE] Failed to load:', err));
+
+    // Auto-Charge Cronjob — charges saved cards off-session for due installments (daily)
+    import('./jobs/autoChargeJob.js').then(({ runAutoChargeJob }) => {
+        const runAutoCharge = async () => {
+            const lockKey = 'cron:auto-charge:lock';
+            const lockAcquired = await redis.set(lockKey, 'running', 'EX', 1800, 'NX');
+            if (lockAcquired !== 'OK') return;
+            try {
+                await runAutoChargeJob();
+            } finally {
+                await redis.del(lockKey);
+            }
+        };
+        setInterval(runAutoCharge, 24 * 60 * 60 * 1000); // daily
+        setTimeout(runAutoCharge, 20000); // run once shortly after boot
+        console.log('   💳 Auto-charge job registered (daily)');
+    }).catch(err => console.error('[AUTO-CHARGE] Failed to load:', err));
 });
 
 export default app;

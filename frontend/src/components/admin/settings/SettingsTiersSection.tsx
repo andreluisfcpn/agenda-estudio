@@ -97,7 +97,7 @@ export default function SettingsTiersSection() {
                             </div>
 
                             <div className="form-group">
-                                <label className="form-label">Preço do Pacote 2h (R$)</label>
+                                <label className="form-label">Preço do Pacote 2h</label>
                                 <div style={{ position: 'relative' }}>
                                     <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontWeight: 600 }}>R$</span>
                                     <input className="form-input" style={{ paddingLeft: 40, fontSize: '1.25rem', fontWeight: 700 }}

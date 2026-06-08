@@ -12,16 +12,29 @@ export function registerLifecycleRoutes(router: Router) {
 
 // ─── GET /api/contracts (ADMIN) ─────────────────────────
 
-router.get('/', authenticate, authorize('ADMIN'), async (_req: Request, res: Response) => {
-    const contracts = await prisma.contract.findMany({
-        orderBy: { createdAt: 'desc' },
-        include: {
-            user: { select: { id: true, name: true, email: true } },
-            _count: { select: { bookings: true, payments: true } },
-        },
-    });
+router.get('/', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
+    // Bounded by default (no full-table scan); accepts optional ?page/?limit/?status without
+    // breaking the existing `{ contracts }` response shape (adds an optional `pagination` block).
+    const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit ?? ''), 10) || 200));
+    const page = Math.max(1, parseInt(String(req.query.page ?? ''), 10) || 1);
+    const statusRaw = typeof req.query.status === 'string' ? req.query.status : undefined;
+    const where = statusRaw ? { status: statusRaw as any } : {};
 
-    res.json({ contracts });
+    const [contracts, total] = await Promise.all([
+        prisma.contract.findMany({
+            where,
+            orderBy: { createdAt: 'desc' },
+            skip: (page - 1) * limit,
+            take: limit,
+            include: {
+                user: { select: { id: true, name: true, email: true } },
+                _count: { select: { bookings: true, payments: true } },
+            },
+        }),
+        prisma.contract.count({ where }),
+    ]);
+
+    res.json({ contracts, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
 });
 
 // ─── GET /api/contracts/my ──────────────────────────────
@@ -143,6 +156,8 @@ router.get('/:id', authenticate, async (req: Request, res: Response) => {
                     peakViewers: true,
                     chatMessages: true,
                     audienceOrigin: true,
+                    isLivestream: true,
+                    streamMetrics: true,
                 },
             },
             payments: {
@@ -178,6 +193,19 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
         if (data.flexCreditsRemaining !== undefined) updateData.flexCreditsRemaining = data.flexCreditsRemaining;
         if (data.contractUrl !== undefined) updateData.contractUrl = data.contractUrl || null;
         if (data.paymentMethod) updateData.paymentMethod = data.paymentMethod;
+        if (data.boletoAllowed !== undefined) updateData.boletoAllowed = data.boletoAllowed;
+        // addOns is NOT applied via updateData — it goes through applyContractServiceChange,
+        // which also recomputes the future PENDING installments and future bookings' services.
+
+        // Recurring services edit (FIXO/FLEX ACTIVE only) — affects the FUTURE only.
+        if (data.addOns !== undefined) {
+            if (contract.status !== 'ACTIVE' || (contract.type !== 'FIXO' && contract.type !== 'FLEX')) {
+                res.status(400).json({ error: 'Serviços só podem ser editados em contratos Fixo/Flex ativos.' });
+                return;
+            }
+            const { applyContractServiceChange } = await import('../../lib/paymentEffects.js');
+            await applyContractServiceChange(id, data.addOns);
+        }
 
         const updated = await prisma.contract.update({
             where: { id },
@@ -213,6 +241,13 @@ router.delete('/:id', authenticate, authorize('ADMIN'), async (req: Request, res
         return;
     }
 
+    // Void still-pending installments FIRST (idempotent), so they stop being open invoices /
+    // auto-charged / reconcilable, and cancel any Stripe subscription. Doing this before the
+    // status change keeps retries safe: if a later step fails, the contract is still ACTIVE and
+    // a retry re-runs the (idempotent) void — never a "CANCELLED contract with PENDING parcelas".
+    const { voidContractPendingPayments } = await import('../../lib/paymentEffects.js');
+    const voidedCount = await voidContractPendingPayments(id);
+
     // Cancel contract
     await prisma.contract.update({
         where: { id },
@@ -229,7 +264,11 @@ router.delete('/:id', authenticate, authorize('ADMIN'), async (req: Request, res
         data: { status: 'CANCELLED' },
     });
 
-    res.json({ message: 'Contrato cancelado. Agendamentos futuros foram cancelados.' });
+    res.json({
+        message: voidedCount > 0
+            ? `Contrato cancelado. Agendamentos futuros e ${voidedCount} parcela(s) pendente(s) foram cancelados.`
+            : 'Contrato cancelado. Agendamentos futuros foram cancelados.',
+    });
 });
 
 // ─── POST /api/contracts/:id/request-cancellation (CLIENT)
@@ -295,6 +334,11 @@ router.post('/:id/resolve-cancellation', authenticate, authorize('ADMIN'), async
             return;
         }
 
+        // Void existing pending installments BEFORE any fine is created (the fine, created
+        // below, must stay PENDING). Also cancels any linked Stripe subscription.
+        const { voidContractPendingPayments } = await import('../../lib/paymentEffects.js');
+        const voidedCount = await voidContractPendingPayments(id);
+
         let message = 'Contrato cancelado com sucesso.';
 
         if (data.action === 'CHARGE_FEE') {
@@ -329,6 +373,10 @@ router.post('/:id/resolve-cancellation', authenticate, authorize('ADMIN'), async
             where: { id },
             data: { status: 'CANCELLED' },
         });
+
+        if (voidedCount > 0) {
+            message += ` ${voidedCount} parcela(s) pendente(s) foram canceladas.`;
+        }
 
         res.json({ contract: updated, message });
     } catch (err) {
@@ -380,7 +428,8 @@ router.post('/:id/renew', authenticate, authorize('ADMIN'), async (req: Request,
                 paymentMethod: original.paymentMethod,
                 flexCreditsTotal: flexCreditsTotal ?? null,
                 flexCreditsRemaining: flexCreditsTotal ?? null,
-                flexCycleStart: newType === 'FLEX' ? start : null,
+                flexCycleStart: null, // FLEX clock starts on the 1st recording
+                flexForfeitFloor: newType === 'FLEX' ? 0 : null, // not grandfathered
                 renewedFromId: original.id,
             },
         });

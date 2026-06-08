@@ -63,7 +63,7 @@ export default function CpfCnpjPrompt({ onSaved, onCancel, title, subtitle, save
                 {title || 'Confirme seu CPF ou CNPJ'}
             </h3>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5, margin: '0 0 18px', maxWidth: 340 }}>
-                {subtitle || 'O PIX é emitido como uma cobrança no seu nome — por isso precisamos do seu CPF ou CNPJ. É rápido, e fica salvo no seu perfil para as próximas vezes.'}
+                {subtitle || 'Esta cobrança é emitida no seu nome — por isso precisamos do seu CPF ou CNPJ. É rápido, e fica salvo no seu perfil para as próximas vezes.'}
             </p>
 
             <div className="form-group" style={{ width: '100%', textAlign: 'left', marginBottom: showError || error ? 6 : 14 }}>

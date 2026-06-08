@@ -8,7 +8,7 @@ import { stripeVerifyWebhook } from '../../lib/stripeService.js';
 import { decryptConfigSafe } from '../../utils/crypto.js';
 import crypto from 'node:crypto';
 import { createNotification } from '../notifications/notificationService.js';
-import { onPaymentConfirmed, unlockNextCycleBookings } from '../../lib/paymentEffects.js';
+import { onPaymentConfirmed } from '../../lib/paymentEffects.js';
 
 const router = Router();
 
@@ -176,7 +176,11 @@ router.post('/stripe', async (req: Request, res: Response) => {
                             data: {
                                 status: 'PAID',
                                 paidAt: new Date(),
-                                providerRef: session.payment_intent || session.id,
+                                // session.payment_intent is a string id OR an expanded object (or null) —
+                                // normalize to the id string so providerRef never becomes "[object Object]".
+                                providerRef: (typeof session.payment_intent === 'string'
+                                    ? session.payment_intent
+                                    : session.payment_intent?.id) || session.id,
                             },
                         });
 
@@ -393,9 +397,11 @@ router.post('/stripe', async (req: Request, res: Response) => {
 
                         if (updated.count > 0) {
                             console.log(`[Webhook:Stripe] Subscription payment ${payment.id} marked as PAID`);
-                            if (payment.contractId) {
-                                await unlockNextCycleBookings(payment.contractId);
-                            }
+                            // Run the full confirmation pipeline (notify client, unlock next cycle, …)
+                            // like every other payment path. For an in-cycle subscription invoice the
+                            // add-on/booking/fulfillment/renewal steps are all guarded no-ops; the real
+                            // gain is the PAYMENT_CONFIRMED notification this branch used to skip.
+                            await onPaymentConfirmed(payment.id);
                         }
                     }
                 }

@@ -1,4 +1,5 @@
 import React, { useRef, useCallback, useEffect } from 'react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 /**
  * ModalOverlay – wraps modal content and closes when:
@@ -8,6 +9,9 @@ import React, { useRef, useCallback, useEffect } from 'react';
  * This prevents the common UX issue where selecting text inside
  * a form field and accidentally releasing the mouse outside the
  * modal causes it to close.
+ *
+ * Accessibility: announces itself as a dialog, traps focus while open,
+ * and restores focus to the trigger on close.
  */
 interface ModalOverlayProps {
     onClose: () => void;
@@ -16,10 +20,23 @@ interface ModalOverlayProps {
     style?: React.CSSProperties;
     /** Set to true to prevent closing (e.g. while a request is in progress) */
     preventClose?: boolean;
+    /** Accessible name for the dialog (use when there's no visible title to reference). */
+    'aria-label'?: string;
+    /** id of the element labelling the dialog (e.g. the title). */
+    'aria-labelledby'?: string;
 }
 
-export default function ModalOverlay({ onClose, children, className = 'modal-overlay', style, preventClose }: ModalOverlayProps) {
+export default function ModalOverlay({
+    onClose,
+    children,
+    className = 'modal-overlay',
+    style,
+    preventClose,
+    'aria-label': ariaLabel,
+    'aria-labelledby': ariaLabelledby,
+}: ModalOverlayProps) {
     const mouseDownOnOverlay = useRef(false);
+    const trapRef = useFocusTrap<HTMLDivElement>(true);
 
     // Escape key handler
     useEffect(() => {
@@ -47,10 +64,15 @@ export default function ModalOverlay({ onClose, children, className = 'modal-ove
 
     return (
         <div
+            ref={trapRef}
             className={className}
             style={style}
             onMouseDown={handleMouseDown}
             onMouseUp={handleMouseUp}
+            role="dialog"
+            aria-modal="true"
+            aria-label={ariaLabel}
+            aria-labelledby={ariaLabelledby}
         >
             {children}
         </div>

@@ -15,6 +15,9 @@ export const createContractSchema = z.object({
     fixedTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
     contractUrl: z.string().url().optional().or(z.literal('')),
     addOns: z.array(z.string()).optional(),
+    boletoAllowed: z.boolean().optional(),
+    paymentMethod: z.nativeEnum(PaymentMethod).optional(),
+    paymentPlan: z.enum(['MONTHLY', 'FULL']).optional().default('MONTHLY'),
     resolvedConflicts: z.array(z.object({
         originalDate: z.string(),
         originalTime: z.string(),
@@ -46,6 +49,7 @@ export const selfContractSchema = z.object({
     fixedTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
     paymentMethod: z.nativeEnum(PaymentMethod),
     addOns: z.array(z.string()).optional(),
+    paymentPlan: z.enum(['MONTHLY', 'FULL']).optional().default('MONTHLY'),
     resolvedConflicts: z.array(z.object({
         originalDate: z.string(),
         originalTime: z.string(),
@@ -78,6 +82,7 @@ export const customContractSchema = z.object({
     })).optional().default([]),
     paymentMethod: z.nativeEnum(PaymentMethod),
     addOns: z.array(z.string()).optional(),
+    paymentPlan: z.enum(['MONTHLY', 'FULL']).optional().default('MONTHLY'),
     addonConfig: z.record(z.string(), z.object({
         mode: z.enum(['all', 'credits']),
         perCycle: z.number().optional(),
@@ -107,6 +112,9 @@ export const updateContractSchema = z.object({
     flexCreditsRemaining: z.number().int().min(0).optional(),
     contractUrl: z.string().url().optional().or(z.literal('')),
     paymentMethod: z.nativeEnum(PaymentMethod).optional(),
+    boletoAllowed: z.boolean().optional(),
+    // Recurring services edit (FIXO/FLEX ACTIVE only) — recomputes future installments/bookings.
+    addOns: z.array(z.string()).optional(),
 });
 
 // ─── RESOLVE CANCELLATION ───────────────────────────────
@@ -121,6 +129,9 @@ export const serviceContractSchema = z.object({
     serviceKey: z.string(),
     paymentMethod: z.nativeEnum(PaymentMethod),
     durationMonths: z.number().int().optional(),
+    // Inline self-serve plan choice. Defaults to FULL (à vista) for back-compat with
+    // any legacy caller; the route still validates it against the addon's plansAllowed.
+    paymentPlan: z.enum(['FULL', 'MONTHLY']).optional(),
 });
 
 // ─── PAY ────────────────────────────────────────────────

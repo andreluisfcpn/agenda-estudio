@@ -1,6 +1,6 @@
 import { getErrorMessage } from '../../utils/errors';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { bookingsApi, contractsApi, Booking, Contract, PaymentSummary } from '../../api/client';
+import { bookingsApi, contractsApi, Booking, ContractWithStats, PaymentSummary } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import { useUI } from '../../context/UIContext';
 import { useNavigate } from 'react-router-dom';
@@ -10,6 +10,7 @@ import StatusBadge from '../ui/StatusBadge';
 import NotificationBanner from '../NotificationBanner';
 import { DashboardSkeleton } from '../ui/SkeletonLoader';
 import { formatBRL, daysUntil, DAY_NAMES } from '../../utils/format';
+import { computeFlexState } from '../../utils/flexCredits';
 import {
     Wallet, CalendarDays, Clapperboard, FileText,
     Package, AlertTriangle, ArrowRight,
@@ -39,11 +40,11 @@ export default function ClientDashboard() {
     const [stats, setStats] = useState({ bookings: 0, completedBookings: 0, contracts: 0, pausedContracts: 0, openPaymentsValue: 0, overdueCount: 0 });
     const [recentBookings, setRecentBookings] = useState<Booking[]>([]);
     const [upcomingBookings, setUpcomingBookings] = useState<Booking[]>([]);
-    const [openPayments, setOpenPayments] = useState<PaymentSummary[]>([]);
-    const [myContracts, setMyContracts] = useState<Contract[]>([]);
+    const [openPayments, setOpenPayments] = useState<(PaymentSummary & { boletoAllowed?: boolean; contractDuration?: number })[]>([]);
+    const [myContracts, setMyContracts] = useState<ContractWithStats[]>([]);
     const [loading, setLoading] = useState(true);
 
-    const [payingInvoice, setPayingInvoice] = useState<PaymentSummary | null>(null);
+    const [payingInvoice, setPayingInvoice] = useState<(PaymentSummary & { boletoAllowed?: boolean; contractDuration?: number }) | null>(null);
 
     // Pull-to-refresh state
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -109,7 +110,9 @@ export default function ClientDashboard() {
                 return bookingDateTime >= now && (b.status === 'RESERVED' || b.status === 'CONFIRMED');
             });
 
-            const allPayments = contractsRes.contracts.flatMap(c => c.payments || []);
+            const allPayments = contractsRes.contracts.flatMap(c =>
+                (c.payments || []).map(p => ({ ...p, boletoAllowed: c.boletoAllowed, contractDuration: c.durationMonths }))
+            );
             const pendingOpenPayments = allPayments.filter(p => p.status === 'PENDING' || p.status === 'FAILED');
             pendingOpenPayments.sort((a,b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
             setOpenPayments(pendingOpenPayments);
@@ -205,6 +208,29 @@ export default function ClientDashboard() {
 
     const heroClass = stats.overdueCount > 0 ? 'client-hero client-hero--alert' : 'client-hero client-hero--default';
 
+    // FLEX "record this week" nudge: pick the ACTIVE FLEX contract whose current
+    // window is open, has no recording yet, and has credits left — the one closest
+    // to forfeiting (smallest daysLeftInWindow) wins. Display-only.
+    const flexNudge = (() => {
+        const nowDate = new Date();
+        let best: { daysLeft: number } | null = null;
+        for (const c of myContracts) {
+            const isAvulso = c.type === 'AVULSO' || (c.type === 'FLEX' && c.durationMonths === 1);
+            if (c.type !== 'FLEX' || isAvulso || c.status !== 'ACTIVE') continue;
+            const s = computeFlexState({
+                total: c.flexCreditsTotal ?? 0,
+                cycleStart: c.flexCycleStart ? new Date(c.flexCycleStart) : null,
+                bookingDates: (c.bookings || []).map(b => new Date(`${b.date.split('T')[0]}T${b.startTime || '00:00'}:00`)),
+                now: nowDate,
+            });
+            const remaining = c.flexCreditsRemaining ?? 0;
+            if (s.started && s.currentWindowIndex != null && !s.recordedThisWindow && remaining > 0 && s.daysLeftInWindow != null) {
+                if (!best || s.daysLeftInWindow < best.daysLeft) best = { daysLeft: s.daysLeftInWindow };
+            }
+        }
+        return best;
+    })();
+
     return (
         <div
             ref={containerRef}
@@ -257,6 +283,25 @@ export default function ClientDashboard() {
                     </button>
                 </div>
             </div>
+
+            {flexNudge && (
+                <div
+                    className={`flex-nudge animate-card-enter ${flexNudge.daysLeft <= 2 ? 'flex-nudge--urgent' : ''}`}
+                    role="status"
+                >
+                    <div className="flex-nudge__body">
+                        <span className="flex-nudge__icon" aria-hidden="true"><Mic size={18} /></span>
+                        <p className="flex-nudge__text">
+                            Agende sua gravação desta semana — falta{flexNudge.daysLeft === 1 ? '' : 'm'}{' '}
+                            <strong>{flexNudge.daysLeft} dia{flexNudge.daysLeft === 1 ? '' : 's'}</strong>{' '}
+                            para não perder 1 crédito.
+                        </p>
+                    </div>
+                    <button className="btn btn-primary btn-sm flex-nudge__cta" onClick={() => navigate('/calendar')}>
+                        <CalendarDays size={16} /> Agendar
+                    </button>
+                </div>
+            )}
 
             <NotificationBanner />
 
@@ -472,7 +517,9 @@ export default function ClientDashboard() {
                     amount={payingInvoice.amount}
                     paymentId={payingInvoice.id}
                     description={`Fatura — ${formatBRL(payingInvoice.amount)}`}
-                    allowedMethods={['CARTAO', 'PIX']}
+                    contractDuration={payingInvoice.contractDuration}
+                    allowedMethods={payingInvoice.boletoAllowed ? ['CARTAO', 'PIX', 'BOLETO'] : ['CARTAO', 'PIX']}
+                    allowBoleto={!!payingInvoice.boletoAllowed}
                     onSuccess={() => { setPayingInvoice(null); showToast('Pagamento realizado com sucesso!'); loadData(); }}
                     onError={(msg) => showToast({ message: msg, type: 'error' })}
                     onClose={() => setPayingInvoice(null)}

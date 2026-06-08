@@ -118,10 +118,14 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
             price = applyDiscount(price, contract.discountPct);
         }
 
-        // Add-ons Calculation
+        // Add-ons Calculation.
+        // SEMANTICS (intentional, do not "fix" to × sessions): a service added to ONE booking is
+        // charged once (×1, with the contract loyalty discount if linked). This differs from a
+        // CONTRACT recurring service (lib/contractPricing.computeAddonsCost), which is × sessions/mês
+        // because it accompanies every recording of the month. Here it's a single episode = 1 unit.
         let extraDiscountPct = contractId && contract ? contract.discountPct : 0;
         let addonsTotal = 0;
-        
+
         if (data.addOns && data.addOns.length > 0) {
             const allAddons = await prisma.addOnConfig.findMany({
                 where: { key: { in: data.addOns } }
@@ -324,6 +328,18 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                         res.status(400).json({ error: 'Créditos esgotados (concorrência). Tente novamente.' });
                         return;
                     }
+                    // Anchor the FLEX weekly clock to the EARLIEST recording — persisted and
+                    // only ever lowered on create (never moved forward on cancel), so the
+                    // weekly pace can't be reset by cancelling/rebooking.
+                    if (contract.type === 'FLEX') {
+                        const bDate = new Date(data.date + 'T00:00:00');
+                        if (contract.flexCycleStart == null || bDate < contract.flexCycleStart) {
+                            await prisma.contract.update({
+                                where: { id: finalContractId },
+                                data: { flexCycleStart: bDate },
+                            });
+                        }
+                    }
                 } else if (contract?.type === 'CUSTOM' && (contract.customCreditsRemaining || 0) > 0) {
                     const decremented = await prisma.contract.updateMany({
                         where: { id: finalContractId, customCreditsRemaining: { gt: 0 } },
@@ -359,8 +375,12 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
             // Create payment record for ALL avulso bookings
             let clientSecret: string | null = null;
             let createdPaymentId: string | null = null;
-            let pixString: string | null = null;
-            let qrCodeBase64: string | null = null;
+            // pixString/qrCodeBase64 are intentionally always null here: for avulso PIX the
+            // client immediately calls POST /stripe/create-payment, which is the single source
+            // of truth for PIX generation (and surfaces Cora errors as a 400). See the PIX note
+            // below for why we no longer generate the invoice inline.
+            const pixString: string | null = null;
+            const qrCodeBase64: string | null = null;
             if (isAvulso) {
                 try {
                     // Create pending Payment record
@@ -400,33 +420,13 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                         });
                     }
 
-                    // For PIX: create Cora Invoice with QR code via centralized helper
-                    if (data.paymentMethod === 'PIX') {
-                        try {
-                            const { createCoraPayment } = await import('../../lib/coraPaymentHelper.js');
-
-                            const coraRes = await createCoraPayment({
-                                userId,
-                                amount: price,
-                                description: `Avulso ${data.date} ${data.startTime}`,
-                                withPixQrCode: true,
-                            });
-
-                            pixString = coraRes.pixString;
-                            qrCodeBase64 = coraRes.qrCodeBase64;
-
-                            await prisma.payment.update({
-                                where: { id: payment.id },
-                                data: {
-                                    providerRef: coraRes.result.id,
-                                    provider: 'CORA',
-                                    pixString: coraRes.pixString,
-                                },
-                            });
-                        } catch (pixErr: unknown) {
-                            console.error('[BOOKING-PIX] Cora PIX creation failed:', getErrorMessage(pixErr));
-                        }
-                    }
+                    // For PIX we deliberately do NOT generate the Cora invoice here. The client
+                    // always calls POST /stripe/create-payment next, which is the single source of
+                    // truth for PIX generation and surfaces Cora errors to the user as a 400.
+                    // Generating it here as well created a second, orphaned Cora invoice AND (worse)
+                    // swallowed transient failures silently — the response returned 201 with a null
+                    // pixString that no caller reads. The payment row is left as CORA/PENDING and is
+                    // enriched with providerRef + pixString by that call.
                 } catch (payErr: unknown) {
                     console.error('[BOOKING] Payment creation failed:', getErrorMessage(payErr));
                     // Still return the booking — client can retry payment
@@ -448,8 +448,8 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                 },
                 paymentId: createdPaymentId,
                 clientSecret,
-                pixString,
-                qrCodeBase64,
+                // PIX QR is generated by POST /stripe/create-payment, not here — so no
+                // pixString/qrCodeBase64 in this response (nothing reads them from create).
                 creditWarning: isAvulsoCreated,
                 lockExpiresIn: 600, // 10 minutes
                 message: isAvulso
@@ -593,24 +593,26 @@ router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res
 
         const endTime = calculateEndTime(data.startTime);
         const basePrice = await getBasePriceDynamic(slotTier);
-        let price: number;
 
+        // Resolve the linked contract once — used for the base discount AND the add-on
+        // discount inheritance below (avulso ⇒ no contract ⇒ 0%).
+        const linkedContract = data.contractId
+            ? await prisma.contract.findUnique({ where: { id: data.contractId } })
+            : null;
+        const contractDiscountPct = linkedContract?.discountPct || 0;
+
+        let price: number;
         if (data.customPrice != null) {
-            // Admin explicitly set a custom price
+            // Admin explicitly set a custom price (base only — services are added below)
             price = data.customPrice;
-        } else if (data.contractId) {
-            // Contract-based: per-episode price = basePrice * (100 - discount%) / 100
-            const linkedContract = await prisma.contract.findUnique({ where: { id: data.contractId } });
-            if (linkedContract) {
-                price = Math.round(basePrice * (100 - (linkedContract.discountPct || 0)) / 100);
-            } else {
-                price = basePrice;
-            }
+        } else if (linkedContract) {
+            // Contract-based: per-episode price = basePrice with the loyalty discount applied
+            price = applyDiscount(basePrice, contractDiscountPct);
         } else {
             // Avulso: full tier price
             price = basePrice;
         }
-        
+
         let addonsTotal = 0;
         if (data.addOns && data.addOns.length > 0) {
             const allAddons = await prisma.addOnConfig.findMany({
@@ -619,7 +621,8 @@ router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res
             for (const add of allAddons) {
                 addonsTotal += add.price;
             }
-            price += addonsTotal; // Base admins usually apply discounts manually or we just pass base price here
+            // Services inherit the contract loyalty discount (avulso = 0%), matching the client path.
+            price += applyDiscount(addonsTotal, contractDiscountPct);
         }
 
         // Check for conflicts
@@ -641,11 +644,8 @@ router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res
         }
 
         let finalContractId = data.contractId;
-        let contract = null;
-        if (finalContractId) {
-            contract = await prisma.contract.findUnique({ where: { id: finalContractId }});
-        }
-        
+        let contract = linkedContract; // reuse the fetch from the pricing block above
+
         if (!finalContractId) {
             const parts = data.date.split('-');
             const formattedDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
@@ -686,6 +686,7 @@ router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res
         let createdPaymentId: string | null = null;
         let boletoUrl: string | null = null;
         let barcode: string | null = null;
+        let boletoError: string | null = null;
         try {
             const paymentProvider = data.paymentMethod === 'BOLETO' ? 'CORA' : (data.paymentMethod === 'PIX' ? 'CORA' : 'STRIPE');
             const paymentRecord = await prisma.payment.create({
@@ -713,6 +714,7 @@ router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res
                         description: `Boleto - ${data.startTime} ${data.date}`,
                         withPixQrCode: false,
                         dueDays: 3,
+                        idempotencyKey: paymentRecord.id,
                     });
                     boletoUrl = coraRes.boletoUrl;
                     barcode = coraRes.barcode;
@@ -725,7 +727,11 @@ router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res
                         },
                     });
                 } catch (bErr: unknown) {
+                    // Surface the failure to the admin instead of silently returning a
+                    // 201 with no boleto — the booking still exists, but the admin must
+                    // know the boleto was NOT generated (e.g. client CPF inválido).
                     console.error('[ADMIN-BOOKING] Boleto generation failed:', bErr);
+                    boletoError = bErr instanceof Error ? bErr.message : 'Falha ao gerar o boleto.';
                 }
             }
         } catch (payErr: unknown) {
@@ -745,7 +751,10 @@ router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res
             paymentId: createdPaymentId,
             boletoUrl,
             barcode,
-            message: 'Agendamento criado pelo administrador.',
+            ...(boletoError && { boletoError }),
+            message: boletoError
+                ? 'Agendamento criado, mas o boleto NÃO foi gerado. Verifique o CPF do cliente e gere o boleto novamente.'
+                : 'Agendamento criado pelo administrador.',
         });
     } catch (err) {
         if (err instanceof z.ZodError) {

@@ -182,7 +182,7 @@ export default function AdminReportsPage() {
             </div>
 
             {/* ─── OCCUPANCY: Slot + Day ─── */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '24px' }}>
+            <div className="admin-grid-2" style={{ gap: '14px', marginBottom: '24px' }}>
                 {/* By Slot */}
                 <div style={{ padding: '24px', borderRadius: '16px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
                     <h3 style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -231,7 +231,7 @@ export default function AdminReportsPage() {
             </div>
 
             {/* ─── TIER + AUDIENCE ─── */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '24px' }}>
+            <div className="admin-grid-2" style={{ gap: '14px', marginBottom: '24px' }}>
                 {/* Tier Breakdown */}
                 <div style={{ padding: '24px', borderRadius: '16px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
                     <h3 style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -280,7 +280,7 @@ export default function AdminReportsPage() {
                             <div style={{ fontSize: '0.75rem', marginTop: '4px' }}>Nenhuma sessão concluída neste período</div>
                         </div>
                     ) : (
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div className="admin-grid-2" style={{ gap: '12px' }}>
                             {[
                                 { icon: '👁️', label: 'Média de Viewers', value: audienceMetrics.avgViewers.toLocaleString('pt-BR'), color: '#2dd4bf' },
                                 { icon: '🏆', label: 'Pico Máximo', value: audienceMetrics.maxViewers.toLocaleString('pt-BR'), color: '#fbbf24' },

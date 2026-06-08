@@ -57,6 +57,7 @@ enum PaymentStatus {
   PAID
   FAILED
   REFUNDED
+  CANCELLED // installment voided because its contract was cancelled (not a failed charge)
 }
 
 enum PaymentMethod {
@@ -81,6 +82,10 @@ enum NotificationType {
   CLIENT_INACTIVE
   CONTRACT_AWAITING_PAYMENT
   SYSTEM
+  // NOTE: CONTRACT_RENEWED, CLIENT_INACTIVE and SYSTEM are no longer produced (pruned in
+  // jun/2026) but kept in the enum to match the existing Postgres type — dropping enum values
+  // requires a risky --accept-data-loss migration and adds no runtime benefit since nothing
+  // emits them. Safe to remove later via a dedicated migration if desired.
 }
 
 // ─── Models ─────────────────────────────────────────────
@@ -104,6 +109,8 @@ model User {
   clientStatus String   @default("ACTIVE") @map("client_status") // ACTIVE, INACTIVE, BLOCKED
   stripeCustomerId  String?  @unique @map("stripe_customer_id")
   autoChargeEnabled Boolean  @default(false) @map("auto_charge_enabled")
+  // When true, only critical notifications (payments, credit loss) are delivered.
+  essentialNotificationsOnly Boolean @default(false) @map("essential_notifications_only")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
@@ -159,6 +166,11 @@ model Contract {
   flexCreditsRemaining Int?      @map("flex_credits_remaining")
   flexCycleStart       DateTime? @map("flex_cycle_start")
   flexWeeksCompensated Int?      @default(0) @map("flex_weeks_compensated") // advance offset
+  // Weekly-window engine: credits forfeited for falling behind the weekly pace (monotonic).
+  flexCreditsForfeited Int       @default(0) @map("flex_credits_forfeited")
+  // Grandfather baseline: shortfall already incurred when forfeiture went live for this
+  // contract (NULL = not yet initialized → cron sets it on first sight, no retroactive loss).
+  flexForfeitFloor     Int?      @map("flex_forfeit_floor")
 
   // Custom-specific ("Monte Seu Plano")
   customSchedule    String?  @map("custom_schedule") @db.Text // JSON: [{"day":1,"time":"10:00"},{"day":3,"time":"19:30"}]
@@ -173,6 +185,12 @@ model Contract {
 
   // Payment method chosen at contract creation
   paymentMethod PaymentMethod? @map("payment_method")
+
+  // Admin can release boleto for this specific contract (off by default)
+  boletoAllowed Boolean @default(false) @map("boleto_allowed")
+
+  // How the contract is paid: MONTHLY (1 now + rest monthly) or FULL (paid upfront)
+  paymentPlan String @default("MONTHLY") @map("payment_plan")
 
   // Pause / Renewal
   pausedAt        DateTime? @map("paused_at")
@@ -191,6 +209,7 @@ model Contract {
   renewals    Contract[] @relation("ContractRenewal")
 
   @@index([userId])
+  @@index([endDate])
   @@map("contracts")
 }
 
@@ -217,6 +236,12 @@ model Booking {
   peakViewers     Int?    @map("peak_viewers")
   chatMessages    Int?    @map("chat_messages")
   audienceOrigin  String? @map("audience_origin")
+  // Livestream finalization: whether the recording was broadcast live, and per-network
+  // metrics captured at finalization. streamMetrics is JSON keyed by platform:
+  // {"YOUTUBE":{"views":N,"peak":N,"likes":N,"comments":N}, ...}. peakViewers/chatMessages
+  // above are kept as derived aggregates (max peak / sum comments) for legacy displays.
+  isLivestream  Boolean? @map("is_livestream")
+  streamMetrics String?  @map("stream_metrics") @db.Text
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -265,6 +290,7 @@ model Payment {
   @@index([providerRef])
   @@index([status])
   @@index([stripeSubscriptionId])
+  @@index([dueDate])
   @@map("payments")
 }
 
@@ -316,7 +342,16 @@ model AddOnConfig {
   name        String
   price       Int      // Base price in cents
   description String?  @db.Text
-  monthly     Boolean  @default(false) // true = monthly service (e.g. GESTAO_SOCIAL)
+  monthly     Boolean  @default(false) // family discriminator: true = monthly service (e.g. GESTAO_SOCIAL), false = per-episode add-on
+  // ── Admin-editable display + service-contract metadata ──
+  active           Boolean @default(true) // soft-delete / on-off toggle
+  sortOrder        Int     @default(0) @map("sort_order") // ordering on landing + admin
+  icon             String? @default("Sparkles") // lucide icon name OR emoji
+  showOnLanding    Boolean @default(true) @map("show_on_landing") // appears in the public ServicesCarousel
+  benefits         String? @db.Text // JSON string[] of bullet points (monthly services)
+  durationsOffered String  @default("3,6") @map("durations_offered") // CSV of fidelity options (months)
+  plansAllowed     String  @default("FULL") @map("plans_allowed") // CSV: FULL and/or MONTHLY
+  billingCadence   String  @default("BILLING_CYCLE_28") @map("billing_cadence") // BILLING_CYCLE_28 | CALENDAR_MONTH
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@map("addon_config")

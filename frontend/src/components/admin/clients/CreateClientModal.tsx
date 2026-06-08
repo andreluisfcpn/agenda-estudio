@@ -1,7 +1,7 @@
 import { getErrorMessage } from '../../../utils/errors';
 import React, { useState } from 'react';
 import { usersApi, ApiError } from '../../../api/client';
-import ModalOverlay from '../../ModalOverlay';
+import BottomSheetModal from '../../BottomSheetModal';
 import { maskPhone, maskEmail, maskCpfCnpj, translateError } from '../../../utils/mask';
 
 interface CreateClientModalProps {
@@ -82,8 +82,7 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
     const canCreate = createForm.name.length >= 2 && createForm.email.includes('@') && createForm.password.length >= 6;
 
     return (
-        <ModalOverlay onClose={resetCreateModal}>
-            <div className="modal" style={{ maxWidth: 520, maxHeight: '92vh', overflowY: 'auto', padding: 0 }}>
+        <BottomSheetModal isOpen onClose={resetCreateModal} hideHeader maxWidth="520px" className="admin-sheet" title="Novo Cliente">
                 {/* --- HEADER --- */}
                 <div style={{ padding: '28px 32px 0', borderBottom: 'none' }}>
                     <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -307,7 +306,6 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                         </button>
                     </div>
                 </div>
-            </div>
-        </ModalOverlay>
+        </BottomSheetModal>
     );
 }

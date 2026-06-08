@@ -1,13 +1,13 @@
 import { getErrorMessage } from '../utils/errors';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { CalendarClock } from 'lucide-react';
+import { Clapperboard, CheckCircle2, ChevronRight, CalendarDays } from 'lucide-react';
 import { bookingsApi, BookingWithUser } from '../api/client';
 import { useUI } from '../context/UIContext';
 import { useNavigate } from 'react-router-dom';
-import AdminPageHeader from '../components/admin/AdminPageHeader';
 import { HeroSkeleton } from '../components/ui/SkeletonLoader';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import StatusBadge from '../components/ui/StatusBadge';
+import FinalizeRecordingModal from '../components/admin/bookings/FinalizeRecordingModal';
 import { TIER_META, BOOKING_STATUS_META, getMeta } from '../constants/adminMeta';
 
 import { formatBRL } from '../utils/format';
@@ -76,6 +76,72 @@ if (typeof document !== 'undefined' && !document.getElementById(styleId)) {
         }
         .today-action-btn:hover { transform: translateY(-1px); filter: brightness(1.15); }
         .today-action-btn:active { transform: translateY(0); }
+
+        /* --- Live hero clock --- */
+        .today-hero {
+            position: relative;
+            overflow: hidden;
+            border-radius: var(--radius-xl);
+            padding: 26px 28px;
+            margin-bottom: 24px;
+            background:
+                radial-gradient(circle at 0% 0%, rgba(17,129,155,0.20), transparent 55%),
+                radial-gradient(circle at 100% 100%, rgba(16,185,129,0.10), transparent 50%),
+                linear-gradient(135deg, var(--bg-card), var(--bg-secondary));
+            border: 1px solid rgba(17,129,155,0.22);
+        }
+        .today-live-badge {
+            display: inline-flex; align-items: center; gap: 7px;
+            font-size: 0.6875rem; font-weight: 800; letter-spacing: 0.14em;
+            text-transform: uppercase; color: #10b981;
+            margin-bottom: 12px;
+        }
+        .today-live-dot {
+            width: 8px; height: 8px; border-radius: 50%; background: #10b981;
+            animation: today-livedot 1.6s infinite;
+        }
+        @keyframes today-livedot {
+            0% { box-shadow: 0 0 0 0 rgba(16,185,129,0.5); }
+            70% { box-shadow: 0 0 0 7px rgba(16,185,129,0); }
+            100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+        }
+        .today-clock {
+            display: flex; align-items: baseline; gap: 8px;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            line-height: 1;
+        }
+        .today-clock-time {
+            font-size: clamp(2.75rem, 10vw, 4rem); font-weight: 800;
+            color: var(--text-primary); letter-spacing: -0.02em;
+            font-variant-numeric: tabular-nums;
+        }
+        .today-clock-colon { animation: today-blink 1s step-end infinite; color: var(--accent-primary); }
+        @keyframes today-blink { 50% { opacity: 0.25; } }
+        .today-clock-secs {
+            font-size: clamp(1.1rem, 3.5vw, 1.5rem); font-weight: 700;
+            color: var(--accent-primary); font-variant-numeric: tabular-nums;
+        }
+        .today-date {
+            font-size: 0.9375rem; color: var(--text-secondary);
+            margin-top: 8px; text-transform: capitalize;
+        }
+        .today-summary {
+            display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: center;
+            margin-top: 18px; padding-top: 16px;
+            border-top: 1px solid var(--border-color);
+        }
+        .today-summary-item { display: flex; align-items: center; gap: 8px; font-size: 0.8125rem; color: var(--text-muted); }
+        .today-summary-num { font-size: 1.125rem; font-weight: 800; color: var(--text-primary); }
+        .today-next {
+            margin-left: auto; display: inline-flex; align-items: center; gap: 10px;
+            padding: 8px 14px; border-radius: 10px;
+            background: rgba(17,129,155,0.10); border: 1px solid rgba(17,129,155,0.22);
+            font-size: 0.8125rem; color: var(--text-secondary); max-width: 100%;
+        }
+        .today-next--now { background: rgba(16,185,129,0.12); border-color: rgba(16,185,129,0.3); }
+        @media (max-width: 600px) {
+            .today-next { margin-left: 0; width: 100%; }
+        }
     `;
     document.head.appendChild(style);
 }
@@ -86,6 +152,7 @@ export default function AdminTodayPage() {
     const [bookings, setBookings] = useState<BookingWithUser[]>([]);
     const [loading, setLoading] = useState(true);
     const [expandedSlot, setExpandedSlot] = useState<string | null>(null);
+    const [finalizeBooking, setFinalizeBooking] = useState<BookingWithUser | null>(null);
 
     const [adminNotes, setAdminNotes] = useState('');
     const [clientNotes, setClientNotes] = useState('');
@@ -161,126 +228,81 @@ export default function AdminTodayPage() {
         finally { setSaving(false); }
     };
 
-    // --- KPI Computations ---
-    const kpis = useMemo(() => {
-        const total = bookings.length;
-        const completed = bookings.filter(b => b.status === 'COMPLETED').length;
-        const confirmed = bookings.filter(b => b.status === 'CONFIRMED' || b.status === 'RESERVED').length;
-        const falta = bookings.filter(b => b.status === 'FALTA' || b.status === 'NAO_REALIZADO').length;
-        const resolved = completed + falta;
-        const progressPct = total > 0 ? Math.round((resolved / total) * 100) : 0;
-        const revenue = bookings.filter(b => b.status === 'CONFIRMED' || b.status === 'COMPLETED').reduce((s, b) => s + b.price, 0);
-        return { total, completed, confirmed, falta, resolved, progressPct, revenue };
-    }, [bookings]);
-
     const [now, setNow] = useState(new Date());
     useEffect(() => {
         const timer = setInterval(() => setNow(new Date()), 1000);
         return () => clearInterval(timer);
     }, []);
-    const nowTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    const ss = String(now.getSeconds()).padStart(2, '0');
+    const nowTime = `${hh}:${mm}`;
+
+    // --- Lean day summary (clean, no KPI cards) ---
+    const dayStats = useMemo(() => {
+        const recordings = bookings.length;
+        const completed = bookings.filter(b => b.status === 'COMPLETED').length;
+        const isPending = (b: BookingWithUser) => b.status !== 'COMPLETED' && b.status !== 'FALTA' && b.status !== 'NAO_REALIZADO';
+        // Session whose slot is happening right now.
+        const nowSlot = TIMELINE.find(s => s.type === 'SLOT' && nowTime >= s.time && nowTime <= s.timeEnd);
+        const nowSession = nowSlot ? bookings.find(b => b.startTime === nowSlot.time && isPending(b)) : undefined;
+        // Next upcoming pending session.
+        const next = bookings
+            .filter(b => b.startTime > nowTime && isPending(b))
+            .sort((a, b) => a.startTime.localeCompare(b.startTime))[0];
+        return { recordings, completed, nowSession, next };
+    }, [bookings, nowTime]);
 
     if (loading) return <div><HeroSkeleton /><LoadingSpinner /></div>;
 
     return (
         <div>
-            {/* --- HEADER --- */}
-            <AdminPageHeader
-                icon={CalendarClock}
-                title="Visão do Dia"
-                subtitle="Agenda do estúdio hoje, em tempo real"
-                actions={
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-                            {now.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
-                        </span>
-                        <span style={{
-                            fontSize: '0.75rem', fontWeight: 700, color: '#10b981',
-                            background: 'rgba(16,185,129,0.1)', padding: '2px 8px', borderRadius: '6px',
-                            animation: 'today-pulse 2s infinite'
-                        }}>
-                            ⏰ {nowTime}:{String(now.getSeconds()).padStart(2, '0')}
-                        </span>
-                    </span>
-                }
-            />
+            {/* --- LIVE HERO (real-time clock + lean day summary) --- */}
+            <div className="today-hero">
+                <div className="today-live-badge">
+                    <span className="today-live-dot" /> Ao vivo · Visão do dia
+                </div>
+                <div className="today-clock" aria-label={`Agora são ${hh}:${mm}:${ss}`}>
+                    <span className="today-clock-time">{hh}<span className="today-clock-colon">:</span>{mm}</span>
+                    <span className="today-clock-secs">{ss}</span>
+                </div>
+                <div className="today-date">
+                    {now.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+                </div>
 
-            {/* --- KPI CARDS --- */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '14px', marginBottom: '24px' }}>
-                <div style={{
-                    padding: '20px', borderRadius: '14px',
-                    background: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(67,56,202,0.04))',
-                    border: '1px solid rgba(99,102,241,0.2)',
-                }}>
-                    <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Sessões</div>
-                    <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)' }}>{kpis.total}</div>
-                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>agendadas hoje</div>
-                </div>
-                <div style={{
-                    padding: '20px', borderRadius: '14px',
-                    background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
-                }}>
-                    <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Pendentes</div>
-                    <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)' }}>{kpis.confirmed}</div>
-                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>a realizar</div>
-                </div>
-                <div style={{
-                    padding: '20px', borderRadius: '14px',
-                    background: kpis.completed > 0 ? 'linear-gradient(135deg, rgba(16,185,129,0.08), rgba(6,78,59,0.04))' : 'var(--bg-secondary)',
-                    border: kpis.completed > 0 ? '1px solid rgba(16,185,129,0.2)' : '1px solid var(--border-color)',
-                }}>
-                    <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Concluídas</div>
-                    <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)' }}>{kpis.completed}</div>
-                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>finalizadas</div>
-                </div>
-                <div style={{
-                    padding: '20px', borderRadius: '14px',
-                    background: kpis.falta > 0 ? 'linear-gradient(135deg, rgba(239,68,68,0.06), rgba(220,38,38,0.04))' : 'var(--bg-secondary)',
-                    border: kpis.falta > 0 ? '1px solid rgba(239,68,68,0.2)' : '1px solid var(--border-color)',
-                }}>
-                    <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: kpis.falta > 0 ? '#ef4444' : 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Faltas</div>
-                    <div style={{ fontSize: '2rem', fontWeight: 800, color: kpis.falta > 0 ? '#ef4444' : 'var(--text-primary)' }}>{kpis.falta}</div>
-                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>não compareceram</div>
-                </div>
-                <div style={{
-                    padding: '20px', borderRadius: '14px',
-                    background: 'linear-gradient(135deg, rgba(16,185,129,0.10), rgba(6,78,59,0.06))',
-                    border: '1px solid rgba(16,185,129,0.25)',
-                }}>
-                    <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Receita</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#10b981' }}>{formatBRL(kpis.revenue)}</div>
-                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>confirmado + concluído</div>
-                </div>
-            </div>
+                {!isSunday && (
+                    <div className="today-summary">
+                        <span className="today-summary-item">
+                            <Clapperboard size={16} style={{ color: 'var(--accent-primary)' }} />
+                            <span className="today-summary-num">{dayStats.recordings}</span>&nbsp;gravações hoje
+                        </span>
+                        <span className="today-summary-item">
+                            <CheckCircle2 size={16} style={{ color: '#10b981' }} />
+                            <span className="today-summary-num">{dayStats.completed}</span>&nbsp;concluídas
+                        </span>
 
-            {/* --- PROGRESS BAR --- */}
-            {kpis.total > 0 && (
-                <div style={{
-                    padding: '14px 20px', borderRadius: '12px', marginBottom: '24px',
-                    background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
-                }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                                {kpis.resolved} de {kpis.total} sessões finalizadas
+                        {dayStats.nowSession ? (
+                            <span className="today-next today-next--now">
+                                <span className="today-live-dot" />
+                                <span><strong style={{ color: '#10b981' }}>Gravando agora:</strong> {dayStats.nowSession.user.name}</span>
                             </span>
-                            {kpis.completed > 0 && <span style={{ fontSize: '0.6875rem', color: '#10b981', fontWeight: 700, background: 'rgba(16,185,129,0.1)', padding: '2px 8px', borderRadius: '6px' }}>✅ {kpis.completed}</span>}
-                            {kpis.falta > 0 && <span style={{ fontSize: '0.6875rem', color: '#ef4444', fontWeight: 700, background: 'rgba(239,68,68,0.1)', padding: '2px 8px', borderRadius: '6px' }}>❌ {kpis.falta}</span>}
-                        </div>
-                        <span style={{ fontSize: '0.875rem', fontWeight: 800, color: kpis.progressPct === 100 ? '#10b981' : 'var(--text-primary)' }}>{kpis.progressPct}%</span>
+                        ) : dayStats.next ? (
+                            <span className="today-next">
+                                <ChevronRight size={15} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
+                                <span>Próxima às <strong style={{ color: 'var(--text-primary)' }}>{dayStats.next.startTime}</strong> · {dayStats.next.user.name}</span>
+                            </span>
+                        ) : dayStats.recordings > 0 ? (
+                            <span className="today-next"><CheckCircle2 size={15} style={{ color: '#10b981', flexShrink: 0 }} /> Tudo concluído por hoje</span>
+                        ) : (
+                            <button className="today-next" style={{ cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text-secondary)' }}
+                                onClick={() => navigate('/calendar')}>
+                                <CalendarDays size={15} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
+                                <span>Nenhuma gravação hoje — abrir agenda</span>
+                            </button>
+                        )}
                     </div>
-                    <div style={{ height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.04)', overflow: 'hidden' }}>
-                        <div style={{
-                            height: '100%', borderRadius: 3,
-                            width: `${kpis.progressPct}%`,
-                            background: kpis.progressPct === 100
-                                ? 'linear-gradient(90deg, #10b981, #34d399)'
-                                : 'linear-gradient(90deg, #3b82f6, #10b981)',
-                            transition: 'width 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
-                        }} />
-                    </div>
-                </div>
-            )}
+                )}
+            </div>
 
             {/* --- SUNDAY --- */}
             {isSunday ? (
@@ -478,10 +500,10 @@ export default function AdminTodayPage() {
                                                             Confirmar
                                                         </button>
                                                     )}
-                                                    <button className="today-action-btn" title="Concluir"
+                                                    <button className="today-action-btn" title="Finalizar gravação"
                                                         style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981', padding: '4px 8px', fontSize: '0.75rem' }}
-                                                        onClick={(e) => { e.stopPropagation(); handleStatusChange(booking.id, 'COMPLETED', '✅ Conclusão'); }}>
-                                                        ✅
+                                                        onClick={(e) => { e.stopPropagation(); setFinalizeBooking(booking); }}>
+                                                        🏁
                                                     </button>
                                                     <button className="today-action-btn" title="Falta"
                                                         style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444', padding: '4px 8px', fontSize: '0.75rem' }}
@@ -527,8 +549,8 @@ export default function AdminTodayPage() {
                                                     )}
                                                     <button className="today-action-btn"
                                                         style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981' }}
-                                                        onClick={() => handleStatusChange(booking.id, 'COMPLETED', '✅ Conclusão')}>
-                                                        ✅ Concluída
+                                                        onClick={() => setFinalizeBooking(booking)}>
+                                                        🏁 Finalizar gravação
                                                     </button>
                                                     <button className="today-action-btn"
                                                         style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}
@@ -560,6 +582,10 @@ export default function AdminTodayPage() {
                                                         <span style={{ width: 20, height: 2, background: '#10b981', borderRadius: 1 }} />
                                                         Métricas Pós-Gravação
                                                     </div>
+                                                    <button className="today-action-btn" style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444', marginBottom: '14px' }}
+                                                        onClick={() => setFinalizeBooking(booking)}>
+                                                        🔴 Dados da transmissão (redes, links e métricas por rede)
+                                                    </button>
                                                     <div className="admin-kpi-grid">
                                                         {[
                                                             { label: '⏱️ Duração (min)', value: durationMin, onChange: (v: string) => setDurationMin(v === '' ? '' : Number(v)), type: 'number', ph: 'Ex: 120' },
@@ -578,8 +604,8 @@ export default function AdminTodayPage() {
                                                 </div>
                                             )}
 
-                                            {/* Notes */}
-                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+                                            {/* Notes — `admin-grid-2` collapses to 1 column on ≤640px (mobile). */}
+                                            <div className="admin-grid-2" style={{ marginBottom: '20px' }}>
                                                 <div>
                                                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.6875rem', fontWeight: 700, color: '#2dd4bf', marginBottom: '8px' }}>
                                                         <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#2dd4bf' }} />
@@ -629,6 +655,13 @@ export default function AdminTodayPage() {
                     })}
                 </div>
             )}
+
+            <FinalizeRecordingModal
+                isOpen={!!finalizeBooking}
+                booking={finalizeBooking}
+                onClose={() => setFinalizeBooking(null)}
+                onSaved={() => { setFinalizeBooking(null); loadData(); }}
+            />
         </div>
     );
 }

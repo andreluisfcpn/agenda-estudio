@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
     CreditCard, Trash2, Shield, Plus, Zap, Clock,
-    CheckCircle, XCircle, AlertTriangle, Wallet, ArrowRight, Landmark,
+    CheckCircle, XCircle, AlertTriangle, Wallet, ArrowRight, Landmark, CalendarClock,
 } from 'lucide-react';
 import AddCardModal from '../components/AddCardModal';
 import PaymentModal from '../components/PaymentModal';
@@ -24,9 +24,36 @@ const BRAND_LABELS: Record<string, string> = {
     amex: 'Amex', hipercard: 'Hipercard', unknown: 'Cartão',
 };
 
+// A payment aggregated from its contract, carrying the contract context needed to label it
+// (type/installment position) and to drive the checkout (duration/boleto/deadline).
+type AggregatedPayment = PaymentSummary & {
+    contractName: string;
+    contractType?: string;
+    contractDuration: number;
+    paymentDeadline?: string | null;
+    boletoAllowed?: boolean;
+    installmentOrdinal?: number;
+    installmentTotal?: number;
+};
+
+// Short human label for a contract type (used on cards + the payment modal).
+const CONTRACT_TYPE_LABEL: Record<string, string> = {
+    FIXO: 'Plano Fixo', FLEX: 'Plano Flex', CUSTOM: 'Personalizado',
+    SERVICO: 'Serviço mensal', AVULSO: 'Avulso',
+};
+
+// "Nome · Tipo — Parcela N/Total" — what the user is actually paying (shown in the modal).
+function describePayment(p: AggregatedPayment): string {
+    const typeLabel = (p.contractType && CONTRACT_TYPE_LABEL[p.contractType]) || 'Contrato';
+    const pos = (p.installmentTotal && p.installmentTotal > 1)
+        ? ` — Parcela ${p.installmentOrdinal}/${p.installmentTotal}`
+        : '';
+    return `${p.contractName} · ${typeLabel}${pos}`;
+}
+
 // ─── Pending Payment Card with live timer ──────────────
 interface PendingPaymentCardProps {
-    payment: PaymentSummary & { contractName: string; contractDuration: number; paymentDeadline?: string | null };
+    payment: AggregatedPayment;
     index: number;
     isOverdue: boolean;
     isFailed: boolean;
@@ -88,9 +115,13 @@ function PendingPaymentCard({ payment: p, index: i, isOverdue, isFailed, onPay, 
             <div className="pending-card__top">
                 <div>
                     <div className="pending-card__amount">{formatBRL(p.amount)}</div>
-                    <div className="pending-card__contract">{p.contractName}</div>
+                    <div className="pending-card__contract">
+                        {p.contractName}
+                        {p.contractType && <span className="pending-card__type">{CONTRACT_TYPE_LABEL[p.contractType] || 'Contrato'}</span>}
+                    </div>
                     <div className="pending-card__due">
                         {isOverdue ? 'Vencida' : 'Vence'} em {formatDate(p.dueDate)}
+                        {(p.installmentTotal && p.installmentTotal > 1) ? ` · Parcela ${p.installmentOrdinal}/${p.installmentTotal}` : ''}
                     </div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
@@ -135,8 +166,10 @@ export default function MyPaymentsPage() {
     const [settingDefaultId, setSettingDefaultId] = useState<string | null>(null);
 
     // Payment flow
-    const [payingPayment, setPayingPayment] = useState<(PaymentSummary & { contractName: string; contractDuration: number; paymentDeadline?: string | null }) | null>(null);
+    const [payingPayment, setPayingPayment] = useState<AggregatedPayment | null>(null);
     const [showAllHistory, setShowAllHistory] = useState(false);
+    // Segmented view (matches the other client tabs). Stat cards stay above the tabs.
+    const [tab, setTab] = useState<'open' | 'paid' | 'plan' | 'wallet'>('open');
 
     // ─── Data Loading ─────────────────────────────────────
     const loadData = useCallback(async () => {
@@ -177,7 +210,9 @@ export default function MyPaymentsPage() {
                 setPayingPayment({
                     ...targetPayment,
                     contractName: targetContract.name || targetContract.type,
-                    contractDuration: targetContract.durationMonths || 1
+                    contractType: targetContract.type,
+                    contractDuration: targetContract.durationMonths || 1,
+                    boletoAllowed: targetContract.boletoAllowed,
                 });
                 navigate('.', { replace: true, state: {} });
             }
@@ -185,10 +220,26 @@ export default function MyPaymentsPage() {
     }, [contracts, location.state, payingPayment, navigate]);
 
     // ─── Aggregating Payments ─────────────────────────────
-    const allPayments: (PaymentSummary & { contractName: string; contractDuration: number; paymentDeadline?: string | null })[] = [];
+    // Carry the contract context (type + installment position within the contract) so cards and
+    // the checkout modal can say WHAT is being paid. Ordinal is computed from the contract's
+    // payments sorted by due-date (same order as the Plano tab) so the two never disagree.
+    const allPayments: AggregatedPayment[] = [];
     contracts.forEach(c => {
-        (c.payments || []).forEach(p => {
-            allPayments.push({ ...p, contractName: c.name, contractDuration: c.durationMonths, paymentDeadline: c.paymentDeadline });
+        const sorted = [...(c.payments || [])].sort((a, b) =>
+            (a.dueDate ? new Date(a.dueDate).getTime() : 0) - (b.dueDate ? new Date(b.dueDate).getTime() : 0)
+        );
+        const total = sorted.length;
+        sorted.forEach((p, idx) => {
+            allPayments.push({
+                ...p,
+                contractName: c.name,
+                contractType: c.type,
+                contractDuration: c.durationMonths,
+                paymentDeadline: c.paymentDeadline,
+                boletoAllowed: c.boletoAllowed,
+                installmentOrdinal: idx + 1,
+                installmentTotal: total,
+            });
         });
     });
 
@@ -206,6 +257,12 @@ export default function MyPaymentsPage() {
     const totalPending = pendingPayments.reduce((acc, p) => acc + p.amount, 0);
     const totalPaid = paidPayments.reduce((acc, p) => acc + p.amount, 0);
     const overdueCount = pendingPayments.filter(p => p.dueDate && new Date(p.dueDate) < now).length;
+
+    // ─── Payment Plan (per active contract) ───────────────
+    const planContracts = contracts.filter(c =>
+        (c.status === 'ACTIVE' || c.status === 'PENDING_CANCELLATION' || c.status === 'PAUSED')
+        && (c.payments?.length || 0) > 0
+    );
 
     // ─── Card Actions ─────────────────────────────────────
     const handleAddCard = async () => {
@@ -283,9 +340,9 @@ export default function MyPaymentsPage() {
 
     return (
         <div>
-            {/* ─── Hero Banner ─── */}
+            {/* ─── Hero Banner (same convention as Contratos/Agenda) ─── */}
             <div className={`client-hero ${hasOverdue ? 'client-hero--alert' : 'client-hero--default'} animate-card-enter`}>
-                <div className="client-hero__header client-hero__header--standalone">
+                <div className="client-hero__header" style={{ marginBottom: '16px' }}>
                     <div className="client-hero__icon-wrapper" style={{
                         background: hasOverdue
                             ? 'linear-gradient(135deg, rgba(239,68,68,0.2), rgba(239,68,68,0.05))'
@@ -297,14 +354,24 @@ export default function MyPaymentsPage() {
                         <Landmark size={22} />
                     </div>
                     <div>
-                        <h2 className="client-hero__title">Pagamentos</h2>
-                        <p className="client-hero__subtitle">{heroMessage}</p>
+                        <h2 className="client-hero__greeting" style={{ margin: 0 }}>Pagamentos</h2>
+                        <p className="client-hero__message" style={{ margin: '4px 0 0 0' }}>{heroMessage}</p>
                     </div>
+                </div>
+                <div className="client-cta-stack">
+                    {pendingPayments.length > 0 && (
+                        <button className="btn btn-primary" onClick={() => { setTab('open'); setPayingPayment(pendingPayments[0]); }}>
+                            <CreditCard size={16} /> Pagar agora
+                        </button>
+                    )}
+                    <button className="btn btn-secondary" onClick={handleAddCard}>
+                        <Plus size={16} /> Adicionar cartão
+                    </button>
                 </div>
             </div>
 
-            {/* ─── Stat Cards (matches Dashboard grid) ─── */}
-            <div className="payments-stats stagger-enter">
+            {/* ─── Stat Cards ─── */}
+            <div className="client-stats-grid stagger-enter">
                 <StatCard
                     icon={Wallet}
                     label="Pendente"
@@ -323,16 +390,30 @@ export default function MyPaymentsPage() {
                 />
             </div>
 
-            {/* ─── Pagamentos Pendentes ─── */}
-            <div className="payments-section">
-                <h3 className="payments-section__title">
-                    <span className="payments-section__icon payments-section__icon--pending">
-                        <Zap size={18} />
-                    </span>
-                    Faturas Pendentes
-                </h3>
+            {/* ─── Segmented Tabs (Em aberto · Pagas · Plano · Carteira) ─── */}
+            <div className="payments-tabs" role="tablist">
+                {([
+                    ['open', 'Em aberto', pendingPayments.length],
+                    ['paid', 'Pagas', paidPayments.length],
+                    ['plan', 'Plano', planContracts.length],
+                    ['wallet', 'Carteira', cards.length],
+                ] as const).map(([key, label, count]) => (
+                    <button
+                        key={key}
+                        role="tab"
+                        aria-selected={tab === key}
+                        className={`payments-tab ${tab === key ? 'payments-tab--active' : ''}`}
+                        onClick={() => setTab(key)}
+                    >
+                        <span className="payments-tab__count">{count}</span>
+                        <span className="payments-tab__label">{label}</span>
+                    </button>
+                ))}
+            </div>
 
-                {pendingPayments.length === 0 ? (
+            {/* ─── TAB: Em aberto ─── */}
+            {tab === 'open' && (
+                pendingPayments.length === 0 ? (
                     <div className="payments-empty animate-card-enter" style={{ '--i': 0 } as React.CSSProperties}>
                         <CheckCircle size={32} className="payments-empty__icon" />
                         <div className="payments-empty__text">Tudo em dia! Você não tem cobranças pendentes.</div>
@@ -356,12 +437,12 @@ export default function MyPaymentsPage() {
                             );
                         })}
                     </div>
-                )}
-            </div>
+                )
+            )}
 
-            {/* ─── Cobrança Automática ─── */}
-            {(cards.length > 0 || autoCharge) && (
-                <div className={`autocharge-card animate-card-enter ${autoCharge ? 'autocharge-card--active' : ''}`} style={{ '--i': 2 } as React.CSSProperties}>
+            {/* ─── TAB: Carteira — cobrança automática ─── */}
+            {tab === 'wallet' && (cards.length > 0 || autoCharge) && (
+                <div className={`autocharge-card animate-card-enter ${autoCharge ? 'autocharge-card--active' : ''}`} style={{ '--i': 0 } as React.CSSProperties}>
                     <div className="autocharge-card__info">
                         <h3 className="autocharge-card__title">
                             <Shield size={18} style={{ color: autoCharge ? '#10b981' : 'var(--text-muted)' }} />
@@ -381,38 +462,110 @@ export default function MyPaymentsPage() {
                 </div>
             )}
 
-            {/* ─── Histórico de Pagamentos ─── */}
-            {paidPayments.length > 0 && (
-                <div className="payments-section">
-                    <h3 className="payments-section__title">
-                        <span className="payments-section__icon payments-section__icon--history">
-                            <Clock size={18} />
-                        </span>
-                        Histórico de Pagamentos
-                    </h3>
-                    <div className="history-list">
-                        {paidPayments.slice(0, showAllHistory ? undefined : 5).map(p => (
-                            <div key={p.id} className="history-item">
-                                <div className="history-item__info">
-                                    <div className="history-item__name">{p.contractName}</div>
-                                    <div className="history-item__date">Pago em {formatDate(p.dueDate)}</div>
-                                </div>
-                                <div className="history-item__right">
-                                    <span className="history-item__amount">{formatBRL(p.amount)}</span>
-                                    <StatusBadge status="PAID" label={p.provider === 'STRIPE' ? 'Automático' : 'Pago'} />
-                                </div>
-                            </div>
-                        ))}
+            {/* ─── TAB: Pagas (histórico) ─── */}
+            {tab === 'paid' && (
+                paidPayments.length === 0 ? (
+                    <div className="payments-empty animate-card-enter" style={{ '--i': 0 } as React.CSSProperties}>
+                        <Clock size={32} className="payments-empty__icon" />
+                        <div className="payments-empty__text">Nenhum pagamento concluído ainda.</div>
                     </div>
-                    {paidPayments.length > 5 && !showAllHistory && (
-                        <button onClick={() => setShowAllHistory(true)} className="payments-show-all">
-                            Ver todos ({paidPayments.length})
-                        </button>
-                    )}
-                </div>
+                ) : (
+                    <>
+                        <div className="history-list">
+                            {paidPayments.slice(0, showAllHistory ? undefined : 5).map(p => (
+                                <div key={p.id} className="history-item">
+                                    <div className="history-item__info">
+                                        <div className="history-item__name">{p.contractName}</div>
+                                        <div className="history-item__date">Pago em {formatDate(p.dueDate)}</div>
+                                    </div>
+                                    <div className="history-item__right">
+                                        <span className="history-item__amount">{formatBRL(p.amount)}</span>
+                                        <StatusBadge status="PAID" label={p.provider === 'STRIPE' ? 'Automático' : 'Pago'} />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        {paidPayments.length > 5 && !showAllHistory && (
+                            <button onClick={() => setShowAllHistory(true)} className="payments-show-all">
+                                Ver todos ({paidPayments.length})
+                            </button>
+                        )}
+                    </>
+                )
             )}
 
-            {/* ─── Cartões Salvos ─── */}
+            {/* ─── TAB: Plano de Pagamento ─── */}
+            {tab === 'plan' && (
+                planContracts.length === 0 ? (
+                    <div className="payments-empty animate-card-enter" style={{ '--i': 0 } as React.CSSProperties}>
+                        <CalendarClock size={32} className="payments-empty__icon" />
+                        <div className="payments-empty__text">Nenhum plano de pagamento ativo.</div>
+                    </div>
+                ) : (
+                    <div className="payment-plans stagger-enter">
+                        {planContracts.map((c, ci) => {
+                            const isFull = c.paymentPlan === 'FULL';
+                            const isServico = c.type === 'SERVICO';
+                            const installments = [...(c.payments || [])].sort((a, b) =>
+                                (a.dueDate ? new Date(a.dueDate).getTime() : 0) - (b.dueDate ? new Date(b.dueDate).getTime() : 0)
+                            );
+                            const total = installments.length;
+                            const fullPayment = installments.find(p => p.status === 'PAID') || installments[0];
+                            // Earliest still-pending installment → highlighted as the next charge.
+                            const nextDueId = installments.find(p => p.status === 'PENDING')?.id;
+                            return (
+                                <div key={c.id} className="payment-plan-card animate-card-enter" style={{ '--i': ci } as React.CSSProperties}>
+                                    <div className="payment-plan-card__head">
+                                        <div className="payment-plan-card__name">{c.name || c.type}</div>
+                                        <span className={`payment-plan-card__tag ${isFull ? 'payment-plan-card__tag--full' : isServico ? 'payment-plan-card__tag--servico' : ''}`}>
+                                            {isFull ? 'Quitado à vista' : isServico ? 'Serviço mensal' : 'Mensal'}
+                                        </span>
+                                    </div>
+                                    {!isFull && (
+                                        <div className="payment-plan-card__cadence">
+                                            {isServico ? 'Cobrança mensal · mês calendário' : 'Cobrança mensal · ciclo de 28 dias'}
+                                        </div>
+                                    )}
+                                    {isFull ? (
+                                        <div className="payment-plan-card__full">
+                                            <span className="payment-plan-card__full-label">Valor pago</span>
+                                            <span className="payment-plan-card__full-amount">
+                                                {formatBRL(fullPayment?.amount ?? 0)}
+                                            </span>
+                                            <StatusBadge status={fullPayment?.status === 'PAID' ? 'PAID' : 'PENDING'} />
+                                        </div>
+                                    ) : (
+                                        <div className="payment-plan-schedule">
+                                            {installments.map((p, idx) => {
+                                                const isOverdue = p.status === 'PENDING' && p.dueDate && new Date(p.dueDate) < now;
+                                                const isNext = p.id === nextDueId;
+                                                return (
+                                                    <div key={p.id} className={`payment-plan-row ${isNext ? 'payment-plan-row--next' : ''}`}>
+                                                        <div className="payment-plan-row__left">
+                                                            <span className="payment-plan-row__num">{idx + 1}/{total}</span>
+                                                            <span className="payment-plan-row__date">{formatDate(p.dueDate)}</span>
+                                                        </div>
+                                                        <div className="payment-plan-row__right">
+                                                            <span className="payment-plan-row__amount">{formatBRL(p.amount)}</span>
+                                                            <StatusBadge
+                                                                status={isOverdue ? 'FAILED' : p.status}
+                                                                label={isOverdue ? 'Atrasada' : p.status === 'PAID' ? 'Paga' : p.status === 'PENDING' ? (isNext ? 'Próxima' : 'Pendente') : undefined}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                )
+            )}
+
+            {/* ─── TAB: Carteira — cartões salvos ─── */}
+            {tab === 'wallet' && (
             <div className="payments-section">
                 <h3 className="payments-section__title">
                     <span className="payments-section__icon payments-section__icon--cards">
@@ -420,6 +573,12 @@ export default function MyPaymentsPage() {
                     </span>
                     Cartões Salvos
                 </h3>
+
+                {cards.length === 0 && (
+                    <div className="info-box info-box--neutral" style={{ marginBottom: 12 }}>
+                        Adicione um cartão para ativar a cobrança automática e pagar mais rápido. Você também pode pagar via PIX ou cartão novo na hora.
+                    </div>
+                )}
 
                 <div className="wallet-grid stagger-enter">
                     {cards.map((card, i) => (
@@ -477,6 +636,7 @@ export default function MyPaymentsPage() {
                     </button>
                 </div>
             </div>
+            )}
 
             {/* ─── MODALS ─── */}
 
@@ -492,12 +652,13 @@ export default function MyPaymentsPage() {
             {/* Payment Modal */}
             {payingPayment && (
                 <PaymentModal
-                    title="Pagar Parcela"
+                    title="Pagar"
                     amount={payingPayment.amount}
                     paymentId={payingPayment.id}
-                    description={payingPayment.contractName || 'Avulso'}
+                    description={describePayment(payingPayment)}
                     contractDuration={payingPayment.contractDuration}
-                    allowedMethods={['CARTAO', 'PIX']}
+                    allowedMethods={payingPayment.boletoAllowed ? ['CARTAO', 'PIX', 'BOLETO'] : ['CARTAO', 'PIX']}
+                    allowBoleto={!!payingPayment.boletoAllowed}
                     onSuccess={() => {
                         setPayingPayment(null);
                         showToast('Pagamento confirmado!');

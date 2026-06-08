@@ -89,6 +89,9 @@ function generateTokens(payload: { userId: string; email: string; role: string }
 }
 
 function setTokenCookies(res: Response, accessToken: string, refreshToken: string) {
+    // sameSite is intentionally 'lax' (not 'strict'): 'strict' would drop the auth cookies on the
+    // top-level redirect back from Google OAuth and on any external deep-link into the PWA (push/
+    // email notification links), breaking those flows. 'lax' still blocks CSRF on unsafe methods.
     res.cookie('accessToken', accessToken, {
         httpOnly: true,
         secure: config.nodeEnv === 'production',
@@ -539,7 +542,7 @@ router.post('/logout', (_req: Request, res: Response) => {
 router.get('/me', authenticate, async (req: Request, res: Response) => {
     const user = await prisma.user.findUnique({
         where: { id: req.user!.userId },
-        select: { id: true, email: true, name: true, phone: true, photoUrl: true, role: true, cpfCnpj: true, address: true, city: true, state: true, socialLinks: true },
+        select: { id: true, email: true, name: true, phone: true, photoUrl: true, role: true, cpfCnpj: true, address: true, city: true, state: true, socialLinks: true, essentialNotificationsOnly: true },
     });
 
     if (!user) {
@@ -570,6 +573,7 @@ const profileUpdateSchema = z.object({
             twitter: z.string().max(200).optional(),
         }),
     ]).optional(),
+    essentialNotificationsOnly: z.boolean().optional(),
 });
 
 router.patch('/profile', authenticate, async (req: Request, res: Response) => {
@@ -591,11 +595,12 @@ router.patch('/profile', authenticate, async (req: Request, res: Response) => {
         if (data.city !== undefined) updateData.city = data.city;
         if (data.state !== undefined) updateData.state = data.state;
         if (data.socialLinks !== undefined) updateData.socialLinks = JSON.stringify(data.socialLinks);
+        if (data.essentialNotificationsOnly !== undefined) updateData.essentialNotificationsOnly = data.essentialNotificationsOnly;
 
         const user = await prisma.user.update({
             where: { id: req.user!.userId },
             data: updateData,
-            select: { id: true, email: true, name: true, phone: true, photoUrl: true, role: true, cpfCnpj: true, address: true, city: true, state: true, socialLinks: true },
+            select: { id: true, email: true, name: true, phone: true, photoUrl: true, role: true, cpfCnpj: true, address: true, city: true, state: true, socialLinks: true, essentialNotificationsOnly: true },
         });
 
         res.json({ user, message: 'Perfil atualizado com sucesso.' });

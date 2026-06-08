@@ -32,7 +32,7 @@ export default function AdminContractsPage() {
 
 
     const [editContract, setEditContract] = useState<Contract | null>(null);
-    const [editForm, setEditForm] = useState({ status: '', endDate: '', flexCreditsRemaining: '', contractUrl: '', paymentMethod: '' });
+    const [editForm, setEditForm] = useState({ status: '', endDate: '', flexCreditsRemaining: '', contractUrl: '', paymentMethod: '', boletoAllowed: false });
     const [editError, setEditError] = useState('');
 
     // --- Custom Contract Wizard ---
@@ -53,6 +53,7 @@ export default function AdminContractsPage() {
             if (editForm.flexCreditsRemaining !== '') data.flexCreditsRemaining = Number(editForm.flexCreditsRemaining);
             if (editForm.contractUrl !== (editContract.contractUrl || '')) data.contractUrl = editForm.contractUrl;
             if (editForm.paymentMethod && editForm.paymentMethod !== (editContract.paymentMethod || '')) data.paymentMethod = editForm.paymentMethod;
+            if (editForm.boletoAllowed !== (editContract.boletoAllowed ?? false)) data.boletoAllowed = editForm.boletoAllowed;
             await contractsApi.update(editContract.id, data);
             setEditContract(null);
             await reload();
@@ -225,7 +226,7 @@ export default function AdminContractsPage() {
                         onFocus={e => (e.currentTarget.style.borderColor = '#10b981')}
                         onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
                     />
-                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🔎</span>
+                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5, pointerEvents: 'none' }}>🔎</span>
                 </div>
                 {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem' }}>✕</button>}
 
@@ -270,7 +271,7 @@ export default function AdminContractsPage() {
                     </div>
                 ) : (
                     <div className="table-container admin-table-wrap" style={{ margin: 0 }}>
-                        <table>
+                        <table className="admin-table--cards">
                             <thead>
                                 <tr>
                                     <th style={{ paddingLeft: '20px' }}>Cliente / Projeto</th>
@@ -295,7 +296,7 @@ export default function AdminContractsPage() {
                                             onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)')}
                                         >
                                             {/* Cliente + Projeto merged */}
-                                            <td style={{ paddingLeft: '20px' }}>
+                                            <td className="admin-card-title" style={{ paddingLeft: '20px' }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                                     <div style={{
                                                         width: '36px', height: '36px', borderRadius: '10px',
@@ -311,7 +312,7 @@ export default function AdminContractsPage() {
                                                             {c.user?.name || '—'}
                                                         </div>
                                                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '1px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                            {c.name}
+                                                            <span style={{ cursor: 'pointer' }} onClick={() => navigate(`/admin/contracts/${c.id}`)} title="Abrir contrato">{c.name}</span>
                                                             {c.contractUrl && <a href={c.contractUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)', fontSize: '0.65rem' }} title="Contrato digital">🔗</a>}
                                                         </div>
                                                     </div>
@@ -319,7 +320,7 @@ export default function AdminContractsPage() {
                                             </td>
 
                                             {/* Type + Tier */}
-                                            <td>
+                                            <td data-label="Tipo">
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                                     <StatusBadge meta={getMeta(CONTRACT_TYPE_META, c.type)} />
                                                     <span style={{
@@ -334,7 +335,7 @@ export default function AdminContractsPage() {
                                             </td>
 
                                             {/* Episodes */}
-                                            <td>
+                                            <td data-label="Gravações">
                                                 <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>{episodeCount(c.durationMonths)}</div>
                                                 <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
                                                     {c.durationMonths}m · {c.discountPct}% desc
@@ -355,7 +356,7 @@ export default function AdminContractsPage() {
                                             </td>
 
                                             {/* Payment */}
-                                            <td>
+                                            <td data-label="Pagamento">
                                                 {c.paymentMethod ? (() => {
                                                     const pmBadge = getPaymentBadge(c.paymentMethod);
                                                     return (
@@ -372,7 +373,7 @@ export default function AdminContractsPage() {
                                             </td>
 
                                             {/* Vigência */}
-                                            <td>
+                                            <td data-label="Vigência">
                                                 <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                                                     {new Date(c.startDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })} – {new Date(c.endDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
                                                 </div>
@@ -389,17 +390,19 @@ export default function AdminContractsPage() {
                                             </td>
 
                                             {/* Status */}
-                                            <td style={{ textAlign: 'center' }}>
+                                            <td data-label="Status" style={{ textAlign: 'center' }}>
                                                 <StatusBadge meta={getMeta(CONTRACT_STATUS_META, c.status)} size="md" />
                                             </td>
 
                                             {/* Actions */}
-                                            <td style={{ textAlign: 'center' }}>
+                                            <td data-label="" style={{ textAlign: 'center' }}>
                                                 <div style={{ display: 'flex', gap: '4px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                                                    <button className="btn btn-ghost btn-sm" title="Abrir contrato" style={{ fontSize: '0.8125rem', padding: '4px 8px', borderRadius: '8px' }}
+                                                        onClick={() => navigate(`/admin/contracts/${c.id}`)}>📂</button>
                                                     <button className="btn btn-ghost btn-sm" title="Editar" style={{ fontSize: '0.8125rem', padding: '4px 8px', borderRadius: '8px' }}
                                                         onClick={() => {
                                                             setEditContract(c);
-                                                            setEditForm({ status: c.status, endDate: c.endDate.split('T')[0], flexCreditsRemaining: c.flexCreditsRemaining?.toString() || '', contractUrl: c.contractUrl || '', paymentMethod: c.paymentMethod || '' });
+                                                            setEditForm({ status: c.status, endDate: c.endDate.split('T')[0], flexCreditsRemaining: c.flexCreditsRemaining?.toString() || '', contractUrl: c.contractUrl || '', paymentMethod: c.paymentMethod || '', boletoAllowed: c.boletoAllowed ?? false });
                                                             setEditError('');
                                                         }}>✏️</button>
 
@@ -494,6 +497,20 @@ export default function AdminContractsPage() {
                                     <option key={pm.key} value={pm.key}>{pm.emoji} {pm.label}</option>
                                 ))}
                             </select>
+                        </div>
+                        <div className="form-group">
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: '0.875rem' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={editForm.boletoAllowed}
+                                    onChange={e => setEditForm({ ...editForm, boletoAllowed: e.target.checked })}
+                                    style={{ width: 18, height: 18, accentColor: '#f59e0b', cursor: 'pointer' }}
+                                />
+                                <span>📄 Permitir <strong>boleto</strong> neste contrato</span>
+                            </label>
+                            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '6px 0 0 28px' }}>
+                                O cliente poderá pagar as parcelas deste contrato via boleto. Desligado por padrão.
+                            </p>
                         </div>
                         <div className="modal-actions">
                             <button className="btn btn-secondary" onClick={() => setEditContract(null)}>Cancelar</button>

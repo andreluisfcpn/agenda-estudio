@@ -1,7 +1,7 @@
 import { getErrorMessage } from '../../../utils/errors';
 import React, { useState, useEffect } from 'react';
 import { usersApi, UserSummary, ApiError } from '../../../api/client';
-import ModalOverlay from '../../ModalOverlay';
+import BottomSheetModal from '../../BottomSheetModal';
 import { maskPhone, maskCpfCnpj, maskEmail, translateError } from '../../../utils/mask';
 
 interface EditClientModalProps {
@@ -110,8 +110,7 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
     };
 
     return (
-        <ModalOverlay onClose={onClose}>
-            <div className="modal" style={{ maxWidth: 520, maxHeight: '92vh', overflowY: 'auto', padding: 0 }}>
+        <BottomSheetModal isOpen onClose={onClose} hideHeader maxWidth="520px" className="admin-sheet" title="Editar Cliente">
                 {/* --- HEADER --- */}
                 <div style={{ padding: '28px 32px 0', borderBottom: 'none' }}>
                     <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -384,7 +383,6 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                     </div>
                 </div>
                 )}
-            </div>
-        </ModalOverlay>
+        </BottomSheetModal>
     );
 }

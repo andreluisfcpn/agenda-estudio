@@ -2,7 +2,7 @@ import { getErrorMessage } from '../utils/errors';
 import React, { useState, useEffect, useRef, FormEvent } from 'react';
 import BottomSheetModal from './BottomSheetModal';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Loader2, ShieldCheck, User, ChevronLeft, Eye, EyeOff, Mail, MessageCircle } from 'lucide-react';
+import { X, Loader2, ChevronLeft, Eye, EyeOff, Mail, MessageCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { maskPhone, maskEmail, translateError } from '../utils/mask';
@@ -541,16 +541,6 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                                         </button>
                                     )}
 
-                                    {/* Dev mock credentials */}
-                                    {(view === 'login' || view === 'register_form') && import.meta.env.DEV && (
-                                        <div className="login-mock-section">
-                                            <div className="login-mock-label"><ShieldCheck size={11} /> Teste rápido:</div>
-                                            <div className="login-mock-btns">
-                                                <button type="button" className="login-mock-btn" onClick={() => { setEmail('admin@studio.com'); setPassword('admin123'); navigateTo('login'); }}>Admin</button>
-                                                <button type="button" className="login-mock-btn" onClick={() => { setEmail('cliente@teste.com'); setPassword('cliente123'); navigateTo('login'); }}>Cliente</button>
-                                            </div>
-                                        </div>
-                                    )}
                                 </motion.div>
                             </AnimatePresence>
                         </div>

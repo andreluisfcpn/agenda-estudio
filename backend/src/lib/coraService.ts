@@ -65,6 +65,10 @@ export interface CoraBoletoPayload {
     withPixQrCode: boolean;  // true = boleto + PIX
     finePercentage?: number;
     interestPercentage?: number;
+    // Stable per-payment key so retries (page refresh, double-submit, internal token-refresh
+    // retry) reuse the SAME Cora invoice instead of creating duplicates. Falls back to a random
+    // UUID when absent. Also seeds the invoice `code` so the request body is identical on retry.
+    idempotencyKey?: string;
 }
 
 export interface CoraBoletoResult {
@@ -296,6 +300,13 @@ export async function coraAuthenticate(): Promise<string> {
 }
 
 export async function coraCreateBoleto(payload: CoraBoletoPayload): Promise<CoraBoletoResult> {
+    // Single chokepoint for every Cora boleto/PIX call: reject a non-positive amount
+    // fast with a clear message instead of a cryptic Cora 400 that callers swallow
+    // into an orphan PENDING payment.
+    if (!Number.isInteger(payload.amount) || payload.amount <= 0) {
+        throw new Error('Valor do pagamento inválido (deve ser maior que zero).');
+    }
+
     const setup = await getCoraConfig();
     if (!setup) throw new Error('Cora integration not configured');
 
@@ -310,8 +321,10 @@ export async function coraCreateBoleto(payload: CoraBoletoPayload): Promise<Cora
     }
 
     // ─── Boleto Registrado: POST /v2/invoices ────────────
+    // Deterministic key + code so retries hit Cora's idempotency cache (no duplicate invoice).
+    const idemKey = payload.idempotencyKey ?? randomUUID();
     const body = JSON.stringify({
-        code: `boleto-${Date.now()}`,
+        code: payload.idempotencyKey ? `boleto-${payload.idempotencyKey}` : `boleto-${Date.now()}`,
         customer: {
             name: payload.customer.name,
             email: payload.customer.email,
@@ -343,7 +356,7 @@ export async function coraCreateBoleto(payload: CoraBoletoPayload): Promise<Cora
         headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
-            'Idempotency-Key': randomUUID(),
+            'Idempotency-Key': idemKey,
         },
         body,
         cert: config.certificatePem,
@@ -379,8 +392,10 @@ async function coraCreatePixQrCode(
     // Use existing cached token (no need to force-clear)
     const freshToken = token;
 
+    // Deterministic key + code so retries reuse the same PIX invoice (no duplicate).
+    const idemKey = payload.idempotencyKey ?? randomUUID();
     const body = JSON.stringify({
-        code: `pix-${Date.now()}`,
+        code: payload.idempotencyKey ? `pix-${payload.idempotencyKey}` : `pix-${Date.now()}`,
         customer: {
             name: payload.customer.name,
             email: payload.customer.email,
@@ -416,7 +431,7 @@ async function coraCreatePixQrCode(
         headers: {
             'Authorization': `Bearer ${freshToken}`,
             'Content-Type': 'application/json',
-            'Idempotency-Key': randomUUID(),
+            'Idempotency-Key': idemKey,
         },
         body,
         cert: config.certificatePem,

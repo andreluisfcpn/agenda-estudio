@@ -3,10 +3,11 @@
 // Used by: Cora webhook, Stripe webhook, Stripe verify-payment
 
 import { prisma } from './prisma.js';
-import { ContractStatus, BookingStatus, Prisma, Tier } from '../generated/prisma/client.js';
-import { getBasePriceDynamic, applyDiscount, calculateEndTime } from '../utils/pricing.js';
+import { ContractStatus, ContractType, BookingStatus, Prisma, Tier } from '../generated/prisma/client.js';
+import { getBasePriceDynamic, applyDiscount, calculateEndTime, addMonths, addBillingCycles } from '../utils/pricing.js';
 import { getConfig } from './businessConfig.js';
 import { createPayment as gatewayCreatePayment, updatePaymentWithGatewayResult, getProviderForMethod } from './paymentGateway.js';
+import { computeAddonsCost, filterPerEpisodeAddons } from './contractPricing.js';
 import { createNotification } from '../modules/notifications/notificationService.js';
 
 interface ContractData {
@@ -20,7 +21,130 @@ interface ContractData {
     addOns?: string[];
     fixedDayOfWeek?: number;
     fixedTime?: string;
+    paymentPlan?: 'MONTHLY' | 'FULL';
     resolvedConflicts?: { originalDate: string; originalTime: string; newDate: string; newTime: string }[];
+    // Per-month amount resolved at creation (incl. add-ons + card surcharge). When present,
+    // months 2..N reuse it verbatim so they can't drift if the surcharge config changes.
+    monthlyAmountResolved?: number;
+}
+
+/**
+ * Metadata for a standalone monthly SERVICO contract (e.g. Gestão de Redes Sociais).
+ * Stored in the first payment's metadata.contractData with kind:'SERVICE'; materialized
+ * by fulfillServiceFromPayment once that payment is confirmed (pay-then-fulfill parity).
+ */
+interface ServiceContractData {
+    kind: 'SERVICE';
+    type: 'SERVICO';
+    serviceKey: string;
+    name: string;
+    durationMonths: number;
+    paymentMethod: string;
+    paymentPlan: 'MONTHLY' | 'FULL';
+    discountPct: number;
+    billingCadence: 'BILLING_CYCLE_28' | 'CALENDAR_MONTH';
+    /** Per-month base resolved at creation — months 2..N reuse it verbatim. */
+    monthlyAmountResolved: number;
+}
+
+type FulfillablePayment = {
+    id: string;
+    userId: string;
+    contractId: string | null;
+    user: { name: string; email: string | null; cpfCnpj: string | null };
+};
+
+/**
+ * Materialize a standalone monthly SERVICO contract after its first payment confirms.
+ * No bookings/recordings — just the active contract plus (for MONTHLY) the remaining
+ * installments on the configured cadence (calendar-month for services).
+ */
+async function fulfillServiceFromPayment(payment: FulfillablePayment, data: ServiceContractData): Promise<void> {
+    const userId = payment.userId;
+    const startDate = new Date();
+    const endDate = addMonths(startDate, data.durationMonths);
+
+    const contract = await prisma.contract.create({
+        data: {
+            userId,
+            name: data.name,
+            type: ContractType.SERVICO,
+            tier: Tier.COMERCIAL,
+            durationMonths: data.durationMonths,
+            discountPct: data.discountPct,
+            startDate,
+            endDate,
+            status: ContractStatus.ACTIVE,
+            paymentMethod: data.paymentMethod as any,
+            paymentPlan: data.paymentPlan,
+            addOns: [data.serviceKey],
+            flexCreditsTotal: 0,
+            flexCreditsRemaining: 0,
+        },
+    });
+
+    // Link first payment to the contract + clear its metadata (contract now exists).
+    await prisma.payment.update({
+        where: { id: payment.id },
+        data: { contractId: contract.id, metadata: Prisma.JsonNull },
+    });
+
+    // Remaining installments (months 2..N) — skipped when paid in FULL.
+    if (data.paymentPlan !== 'FULL') {
+        const advance = data.billingCadence === 'CALENDAR_MONTH'
+            ? (i: number) => addMonths(startDate, i)
+            : (i: number) => addBillingCycles(startDate, i);
+
+        const remaining = [];
+        for (let i = 1; i < data.durationMonths; i++) {
+            remaining.push({
+                userId,
+                contractId: contract.id,
+                provider: getProviderForMethod(data.paymentMethod),
+                amount: data.monthlyAmountResolved,
+                status: 'PENDING' as const,
+                dueDate: advance(i),
+            });
+        }
+
+        if (remaining.length > 0) {
+            await prisma.payment.createMany({ data: remaining });
+            const createdRemaining = await prisma.payment.findMany({
+                where: { contractId: contract.id, status: 'PENDING' },
+                orderBy: { dueDate: 'asc' },
+            });
+            for (const p of createdRemaining) {
+                try {
+                    const result = await gatewayCreatePayment({
+                        paymentMethod: data.paymentMethod as 'PIX' | 'BOLETO' | 'CARTAO',
+                        amount: p.amount,
+                        description: `${data.name} - Parcela`,
+                        customer: { name: payment.user.name, email: payment.user.email || '', cpf: payment.user.cpfCnpj?.replace(/\D/g, '') || undefined },
+                        dueDate: p.dueDate || new Date(),
+                        paymentId: p.id,
+                        contractId: contract.id,
+                        userId,
+                    });
+                    await updatePaymentWithGatewayResult(p.id, result);
+                } catch (err) {
+                    console.error(`[Fulfill:Service] Failed to enrich payment ${p.id}:`, err);
+                }
+            }
+        }
+    }
+
+    createNotification({
+        userId,
+        type: 'CONTRACT_ACTIVATED',
+        severity: 'info',
+        title: '🎉 Serviço Ativado!',
+        message: `Seu serviço "${data.name}" foi ativado com sucesso!`,
+        entityType: 'CONTRACT',
+        entityId: contract.id,
+        actionUrl: '/meus-contratos',
+    }).catch(() => {});
+
+    console.log(`[Fulfill] Service contract ${contract.id} activated for user ${userId}`);
 }
 
 /**
@@ -32,7 +156,7 @@ interface ContractData {
 export async function fulfillContractFromPayment(paymentId: string): Promise<void> {
     const payment = await prisma.payment.findUnique({
         where: { id: paymentId },
-        include: { user: { select: { name: true, email: true } } },
+        include: { user: { select: { name: true, email: true, cpfCnpj: true } } },
     });
 
     if (!payment || !payment.metadata) return;
@@ -44,6 +168,13 @@ export async function fulfillContractFromPayment(paymentId: string): Promise<voi
     // Guard: don't create twice
     if (payment.contractId) {
         console.log(`[Fulfill] Payment ${paymentId} already has contractId ${payment.contractId}, skipping`);
+        return;
+    }
+
+    // Standalone monthly service (e.g. Gestão de Redes Sociais): no bookings — just
+    // activate the SERVICO contract and generate installments 2..N (for MONTHLY).
+    if ((contractData as unknown as { kind?: string }).kind === 'SERVICE') {
+        await fulfillServiceFromPayment(payment, contractData as unknown as ServiceContractData);
         return;
     }
 
@@ -60,8 +191,7 @@ export async function fulfillContractFromPayment(paymentId: string): Promise<voi
 
     const firstDate = new Date(data.firstBookingDate + 'T00:00:00');
     const startDate = firstDate;
-    const endDate = new Date(startDate);
-    endDate.setMonth(endDate.getMonth() + data.durationMonths);
+    const endDate = addMonths(startDate, data.durationMonths);
 
     const totalEpisodes = data.durationMonths === 3
         ? await getConfig('episodes_3months')
@@ -89,10 +219,17 @@ export async function fulfillContractFromPayment(paymentId: string): Promise<voi
             fixedDayOfWeek: data.type === 'FIXO' ? data.fixedDayOfWeek : null,
             fixedTime: data.type === 'FIXO' ? data.fixedTime : null,
             flexCreditsTotal: data.type === 'FLEX' ? totalEpisodes : null,
-            flexCreditsRemaining: data.type === 'FLEX' ? totalEpisodes : null,
+            // The first recording is booked immediately below (it anchors the cycle),
+            // so it already consumes one credit. Persist total-1 to match the canonical
+            // engine (remaining = total − recordings − forfeited); otherwise the stored
+            // value over-grants by 1 until the daily reconcile cron heals it.
+            flexCreditsRemaining: data.type === 'FLEX' ? Math.max(0, totalEpisodes - 1) : null,
             flexCycleStart: data.type === 'FLEX' ? startDate : null,
             flexWeeksCompensated: data.type === 'FLEX' ? 0 : null,
+            // New FLEX contracts are NOT grandfathered (forfeiture applies from the start).
+            flexForfeitFloor: data.type === 'FLEX' ? 0 : null,
             paymentMethod: data.paymentMethod as any,
+            paymentPlan: data.paymentPlan || 'MONTHLY',
             addOns: data.addOns || [],
         },
     });
@@ -100,6 +237,8 @@ export async function fulfillContractFromPayment(paymentId: string): Promise<voi
     // ── Generate Bookings ──
     const basePrice = await getBasePriceDynamic(data.tier as Tier);
     const discountedPrice = applyDiscount(basePrice, discountPct);
+    // Bookings carry only per-episode services; monthly services (e.g. GESTAO_SOCIAL) never ride on a recording.
+    const perEpisodeAddOns = await filterPerEpisodeAddons(data.addOns);
 
     if (data.type === 'FIXO' && data.fixedDayOfWeek && data.fixedTime) {
         const bookings = [];
@@ -137,7 +276,7 @@ export async function fulfillContractFromPayment(paymentId: string): Promise<voi
                 status: BookingStatus.CONFIRMED,
                 tierApplied: data.tier as Tier,
                 price: discountedPrice,
-                addOns: data.addOns ? data.addOns.filter(a => a !== 'GESTAO_SOCIAL') : [],
+                addOns: perEpisodeAddOns,
             });
         }
 
@@ -157,7 +296,7 @@ export async function fulfillContractFromPayment(paymentId: string): Promise<voi
                 status: BookingStatus.CONFIRMED,
                 tierApplied: data.tier as Tier,
                 price: discountedPrice,
-                addOns: data.addOns ? data.addOns.filter(a => a !== 'GESTAO_SOCIAL') : [],
+                addOns: perEpisodeAddOns,
             },
         });
     }
@@ -171,35 +310,25 @@ export async function fulfillContractFromPayment(paymentId: string): Promise<voi
         },
     });
 
-    // ── Generate remaining installments (months 2..N) ──
-    let addonsCost = 0;
-    if (data.addOns && data.addOns.length > 0) {
-        const addonConfigs = await prisma.addOnConfig.findMany({
-            where: { key: { in: data.addOns } },
-        });
-        const baseAddonsCost = addonConfigs.reduce((acc: number, curr: { price: number }) => acc + curr.price, 0);
-        addonsCost = applyDiscount(baseAddonsCost, discountPct);
-    }
-
-    const sessionsPerMonth = await getConfig('sessions_per_month');
-    let monthlyAmount = (sessionsPerMonth * discountedPrice) + addonsCost;
-
-    // Apply card installment surcharge from admin config
-    if (data.paymentMethod === 'CARTAO') {
-        const surchargeConfig = await prisma.businessConfig.findUnique({ where: { key: 'card_installment_surcharges' } });
-        if (surchargeConfig) {
-            try {
-                const surcharges = JSON.parse(surchargeConfig.value) as Record<string, number>;
-                const pct = surcharges[String(data.durationMonths)] ?? 0;
-                monthlyAmount = Math.round(monthlyAmount * (1 + pct / 100));
-            } catch { /* use base amount */ }
-        }
+    // ── Generate remaining installments (months 2..N) — skipped when paid in full ──
+    if (data.paymentPlan !== 'FULL') {
+    // Prefer the per-month amount resolved at contract creation (stored in metadata) so months
+    // 2..N never diverge from month 1. Fall back to the plain base for legacy payments without it.
+    // Monthly installments carry NO card surcharge (single 1x charge) — see paymentPolicy.
+    let monthlyAmount: number;
+    if (typeof data.monthlyAmountResolved === 'number' && data.monthlyAmountResolved > 0) {
+        monthlyAmount = data.monthlyAmountResolved;
+    } else {
+        const sessionsPerMonth = await getConfig('sessions_per_month');
+        const addonsCost = await computeAddonsCost(data.addOns, discountPct, sessionsPerMonth);
+        monthlyAmount = (sessionsPerMonth * discountedPrice) + addonsCost;
     }
 
     const remainingPayments = [];
     for (let i = 1; i < data.durationMonths; i++) {
-        const dueDate = new Date(startDate);
-        dueDate.setMonth(dueDate.getMonth() + i);
+        // Each installment is one 28-day billing cycle after the previous, anchored
+        // to the contract start (fixed cadence, no calendar-month drift).
+        const dueDate = addBillingCycles(startDate, i);
 
         remainingPayments.push({
             userId,
@@ -226,7 +355,7 @@ export async function fulfillContractFromPayment(paymentId: string): Promise<voi
                     paymentMethod: data.paymentMethod as 'PIX' | 'BOLETO' | 'CARTAO',
                     amount: p.amount,
                     description: `${data.name} - Parcela`,
-                    customer: { name: payment.user.name, email: payment.user.email || '' },
+                    customer: { name: payment.user.name, email: payment.user.email || '', cpf: payment.user.cpfCnpj?.replace(/\D/g, '') || undefined },
                     dueDate: p.dueDate || new Date(),
                     paymentId: p.id,
                     contractId: contract.id,
@@ -238,6 +367,7 @@ export async function fulfillContractFromPayment(paymentId: string): Promise<voi
             }
         }
     }
+    } // end: skip remaining installments when contract is paid in FULL
 
     // ── Notification ──
     createNotification({

@@ -1,18 +1,20 @@
 import { getErrorMessage } from '../utils/errors';
 import { useState, useEffect } from 'react';
-import { contractsApi, bookingsApi, ContractWithStats, ContractBooking, pricingApi, PricingConfig, stripeApi, SavedCard } from '../api/client';
+import { contractsApi, bookingsApi, ContractWithStats, ContractBooking, pricingApi, PricingConfig, stripeApi, SavedCard, PaymentSummary, AddOnConfig } from '../api/client';
 import ContractWizard from '../components/ContractWizard';
 import CustomContractWizard from '../components/CustomContractWizard';
 import BulkBookingModal from '../components/BulkBookingModal';
 import BookingDetailModal from '../components/BookingDetailModal';
+import PaymentModal from '../components/PaymentModal';
 import CancelContractModal from '../components/CancelContractModal';
-import SocialServiceModal from '../components/SocialServiceModal';
+import ServiceContractWizard from '../components/ServiceContractWizard';
 import SubscribeModal from '../components/SubscribeModal';
 import RenewContractModal from '../components/RenewContractModal';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useUI } from '../context/UIContext';
-import { FileText, Sparkles, Rocket, Plus, Pencil } from 'lucide-react';
+import { FileText, Sparkles, Plus, Pencil } from 'lucide-react';
 import ContractCard from '../components/client/ContractCard';
+import { renderServiceIcon } from '../utils/serviceIcons';
 import { formatBRL } from '../utils/format';
 import { ContractsSkeleton } from '../components/ui/SkeletonLoader';
 import '../styles/my-contracts.css';
@@ -36,11 +38,11 @@ export default function MyContractsPage() {
     
     const { showAlert, showToast } = useUI();
 
-    // Service Addons
-    interface Addon { key: string; name: string; price: number; description?: string | null; monthly?: boolean; }
-    const [allAddons, setAllAddons] = useState<Addon[]>([]);
-    const [socialAddon, setSocialAddon] = useState<Addon | null>(null);
-    const [showSocialModal, setShowSocialModal] = useState(false);
+    // Service Addons (two families via `monthly`: per-episode add-ons + monthly services)
+    const [allAddons, setAllAddons] = useState<AddOnConfig[]>([]);
+    // Monthly service the client is contracting/renewing inline (opens the wizard).
+    const [wizardAddon, setWizardAddon] = useState<AddOnConfig | null>(null);
+    const [wizardMode, setWizardMode] = useState<'hire' | 'renew'>('hire');
 
     // Booking detail modal state
     const [detailBooking, setDetailBooking] = useState<ContractBooking | null>(null);
@@ -75,6 +77,9 @@ export default function MyContractsPage() {
     const [showSubscribeModalFor, setShowSubscribeModalFor] = useState<ContractWithStats | null>(null);
     const [savedCards, setSavedCards] = useState<SavedCard[]>([]);
 
+    // Pay a pending contract installment inline (no navigation to /meus-pagamentos)
+    const [payingInstallment, setPayingInstallment] = useState<{ payment: PaymentSummary; contract: ContractWithStats } | null>(null);
+
 
 
     useEffect(() => { loadData(); }, []);
@@ -92,7 +97,6 @@ export default function MyContractsPage() {
             setPricing(pricingRes.pricing);
             setAllAddons(addonsRes.addons);
             setSavedCards(cardsRes.paymentMethods);
-            setSocialAddon(addonsRes.addons.find((a: any) => a.key === 'GESTAO_SOCIAL') || null);
         } catch (err) { console.error('Failed to load contracts:', err); }
         finally { setLoading(false); }
     };
@@ -271,22 +275,10 @@ export default function MyContractsPage() {
         finally { setRescheduling(false); }
     };
 
-    const handleSubscribeSocial = async (paymentMethod: string, durationMonths: 3 | 6) => {
-        if (!socialAddon) return;
-        try {
-            const res = await contractsApi.createService({ serviceKey: socialAddon.key, paymentMethod: paymentMethod as any, durationMonths });
-            showToast('Serviço contratado com sucesso!');
-            setShowSocialModal(false);
-            if (res.clientSecret) {
-                showToast('Acesse "Pagamentos" para completar o pagamento com cartão.');
-            }
-            setTimeout(() => loadData(), 1000);
-        } catch (err: unknown) {
-            showAlert({ message: getErrorMessage(err) || 'Erro ao contratar serviço.', type: 'error' });
-        }
-    };
-
-
+    // Monthly subscription services (family `monthly`) the client can self-hire inline.
+    const monthlyServices = allAddons.filter(a => a.monthly && a.active !== false);
+    const hasActiveService = (key: string) =>
+        contracts.some(c => c.type === 'SERVICO' && c.status === 'ACTIVE' && c.addOns?.includes(key));
 
     const statusLabel = (s: string) => {
         switch (s) {
@@ -332,28 +324,30 @@ export default function MyContractsPage() {
                         <Sparkles size={16} /> Monte Seu Plano
                     </button>
                 </div>
-            </div>
 
-            {/* ─── Social Service Upsell Banner ─── */}
-            {socialAddon && !contracts.some(c => c.type === 'SERVICO' && c.status === 'ACTIVE' && c.addOns?.includes('GESTAO_SOCIAL')) && (
-                <div className="contracts-upsell animate-card-enter" style={{ '--i': 1 } as React.CSSProperties}>
-                    <div style={{ flex: '1 1 0', minWidth: 0 }}>
-                        <span className="contracts-upsell__badge">Novo Serviço</span>
-                        <h3 className="contracts-upsell__title">{socialAddon.name}</h3>
-                        <p className="contracts-upsell__desc">
-                            {socialAddon.description || 'Deixe a publicação, análise de métricas e SEO dos seus cortes com nosso time de especialistas.'}
-                        </p>
+                {/* Compact monthly-service offers — integrated in the hero (scrolls on mobile).
+                    Benefits/description live in the wizard's first step, keeping this slim. */}
+                {monthlyServices.length > 0 && (
+                    <div className="contracts-offers">
+                        {monthlyServices.map(svc => {
+                            const active = hasActiveService(svc.key);
+                            return (
+                                <button key={svc.key} type="button" className="contracts-offer" onClick={() => { setWizardMode('hire'); setWizardAddon(svc); }}
+                                    title={active ? `Renovar ou adicionar ${svc.name}` : `Contratar ${svc.name}`}>
+                                    <span className="contracts-offer__icon">{renderServiceIcon(svc.icon, 18)}</span>
+                                    <span className="contracts-offer__body">
+                                        <span className="contracts-offer__name">{svc.name}</span>
+                                        <span className="contracts-offer__meta">
+                                            {active ? 'Renovar · ' : 'A partir de '}{formatBRL(svc.price)}<span>/mês</span>
+                                        </span>
+                                    </span>
+                                    <span className="contracts-offer__cta">{active ? 'Contratar+' : 'Contratar'}</span>
+                                </button>
+                            );
+                        })}
                     </div>
-                    <div className="contracts-upsell__cta">
-                        <div className="contracts-upsell__price">
-                            {formatBRL(socialAddon.price)}<span>/mês</span>
-                        </div>
-                        <button className="contracts-upsell__subscribe-btn" onClick={() => setShowSocialModal(true)}>
-                            <Rocket size={16} /> Assinar Agora
-                        </button>
-                    </div>
-                </div>
-            )}
+                )}
+            </div>
 
             {/* ─── Tab Filters (Segmented Control) ─── */}
             <div className="contracts-tabs">
@@ -392,8 +386,17 @@ export default function MyContractsPage() {
                                 onBulkBooking={c.status === 'ACTIVE' && !isContractArchived(c) ? () => setShowBulkModalFor(c) : undefined}
                                 isArchived={isContractArchived(c)}
                                 isCancelled={c.status === 'CANCELLED'}
-                                onRenewContract={() => setShowRenewModalFor(c)}
+                                onRenewContract={() => {
+                                    // Services renew through the same self-serve wizard (service pricing,
+                                    // plan, cadence) — not the recordings-oriented RenewContractModal.
+                                    if (c.type === 'SERVICO') {
+                                        const svc = allAddons.find(a => a.key === (c.addOns || [])[0]);
+                                        if (svc) { setWizardMode('renew'); setWizardAddon(svc); return; }
+                                    }
+                                    setShowRenewModalFor(c);
+                                }}
                                 onSubscribeContract={() => setShowSubscribeModalFor(c)}
+                                onPayInstallment={(payment) => setPayingInstallment({ payment, contract: c })}
                                 onPayContract={c.status === 'AWAITING_PAYMENT' ? async () => {
                                     try {
                                         const res = await contractsApi.pay(c.id);
@@ -470,7 +473,6 @@ export default function MyContractsPage() {
                     contract={{
                         id: showBulkModalFor.id,
                         tier: showBulkModalFor.tier,
-                        type: showBulkModalFor.type,
                         flexCreditsRemaining: showBulkModalFor.flexCreditsRemaining || 0,
                         endDate: showBulkModalFor.endDate,
                     }}
@@ -491,13 +493,14 @@ export default function MyContractsPage() {
                 onConfirm={confirmCancelContract}
             />
 
-            {/* Social Service Checkout Modal */}
-            {socialAddon && (
-                <SocialServiceModal
-                    isOpen={showSocialModal}
-                    addon={socialAddon}
-                    onClose={() => setShowSocialModal(false)}
-                    onConfirm={handleSubscribeSocial}
+            {/* Monthly service self-hire wizard (multi-step, inline payment) */}
+            {wizardAddon && (
+                <ServiceContractWizard
+                    isOpen={!!wizardAddon}
+                    addon={wizardAddon}
+                    mode={wizardMode}
+                    onClose={() => setWizardAddon(null)}
+                    onSuccess={() => { showToast('Serviço contratado! Ativando assim que o pagamento for confirmado.'); loadData(); }}
                 />
             )}
 
@@ -527,6 +530,22 @@ export default function MyContractsPage() {
                 onClose={() => setShowRenewModalFor(null)}
                 onConfirm={handleRenew}
             />
+
+            {/* Pay a pending installment inline (PIX/cartão), without leaving the contract. */}
+            {payingInstallment && (
+                <PaymentModal
+                    title="Pagar parcela"
+                    amount={payingInstallment.payment.amount}
+                    paymentId={payingInstallment.payment.id}
+                    description={`${payingInstallment.contract.name} — parcela`}
+                    contractDuration={1}
+                    allowedMethods={['CARTAO', 'PIX']}
+                    allowBoleto={!!payingInstallment.contract.boletoAllowed}
+                    onSuccess={() => { setPayingInstallment(null); showToast('Pagamento confirmado!'); loadData(); }}
+                    onError={(msg) => showToast({ type: 'error', message: msg })}
+                    onClose={() => setPayingInstallment(null)}
+                />
+            )}
 
         </div>
     );

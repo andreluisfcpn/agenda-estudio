@@ -4,6 +4,8 @@ import { prisma } from '../../lib/prisma.js';
 import { authenticate } from '../../middleware/auth.js';
 import { getBasePriceDynamic, applyDiscount } from '../../utils/pricing.js';
 import { getConfig } from '../../lib/businessConfig.js';
+import { computeAddonsCost, serviceMonthlyBase } from '../../lib/contractPricing.js';
+import { validatePaymentMethod, PaymentMethodDisabledError } from '../../lib/paymentGateway.js';
 import { contractPaySchema, subscribeSchema, clientRenewSchema } from './validators.js';
 
 export function registerPaymentRoutes(router: Router) {
@@ -26,11 +28,29 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
             return;
         }
 
-        // Calculate amount (first monthly payment)
-        const tierPrice = await getBasePriceDynamic(contract.tier);
-        const discountedPrice = applyDiscount(tierPrice, contract.discountPct);
-        const sessionsPerMonth = await getConfig('sessions_per_month');
-        const monthlyAmount = sessionsPerMonth * discountedPrice;
+        // AVULSO micro-contracts are paid by their BOOKING payment (single avulso amount), never by
+        // the monthly-contract pay flow — which would compute sessions×tier (a full month) and create
+        // a spurious extra charge. Reject here; the avulso checkout pays the booking directly.
+        if (contract.type === 'AVULSO') {
+            res.status(400).json({ error: 'Este agendamento avulso é pago pelo próprio agendamento, não por aqui.' });
+            return;
+        }
+
+        // Calculate the monthly installment amount — centralized via paymentPolicy.
+        // A monthly installment is a single 1x charge with NO card surcharge (PIX or card),
+        // identical across every creation path.
+        // SERVICO (standalone monthly service) has NO recordings: its per-month base is the
+        // service add-on's price after discount, not sessions×tier (which would over-charge).
+        let monthlyAmount: number;
+        if (contract.type === 'SERVICO') {
+            monthlyAmount = await serviceMonthlyBase(contract);
+        } else {
+            const tierPrice = await getBasePriceDynamic(contract.tier);
+            const discountedPrice = applyDiscount(tierPrice, contract.discountPct);
+            const sessionsPerMonth = await getConfig('sessions_per_month');
+            const payAddonsCost = await computeAddonsCost(contract.addOns, contract.discountPct, sessionsPerMonth);
+            monthlyAmount = (sessionsPerMonth * discountedPrice) + payAddonsCost;
+        }
 
         // PAY-M1 FIX: Reuse existing pending payment for the same contract instead of creating orphans
         const existingPending = await prisma.payment.findFirst({
@@ -73,6 +93,7 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
                     amount: monthlyAmount,
                     description: `PIX - Contrato "${contract.name}" - ${contract.tier}`,
                     withPixQrCode: true,
+                    idempotencyKey: payment.id,
                 });
 
                 await prisma.payment.update({
@@ -99,10 +120,12 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
         }
 
         // ─── CARTÃO: Stripe ──────────────────────────────────
-        // Max installments = durationMonths (exception: avulso = 3x)
-        const isAvulso = contract.durationMonths === 1;
-        const maxInstallments = isAvulso ? 3 : contract.durationMonths;
-        const installments = Math.min(data.installments || 1, maxInstallments);
+        // A monthly installment is a SINGLE 1x charge (no surcharge, no card splitting),
+        // per the unified payment policy. Card-installment juros only exists on the FULL
+        // (à-vista) plan, which is paid at contract creation — never through /pay.
+        const installments = 1;
+        const maxInstallments = 1;
+        const chargeAmount = monthlyAmount;
 
         const { stripeCreatePaymentIntent, stripeGetOrCreateCustomer, isStripeEnabled } = await import('../../lib/stripeService.js');
 
@@ -138,7 +161,7 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
                 userId,
                 contractId,
                 provider: 'STRIPE',
-                amount: monthlyAmount,
+                amount: chargeAmount,
                 status: 'PENDING',
                 dueDate: new Date(),
                 installments,
@@ -146,15 +169,25 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
             },
         });
 
-        const piResult = await stripeCreatePaymentIntent({
-            amount: monthlyAmount,
-            customerId,
-            description: `Contrato "${contract.name}" - ${contract.tier} ${contract.durationMonths}m`,
-            paymentId: payment.id,
-            userId,
-            contractId,
-            installmentsEnabled: installments > 1,
-        });
+        let piResult;
+        try {
+            piResult = await stripeCreatePaymentIntent({
+                amount: chargeAmount,
+                customerId,
+                description: `Contrato "${contract.name}" - ${contract.tier} ${contract.durationMonths}m`,
+                paymentId: payment.id,
+                userId,
+                contractId,
+                installmentsEnabled: false,
+            });
+        } catch (err) {
+            // Stripe failed — delete the just-created PENDING row so retries don't
+            // accrue orphan payments (the reuse branch skips rows with no providerRef).
+            await prisma.payment.delete({ where: { id: payment.id } }).catch(() => {});
+            const msg = err instanceof Error ? err.message : 'Erro ao iniciar o pagamento com cartão. Tente novamente.';
+            res.status(502).json({ error: msg });
+            return;
+        }
 
         await prisma.payment.update({
             where: { id: payment.id },
@@ -165,7 +198,7 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
             provider: 'STRIPE',
             clientSecret: piResult.clientSecret,
             paymentId: payment.id,
-            amount: monthlyAmount,
+            amount: chargeAmount,
             maxInstallments,
             message: 'PaymentIntent criado. Complete o pagamento para ativar o contrato.',
         });
@@ -425,9 +458,28 @@ router.post('/:id/client-renew', authenticate, async (req: Request, res: Respons
             return;
         }
 
-        // Calculate discount based on duration
-        const d6 = await getConfig('discount_6months');
-        const d3 = await getConfig('discount_3months');
+        // Resolve + validate the payment method (renewal must carry a usable method, else the
+        // gateway would later crash on undefined.toUpperCase()). Falls back to the original's.
+        const renewMethod = data.paymentMethod || original.paymentMethod;
+        if (!renewMethod) {
+            res.status(400).json({ error: 'Método de pagamento é obrigatório para renovação. Informe PIX, CARTÃO ou BOLETO.' });
+            return;
+        }
+        try {
+            await validatePaymentMethod(renewMethod);
+        } catch (err) {
+            if (err instanceof PaymentMethodDisabledError) {
+                res.status(400).json({ error: err.message });
+                return;
+            }
+            throw err;
+        }
+
+        // Calculate discount based on duration. SERVICO uses the distinct service_discount_*
+        // config keys (same as the self-serve hire flow), not the recording-plan discounts.
+        const isServiceRenew = original.type === 'SERVICO';
+        const d6 = await getConfig(isServiceRenew ? 'service_discount_6months' : 'discount_6months');
+        const d3 = await getConfig(isServiceRenew ? 'service_discount_3months' : 'discount_3months');
         const discountPct = data.durationMonths === 6 ? d6 : (data.durationMonths === 3 ? d3 : 0);
 
         // Start date: immediately if expired, or end of current contract if active
@@ -461,10 +513,11 @@ router.post('/:id/client-renew', authenticate, async (req: Request, res: Respons
                 fixedTime: original.type === 'FIXO' ? original.fixedTime : null,
                 contractUrl: original.contractUrl,
                 addOns: original.addOns,
-                paymentMethod: data.paymentMethod || original.paymentMethod,
+                paymentMethod: renewMethod,
                 flexCreditsTotal: flexCreditsTotal ?? null,
                 flexCreditsRemaining: flexCreditsTotal ?? null,
-                flexCycleStart: original.type === 'FLEX' ? start : null,
+                flexCycleStart: null, // FLEX clock starts on the 1st recording
+                flexForfeitFloor: original.type === 'FLEX' ? 0 : null, // not grandfathered
                 renewedFromId: original.id,
             },
         });

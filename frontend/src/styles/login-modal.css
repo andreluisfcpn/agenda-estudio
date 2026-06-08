@@ -49,6 +49,8 @@
   border-radius: 0;
   box-shadow: none;
   background: transparent;
+  width: 100%;
+  max-width: none;
 }
 
 .login-modal-sheet .login-modal-body-container {
@@ -504,50 +506,6 @@
 .login-toggle-btn strong {
   color: #11819B;
   font-weight: 700;
-}
-
-/* ── Mock Credentials ── */
-.login-mock-section {
-  margin-top: 16px;
-  padding: 10px 12px;
-  background: rgba(0, 0, 0, 0.12);
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.03);
-}
-
-.login-mock-label {
-  color: rgba(255, 255, 255, 0.3);
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  margin-bottom: 8px;
-  font-size: 0.65rem;
-  font-weight: 600;
-}
-
-.login-mock-btns {
-  display: flex;
-  gap: 6px;
-}
-
-.login-mock-btn {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 8px;
-  color: rgba(255, 255, 255, 0.4);
-  font-size: 0.7rem;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 6px 14px;
-  font-family: inherit;
-  min-height: 32px;
-  -webkit-tap-highlight-color: transparent;
-  transition: all 0.15s ease;
-}
-
-.login-mock-btn:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.6);
 }
 
 /* ── Spinner ── */

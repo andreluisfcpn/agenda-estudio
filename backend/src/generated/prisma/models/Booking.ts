@@ -60,6 +60,8 @@ export type BookingMinAggregateOutputType = {
   peakViewers: number | null
   chatMessages: number | null
   audienceOrigin: string | null
+  isLivestream: boolean | null
+  streamMetrics: string | null
   createdAt: Date | null
   updatedAt: Date | null
 }
@@ -84,6 +86,8 @@ export type BookingMaxAggregateOutputType = {
   peakViewers: number | null
   chatMessages: number | null
   audienceOrigin: string | null
+  isLivestream: boolean | null
+  streamMetrics: string | null
   createdAt: Date | null
   updatedAt: Date | null
 }
@@ -109,6 +113,8 @@ export type BookingCountAggregateOutputType = {
   peakViewers: number
   chatMessages: number
   audienceOrigin: number
+  isLivestream: number
+  streamMetrics: number
   createdAt: number
   updatedAt: number
   _all: number
@@ -149,6 +155,8 @@ export type BookingMinAggregateInputType = {
   peakViewers?: true
   chatMessages?: true
   audienceOrigin?: true
+  isLivestream?: true
+  streamMetrics?: true
   createdAt?: true
   updatedAt?: true
 }
@@ -173,6 +181,8 @@ export type BookingMaxAggregateInputType = {
   peakViewers?: true
   chatMessages?: true
   audienceOrigin?: true
+  isLivestream?: true
+  streamMetrics?: true
   createdAt?: true
   updatedAt?: true
 }
@@ -198,6 +208,8 @@ export type BookingCountAggregateInputType = {
   peakViewers?: true
   chatMessages?: true
   audienceOrigin?: true
+  isLivestream?: true
+  streamMetrics?: true
   createdAt?: true
   updatedAt?: true
   _all?: true
@@ -310,6 +322,8 @@ export type BookingGroupByOutputType = {
   peakViewers: number | null
   chatMessages: number | null
   audienceOrigin: string | null
+  isLivestream: boolean | null
+  streamMetrics: string | null
   createdAt: Date
   updatedAt: Date
   _count: BookingCountAggregateOutputType | null
@@ -358,6 +372,8 @@ export type BookingWhereInput = {
   peakViewers?: Prisma.IntNullableFilter<"Booking"> | number | null
   chatMessages?: Prisma.IntNullableFilter<"Booking"> | number | null
   audienceOrigin?: Prisma.StringNullableFilter<"Booking"> | string | null
+  isLivestream?: Prisma.BoolNullableFilter<"Booking"> | boolean | null
+  streamMetrics?: Prisma.StringNullableFilter<"Booking"> | string | null
   createdAt?: Prisma.DateTimeFilter<"Booking"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Booking"> | Date | string
   user?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>
@@ -386,6 +402,8 @@ export type BookingOrderByWithRelationInput = {
   peakViewers?: Prisma.SortOrderInput | Prisma.SortOrder
   chatMessages?: Prisma.SortOrderInput | Prisma.SortOrder
   audienceOrigin?: Prisma.SortOrderInput | Prisma.SortOrder
+  isLivestream?: Prisma.SortOrderInput | Prisma.SortOrder
+  streamMetrics?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   user?: Prisma.UserOrderByWithRelationInput
@@ -417,6 +435,8 @@ export type BookingWhereUniqueInput = Prisma.AtLeast<{
   peakViewers?: Prisma.IntNullableFilter<"Booking"> | number | null
   chatMessages?: Prisma.IntNullableFilter<"Booking"> | number | null
   audienceOrigin?: Prisma.StringNullableFilter<"Booking"> | string | null
+  isLivestream?: Prisma.BoolNullableFilter<"Booking"> | boolean | null
+  streamMetrics?: Prisma.StringNullableFilter<"Booking"> | string | null
   createdAt?: Prisma.DateTimeFilter<"Booking"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Booking"> | Date | string
   user?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>
@@ -445,6 +465,8 @@ export type BookingOrderByWithAggregationInput = {
   peakViewers?: Prisma.SortOrderInput | Prisma.SortOrder
   chatMessages?: Prisma.SortOrderInput | Prisma.SortOrder
   audienceOrigin?: Prisma.SortOrderInput | Prisma.SortOrder
+  isLivestream?: Prisma.SortOrderInput | Prisma.SortOrder
+  streamMetrics?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   _count?: Prisma.BookingCountOrderByAggregateInput
@@ -478,6 +500,8 @@ export type BookingScalarWhereWithAggregatesInput = {
   peakViewers?: Prisma.IntNullableWithAggregatesFilter<"Booking"> | number | null
   chatMessages?: Prisma.IntNullableWithAggregatesFilter<"Booking"> | number | null
   audienceOrigin?: Prisma.StringNullableWithAggregatesFilter<"Booking"> | string | null
+  isLivestream?: Prisma.BoolNullableWithAggregatesFilter<"Booking"> | boolean | null
+  streamMetrics?: Prisma.StringNullableWithAggregatesFilter<"Booking"> | string | null
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"Booking"> | Date | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"Booking"> | Date | string
 }
@@ -501,6 +525,8 @@ export type BookingCreateInput = {
   peakViewers?: number | null
   chatMessages?: number | null
   audienceOrigin?: string | null
+  isLivestream?: boolean | null
+  streamMetrics?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   user: Prisma.UserCreateNestedOneWithoutBookingsInput
@@ -529,6 +555,8 @@ export type BookingUncheckedCreateInput = {
   peakViewers?: number | null
   chatMessages?: number | null
   audienceOrigin?: string | null
+  isLivestream?: boolean | null
+  streamMetrics?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   payments?: Prisma.PaymentUncheckedCreateNestedManyWithoutBookingInput
@@ -553,6 +581,8 @@ export type BookingUpdateInput = {
   peakViewers?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   chatMessages?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   audienceOrigin?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  isLivestream?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  streamMetrics?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   user?: Prisma.UserUpdateOneRequiredWithoutBookingsNestedInput
@@ -581,6 +611,8 @@ export type BookingUncheckedUpdateInput = {
   peakViewers?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   chatMessages?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   audienceOrigin?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  isLivestream?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  streamMetrics?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   payments?: Prisma.PaymentUncheckedUpdateManyWithoutBookingNestedInput
@@ -607,6 +639,8 @@ export type BookingCreateManyInput = {
   peakViewers?: number | null
   chatMessages?: number | null
   audienceOrigin?: string | null
+  isLivestream?: boolean | null
+  streamMetrics?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -630,6 +664,8 @@ export type BookingUpdateManyMutationInput = {
   peakViewers?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   chatMessages?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   audienceOrigin?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  isLivestream?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  streamMetrics?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -655,6 +691,8 @@ export type BookingUncheckedUpdateManyInput = {
   peakViewers?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   chatMessages?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   audienceOrigin?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  isLivestream?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  streamMetrics?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -690,6 +728,8 @@ export type BookingCountOrderByAggregateInput = {
   peakViewers?: Prisma.SortOrder
   chatMessages?: Prisma.SortOrder
   audienceOrigin?: Prisma.SortOrder
+  isLivestream?: Prisma.SortOrder
+  streamMetrics?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -721,6 +761,8 @@ export type BookingMaxOrderByAggregateInput = {
   peakViewers?: Prisma.SortOrder
   chatMessages?: Prisma.SortOrder
   audienceOrigin?: Prisma.SortOrder
+  isLivestream?: Prisma.SortOrder
+  streamMetrics?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -745,6 +787,8 @@ export type BookingMinOrderByAggregateInput = {
   peakViewers?: Prisma.SortOrder
   chatMessages?: Prisma.SortOrder
   audienceOrigin?: Prisma.SortOrder
+  isLivestream?: Prisma.SortOrder
+  streamMetrics?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -858,6 +902,10 @@ export type BookingUpdateaddOnsInput = {
   push?: string | string[]
 }
 
+export type NullableBoolFieldUpdateOperationsInput = {
+  set?: boolean | null
+}
+
 export type BookingCreateNestedOneWithoutPaymentsInput = {
   create?: Prisma.XOR<Prisma.BookingCreateWithoutPaymentsInput, Prisma.BookingUncheckedCreateWithoutPaymentsInput>
   connectOrCreate?: Prisma.BookingCreateOrConnectWithoutPaymentsInput
@@ -893,6 +941,8 @@ export type BookingCreateWithoutUserInput = {
   peakViewers?: number | null
   chatMessages?: number | null
   audienceOrigin?: string | null
+  isLivestream?: boolean | null
+  streamMetrics?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   contract: Prisma.ContractCreateNestedOneWithoutBookingsInput
@@ -919,6 +969,8 @@ export type BookingUncheckedCreateWithoutUserInput = {
   peakViewers?: number | null
   chatMessages?: number | null
   audienceOrigin?: string | null
+  isLivestream?: boolean | null
+  streamMetrics?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   payments?: Prisma.PaymentUncheckedCreateNestedManyWithoutBookingInput
@@ -974,6 +1026,8 @@ export type BookingScalarWhereInput = {
   peakViewers?: Prisma.IntNullableFilter<"Booking"> | number | null
   chatMessages?: Prisma.IntNullableFilter<"Booking"> | number | null
   audienceOrigin?: Prisma.StringNullableFilter<"Booking"> | string | null
+  isLivestream?: Prisma.BoolNullableFilter<"Booking"> | boolean | null
+  streamMetrics?: Prisma.StringNullableFilter<"Booking"> | string | null
   createdAt?: Prisma.DateTimeFilter<"Booking"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Booking"> | Date | string
 }
@@ -997,6 +1051,8 @@ export type BookingCreateWithoutContractInput = {
   peakViewers?: number | null
   chatMessages?: number | null
   audienceOrigin?: string | null
+  isLivestream?: boolean | null
+  streamMetrics?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   user: Prisma.UserCreateNestedOneWithoutBookingsInput
@@ -1023,6 +1079,8 @@ export type BookingUncheckedCreateWithoutContractInput = {
   peakViewers?: number | null
   chatMessages?: number | null
   audienceOrigin?: string | null
+  isLivestream?: boolean | null
+  streamMetrics?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   payments?: Prisma.PaymentUncheckedCreateNestedManyWithoutBookingInput
@@ -1073,6 +1131,8 @@ export type BookingCreateWithoutPaymentsInput = {
   peakViewers?: number | null
   chatMessages?: number | null
   audienceOrigin?: string | null
+  isLivestream?: boolean | null
+  streamMetrics?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   user: Prisma.UserCreateNestedOneWithoutBookingsInput
@@ -1100,6 +1160,8 @@ export type BookingUncheckedCreateWithoutPaymentsInput = {
   peakViewers?: number | null
   chatMessages?: number | null
   audienceOrigin?: string | null
+  isLivestream?: boolean | null
+  streamMetrics?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -1139,6 +1201,8 @@ export type BookingUpdateWithoutPaymentsInput = {
   peakViewers?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   chatMessages?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   audienceOrigin?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  isLivestream?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  streamMetrics?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   user?: Prisma.UserUpdateOneRequiredWithoutBookingsNestedInput
@@ -1166,6 +1230,8 @@ export type BookingUncheckedUpdateWithoutPaymentsInput = {
   peakViewers?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   chatMessages?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   audienceOrigin?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  isLivestream?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  streamMetrics?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -1190,6 +1256,8 @@ export type BookingCreateManyUserInput = {
   peakViewers?: number | null
   chatMessages?: number | null
   audienceOrigin?: string | null
+  isLivestream?: boolean | null
+  streamMetrics?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -1213,6 +1281,8 @@ export type BookingUpdateWithoutUserInput = {
   peakViewers?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   chatMessages?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   audienceOrigin?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  isLivestream?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  streamMetrics?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   contract?: Prisma.ContractUpdateOneRequiredWithoutBookingsNestedInput
@@ -1239,6 +1309,8 @@ export type BookingUncheckedUpdateWithoutUserInput = {
   peakViewers?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   chatMessages?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   audienceOrigin?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  isLivestream?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  streamMetrics?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   payments?: Prisma.PaymentUncheckedUpdateManyWithoutBookingNestedInput
@@ -1264,6 +1336,8 @@ export type BookingUncheckedUpdateManyWithoutUserInput = {
   peakViewers?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   chatMessages?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   audienceOrigin?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  isLivestream?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  streamMetrics?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -1288,6 +1362,8 @@ export type BookingCreateManyContractInput = {
   peakViewers?: number | null
   chatMessages?: number | null
   audienceOrigin?: string | null
+  isLivestream?: boolean | null
+  streamMetrics?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -1311,6 +1387,8 @@ export type BookingUpdateWithoutContractInput = {
   peakViewers?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   chatMessages?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   audienceOrigin?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  isLivestream?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  streamMetrics?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   user?: Prisma.UserUpdateOneRequiredWithoutBookingsNestedInput
@@ -1337,6 +1415,8 @@ export type BookingUncheckedUpdateWithoutContractInput = {
   peakViewers?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   chatMessages?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   audienceOrigin?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  isLivestream?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  streamMetrics?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   payments?: Prisma.PaymentUncheckedUpdateManyWithoutBookingNestedInput
@@ -1362,6 +1442,8 @@ export type BookingUncheckedUpdateManyWithoutContractInput = {
   peakViewers?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   chatMessages?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   audienceOrigin?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  isLivestream?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  streamMetrics?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -1418,6 +1500,8 @@ export type BookingSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs 
   peakViewers?: boolean
   chatMessages?: boolean
   audienceOrigin?: boolean
+  isLivestream?: boolean
+  streamMetrics?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
@@ -1447,6 +1531,8 @@ export type BookingSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exten
   peakViewers?: boolean
   chatMessages?: boolean
   audienceOrigin?: boolean
+  isLivestream?: boolean
+  streamMetrics?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
@@ -1474,6 +1560,8 @@ export type BookingSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exten
   peakViewers?: boolean
   chatMessages?: boolean
   audienceOrigin?: boolean
+  isLivestream?: boolean
+  streamMetrics?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
@@ -1501,11 +1589,13 @@ export type BookingSelectScalar = {
   peakViewers?: boolean
   chatMessages?: boolean
   audienceOrigin?: boolean
+  isLivestream?: boolean
+  streamMetrics?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }
 
-export type BookingOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "userId" | "contractId" | "date" | "startTime" | "endTime" | "status" | "tierApplied" | "price" | "adminNotes" | "clientNotes" | "originalDate" | "platforms" | "platformLinks" | "addOns" | "holdExpiresAt" | "durationMinutes" | "peakViewers" | "chatMessages" | "audienceOrigin" | "createdAt" | "updatedAt", ExtArgs["result"]["booking"]>
+export type BookingOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "userId" | "contractId" | "date" | "startTime" | "endTime" | "status" | "tierApplied" | "price" | "adminNotes" | "clientNotes" | "originalDate" | "platforms" | "platformLinks" | "addOns" | "holdExpiresAt" | "durationMinutes" | "peakViewers" | "chatMessages" | "audienceOrigin" | "isLivestream" | "streamMetrics" | "createdAt" | "updatedAt", ExtArgs["result"]["booking"]>
 export type BookingInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
   contract?: boolean | Prisma.ContractDefaultArgs<ExtArgs>
@@ -1549,6 +1639,8 @@ export type $BookingPayload<ExtArgs extends runtime.Types.Extensions.InternalArg
     peakViewers: number | null
     chatMessages: number | null
     audienceOrigin: string | null
+    isLivestream: boolean | null
+    streamMetrics: string | null
     createdAt: Date
     updatedAt: Date
   }, ExtArgs["result"]["booking"]>
@@ -1997,6 +2089,8 @@ export interface BookingFieldRefs {
   readonly peakViewers: Prisma.FieldRef<"Booking", 'Int'>
   readonly chatMessages: Prisma.FieldRef<"Booking", 'Int'>
   readonly audienceOrigin: Prisma.FieldRef<"Booking", 'String'>
+  readonly isLivestream: Prisma.FieldRef<"Booking", 'Boolean'>
+  readonly streamMetrics: Prisma.FieldRef<"Booking", 'String'>
   readonly createdAt: Prisma.FieldRef<"Booking", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"Booking", 'DateTime'>
 }

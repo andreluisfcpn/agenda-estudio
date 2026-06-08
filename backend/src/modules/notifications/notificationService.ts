@@ -23,6 +23,16 @@ export async function createNotification(input: CreateNotificationInput): Promis
     const { userId, type, severity, title, message, entityType, entityId, actionUrl } = input;
     const shouldPush = input.sendPush ?? (severity === 'critical' || severity === 'warning');
 
+    // Respect the client's "essential only" preference: drop non-critical notifications
+    // (no in-app, no push). Critical ones (payments, credit loss) always go through.
+    if (severity !== 'critical') {
+        const pref = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { essentialNotificationsOnly: true },
+        });
+        if (pref?.essentialNotificationsOnly) return '';
+    }
+
     // Dedup key: same type + entity within a window
     const dedupKey = `notif:dedup:${userId}:${type}:${entityId || 'global'}`;
     const alreadyExists = await redis.get(dedupKey);

@@ -1,47 +1,72 @@
 /* ─── Bottom Tab Bar (Mobile Only) ────────────────────── */
+/* Wrapper is fixed at the bottom and hosts the side arrows (absolute) outside the
+   scrollable nav. The nav scrolls horizontally; touch is native, mouse drag is
+   provided by useDragScroll. The visual treatment uses the teal palette so it
+   matches the rest of the system (background tint, border-top, hover ring). */
 
-.bottom-tab-bar {
-  display: none; /* Hidden on desktop */
+.bottom-tab-bar-wrap {
+  display: none;
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
-  z-index: 120;
-  height: 64px;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-  background: rgba(0, 24, 30, 0.92);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  align-items: center;
-  justify-content: space-around;
+  z-index: var(--z-bottomtab);
+  height: calc(64px + env(safe-area-inset-bottom, 0px));
+  /* Teal-tinted glass on a dark base — aligned with --bg-elevated/--accent-primary */
+  background: linear-gradient(
+    180deg,
+    rgba(0, 66, 80, 0.86) 0%,
+    rgba(0, 30, 38, 0.92) 100%
+  );
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border-top: 1px solid rgba(17, 129, 155, 0.28);
+  box-shadow: 0 -2px 24px rgba(0, 0, 0, 0.4), 0 -1px 0 rgba(17, 129, 155, 0.12) inset;
 }
 
 @media (max-width: 768px) {
-  .bottom-tab-bar {
-    display: flex;
-  }
+  .bottom-tab-bar-wrap { display: flex; align-items: stretch; }
 }
+
+.bottom-tab-bar {
+  flex: 1;
+  height: 100%;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  display: flex;
+  align-items: stretch;
+
+  /* Horizontal scroll */
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  scroll-behavior: smooth;
+  scrollbar-width: none; /* Firefox */
+}
+.bottom-tab-bar::-webkit-scrollbar { display: none; } /* WebKit */
 
 /* ─── Tab Item ─── */
 .btb-tab {
+  flex: 0 0 auto;
+  min-width: 68px;
+  scroll-snap-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 3px;
-  flex: 1;
-  min-height: 48px;
-  padding: 6px 0;
+  padding: 6px 12px;
   background: none;
   border: none;
-  color: var(--text-muted);
+  color: var(--text-secondary);  /* readable inactive (was --text-muted) */
   text-decoration: none;
   cursor: pointer;
-  transition: color 0.2s ease;
+  transition: color 0.2s ease, background 0.2s ease;
   -webkit-tap-highlight-color: transparent;
   position: relative;
 }
+.btb-tab:hover { color: var(--text-primary); }
 
 .btb-tab-icon {
   transition: transform 0.2s ease;
@@ -75,93 +100,41 @@
   height: 2px;
   background: var(--accent-primary);
   border-radius: 0 0 2px 2px;
-  box-shadow: 0 0 8px rgba(17, 129, 155, 0.4);
+  box-shadow: 0 0 8px rgba(17, 129, 155, 0.5);
 }
 
-/* ─── "More" Bottom Sheet ─── */
-.btb-sheet-backdrop {
-  display: none;
-  position: fixed;
-  inset: 0;
-  z-index: 119;
-  background: rgba(0, 0, 0, 0.5);
-  animation: fadeIn 0.2s ease;
-}
-
-@media (max-width: 768px) {
-  .btb-sheet-backdrop {
-    display: block;
-  }
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-
-.btb-sheet {
-  position: absolute;
-  bottom: calc(64px + env(safe-area-inset-bottom, 0px));
-  left: 12px;
-  right: 12px;
-  background: rgba(6, 28, 36, 0.96);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  padding: 12px 8px;
-  animation: sheetSlideUp 0.25s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-@keyframes sheetSlideUp {
-  from { opacity: 0; transform: translateY(16px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-.btb-sheet-handle {
-  width: 32px;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 2px;
-  margin: 0 auto 12px;
-}
-
-.btb-sheet-item {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 14px 16px;
-  border-radius: 12px;
-  color: var(--text-secondary);
-  font-size: 0.9375rem;
-  font-weight: 500;
-  text-decoration: none;
-  transition: background 0.15s, color 0.15s;
-  min-height: 48px;
-}
-
-.btb-sheet-item:active {
-  background: rgba(17, 129, 155, 0.12);
-}
-
-.btb-sheet-item.active {
+/* Pending: immediate tap feedback while the route transition resolves (no blink). */
+.btb-tab--pending {
   color: var(--accent-primary);
-  background: rgba(17, 129, 155, 0.08);
-  font-weight: 600;
+}
+.btb-tab--pending .btb-tab-icon {
+  animation: btbPendingPulse 0.9s ease-in-out infinite;
+}
+@keyframes btbPendingPulse {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50%      { opacity: 1; transform: scale(1.08); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .btb-tab--pending .btb-tab-icon { animation: none; opacity: 0.7; }
+}
+
+/* Side arrows tweaked for the bottom-bar context. */
+.bottom-tab-arrow.scrollrow-arrow {
+  width: 32px;
+  height: 32px;
+  /* Lift above safe-area so the arrow sits centered on the visible 64px row. */
+  margin-top: calc(env(safe-area-inset-bottom, 0px) / -2);
 }
 
 /* ─── Narrow Screens (iPhone SE, 320px devices) ─── */
 @media (max-width: 359px) {
+  .btb-tab {
+    min-width: 60px;
+    padding: 6px 8px;
+    gap: 2px;
+  }
   .btb-tab-label {
     font-size: 0.5rem;
     letter-spacing: 0;
-  }
-
-  .btb-tab {
-    gap: 2px;
-  }
-
-  .bottom-tab-bar {
-    height: 58px;
   }
 }

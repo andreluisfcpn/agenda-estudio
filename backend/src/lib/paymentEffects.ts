@@ -149,6 +149,10 @@ export async function generateBookingsForRenewedContract(contractId: string): Pr
             current.setDate(current.getDate() + 1);
         }
 
+        // Bookings carry only per-episode services; monthly services never ride on a recording.
+        const { filterPerEpisodeAddons } = await import('./contractPricing.js');
+        const perEpisodeAddOns = await filterPerEpisodeAddons(contract.addOns);
+
         const bookings = [];
         for (let week = 0; week < totalWeeks; week++) {
             const bookingDate = new Date(current);
@@ -163,7 +167,7 @@ export async function generateBookingsForRenewedContract(contractId: string): Pr
                 status: 'CONFIRMED' as const,
                 tierApplied: contract.tier,
                 price: discountedPrice,
-                addOns: (contract.addOns || []).filter(a => a !== 'GESTAO_SOCIAL'),
+                addOns: perEpisodeAddOns,
             });
         }
 
@@ -211,6 +215,205 @@ export async function notifyPaymentFailed(payment: PaymentLike, message = 'Seu p
 }
 
 /**
+ * Void every still-PENDING installment of a contract when it is cancelled.
+ *
+ * Without this, a cancelled contract leaves its future parcelas as PENDING — they
+ * keep showing as "faturas abertas", can be auto-charged (Stripe subscription), and
+ * a late Cora/Stripe webhook (or the reconciliation cron) could still flip one to
+ * PAID. We move them to CANCELLED (a terminal, non-collectible state distinct from a
+ * FAILED charge) and cancel any Stripe subscription so it stops billing.
+ *
+ * Idempotent: only PENDING rows are touched; PAID/FAILED/REFUNDED are left intact.
+ * Returns the number of installments voided.
+ */
+export async function voidContractPendingPayments(contractId: string): Promise<number> {
+    // Snapshot the pending rows first so we can cancel any linked Stripe subscription
+    // AFTER they are voided (see ordering note below).
+    const pending = await prisma.payment.findMany({
+        where: { contractId, status: 'PENDING' },
+        select: { id: true, stripeSubscriptionId: true },
+    });
+    if (pending.length === 0) return 0;
+
+    // Void the installments FIRST, then cancel the subscription. Ordering matters:
+    // cancelling the Stripe subscription emits a `customer.subscription.deleted` webhook that
+    // marks this subscription's still-PENDING payments as FAILED. If we cancelled the sub
+    // before voiding, that webhook could win the race and leave the parcelas FAILED ("Falhou")
+    // instead of CANCELLED ("Cancelado"). Voiding to CANCELLED first means the webhook's
+    // PENDING-only updateMany no longer matches them.
+    //
+    // Race note: between the snapshot above and this updateMany a concurrent confirmation may
+    // flip a row PENDING→PAID. That is safe and correct — the atomic `where status: 'PENDING'`
+    // only voids rows still pending, so a legitimately-paid installment is never voided, and a
+    // voided installment can never be (re)confirmed (onPaymentConfirmed re-checks status==='PAID').
+    const voided = await prisma.payment.updateMany({
+        where: { contractId, status: 'PENDING' },
+        data: { status: 'CANCELLED' },
+    });
+    if (voided.count > 0) {
+        console.log(`[PaymentEffects] Voided ${voided.count} pending installment(s) for cancelled contract ${contractId}`);
+    }
+
+    // Cancel any Stripe subscription tied to these installments so it stops billing. Best-effort:
+    // a transient Stripe failure is logged but does not abort the cancellation (the parcelas are
+    // already voided locally; the downstream guards reject any late confirmation).
+    const subscriptionIds = [...new Set(
+        pending.map(p => p.stripeSubscriptionId).filter((s): s is string => !!s)
+    )];
+    if (subscriptionIds.length > 0) {
+        try {
+            const { isStripeEnabled, stripeCancelSubscription } = await import('./stripeService.js');
+            if (await isStripeEnabled()) {
+                for (const subId of subscriptionIds) {
+                    try {
+                        await stripeCancelSubscription(subId);
+                        console.log(`[PaymentEffects] Cancelled Stripe subscription ${subId} for contract ${contractId}`);
+                    } catch (subErr) {
+                        console.error(`[PaymentEffects] Failed to cancel subscription ${subId} (sub may keep billing — needs manual check):`, subErr instanceof Error ? subErr.message : subErr);
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('[PaymentEffects] Stripe subscription cancellation skipped:', err instanceof Error ? err.message : err);
+        }
+    }
+
+    return voided.count;
+}
+
+/**
+ * Create the remaining monthly installments (months 2..N) for a RENEWED contract once its
+ * first payment is confirmed. New (self/admin/custom) contracts get their installments at
+ * creation/fulfillment; renewals create the contract upfront with NO installments, so this is
+ * their equivalent — without it a renewed MONTHLY contract would only ever charge month 1.
+ *
+ * Idempotent & safe: only runs for renewals (renewedFromId set), skips FULL plans and AVULSO,
+ * and bails if the contract already has >= durationMonths non-cancelled payments. Uses the first
+ * PAID payment's amount as the per-month figure so every installment matches exactly.
+ */
+export async function generateRemainingInstallmentsForRenewal(contractId: string): Promise<void> {
+    try {
+        const contract = await prisma.contract.findUnique({ where: { id: contractId } });
+        if (!contract || !contract.renewedFromId) return;        // renewals only
+        if (contract.paymentPlan === 'FULL') return;             // FULL = single upfront payment
+        if (contract.type === 'AVULSO') return;                  // avulso has no installments
+
+        // Serialize per contract: two concurrent confirmations (e.g. two admin PATCHes marking the
+        // same payment PAID, which lacks an atomic guard) must not both pass the count check and
+        // double-generate installments. Best-effort Redis lock; if not acquired, another call owns it.
+        const { redis } = await import('./redis.js');
+        const lockKey = `cron:renewal-installments:${contractId}`;
+        if ((await redis.set(lockKey, '1', 'EX', 30, 'NX')) !== 'OK') return;
+        try {
+            const existing = await prisma.payment.count({
+                where: { contractId, status: { not: 'CANCELLED' } },
+            });
+            if (existing >= contract.durationMonths) return;     // already complete (idempotent)
+
+            const firstPaid = await prisma.payment.findFirst({
+                where: { contractId, status: 'PAID' },
+                orderBy: { createdAt: 'asc' },
+            });
+            if (!firstPaid) return;
+
+            const start = new Date(contract.startDate);
+            const remaining = [];
+            // Installments 2..N are anchored to contract.startDate. FIXO/FLEX/CUSTOM advance
+            // on the fixed 28-day billing cadence; standalone monthly SERVICO services advance
+            // by calendar month (~30 days). The first payment is due on-demand (today, via /pay).
+            const { addBillingCycles, addMonths } = await import('../utils/pricing.js');
+            const advance = contract.type === 'SERVICO'
+                ? (i: number) => addMonths(start, i)
+                : (i: number) => addBillingCycles(start, i);
+            for (let i = existing; i < contract.durationMonths; i++) {
+                const dueDate = advance(i);
+                remaining.push({
+                    userId: contract.userId,
+                    contractId,
+                    provider: firstPaid.provider,
+                    amount: firstPaid.amount,   // exact parity with the confirmed first payment
+                    status: 'PENDING' as const,
+                    dueDate,
+                });
+            }
+            if (remaining.length > 0) {
+                await prisma.payment.createMany({ data: remaining });
+                console.log(`[PaymentEffects] Generated ${remaining.length} remaining installment(s) for renewed contract ${contractId}`);
+            }
+        } finally {
+            await redis.del(lockKey);
+        }
+    } catch (err) {
+        console.error('[PaymentEffects] Error generating renewal installments:', err);
+    }
+}
+
+/**
+ * Apply a change to a contract's recurring services (Contract.addOns), affecting ONLY THE FUTURE:
+ *  - recomputes the amount of still-PENDING installments (MONTHLY) / the single PENDING payment (FULL)
+ *  - updates the addOns of FUTURE bookings (date >= today, not CANCELLED/COMPLETED) by delta —
+ *    drops removed services, adds newly-added per-episode services, and PRESERVES any per-booking
+ *    extras the client added individually. booking.price is left untouched (recurring services are
+ *    billed in the monthly installment, not per recording).
+ *  - persists the new Contract.addOns
+ * Scope: FIXO/FLEX ACTIVE only (CUSTOM uses addonConfig; AVULSO has no recurring services).
+ * Past/paid installments and past/completed recordings are never touched.
+ * Known limitation: a PENDING boleto whose external invoice was already issued (providerRef set) is
+ * not re-issued here — PIX/card read payment.amount at charge time, so they pick up the new value.
+ */
+export async function applyContractServiceChange(contractId: string, newAddOns: string[]): Promise<void> {
+    const contract = await prisma.contract.findUnique({ where: { id: contractId } });
+    if (!contract) throw new Error('Contrato não encontrado.');
+    if (contract.status !== 'ACTIVE') throw new Error('Só é possível editar serviços de um contrato ativo.');
+    if (contract.type !== 'FIXO' && contract.type !== 'FLEX') {
+        throw new Error('Edição de serviços disponível apenas para contratos Fixo/Flex.');
+    }
+
+    const { getBasePriceDynamic, applyDiscount } = await import('../utils/pricing.js');
+    const { getConfig } = await import('./businessConfig.js');
+    const { computeAddonsCost, computeFullContractTotal } = await import('./contractPricing.js');
+
+    const sessions = await getConfig('sessions_per_month');
+    const basePrice = await getBasePriceDynamic(contract.tier);
+    const discountedPrice = applyDiscount(basePrice, contract.discountPct);
+    const newMonthly = (sessions * discountedPrice) + await computeAddonsCost(newAddOns, contract.discountPct, sessions);
+    const newFull = contract.paymentPlan === 'FULL'
+        ? await computeFullContractTotal(newMonthly, contract.durationMonths, contract.paymentMethod || undefined)
+        : null;
+
+    // Per-episode (monthly:false) services accompany every recording; monthly add-ons never land on bookings.
+    const newConfigs = await prisma.addOnConfig.findMany({ where: { key: { in: newAddOns } } });
+    const newPerEpisode = newConfigs.filter(c => !c.monthly).map(c => c.key);
+    const oldSet = new Set(contract.addOns || []);
+    const removed = [...oldSet].filter(k => !newAddOns.includes(k));
+    const addedPerEpisode = newPerEpisode.filter(k => !oldSet.has(k));
+
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+
+    await prisma.$transaction(async (tx) => {
+        // 1. Recompute still-PENDING installments (PAID/past ones are never matched).
+        await tx.payment.updateMany({
+            where: { contractId, status: 'PENDING' },
+            data: { amount: newFull ?? newMonthly },
+        });
+        // 2. Future bookings: delta-merge so client-added extras survive (price untouched).
+        const futureBookings = await tx.booking.findMany({
+            where: { contractId, date: { gte: today }, status: { notIn: ['CANCELLED', 'COMPLETED'] } },
+            select: { id: true, addOns: true },
+        });
+        for (const b of futureBookings) {
+            const merged = new Set((b.addOns || []).filter(k => !removed.includes(k)));
+            addedPerEpisode.forEach(k => merged.add(k));
+            await tx.booking.update({ where: { id: b.id }, data: { addOns: [...merged] } });
+        }
+        // 3. Persist the contract's new recurring services.
+        await tx.contract.update({ where: { id: contractId }, data: { addOns: newAddOns } });
+    });
+
+    console.log(`[PaymentEffects] Contract ${contractId} services updated → [${newAddOns.join(', ') || 'none'}]; future installment=${newFull ?? newMonthly}`);
+}
+
+/**
  * Full orchestration of side-effects after a payment becomes PAID.
  * Caller is responsible for the atomic PENDING→PAID transition first; this
  * function is idempotent so it is safe even if called more than once.
@@ -218,9 +421,16 @@ export async function notifyPaymentFailed(payment: PaymentLike, message = 'Seu p
 export async function onPaymentConfirmed(paymentId: string): Promise<void> {
     const payment = await prisma.payment.findUnique({
         where: { id: paymentId },
-        select: { id: true, userId: true, amount: true, bookingId: true, contractId: true, paymentUrl: true },
+        select: { id: true, userId: true, amount: true, bookingId: true, contractId: true, paymentUrl: true, status: true },
     });
     if (!payment) return;
+    // Defense-in-depth: callers must flip the row to PAID atomically first. Never run
+    // confirmation effects (confirm booking, activate contract, notify) for a payment that
+    // isn't actually PAID — e.g. a CANCELLED installment of a cancelled contract.
+    if (payment.status !== 'PAID') {
+        console.warn(`[PaymentEffects] onPaymentConfirmed skipped: payment ${paymentId} status=${payment.status} (expected PAID)`);
+        return;
+    }
 
     // 1. Activate purchased add-on(s)
     await activateAddonIfNeeded(payment.id);
@@ -231,9 +441,10 @@ export async function onPaymentConfirmed(paymentId: string): Promise<void> {
     // 3. Materialize a self-service contract whose data lives in payment.metadata (no-op otherwise)
     await fulfillContractFromPayment(payment.id);
 
-    // 4. Generate bookings for a renewed contract (no-op unless FIXO renewal w/o bookings)
+    // 4. Generate bookings + remaining installments for a renewed contract (no-ops for non-renewals)
     if (payment.contractId) {
         await generateBookingsForRenewedContract(payment.contractId);
+        await generateRemainingInstallmentsForRenewal(payment.contractId);
     }
 
     // 5. Notify the user (with push)

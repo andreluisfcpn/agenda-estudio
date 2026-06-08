@@ -47,10 +47,11 @@ export const CONTRACT_STATUS_META: Record<string, MetaEntry> = {
 
 /** Payment statuses. */
 export const PAYMENT_STATUS_META: Record<string, MetaEntry> = {
-    PAID:     { label: 'Pago',      color: '#10b981', bg: 'rgba(16,185,129,0.12)', icon: CheckCircle2 },
-    PENDING:  { label: 'Pendente',  color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', icon: Clock },
-    FAILED:   { label: 'Falhou',    color: '#ef4444', bg: 'rgba(239,68,68,0.12)',  icon: XCircle },
-    REFUNDED: { label: 'Estornado', color: '#14b8a6', bg: 'rgba(20,184,166,0.12)', icon: Undo2 },
+    PAID:      { label: 'Pago',      color: '#10b981', bg: 'rgba(16,185,129,0.12)', icon: CheckCircle2 },
+    PENDING:   { label: 'Pendente',  color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', icon: Clock },
+    FAILED:    { label: 'Falhou',    color: '#ef4444', bg: 'rgba(239,68,68,0.12)',  icon: XCircle },
+    REFUNDED:  { label: 'Estornado', color: '#14b8a6', bg: 'rgba(20,184,166,0.12)', icon: Undo2 },
+    CANCELLED: { label: 'Cancelado', color: '#6b7280', bg: 'rgba(107,114,128,0.12)', icon: Ban },
 };
 
 /** Client/contract "type" (role-derived ADMIN + the 5 ContractType values).
@@ -68,11 +69,6 @@ export const USER_TYPE_META: Record<string, MetaEntry> = {
  *  Alias of USER_TYPE_META minus ADMIN — use for contract-type badges so AVULSO
  *  is never collapsed into "Flex". */
 export const CONTRACT_TYPE_META = USER_TYPE_META;
-
-/** Plain label for a contract type (safe for unknown values). */
-export function contractTypeLabel(type: string | null | undefined): string {
-    return getMeta(USER_TYPE_META, type).label;
-}
 
 const FALLBACK: MetaEntry = { label: '—', color: 'var(--text-muted)', bg: 'rgba(148,163,184,0.12)', icon: Circle };
 

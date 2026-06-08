@@ -1,7 +1,7 @@
 import { getErrorMessage } from '../../../utils/errors';
 import { useState, useEffect } from 'react';
 import { contractsApi, pricingApi, UserSummary, PricingConfig, AddOnConfig } from '../../../api/client';
-import ModalOverlay from '../../ModalOverlay';
+import BottomSheetModal from '../../BottomSheetModal';
 import { getPaymentMethods } from '../../../constants/paymentMethods';
 
 import { formatBRL } from '../../../utils/format';
@@ -199,8 +199,7 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
     const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
     return (
-        <ModalOverlay onClose={onClose}>
-            <div className="modal" style={{ maxWidth: 580, maxHeight: '92vh', overflowY: 'auto', padding: 0 }}>
+        <BottomSheetModal isOpen onClose={onClose} hideHeader maxWidth="580px" className="admin-sheet" title="Contrato Personalizado">
                 {/* Header */}
                 <div style={{ padding: '28px 32px 0', borderBottom: 'none' }}>
                     <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -803,7 +802,6 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
                         </div>
                     )}
                 </div>
-            </div>
-        </ModalOverlay>
+        </BottomSheetModal>
     );
 }

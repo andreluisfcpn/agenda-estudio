@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
@@ -11,11 +12,12 @@ import {
     Users,
     CreditCard,
     BarChart3,
-    MoreHorizontal,
     Settings,
+    ChevronLeft,
+    ChevronRight,
     type LucideIcon,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useDragScroll } from '../hooks/useDragScroll';
 
 interface TabItem {
     to: string;
@@ -31,92 +33,89 @@ const CLIENT_TABS: TabItem[] = [
     { to: '/meus-pagamentos', icon: Wallet, label: 'Pagar' },
 ];
 
-const ADMIN_PRIMARY_TABS: TabItem[] = [
+// All admin tabs live in a single horizontally-scrollable row (no "More" sheet).
+const ADMIN_TABS: TabItem[] = [
     { to: '/dashboard', icon: LayoutDashboard, label: 'Início' },
     { to: '/admin/today', icon: MapPin, label: 'Hoje' },
     { to: '/calendar', icon: CalendarDays, label: 'Agenda' },
-    { to: '/admin/clients', icon: Users, label: 'Clientes' },
-];
-
-const ADMIN_MORE_TABS: TabItem[] = [
     { to: '/admin/bookings', icon: Clapperboard, label: 'Agendamentos' },
+    { to: '/admin/clients', icon: Users, label: 'Clientes' },
     { to: '/admin/contracts', icon: FileText, label: 'Contratos' },
     { to: '/admin/finance', icon: CreditCard, label: 'Financeiro' },
     { to: '/admin/reports', icon: BarChart3, label: 'Relatórios' },
-    { to: '/admin/configuracoes', icon: Settings, label: 'Configurações' },
+    { to: '/admin/configuracoes', icon: Settings, label: 'Config' },
 ];
 
 export default function BottomTabBar() {
     const { user } = useAuth();
-    const { navigateTo } = useNavigation();
+    const { navigateTo, isTransitioning, pendingPath } = useNavigation();
     const location = useLocation();
     const isAdmin = user?.role === 'ADMIN';
-    const [showMore, setShowMore] = useState(false);
+    const tabs = isAdmin ? ADMIN_TABS : CLIENT_TABS;
 
-    const primaryTabs = isAdmin ? ADMIN_PRIMARY_TABS : CLIENT_TABS;
+    const { ref: barRef, showLeft, showRight, scrollByPage, updateArrows } = useDragScroll<HTMLElement>();
+    const activeRef = useRef<HTMLButtonElement>(null);
 
-    const handleTabClick = (path: string) => {
-        navigateTo(path);
-    };
+    // Keep the active tab in view as the route changes.
+    useEffect(() => {
+        activeRef.current?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        // Recompute arrow visibility after the route-driven scroll settles.
+        const t = setTimeout(updateArrows, 400);
+        return () => clearTimeout(t);
+    }, [location.pathname, updateArrows]);
 
     return (
-        <>
-            {/* "More" sheet overlay */}
-            {isAdmin && showMore && (
-                <div className="btb-sheet-backdrop" onClick={() => setShowMore(false)}>
-                    <div className="btb-sheet" onClick={e => e.stopPropagation()}>
-                        <div className="btb-sheet-handle" />
-                        {ADMIN_MORE_TABS.map(tab => {
-                            const isActive = location.pathname === tab.to;
-                            return (
-                                <button
-                                    key={tab.to}
-                                    className={`btb-sheet-item ${isActive ? 'active' : ''}`}
-                                    onClick={() => {
-                                        setShowMore(false);
-                                        handleTabClick(tab.to);
-                                    }}
-                                >
-                                    <tab.icon size={20} strokeWidth={1.8} />
-                                    <span>{tab.label}</span>
-                                </button>
-                            );
-                        })}
-                    </div>
-                </div>
+        <div className="bottom-tab-bar-wrap scrollrow-wrap">
+            {showLeft && (
+                <button
+                    type="button"
+                    className="scrollrow-arrow bottom-tab-arrow scrollrow-arrow--left"
+                    aria-label="Rolar para esquerda"
+                    onClick={() => scrollByPage(-1)}
+                    tabIndex={-1}
+                >
+                    <ChevronLeft size={16} />
+                </button>
             )}
-
-            {/* Tab bar */}
-            <nav className="bottom-tab-bar" role="tablist" aria-label="Navegação principal">
-                {primaryTabs.map(tab => {
+            <nav
+                ref={barRef}
+                className="bottom-tab-bar scrollrow-track"
+                role="tablist"
+                aria-label="Navegação principal"
+            >
+                {tabs.map(tab => {
+                    // Active state stays bound to the committed location so the highlight and the
+                    // on-screen page switch together (no blink). A separate "pending" class gives
+                    // immediate tap feedback on the target while the transition resolves.
                     const isActive = location.pathname === tab.to;
+                    const isPending = isTransitioning && pendingPath === tab.to;
                     return (
                         <button
                             key={tab.to}
-                            className={`btb-tab ${isActive ? 'btb-tab--active' : ''}`}
+                            ref={isActive ? activeRef : undefined}
+                            className={`btb-tab ${isActive ? 'btb-tab--active' : ''} ${isPending ? 'btb-tab--pending' : ''}`}
                             role="tab"
                             aria-label={tab.label}
                             aria-selected={isActive}
-                            onClick={() => handleTabClick(tab.to)}
+                            onClick={() => navigateTo(tab.to)}
                         >
                             <tab.icon size={22} strokeWidth={1.8} className="btb-tab-icon" />
                             <span className="btb-tab-label">{tab.label}</span>
                         </button>
                     );
                 })}
-
-                {isAdmin && (
-                    <button
-                        className={`btb-tab ${showMore ? 'btb-tab--active' : ''}`}
-                        onClick={() => setShowMore(prev => !prev)}
-                        role="tab"
-                        aria-label="Mais opções"
-                    >
-                        <MoreHorizontal size={22} strokeWidth={1.8} className="btb-tab-icon" />
-                        <span className="btb-tab-label">Mais</span>
-                    </button>
-                )}
             </nav>
-        </>
+            {showRight && (
+                <button
+                    type="button"
+                    className="scrollrow-arrow bottom-tab-arrow scrollrow-arrow--right scrollrow-arrow--pulse"
+                    aria-label="Rolar para direita"
+                    onClick={() => scrollByPage(1)}
+                    tabIndex={-1}
+                >
+                    <ChevronRight size={16} />
+                </button>
+            )}
+        </div>
     );
 }

@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { notificationsApi, NotificationItem, NotificationSummary } from '../api/client';
 import { useNavigate } from 'react-router-dom';
 import { Bell, CheckCheck } from 'lucide-react';
+import BottomSheetModal from './BottomSheetModal';
 
 const SEVERITY_META: Record<string, { color: string; bg: string; icon: string }> = {
     critical: { color: '#dc2626', bg: 'rgba(220,38,38,0.08)', icon: '🔴' },
@@ -28,21 +30,33 @@ if (typeof document !== 'undefined' && !document.getElementById(styleId)) {
             50% { transform: scale(1.15); }
         }
         .notif-badge-pulse { animation: badgePulse 2s infinite; }
-        .notif-item { transition: all 0.2s; cursor: pointer; border-left: 3px solid transparent; }
-        .notif-item:hover { background: rgba(17,129,155,0.06) !important; transform: translateX(2px); }
+        .notif-item { transition: background 0.2s; cursor: pointer; border-left: 3px solid transparent; }
+        .notif-item:hover { background: rgba(17,129,155,0.06) !important; }
         .notif-item-read { opacity: 0.55; }
         .notif-item-unread { background: rgba(17,129,155,0.03); }
-        @keyframes slideDown {
-            from { opacity: 0; transform: translateY(-8px); }
-            to { opacity: 1; transform: translateY(0); }
+        @media (prefers-reduced-motion: reduce) {
+            .notif-bell-shake, .notif-badge-pulse { animation: none; }
         }
-        .notif-panel { animation: slideDown 0.2s ease-out; }
     `;
     document.head.appendChild(style);
 }
 
+/** Tracks whether the viewport is mobile-sized (drives bottom-sheet vs dropdown). */
+function useIsMobile(query = '(max-width: 768px)') {
+    const [isMobile, setIsMobile] = useState(() =>
+        typeof window !== 'undefined' && window.matchMedia(query).matches);
+    useEffect(() => {
+        const mq = window.matchMedia(query);
+        const onChange = () => setIsMobile(mq.matches);
+        mq.addEventListener('change', onChange);
+        return () => mq.removeEventListener('change', onChange);
+    }, [query]);
+    return isMobile;
+}
+
 export default function NotificationBell() {
     const navigate = useNavigate();
+    const isMobile = useIsMobile();
     const [notifications, setNotifications] = useState<NotificationItem[]>([]);
     const [summary, setSummary] = useState<NotificationSummary>({ total: 0, unread: 0, critical: 0, warning: 0, info: 0 });
     const [open, setOpen] = useState(false);
@@ -56,8 +70,6 @@ export default function NotificationBell() {
             const res = await notificationsApi.getAll();
             setNotifications(res.notifications);
             setSummary(res.summary);
-
-            // Shake bell if unread count increased
             if (res.summary.unread > prevUnreadRef.current && prevUnreadRef.current > 0) {
                 setShake(true);
                 setTimeout(() => setShake(false), 700);
@@ -72,17 +84,18 @@ export default function NotificationBell() {
         return () => clearInterval(interval);
     }, [loadNotifications]);
 
-    // Close panel on outside click
+    // Close the DESKTOP dropdown on outside click (the mobile bottom-sheet handles its own close).
     useEffect(() => {
+        if (!open || isMobile) return;
         function handleClick(e: MouseEvent) {
             if (panelRef.current && !panelRef.current.contains(e.target as Node) &&
                 bellRef.current && !bellRef.current.contains(e.target as Node)) {
                 setOpen(false);
             }
         }
-        if (open) document.addEventListener('mousedown', handleClick);
+        document.addEventListener('mousedown', handleClick);
         return () => document.removeEventListener('mousedown', handleClick);
-    }, [open]);
+    }, [open, isMobile]);
 
     const handleMarkRead = async (id: string, source: string, e: React.MouseEvent) => {
         e.stopPropagation();
@@ -93,7 +106,6 @@ export default function NotificationBell() {
                 setSummary(prev => ({ ...prev, unread: Math.max(0, prev.unread - 1) }));
             } catch { }
         } else {
-            // Computed notifications: dismiss locally (they reset on refresh since they have no DB state)
             setNotifications(prev => prev.filter(n => n.id !== id));
             setSummary(prev => ({ ...prev, total: prev.total - 1, unread: Math.max(0, prev.unread - 1) }));
         }
@@ -110,13 +122,83 @@ export default function NotificationBell() {
     const unreadNotifications = notifications.filter(n => !n.read);
     const unreadCount = summary.unread;
     const criticalCount = unreadNotifications.filter(n => n.severity === 'critical').length;
+    const warningCount = unreadNotifications.filter(n => n.severity === 'warning').length;
+
+    const onItemClick = (n: NotificationItem) => {
+        if (n.actionUrl) { navigate(n.actionUrl); setOpen(false); }
+    };
+
+    // ── Shared content: actions bar + list (used by both bottom-sheet and dropdown) ──
+    const body = (
+        <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
+            <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-default)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                    {criticalCount > 0 && <span style={{ fontSize: '0.65rem', background: 'rgba(220,38,38,0.12)', color: '#dc2626', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>{criticalCount} 🔴</span>}
+                    {warningCount > 0 && <span style={{ fontSize: '0.65rem', background: 'rgba(217,119,6,0.1)', color: '#d97706', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>{warningCount} 🟡</span>}
+                    {criticalCount === 0 && warningCount === 0 && <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{unreadCount > 0 ? `${unreadCount} não lida${unreadCount !== 1 ? 's' : ''}` : 'Tudo em dia'}</span>}
+                </div>
+                {unreadCount > 0 && (
+                    <button onClick={handleMarkAllRead} style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', fontSize: '0.72rem', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: '3px' }} title="Marcar todas como lidas">
+                        <CheckCheck size={14} /> Ler todas
+                    </button>
+                )}
+            </div>
+
+            <div style={{ overflowY: 'auto', flex: 1, WebkitOverflowScrolling: 'touch' }}>
+                {notifications.length === 0 ? (
+                    <div style={{ padding: '40px 20px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>✅</div>
+                        <div style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--text-primary)' }}>Tudo em dia!</div>
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '4px' }}>Nenhum alerta pendente</p>
+                    </div>
+                ) : (
+                    notifications.map(n => {
+                        const meta = SEVERITY_META[n.severity];
+                        return (
+                            <div
+                                key={n.id}
+                                className={`notif-item ${n.read ? 'notif-item-read' : 'notif-item-unread'}`}
+                                style={{
+                                    padding: '12px 16px',
+                                    borderBottom: '1px solid var(--border-subtle)',
+                                    borderLeftColor: n.read ? 'transparent' : meta.color,
+                                    display: 'flex', gap: '10px', alignItems: 'flex-start',
+                                }}
+                                onClick={() => onItemClick(n)}
+                            >
+                                <div style={{ width: 8, minWidth: 8, marginTop: '6px' }}>
+                                    {!n.read && <div style={{ width: 8, height: 8, borderRadius: '50%', background: meta.color }} />}
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '2px' }}>{n.title}</div>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.4, wordBreak: 'break-word' }}>{n.message}</div>
+                                    {n.source === 'persisted' && n.createdAt && (
+                                        <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: '3px', opacity: 0.7 }}>{formatTimeAgo(n.createdAt)}</div>
+                                    )}
+                                </div>
+                                {!n.read && (
+                                    <button
+                                        onClick={(e) => handleMarkRead(n.id, n.source, e)}
+                                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.95rem', padding: '4px', opacity: 0.6, flexShrink: 0, lineHeight: 1 }}
+                                        title="Marcar como lida" aria-label="Marcar como lida"
+                                    >✕</button>
+                                )}
+                            </div>
+                        );
+                    })
+                )}
+            </div>
+        </div>
+    );
 
     return (
         <div style={{ position: 'relative' }}>
-            {/* Bell Button */}
             <button
                 ref={bellRef}
                 onClick={() => setOpen(!open)}
+                aria-label={`Notificações${unreadCount > 0 ? `, ${unreadCount} não lida${unreadCount !== 1 ? 's' : ''}` : ''}`}
+                aria-haspopup="true"
+                aria-expanded={open}
                 className={shake ? 'notif-bell-shake' : ''}
                 style={{
                     background: open ? 'rgba(17,129,155,0.12)' : 'transparent',
@@ -143,116 +225,45 @@ export default function NotificationBell() {
                         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: '0.65rem', fontWeight: 800,
                         background: criticalCount > 0 ? '#dc2626' : '#d97706',
-                        color: '#fff',
-                        padding: '0 5px',
+                        color: '#fff', padding: '0 5px',
                     }}>
                         {unreadCount}
                     </span>
                 )}
             </button>
 
-            {/* Notification Panel */}
-            {open && (
-                <div ref={panelRef} className="notif-panel" style={{
-                    position: 'absolute', top: '100%', right: 0,
-                    width: 360, maxHeight: 480, marginTop: '8px',
-                    background: 'var(--bg-elevated)', borderRadius: 'var(--radius-lg)',
-                    border: '1px solid var(--border-default)',
-                    boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-                    zIndex: 1000, overflow: 'hidden',
-                    display: 'flex', flexDirection: 'column',
-                }}>
-                    {/* Header */}
-                    <div style={{
-                        padding: '14px 16px', borderBottom: '1px solid var(--border-default)',
-                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    }}>
-                        <div style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--text-primary)' }}>
-                            🔔 Central de Alertas
-                        </div>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            {unreadCount > 0 && (
-                                <button onClick={handleMarkAllRead} style={{
-                                    background: 'none', border: 'none', color: 'var(--accent-primary)',
-                                    fontSize: '0.7rem', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit',
-                                    display: 'flex', alignItems: 'center', gap: '3px',
-                                }} title="Marcar todas como lidas">
-                                    <CheckCheck size={13} /> Ler todas
-                                </button>
-                            )}
-                            <div style={{ display: 'flex', gap: '4px' }}>
-                                {criticalCount > 0 && <span style={{ fontSize: '0.65rem', background: 'rgba(220,38,38,0.12)', color: '#dc2626', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>{criticalCount} 🔴</span>}
-                                {summary.warning > 0 && <span style={{ fontSize: '0.65rem', background: 'rgba(217,119,6,0.1)', color: '#d97706', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>{unreadNotifications.filter(n => n.severity === 'warning').length} 🟡</span>}
+            {/* Mobile: bottom-sheet (legible, mobile-first). Desktop: animated dropdown. */}
+            {isMobile ? (
+                <BottomSheetModal isOpen={open} onClose={() => setOpen(false)} title="🔔 Central de Alertas" maxWidth="520px">
+                    <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '70vh' }}>{body}</div>
+                </BottomSheetModal>
+            ) : (
+                <AnimatePresence>
+                    {open && (
+                        <motion.div
+                            ref={panelRef}
+                            initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                            transition={{ duration: 0.18, ease: 'easeOut' }}
+                            style={{
+                                position: 'absolute', top: '100%', right: 0,
+                                width: 'min(360px, calc(100vw - 24px))', maxHeight: 480, marginTop: '8px',
+                                background: 'var(--bg-elevated)', borderRadius: 'var(--radius-lg)',
+                                border: '1px solid var(--border-default)',
+                                boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+                                zIndex: 1000, overflow: 'hidden',
+                                display: 'flex', flexDirection: 'column',
+                                transformOrigin: 'top right',
+                            }}
+                        >
+                            <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-default)', fontWeight: 700, fontSize: '0.875rem', color: 'var(--text-primary)' }}>
+                                🔔 Central de Alertas
                             </div>
-                        </div>
-                    </div>
-
-                    {/* List */}
-                    <div style={{ overflowY: 'auto', flex: 1 }}>
-                        {notifications.length === 0 ? (
-                            <div style={{ padding: '40px 20px', textAlign: 'center' }}>
-                                <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>✅</div>
-                                <div style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--text-primary)' }}>Tudo em dia!</div>
-                                <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '4px' }}>Nenhum alerta pendente</p>
-                            </div>
-                        ) : (
-                            notifications.map(n => {
-                                const meta = SEVERITY_META[n.severity];
-                                return (
-                                    <div
-                                        key={n.id}
-                                        className={`notif-item ${n.read ? 'notif-item-read' : 'notif-item-unread'}`}
-                                        style={{
-                                            padding: '12px 16px',
-                                            borderBottom: '1px solid var(--border-subtle)',
-                                            borderLeftColor: n.read ? 'transparent' : meta.color,
-                                            display: 'flex', gap: '10px', alignItems: 'flex-start',
-                                        }}
-                                        onClick={() => {
-                                            if (n.actionUrl) { navigate(n.actionUrl); setOpen(false); }
-                                        }}
-                                    >
-                                        {/* Unread dot */}
-                                        <div style={{ width: 8, minWidth: 8, marginTop: '6px' }}>
-                                            {!n.read && (
-                                                <div style={{
-                                                    width: 8, height: 8, borderRadius: '50%',
-                                                    background: meta.color,
-                                                }} />
-                                            )}
-                                        </div>
-                                        <div style={{ flex: 1, minWidth: 0 }}>
-                                            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '2px' }}>
-                                                {n.title}
-                                            </div>
-                                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', lineHeight: 1.4, wordBreak: 'break-word' }}>
-                                                {n.message}
-                                            </div>
-                                            {n.source === 'persisted' && n.createdAt && (
-                                                <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: '3px', opacity: 0.7 }}>
-                                                    {formatTimeAgo(n.createdAt)}
-                                                </div>
-                                            )}
-                                        </div>
-                                        {!n.read && (
-                                            <button
-                                                onClick={(e) => handleMarkRead(n.id, n.source, e)}
-                                                style={{
-                                                    background: 'none', border: 'none', color: 'var(--text-muted)',
-                                                    cursor: 'pointer', fontSize: '0.875rem', padding: '2px',
-                                                    opacity: 0.5, transition: 'opacity 0.2s', flexShrink: 0,
-                                                }}
-                                                onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
-                                                onMouseLeave={e => (e.currentTarget.style.opacity = '0.5')}
-                                                title="Marcar como lida"
-                                            >✕</button>
-                                        )}
-                                    </div>
-                                );
-                            })
-                        )}
-                    </div>
-                </div>
+                            {body}
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             )}
         </div>
     );

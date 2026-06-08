@@ -8,11 +8,12 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import QRCodeLib from 'qrcode';
 import StripeCardForm from './StripeCardForm';
 import { stripeApi, paymentsApi, type SavedCard } from '../api/client';
-import { getClientPaymentMethods, getPaymentMethods, methodInContext, type PaymentMethodKey } from '../constants/paymentMethods';
-import { Copy, Check, Lock, QrCode, CreditCard, Plus, ShieldCheck } from 'lucide-react';
+import { getClientPaymentMethods, getPaymentMethods, methodInContext, getBoletoMethodConfig, type PaymentMethodKey } from '../constants/paymentMethods';
+import { Copy, Check, Lock, QrCode, CreditCard, Plus, ShieldCheck, FileText } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { isValidCpfCnpj } from '../utils/mask';
 import CpfCnpjPrompt from './CpfCnpjPrompt';
+import { getBrandIcon } from '../utils/cardBrand';
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -35,6 +36,8 @@ interface InlineCheckoutProps {
     allowedMethods?: PaymentMethodKey[];
     /** If true, show all methods including BOLETO (admin mode) */
     isAdmin?: boolean;
+    /** Release boleto for this checkout (per-contract authorization) */
+    allowBoleto?: boolean;
     /** Checkout context for per-method visibility: avulso | contract | invoice */
     context?: string;
     /** Function to create the Payment record on-the-fly */
@@ -49,23 +52,9 @@ interface InlineCheckoutProps {
     }>;
 }
 
-type ActiveTab = 'CARTAO' | 'PIX';
+type ActiveTab = 'CARTAO' | 'PIX' | 'BOLETO';
 
-function formatBRL(cents: number): string {
-    return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
-}
-
-function getBrandIcon(brand: string): string {
-    const brands: Record<string, string> = {
-        visa: 'Visa',
-        mastercard: 'MC',
-        amex: 'Amex',
-        elo: 'Elo',
-        hipercard: 'Hiper',
-        discover: 'Disc',
-    };
-    return brands[brand.toLowerCase()] || brand.charAt(0).toUpperCase();
-}
+import { formatBRL } from '../utils/format';
 
 // ─── Component ──────────────────────────────────────────
 
@@ -79,6 +68,7 @@ export default function InlineCheckout({
     onCancel,
     allowedMethods = ['CARTAO', 'PIX'],
     isAdmin = false,
+    allowBoleto = false,
     context,
     createPaymentFn,
 }: InlineCheckoutProps) {
@@ -87,9 +77,15 @@ export default function InlineCheckout({
         allowedMethods.includes(m.key) && (!context || methodInContext(m, context))
     );
     // Safety: never leave the checkout with zero methods (e.g. admin hid all from this context).
-    const availableMethods = ctxMethods.length > 0
+    let availableMethods = ctxMethods.length > 0
         ? ctxMethods
         : allMethods.filter(m => allowedMethods.includes(m.key));
+    // Per-contract boleto release: surface boleto regardless of the global client
+    // hiding or context CSV — its authority is the contract's boletoAllowed flag,
+    // which the server enforces on /create-payment.
+    if (allowBoleto && allowedMethods.includes('BOLETO') && !availableMethods.some(m => m.key === 'BOLETO')) {
+        availableMethods = [...availableMethods, getBoletoMethodConfig()];
+    }
     const [activeTab, setActiveTab] = useState<ActiveTab>(
         (availableMethods[0]?.key as ActiveTab) || 'CARTAO'
     );
@@ -117,6 +113,10 @@ export default function InlineCheckout({
     const [pixString, setPixString] = useState<string | null>(null);
     const [pixQrBase64, setPixQrBase64] = useState<string | null>(null);
     const [pixCopied, setPixCopied] = useState(false);
+    // Boleto state (per-contract release)
+    const [boletoUrl, setBoletoUrl] = useState<string | null>(null);
+    const [boletoBarcode, setBoletoBarcode] = useState<string | null>(null);
+    const [boletoCopied, setBoletoCopied] = useState(false);
     const pollIntervalRef = useRef<number | null>(null);
     // PAY-H1 FIX: Prevent double-init from rapid clicks
     const initGuardRef = useRef(false);
@@ -178,12 +178,16 @@ export default function InlineCheckout({
                 .finally(() => setLoadingCards(false));
 
             if (amount > 0) {
-                stripeApi.getInstallmentPlans({ amount, contractDurationMonths: contractDuration })
+                // Pass paymentId when available so the backend applies the REAL installment
+                // policy (monthly installment → 1x only; à-vista/FULL → 1–12x free up to the
+                // contract duration; avulso → 1–12x free in 1x). Falls back to the duration
+                // hint for drafts without a payment yet.
+                stripeApi.getInstallmentPlans({ paymentId: paymentId || undefined, amount, contractDurationMonths: contractDuration })
                     .then(res => setInstallmentPlans(res.plans))
                     .catch(() => {});
             }
         }
-    }, [activeTab, amount, contractDuration]);
+    }, [activeTab, amount, contractDuration, paymentId]);
 
     // Cleanup polling on unmount
     useEffect(() => {
@@ -197,7 +201,9 @@ export default function InlineCheckout({
     const startPolling = useCallback((pid: string) => {
         if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
         let attempts = 0;
+        let consecutiveErrors = 0;
         const MAX_ATTEMPTS = 180; // 15 minutos (180 × 5s)
+        const MAX_CONSECUTIVE_ERRORS = 5; // ~25s of failures → surface instead of polling silently
         pollIntervalRef.current = window.setInterval(async () => {
             attempts++;
             if (attempts >= MAX_ATTEMPTS) {
@@ -207,14 +213,30 @@ export default function InlineCheckout({
             }
             try {
                 const res = await paymentsApi.getStatus(pid);
+                consecutiveErrors = 0; // a successful read clears the error streak
                 if (res.status === 'PAID') {
                     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
                     onSuccess();
                 } else if (res.status === 'FAILED') {
                     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
                     onError('Pagamento falhou. Tente novamente.');
+                } else if (res.status === 'CANCELLED') {
+                    // The installment was voided (e.g. its contract was cancelled) — stop polling
+                    // instead of waiting out the full 15 min for a payment that can never land.
+                    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+                    onError('Esta cobrança foi cancelada (contrato encerrado).');
                 }
-            } catch {}
+            } catch (err) {
+                // Don't swallow status-check failures silently: after a few consecutive errors
+                // (e.g. the user's connection dropped) stop and tell them, instead of polling
+                // uselessly for 15 minutes.
+                consecutiveErrors++;
+                console.error('[Payment Polling] status check failed:', err);
+                if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+                    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+                    onError('Não foi possível verificar o pagamento (conexão instável). Verifique em "Meus Pagamentos".');
+                }
+            }
         }, 5000);
     }, [onSuccess, onError]);
 
@@ -260,9 +282,25 @@ export default function InlineCheckout({
             // New card flow: get clientSecret to show PaymentElement
             if (createPaymentFn) {
                 const result = await createPaymentFn('CARTAO');
-                setPaymentId(result.paymentId);
-                setClientSecret(result.clientSecret || null);
-                setPaymentIntentId(result.paymentIntentId || null);
+                const pid = result.paymentId;
+                setPaymentId(pid);
+                if (result.clientSecret) {
+                    // Avulso: the booking flow already created a PaymentIntent.
+                    setClientSecret(result.clientSecret);
+                    setPaymentIntentId(result.paymentIntentId || null);
+                } else if (pid) {
+                    // Contract: createPaymentFn carries no card secret (it serves PIX) — create
+                    // the PaymentIntent NOW with the chosen installments so the unified policy
+                    // applies the juros (free up to the contract duration, juros above).
+                    const card = await stripeApi.createPayment({
+                        paymentId: pid,
+                        installments,
+                        paymentMethod: 'cartao',
+                        savePaymentMethod: wantSaveCard,
+                    });
+                    setClientSecret(card.clientSecret || null);
+                    setPaymentIntentId(card.paymentIntentId || null);
+                }
             } else if (paymentId) {
                 const result = await stripeApi.createPayment({
                     paymentId,
@@ -321,6 +359,14 @@ export default function InlineCheckout({
                 setPaymentId(pid);
                 if (result.pixString) setPixString(result.pixString);
                 if (result.qrCodeBase64) setPixQrBase64(result.qrCodeBase64);
+                // Guard: without an EMV string there is no QR to scan — do NOT start a
+                // silent background poll that would leave the user on a dead screen.
+                if (!result.pixString) {
+                    const msg = 'Não foi possível gerar o código PIX. Tente novamente ou use outro método.';
+                    setError(msg);
+                    onError(msg);
+                    return;
+                }
                 if (pid) startPolling(pid);
             } else if (pid) {
                 const result = await stripeApi.createPayment({
@@ -349,6 +395,63 @@ export default function InlineCheckout({
         }
     };
 
+    // ─── BOLETO ─────────────────────────────────────────
+
+    // Boleto (Cora) also needs a CPF/CNPJ on file — same gate as PIX.
+    const initBoletoPayment = () => {
+        if (!isValidCpfCnpj(user?.cpfCnpj)) {
+            setNeedsCpf(true);
+            return;
+        }
+        proceedBoleto();
+    };
+
+    const proceedBoleto = async () => {
+        if (initGuardRef.current) return;
+        initGuardRef.current = true;
+        setProcessing(true);
+        setError('');
+        try {
+            let pid = paymentId;
+            if (createPaymentFn) {
+                const result = await createPaymentFn('BOLETO');
+                pid = result.paymentId;
+                setPaymentId(pid);
+                if (result.boletoUrl) setBoletoUrl(result.boletoUrl);
+                if (result.barcode) setBoletoBarcode(result.barcode);
+                // Guard: without a boleto URL there is nothing to pay — surface an error
+                // instead of polling silently in the background.
+                if (!result.boletoUrl) {
+                    const msg = 'Não foi possível gerar o boleto. Tente novamente ou use outro método.';
+                    setError(msg);
+                    onError(msg);
+                    return;
+                }
+                if (pid) startPolling(pid);
+            } else if (pid) {
+                const result = await stripeApi.createPayment({ paymentId: pid, paymentMethod: 'boleto' });
+                if (result.boletoUrl) setBoletoUrl(result.boletoUrl);
+                if (result.barcode) setBoletoBarcode(result.barcode);
+                startPolling(pid);
+            }
+        } catch (err: unknown) {
+            const msg = getErrorMessage(err) || 'Erro ao gerar boleto.';
+            setError(msg);
+            onError(msg);
+        } finally {
+            setProcessing(false);
+            initGuardRef.current = false;
+        }
+    };
+
+    const copyBoletoBarcode = () => {
+        if (boletoBarcode) {
+            navigator.clipboard.writeText(boletoBarcode);
+            setBoletoCopied(true);
+            setTimeout(() => setBoletoCopied(false), 3000);
+        }
+    };
+
     // ─── Render ──────────────────────────────────────────
 
     return (
@@ -369,9 +472,9 @@ export default function InlineCheckout({
             {/* Tab Navigation */}
             {availableMethods.length > 1 && (
                 <div className="checkout-tabs">
-                    {availableMethods.filter(m => m.key === 'CARTAO' || m.key === 'PIX').map(pm => {
+                    {availableMethods.filter(m => m.key === 'CARTAO' || m.key === 'PIX' || m.key === 'BOLETO').map(pm => {
                         const isActive = activeTab === pm.key;
-                        const tabClass = pm.key === 'PIX' ? 'checkout-tab--pix' : 'checkout-tab--card';
+                        const tabClass = pm.key === 'PIX' ? 'checkout-tab--pix' : pm.key === 'BOLETO' ? 'checkout-tab--boleto' : 'checkout-tab--card';
                         return (
                             <button
                                 key={pm.key}
@@ -391,8 +494,8 @@ export default function InlineCheckout({
                                 }}
                                 className={`checkout-tab ${tabClass} ${isActive ? 'checkout-tab--active' : ''}`}
                             >
-                                {pm.key === 'CARTAO' ? <CreditCard size={16} /> : <QrCode size={16} />}
-                                {pm.key === 'CARTAO' ? 'Cartao' : 'PIX'}
+                                {pm.key === 'CARTAO' ? <CreditCard size={16} /> : pm.key === 'BOLETO' ? <FileText size={16} /> : <QrCode size={16} />}
+                                {pm.key === 'CARTAO' ? 'Cartao' : pm.key === 'BOLETO' ? 'Boleto' : 'PIX'}
                             </button>
                         );
                     })}
@@ -651,6 +754,96 @@ export default function InlineCheckout({
                                         {simulating
                                             ? <><span className="spinner" style={{ width: 14, height: 14, borderColor: '#f59e0b', borderTopColor: 'transparent' }} /> Simulando...</>
                                             : <>🧪 Simular pagamento PIX</>}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* ═══════ TAB: BOLETO (per-contract release) ═══════ */}
+            {activeTab === 'BOLETO' && (
+                <div>
+                    {!boletoUrl ? (
+                        needsCpf ? (
+                            <CpfCnpjPrompt
+                                saveLabel={`Salvar e gerar Boleto - ${formatBRL(amount)}`}
+                                onSaved={() => { setNeedsCpf(false); proceedBoleto(); }}
+                                onCancel={() => setNeedsCpf(false)}
+                            />
+                        ) : (
+                        <div className="checkout-pix-intro">
+                            <div className="checkout-pix-icon" style={{ color: '#f59e0b' }}>
+                                <FileText size={24} />
+                            </div>
+                            <p>Gere o boleto bancário. A compensação leva até 3 dias úteis.</p>
+                            <button
+                                onClick={initBoletoPayment}
+                                disabled={processing}
+                                className="checkout-pay-btn checkout-pay-btn--card"
+                            >
+                                {processing ? (
+                                    <><span className="spinner" style={{ width: 16, height: 16 }} /> Gerando boleto...</>
+                                ) : (
+                                    <>
+                                        <FileText size={16} />
+                                        Gerar Boleto - {formatBRL(amount)}
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                        )
+                    ) : (
+                        <div className="checkout-pix-result">
+                            <a
+                                href={boletoUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="checkout-pay-btn checkout-pay-btn--card"
+                                style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                            >
+                                <FileText size={16} /> Abrir / Imprimir Boleto (PDF)
+                            </a>
+
+                            {boletoBarcode && (
+                                <>
+                                    <div className="checkout-pix-code">{boletoBarcode}</div>
+                                    <button
+                                        onClick={copyBoletoBarcode}
+                                        className={`checkout-copy-btn ${boletoCopied ? 'checkout-copy-btn--copied' : ''}`}
+                                    >
+                                        {boletoCopied ? <><Check size={14} /> Copiado!</> : <><Copy size={14} /> Copiar Linha Digitável</>}
+                                    </button>
+                                </>
+                            )}
+
+                            <div className="checkout-polling checkout-polling--pix">
+                                <span className="spinner" style={{ width: 14, height: 14, borderColor: '#f59e0b', borderTopColor: 'transparent' }} />
+                                Aguardando compensação...
+                            </div>
+
+                            {/* Sandbox testing only: boleto shares the Cora provider with PIX. */}
+                            {pixSandbox && paymentId && (
+                                <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px dashed var(--border-default, rgba(255,255,255,0.12))', textAlign: 'center' }}>
+                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: 8 }}>
+                                        🧪 Modo teste (sandbox) — nenhum valor real é cobrado
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={simulatePayment}
+                                        disabled={simulating}
+                                        style={{
+                                            width: '100%', padding: '10px 16px', borderRadius: 10,
+                                            border: '1px solid #f59e0b', background: 'rgba(245,158,11,0.12)',
+                                            color: '#f59e0b', fontWeight: 600, fontSize: '0.8rem',
+                                            cursor: simulating ? 'default' : 'pointer',
+                                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                                        }}
+                                    >
+                                        {simulating
+                                            ? <><span className="spinner" style={{ width: 14, height: 14, borderColor: '#f59e0b', borderTopColor: 'transparent' }} /> Simulando...</>
+                                            : <>🧪 Simular pagamento do Boleto</>}
                                     </button>
                                 </div>
                             )}

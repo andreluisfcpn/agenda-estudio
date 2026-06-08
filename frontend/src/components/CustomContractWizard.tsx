@@ -1,4 +1,5 @@
 import { getErrorMessage } from "../utils/errors";
+import { formatBRL } from "../utils/format";
 import React, { useState, useEffect, useRef } from "react";
 import BottomSheetModal from "./BottomSheetModal";
 import {
@@ -14,6 +15,7 @@ import {
 import { useBusinessConfig } from "../hooks/useBusinessConfig";
 import { getClientPaymentMethods } from "../constants/paymentMethods";
 import StripeCardForm from "./StripeCardForm";
+import InlineCheckout from "./InlineCheckout";
 import CpfCnpjPrompt from "./CpfCnpjPrompt";
 import { useAuth } from "../context/AuthContext";
 import { isValidCpfCnpj } from "../utils/mask";
@@ -82,10 +84,6 @@ const POSSIBLE_SLOTS: Record<string, string[]> = {
   SABADO: ["10:00", "13:00", "15:30", "18:00", "20:30"],
 };
 
-function formatBRL(cents: number): string {
-  return `R$ ${(cents / 100).toFixed(2).replace(".", ",")}`;
-}
-
 export default function CustomContractWizard({
   pricing,
   onClose,
@@ -116,6 +114,8 @@ export default function CustomContractWizard({
   const [paymentMethod, setPaymentMethod] = useState<"CARTAO" | "PIX" | null>(
     null,
   );
+  // Payment plan: MONTHLY (per-cycle, current behavior) or FULL (whole contract upfront).
+  const [paymentPlan, setPaymentPlan] = useState<"MONTHLY" | "FULL">("MONTHLY");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   // Step 7
@@ -135,6 +135,8 @@ export default function CustomContractWizard({
 
   // Inline card payment
   const [cardClientSecret, setCardClientSecret] = useState<string | null>(null);
+  const [firstPaymentId, setFirstPaymentId] = useState<string | null>(null);
+  const [firstPixString, setFirstPixString] = useState<string | null>(null);
 
   // Cancel confirmation modal
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -155,9 +157,13 @@ export default function CustomContractWizard({
   const sessionsPerCycle = sessionsPerWeek * 4;
   const totalSessions = sessionsPerCycle * durationMonths;
 
+  // Fidelity discount thresholds & rates come from business config
+  // (episodes_3months/6months → discount_3months/6months), no hardcoded rates.
   let discountPct = 0;
-  if (totalSessions >= 24) discountPct = 40;
-  else if (totalSessions >= 12) discountPct = 30;
+  if (totalSessions >= getRule("episodes_6months"))
+    discountPct = getRule("discount_6months");
+  else if (totalSessions >= getRule("episodes_3months"))
+    discountPct = getRule("discount_3months");
 
   const discountedSessionPrice = Math.round(
     basePrice * (1 - discountPct / 100),
@@ -185,8 +191,23 @@ export default function CustomContractWizard({
   const cycleAmount = cycleBaseAmount + addonsCostPerCycle;
   const totalContractAmount = cycleAmount * durationMonths;
 
+  // ── FULL (pay-upfront) display totals — mirror the backend ──
+  const pixExtraDiscountPct = getRule("pix_extra_discount_pct");
+  const pixFullTotal = Math.round(
+    totalContractAmount * (1 - pixExtraDiscountPct / 100),
+  );
+  // Amount charged on the 1st (and only) invoice for the FULL plan, by method.
+  const fullChargeAmount =
+    paymentMethod === "PIX" ? pixFullTotal : totalContractAmount;
+
+  const episodes3 = getRule("episodes_3months");
+  const episodes6 = getRule("episodes_6months");
   const nextThreshold =
-    totalSessions < 12 ? 12 : totalSessions < 24 ? 24 : null;
+    totalSessions < episodes3
+      ? episodes3
+      : totalSessions < episodes6
+        ? episodes6
+        : null;
   const sessionsToNextDiscount = nextThreshold
     ? nextThreshold - totalSessions
     : 0;
@@ -255,6 +276,7 @@ export default function CustomContractWizard({
         durationMonths,
         schedule,
         paymentMethod: paymentMethod!,
+        paymentPlan,
         addOns: activeAddonKeys,
         addonConfig:
           activeAddonKeys.length > 0 ? addonConfigPayload : undefined,
@@ -262,10 +284,13 @@ export default function CustomContractWizard({
         startDate: startDateStr,
       });
 
-      if (res.clientSecret && paymentMethod === "CARTAO") {
-        setCardClientSecret(res.clientSecret);
+      if (paymentMethod === "CARTAO" && (res.clientSecret || res.firstPaymentId)) {
+        if (res.clientSecret) setCardClientSecret(res.clientSecret);
+        if (res.firstPaymentId) setFirstPaymentId(res.firstPaymentId);
         setStep(8);
       } else if (paymentMethod === "PIX") {
+        if (res.firstPaymentId) setFirstPaymentId(res.firstPaymentId);
+        if (res.firstPixString) setFirstPixString(res.firstPixString);
         setStep(8);
       } else {
         setStep(6);
@@ -390,18 +415,61 @@ export default function CustomContractWizard({
           </div>
         )}
 
-        {/* ══════════ STEP 8: INLINE CARD PAYMENT ══════════ */}
-        {step === 8 && cardClientSecret && (
+        {/* ══════════ STEP 8 (PIX): INLINE PIX CHECKOUT ══════════ */}
+        {step === 8 && !cardClientSecret && paymentMethod === "PIX" && firstPaymentId && (
           <div className="wizard-payment-step">
             <div className="wizard-payment-step__header">
               <div className="wizard-payment-step__icon-v2">
                 <ShieldCheck size={28} />
               </div>
               <h3 className="wizard-payment-step__title">
-                Pagamento do 1º Ciclo
+                {paymentPlan === "FULL" ? "Pagamento Integral" : "Pagamento do 1º Ciclo"}
               </h3>
               <p className="wizard-payment-step__desc">
-                Complete o pagamento para ativar seu plano personalizado.
+                Escaneie o QR Code PIX para confirmar seu plano personalizado.
+              </p>
+            </div>
+
+            <div className="wizard-receipt" style={{ marginBottom: 16, padding: '12px 16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                  {paymentPlan === "FULL" ? "Contrato integral à vista" : `1º de ${durationMonths} ciclos`}
+                </span>
+                <span style={{ fontWeight: 800, fontSize: '1.125rem', color: 'var(--accent-primary)' }}>
+                  {formatBRL(paymentPlan === "FULL" ? fullChargeAmount : cycleAmount)}
+                </span>
+              </div>
+            </div>
+
+            <InlineCheckout
+              amount={paymentPlan === "FULL" ? fullChargeAmount : cycleAmount}
+              paymentId={firstPaymentId}
+              description={paymentPlan === "FULL" ? `Pagamento integral - ${contractName}` : `1º ciclo - ${contractName}`}
+              contractDuration={paymentPlan === "FULL" ? 1 : durationMonths}
+              allowedMethods={["PIX"]}
+              context="contract"
+              createPaymentFn={async () => ({ paymentId: firstPaymentId, pixString: firstPixString || undefined })}
+              onSuccess={() => setStep(6)}
+              onError={(msg) => { setError(msg); setStep(3); }}
+              onCancel={() => { onComplete(); onClose(); }}
+            />
+          </div>
+        )}
+
+        {/* ══════════ STEP 8: INLINE CARD PAYMENT ══════════ */}
+        {step === 8 && paymentMethod === "CARTAO" && firstPaymentId && (
+          <div className="wizard-payment-step">
+            <div className="wizard-payment-step__header">
+              <div className="wizard-payment-step__icon-v2">
+                <ShieldCheck size={28} />
+              </div>
+              <h3 className="wizard-payment-step__title">
+                {paymentPlan === "FULL" ? "Pagamento Integral" : "Pagamento do 1º Ciclo"}
+              </h3>
+              <p className="wizard-payment-step__desc">
+                {paymentPlan === "FULL"
+                  ? "Complete o pagamento integral para ativar seu plano personalizado."
+                  : "Complete o pagamento para ativar seu plano personalizado."}
               </p>
             </div>
 
@@ -412,18 +480,26 @@ export default function CustomContractWizard({
 
             <div className="wizard-receipt" style={{ marginBottom: 16, padding: '12px 16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>1º de {durationMonths} ciclos</span>
-                <span style={{ fontWeight: 800, fontSize: '1.125rem', color: 'var(--accent-primary)' }}>{formatBRL(cycleAmount)}</span>
+                <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                  {paymentPlan === "FULL" ? "Contrato integral à vista" : `1º de ${durationMonths} ciclos`}
+                </span>
+                <span style={{ fontWeight: 800, fontSize: '1.125rem', color: 'var(--accent-primary)' }}>
+                  {formatBRL(paymentPlan === "FULL" ? fullChargeAmount : cycleAmount)}
+                </span>
               </div>
             </div>
 
-            <StripeCardForm
-              mode="payment"
-              clientSecret={cardClientSecret}
+            <InlineCheckout
+              amount={paymentPlan === "FULL" ? fullChargeAmount : cycleAmount}
+              paymentId={firstPaymentId}
+              description={paymentPlan === "FULL" ? `Pagamento integral - ${contractName}` : `1º ciclo - ${contractName}`}
+              contractDuration={paymentPlan === "FULL" ? durationMonths : 1}
+              allowedMethods={["CARTAO"]}
+              context="contract"
+              createPaymentFn={async () => ({ paymentId: firstPaymentId })}
               onSuccess={() => setStep(6)}
               onError={(msg) => { setError(msg); setStep(3); }}
               onCancel={() => setShowCancelModal(true)}
-              submitLabel={`Pagar ${formatBRL(cycleAmount)}`}
             />
 
             <button className="wizard-cancel-link" onClick={() => setShowCancelModal(true)}>
@@ -811,7 +887,7 @@ export default function CustomContractWizard({
               }}
             >
               {addons
-                .filter((a) => a.key !== "GESTAO_SOCIAL")
+                .filter((a) => !a.monthly)
                 .map((addon) => {
                   const config = addonConfig[addon.key] || {
                     mode: "none",
@@ -940,15 +1016,13 @@ export default function CustomContractWizard({
                             Aplicar em <strong>todas</strong> as gravações (x
                             {sessionsPerCycle})
                           </span>
-                          <span
-                            style={{
-                              marginLeft: "auto",
-                              fontWeight: 600,
-                              fontSize: "0.875rem",
-                              color: "var(--accent-primary)",
-                            }}
-                          >
-                            +{formatBRL(priceAll)}
+                          <span style={{ marginLeft: "auto", textAlign: "right" }}>
+                            <span style={{ display: "block", fontWeight: 600, fontSize: "0.875rem", color: "var(--accent-primary)" }}>
+                              +{formatBRL(priceAll)}
+                            </span>
+                            <span style={{ fontSize: "0.6875rem", color: "var(--text-muted)" }}>
+                              {formatBRL(pricePerCredit)}/gravação
+                            </span>
                           </span>
                         </label>
 
@@ -1072,15 +1146,13 @@ export default function CustomContractWizard({
                                 +
                               </button>
                             </div>
-                            <span
-                              style={{
-                                marginLeft: "auto",
-                                fontWeight: 600,
-                                fontSize: "0.875rem",
-                                color: "var(--accent-primary)",
-                              }}
-                            >
-                              +{formatBRL(pricePerCredit * config.perCycle)}
+                            <span style={{ marginLeft: "auto", textAlign: "right" }}>
+                              <span style={{ display: "block", fontWeight: 600, fontSize: "0.875rem", color: "var(--accent-primary)" }}>
+                                +{formatBRL(pricePerCredit * config.perCycle)}
+                              </span>
+                              <span style={{ fontSize: "0.6875rem", color: "var(--text-muted)" }}>
+                                {formatBRL(pricePerCredit)}/gravação
+                              </span>
                             </span>
                           </div>
                         )}
@@ -1187,7 +1259,116 @@ export default function CustomContractWizard({
               </div>
             </div>
 
-            {/* Payment Options — same as ContractWizard */}
+            {/* Payment Plan — Mensal / À vista PIX / À vista Cartão */}
+            <div className="wizard-summary">
+              <div className="wizard-summary__label">Plano de Pagamento</div>
+
+              {/* Mensal */}
+              <div
+                className="wizard-payment-card"
+                onClick={() => setPaymentPlan("MONTHLY")}
+                style={{
+                  background:
+                    paymentPlan === "MONTHLY"
+                      ? "var(--bg-elevated)"
+                      : "var(--bg-card)",
+                  border: `2px solid ${paymentPlan === "MONTHLY" ? "var(--accent-primary)" : "var(--border-subtle)"}`,
+                }}
+              >
+                <div className="wizard-payment-card__row">
+                  <div>
+                    <div className="wizard-payment-card__name">📆 Mensal (por ciclo)</div>
+                    <div className="wizard-payment-card__desc">
+                      {durationMonths} {durationMonths === 1 ? "ciclo" : "ciclos"} de {formatBRL(cycleAmount)}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div className="wizard-payment-card__price">
+                      {durationMonths}x {formatBRL(cycleAmount)}
+                    </div>
+                    <div className="wizard-payment-card__sub-price">
+                      Total: {formatBRL(totalContractAmount)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* À vista no PIX */}
+              <div
+                className="wizard-payment-card"
+                onClick={() => { setPaymentPlan("FULL"); setPaymentMethod("PIX"); }}
+                style={{
+                  background:
+                    paymentPlan === "FULL" && paymentMethod === "PIX"
+                      ? "var(--bg-elevated)"
+                      : "var(--bg-card)",
+                  border: `2px solid ${paymentPlan === "FULL" && paymentMethod === "PIX" ? "#22c55e" : "var(--border-subtle)"}`,
+                }}
+              >
+                <div className="wizard-payment-card__row">
+                  <div>
+                    <div className="wizard-payment-card__name">
+                      ⚡ À vista no PIX
+                      {pixExtraDiscountPct > 0 && (
+                        <span
+                          className="wizard-payment-card__badge"
+                          style={{ background: "#22c55e", color: "#fff" }}
+                        >
+                          -{pixExtraDiscountPct}%
+                        </span>
+                      )}
+                    </div>
+                    <div className="wizard-payment-card__desc">
+                      Pague o contrato inteiro agora com desconto
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div className="wizard-payment-card__price" style={{ color: "#22c55e" }}>
+                      {formatBRL(pixFullTotal)}
+                    </div>
+                    {pixExtraDiscountPct > 0 && (
+                      <div
+                        className="wizard-payment-card__sub-price"
+                        style={{ textDecoration: "line-through" }}
+                      >
+                        {formatBRL(totalContractAmount)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* À vista no Cartão */}
+              <div
+                className="wizard-payment-card"
+                onClick={() => { setPaymentPlan("FULL"); setPaymentMethod("CARTAO"); }}
+                style={{
+                  background:
+                    paymentPlan === "FULL" && paymentMethod === "CARTAO"
+                      ? "var(--bg-elevated)"
+                      : "var(--bg-card)",
+                  border: `2px solid ${paymentPlan === "FULL" && paymentMethod === "CARTAO" ? "var(--accent-primary)" : "var(--border-subtle)"}`,
+                }}
+              >
+                <div className="wizard-payment-card__row">
+                  <div>
+                    <div className="wizard-payment-card__name">💳 À vista no Cartão</div>
+                    <div className="wizard-payment-card__desc">
+                      Valor integral à vista (ou parcelado no cartão)
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div className="wizard-payment-card__price">
+                      {formatBRL(totalContractAmount)}
+                    </div>
+                    <div className="wizard-payment-card__sub-price">ou parcelado</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Payment Options (MONTHLY only) — same as ContractWizard */}
+            {paymentPlan === "MONTHLY" && (
             <div className="wizard-summary">
               <div className="wizard-summary__label">
                 Opções de Pagamento (Formato Final)
@@ -1201,33 +1382,27 @@ export default function CustomContractWizard({
 
                 if (pm.key === "PIX") {
                   displayPrice = formatBRL(
-                    Math.round(totalContractAmount * 0.9),
+                    Math.round(
+                      totalContractAmount * (1 - pixExtraDiscountPct / 100),
+                    ),
                   );
                   subPrice = formatBRL(totalContractAmount);
-                  badge = (
-                    <span
-                      className="wizard-payment-card__badge"
-                      style={{ background: "#22c55e", color: "#fff" }}
-                    >
-                      -10%
-                    </span>
-                  );
+                  badge =
+                    pixExtraDiscountPct > 0 ? (
+                      <span
+                        className="wizard-payment-card__badge"
+                        style={{ background: "#22c55e", color: "#fff" }}
+                      >
+                        -{pixExtraDiscountPct}%
+                      </span>
+                    ) : null;
                   desc = "Desconto aplicado no valor do contrato completo";
                 } else if (pm.key === "CARTAO") {
-                  displayPrice = `${durationMonths}x ${formatBRL(Math.round(cycleAmount * 1.15))}`;
-                  subPrice = `Total: ${formatBRL(Math.round(totalContractAmount * 1.15))}`;
-                  badge = (
-                    <span
-                      className="wizard-payment-card__badge"
-                      style={{
-                        background: "var(--bg-elevated)",
-                        color: "var(--text-muted)",
-                      }}
-                    >
-                      +15% TAXA
-                    </span>
-                  );
-                  desc = "Valor total com acréscimo da operadora";
+                  // O backend do custom cobra o valor PLANO (sem surcharge) no
+                  // cartão — então o display mostra o valor REAL cobrado.
+                  displayPrice = `${durationMonths}x ${formatBRL(cycleAmount)}`;
+                  subPrice = `Total: ${formatBRL(totalContractAmount)}`;
+                  desc = "Parcelado no cartão, sem acréscimo";
                 } else {
                   displayPrice = `${durationMonths}x ${formatBRL(cycleAmount)}`;
                   subPrice = `Total: ${formatBRL(totalContractAmount)}`;
@@ -1280,9 +1455,10 @@ export default function CustomContractWizard({
                 );
               })}
             </div>
+            )}
 
             {/* Progressive access warning */}
-            {paymentMethod &&
+            {paymentPlan === "MONTHLY" && paymentMethod &&
               getClientPaymentMethods().find((pm) => pm.key === paymentMethod)
                 ?.accessMode === "PROGRESSIVE" && (
                 <div

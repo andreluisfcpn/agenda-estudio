@@ -70,7 +70,7 @@ export const authApi = {
 
     refresh: () => request<{ message: string }>('/auth/refresh', { method: 'POST' }),
     logout: () => request<{ message: string }>('/auth/logout', { method: 'POST' }),
-    updateProfile: (data: { name?: string; phone?: string; password?: string; cpfCnpj?: string; address?: string; city?: string; state?: string; socialLinks?: any }) => request<{ user: User; message: string }>('/auth/profile', { method: 'PATCH', body: JSON.stringify(data) }),
+    updateProfile: (data: { name?: string; phone?: string; password?: string; cpfCnpj?: string; address?: string; city?: string; state?: string; socialLinks?: any; essentialNotificationsOnly?: boolean }) => request<{ user: User; message: string }>('/auth/profile', { method: 'PATCH', body: JSON.stringify(data) }),
     uploadPhoto: async (file: File): Promise<{ user: User; message: string }> => {
         const formData = new FormData();
         formData.append('photo', file);
@@ -88,14 +88,14 @@ export const bookingsApi = {
     create: (data: { date: string; startTime: string; contractId?: string; addOns?: string[]; paymentMethod?: 'CARTAO' | 'PIX'; installments?: number; paymentType?: 'CREDIT' | 'DEBIT' }) => request<{ booking: Booking & { holdExpiresAt?: string | null }; paymentId?: string | null; clientSecret?: string | null; lockExpiresIn: number; message: string }>('/bookings', { method: 'POST', body: JSON.stringify(data) }),
     completePayment: (id: string, data: { paymentIntentId?: string }) => request<{ booking: Booking; message: string }>(`/bookings/${id}/complete-payment`, { method: 'POST', body: JSON.stringify(data) }),
     createBulk: (data: { contractId: string; slots: { date: string; startTime: string }[] }) => request<{ message: string }>('/bookings/bulk', { method: 'POST', body: JSON.stringify(data) }),
-    adminCreate: (data: { userId: string; date: string; startTime: string; status?: string; addOns?: string[]; adminNotes?: string; customPrice?: number }) => request<{ booking: Booking; message: string }>('/bookings/admin', { method: 'POST', body: JSON.stringify(data) }),
-    update: (id: string, data: { date?: string; startTime?: string; status?: string; adminNotes?: string; clientNotes?: string; platforms?: string; platformLinks?: string, durationMinutes?: number | null, peakViewers?: number | null, chatMessages?: number | null, audienceOrigin?: string | null }) => request<{ booking: BookingWithUser; message: string }>(`/bookings/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    adminCreate: (data: { userId: string; date: string; startTime: string; status?: string; addOns?: string[]; adminNotes?: string; customPrice?: number; paymentMethod?: 'CARTAO' | 'PIX' | 'BOLETO' }) => request<{ booking: Booking; message: string; paymentId?: string; boletoUrl?: string; boletoError?: string }>('/bookings/admin', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: { date?: string; startTime?: string; status?: string; adminNotes?: string; clientNotes?: string; platforms?: string; platformLinks?: string, durationMinutes?: number | null, peakViewers?: number | null, chatMessages?: number | null, audienceOrigin?: string | null, isLivestream?: boolean | null, streamMetrics?: string | null }) => request<{ booking: BookingWithUser; message: string }>(`/bookings/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     confirm: (id: string) => request<{ booking: Booking; message: string }>(`/bookings/${id}/confirm`, { method: 'PATCH' }),
     cancel: (id: string) => request<{ message: string }>(`/bookings/${id}`, { method: 'DELETE' }),
     hardDelete: (id: string) => request<{ message: string; creditRestored: boolean }>(`/bookings/${id}/hard-delete`, { method: 'DELETE' }),
     clientCancel: (id: string) => request<{ message: string }>(`/bookings/${id}/client-cancel`, { method: 'PUT' }),
     checkIn: (id: string) => request<{ booking: Booking; message: string }>(`/bookings/${id}/check-in`, { method: 'PUT' }),
-    complete: (id: string, metrics?: { durationMinutes?: number; peakViewers?: number; chatMessages?: number }) => request<{ booking: Booking; message: string }>(`/bookings/${id}/complete`, { method: 'PUT', body: JSON.stringify(metrics || {}) }),
+    complete: (id: string, data?: { durationMinutes?: number | null; isLivestream?: boolean | null; platforms?: string | null; platformLinks?: string | null; streamMetrics?: string | null; audienceOrigin?: string | null; adminNotes?: string | null; clientNotes?: string | null; peakViewers?: number | null; chatMessages?: number | null }) => request<{ booking: Booking; message: string }>(`/bookings/${id}/complete`, { method: 'PUT', body: JSON.stringify(data || {}) }),
     markFalta: (id: string) => request<{ booking: Booking; message: string }>(`/bookings/${id}/mark-falta`, { method: 'PUT' }),
     getMy: () => request<{ bookings: Booking[] }>('/bookings/my'),
     getAll: (date?: string, status?: string) => {
@@ -119,17 +119,17 @@ export const bookingsApi = {
 // ─── Contracts ──────────────────────────────────────────
 export const contractsApi = {
     checkFixo: (data: { tier: string; durationMonths: number; startDate: string; fixedDayOfWeek: number; fixedTime: string }) =>
-        request<{ available: boolean; conflicts: { date: string; originalTime: string; suggestedReplacement?: { date: string; time: string } }[] }>('/contracts/check-fixo', { method: 'POST', body: JSON.stringify(data) }),
-    create: (data: CreateContractData) => request<{ contract: Contract; payments: PaymentSummary[]; message: string }>('/contracts', { method: 'POST', body: JSON.stringify(data) }),
+        request<{ available: boolean; conflicts: { date: string; originalTime: string; suggestedReplacement?: { date: string; time: string }; alternatives?: { date: string; time: string }[] }[] }>('/contracts/check-fixo', { method: 'POST', body: JSON.stringify(data) }),
+    create: (data: CreateContractData) => request<{ contract: Contract; payments: PaymentSummary[]; message: string; firstPaymentId?: string }>('/contracts', { method: 'POST', body: JSON.stringify(data) }),
     createSelf: (data: SelfContractData) => request<{ message: string; firstPaymentId: string; amount: number; duration: number; clientSecret?: string; firstPixString?: string }>('/contracts/self', { method: 'POST', body: JSON.stringify(data) }),    // Standalone services (e.g. Social Media Management)
-    createService: (opts: { serviceKey: string, paymentMethod: 'CARTAO' | 'PIX' | 'BOLETO', durationMonths?: number }) => request<{ contract: Contract; checkoutUrl?: string; clientSecret?: string; message: string }>('/contracts/service', { method: 'POST', body: JSON.stringify(opts) }),
-    createCustom: (data: CustomContractData) => request<{ contract: Contract; payments: PaymentSummary[]; summary: CustomContractSummary; message: string; clientSecret?: string }>('/contracts/custom', { method: 'POST', body: JSON.stringify(data) }),
+    createService: (opts: { serviceKey: string, paymentMethod: 'CARTAO' | 'PIX' | 'BOLETO', durationMonths?: number, paymentPlan?: 'FULL' | 'MONTHLY' }) => request<{ contract?: Contract; firstPaymentId: string; amount: number; clientSecret?: string; pixString?: string; qrCodeBase64?: string; boletoUrl?: string; barcode?: string; checkoutUrl?: string; message: string }>('/contracts/service', { method: 'POST', body: JSON.stringify(opts) }),
+    createCustom: (data: CustomContractData) => request<{ contract: Contract; payments: PaymentSummary[]; summary: CustomContractSummary; message: string; clientSecret?: string; firstPaymentId?: string; firstPixString?: string }>('/contracts/custom', { method: 'POST', body: JSON.stringify(data) }),
     checkCustom: (data: { tier: string; durationMonths: number; schedule: { day: number; time: string }[]; startDate: string }) =>
         request<{ available: boolean; conflicts: CustomConflict[]; totalConflicts: number; totalSessions: number }>('/contracts/custom/check', { method: 'POST', body: JSON.stringify(data) }),
     getAll: () => request<{ contracts: Contract[] }>('/contracts'),
     getMy: () => request<{ contracts: ContractWithStats[] }>('/contracts/my'),
     getById: (id: string) => request<{ contract: ContractDetail }>(`/contracts/${id}`),
-    update: (id: string, data: { status?: string; endDate?: string; flexCreditsRemaining?: number; contractUrl?: string; paymentMethod?: 'CARTAO' | 'PIX' | 'BOLETO' }) => request<{ contract: Contract; message: string }>(`/contracts/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    update: (id: string, data: { status?: string; endDate?: string; flexCreditsRemaining?: number; contractUrl?: string; paymentMethod?: 'CARTAO' | 'PIX' | 'BOLETO'; boletoAllowed?: boolean; addOns?: string[] }) => request<{ contract: Contract; message: string }>(`/contracts/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     cancel: (id: string) => request<{ message: string }>(`/contracts/${id}`, { method: 'DELETE' }),
     requestCancellation: (id: string) => request<{ contract: Contract; message: string }>(`/contracts/${id}/request-cancellation`, { method: 'POST' }),
     resolveCancellation: (id: string, action: 'CHARGE_FEE' | 'WAIVE_FEE') => request<{ contract: Contract; message: string }>(`/contracts/${id}/resolve-cancellation`, { method: 'POST', body: JSON.stringify({ action }) }),
@@ -149,6 +149,12 @@ export const usersApi = {
     create: (data: { email: string; password: string; name: string; phone?: string; role?: string; notes?: string; cpfCnpj?: string | null; tags?: string[]; socialLinks?: string | null; clientStatus?: string }) => request<{ user: UserSummary; message: string }>('/users', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: { name?: string; email?: string; phone?: string; role?: string; password?: string; notes?: string; cpfCnpj?: string | null; address?: string | null; city?: string | null; state?: string | null; tags?: string[]; socialLinks?: string | null; clientStatus?: string }) => request<{ user: UserSummary; message: string }>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     remove: (id: string) => request<{ message: string }>(`/users/${id}`, { method: 'DELETE' }),
+    paymentOverview: (id: string) => request<{
+        autoChargeEnabled: boolean; hasSavedCard: boolean;
+        cards: { id: string; brand: string; last4: string; expMonth: number; expYear: number; isDefault: boolean }[];
+        duePayments: { id: string; amount: number; dueDate: string | null; overdue: boolean; contractName: string }[];
+    }>(`/users/${id}/payment-overview`),
+    setAutoCharge: (id: string, enabled: boolean) => request<{ autoChargeEnabled: boolean }>(`/users/${id}/auto-charge`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
 };
 
 // ─── Blocked Slots ──────────────────────────────────────
@@ -163,13 +169,18 @@ export const pricingApi = {
     get: () => request<{ pricing: PricingConfig[] }>('/pricing'),
     update: (pricing: PricingConfig[]) => request<{ pricing: PricingConfig[]; message: string }>('/pricing', { method: 'PUT', body: JSON.stringify({ pricing }) }),
     getAddons: () => request<{ addons: AddOnConfig[] }>('/pricing/addons'),
+    getAddonsAll: () => request<{ addons: AddOnConfig[] }>('/pricing/addons/all'),
     updateAddons: (addons: AddOnConfig[]) => request<{ addons: AddOnConfig[]; message: string }>('/pricing/addons', { method: 'PUT', body: JSON.stringify({ addons }) }),
+    removeAddon: (key: string) => request<{ softDeleted: boolean; addon?: AddOnConfig; message: string }>(`/pricing/addons/${encodeURIComponent(key)}`, { method: 'DELETE' }),
     getBusinessConfig: () => request<{ configs: BusinessConfigItem[]; grouped: Record<string, BusinessConfigItem[]> }>('/pricing/business-config'),
     updateBusinessConfig: (configs: { key: string; value: string }[]) => request<{ message: string }>('/pricing/business-config', { method: 'PUT', body: JSON.stringify({ configs }) }),
     getBusinessConfigPublic: () => request<{ config: Record<string, string | number> }>('/pricing/business-config/public'),
     getPaymentMethods: () => request<{ methods: PaymentMethodConfigItem[] }>('/pricing/payment-methods'),
     getPaymentMethodsAll: () => request<{ methods: PaymentMethodConfigItem[] }>('/pricing/payment-methods/all'),
     updatePaymentMethods: (methods: PaymentMethodConfigItem[]) => request<{ methods: PaymentMethodConfigItem[]; message: string }>('/pricing/payment-methods', { method: 'PUT', body: JSON.stringify({ methods }) }),
+    // Authoritative checkout numbers (mirrors the client) — same payment rules everywhere.
+    checkoutQuote: (body: { durationMonths: number; contractType?: string; tier?: string; addOns?: string[]; baseMonthlyCents?: number; sessionsPerPeriod?: number; discountPct?: number }) =>
+        request<{ durationMonths: number; monthlyAmount: number; monthlyTotal: number; fullPix: number; fullCard: number; maxInstallments: number; freeUpTo: number; installmentPlans: InstallmentPlan[]; services: ServiceBreakdownItem[]; servicesPerRecordingCents: number }>('/pricing/checkout-quote', { method: 'POST', body: JSON.stringify(body) }),
 };
 
 // ─── Public (No Auth) ───────────────────────────────────
@@ -182,6 +193,7 @@ export const publicApi = {
 export interface User {
     id: string; email: string; name: string; role: 'ADMIN' | 'CLIENTE'; phone?: string | null; photoUrl?: string | null;
     cpfCnpj?: string | null; address?: string | null; city?: string | null; state?: string | null; socialLinks?: string | null;
+    essentialNotificationsOnly?: boolean;
 }
 export interface Slot {
     time: string; available: boolean; tier: 'COMERCIAL' | 'AUDIENCIA' | 'SABADO' | null; price: number | null;
@@ -199,6 +211,8 @@ export interface Booking {
     peakViewers?: number | null;
     chatMessages?: number | null;
     audienceOrigin?: string | null;
+    isLivestream?: boolean | null;
+    streamMetrics?: string | null; // JSON: { [platform]: { views, peak, likes, comments } }
     addOns?: string[];
     holdExpiresAt?: string | null;
     contract?: {
@@ -231,7 +245,11 @@ export interface Contract {
     fixedDayOfWeek?: number | null; fixedTime?: string | null;
     contractUrl?: string | null;
     flexCreditsTotal?: number | null; flexCreditsRemaining?: number | null;
+    flexCreditsForfeited?: number | null;
+    flexCycleStart?: string | null;
+    paymentPlan?: 'MONTHLY' | 'FULL';
     paymentMethod?: 'CARTAO' | 'PIX' | 'BOLETO' | null;
+    boletoAllowed?: boolean;
     paymentDeadline?: string | null;
     addOns?: string[];
     user?: { id: string; name: string; email: string };
@@ -249,7 +267,7 @@ export interface Contract {
     addonUsage?: Record<string, { limit: number, used: number }>;
 }
 export interface PaymentSummary {
-    id: string; amount: number; status: 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED';
+    id: string; amount: number; status: 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED' | 'CANCELLED';
     dueDate: string; paidAt?: string; provider?: string;
     pixString?: string | null; boletoUrl?: string | null; paymentUrl?: string | null;
 }
@@ -276,6 +294,10 @@ export interface CreateContractData {
     userId: string; name: string; type: 'FIXO' | 'FLEX' | 'SERVICO'; tier: 'COMERCIAL' | 'AUDIENCIA' | 'SABADO';
     durationMonths: 3 | 6; startDate: string;
     fixedDayOfWeek?: number; fixedTime?: string; contractUrl?: string;
+    boletoAllowed?: boolean;
+    paymentPlan?: 'MONTHLY' | 'FULL';
+    paymentMethod?: 'CARTAO' | 'PIX' | 'BOLETO';
+    addOns?: string[];
     resolvedConflicts?: { originalDate: string; originalTime: string; newDate: string; newTime: string }[];
 }
 export interface SelfContractData {
@@ -284,6 +306,7 @@ export interface SelfContractData {
     firstBookingDate: string; firstBookingTime: string;
     fixedDayOfWeek?: number; fixedTime?: string;
     paymentMethod: 'CARTAO' | 'PIX' | 'BOLETO';
+    paymentPlan?: 'MONTHLY' | 'FULL';
     addOns?: string[];
     resolvedConflicts?: { originalDate: string; originalTime: string; newDate: string; newTime: string }[];
 }
@@ -293,6 +316,7 @@ export interface CustomContractData {
     durationMonths: number;
     schedule: { day: number; time: string }[];
     paymentMethod: 'CARTAO' | 'PIX' | 'BOLETO';
+    paymentPlan?: 'MONTHLY' | 'FULL';
     addOns?: string[];
     addonConfig?: Record<string, { mode: 'all' | 'credits'; perCycle?: number }>;
     resolvedConflicts?: { originalDate: string; originalTime: string; newDate: string; newTime: string }[];
@@ -329,7 +353,23 @@ export interface UserDetail {
 }
 export interface BlockedSlot { id: string; date: string; startTime: string; endTime: string; reason: string | null; creator?: { name: string }; }
 export interface PricingConfig { tier: 'COMERCIAL' | 'AUDIENCIA' | 'SABADO'; price: number; label: string; description?: string | null; }
-export interface AddOnConfig { key: string; name: string; price: number; description?: string | null; monthly?: boolean; }
+export interface AddOnConfig {
+    key: string;
+    name: string;
+    price: number;
+    description?: string | null;
+    monthly?: boolean;
+    active?: boolean;
+    sortOrder?: number;
+    icon?: string | null;
+    showOnLanding?: boolean;
+    benefits?: string | null; // JSON string[]
+    durationsOffered?: string; // CSV of months, e.g. "3,6"
+    plansAllowed?: string; // CSV: "FULL" and/or "MONTHLY"
+    billingCadence?: 'BILLING_CYCLE_28' | 'CALENDAR_MONTH';
+}
+/** Per-service pricing breakdown from checkout-quote — "valor por gravação" + agregados (centavos). */
+export interface ServiceBreakdownItem { key: string; name: string; monthly: boolean; perRecordingCents: number; perMonthCents: number; totalCents: number; }
 export interface BusinessConfigItem { key: string; value: string; type: string; label: string; group: string; }
 export interface PaymentMethodConfigItem {
     key: string; label: string; shortLabel: string; emoji: string;
@@ -353,7 +393,7 @@ export interface PaymentFull {
     provider: string;
     providerRef: string | null;
     amount: number;
-    status: 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED';
+    status: 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED' | 'CANCELLED';
     dueDate: string | null;
     createdAt: string;
     updatedAt: string;
@@ -566,7 +606,7 @@ export const stripeApi = {
     invalidateCache: invalidatePmCache,
     removePaymentMethod: (pmId: string) => { invalidatePmCache(); return request<{ message: string }>(`/stripe/payment-methods/${pmId}`, { method: 'DELETE' }); },
     setDefaultPaymentMethod: (pmId: string) => { invalidatePmCache(); return request<{ message: string }>(`/stripe/payment-methods/${pmId}/default`, { method: 'PUT' }); },
-    createPayment: (data: { paymentId: string; installments?: number; savedPaymentMethodId?: string; savePaymentMethod?: boolean; paymentMethod?: 'cartao' | 'pix' }) =>
+    createPayment: (data: { paymentId: string; installments?: number; savedPaymentMethodId?: string; savePaymentMethod?: boolean; paymentMethod?: 'cartao' | 'pix' | 'boleto' }) =>
         request<{ provider: 'STRIPE' | 'CORA'; clientSecret?: string; paymentIntentId?: string; pixString?: string; qrCodeBase64?: string; boletoUrl?: string; barcode?: string; paymentId?: string }>('/stripe/create-payment', { method: 'POST', body: JSON.stringify(data) }),
     verifyPayment: (data: { paymentId: string; paymentIntentId: string }) =>
         request<{ status: string; message: string }>('/stripe/verify-payment', { method: 'POST', body: JSON.stringify(data) }),

@@ -165,7 +165,7 @@ export default function AdminClientsPage() {
                         onFocus={e => (e.currentTarget.style.borderColor = '#10b981')}
                         onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
                     />
-                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🔎</span>
+                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5, pointerEvents: 'none' }}>🔎</span>
                 </div>
                 {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem' }}>✖️</button>}
 
@@ -196,7 +196,7 @@ export default function AdminClientsPage() {
                 ) : (
                     <div className="table-container" style={{ margin: 0 }}>
                         <div className="admin-table-wrap">
-                        <table>
+                        <table className="admin-table--cards">
                             <thead>
                                 <tr>
                                     <th style={{ paddingLeft: '20px' }}>Cliente</th>
@@ -223,7 +223,7 @@ export default function AdminClientsPage() {
                                             onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)')}
                                         >
                                             {/* Client info merged: Name + Email + Phone */}
-                                            <td style={{ paddingLeft: '20px' }}>
+                                            <td className="admin-card-title" style={{ paddingLeft: '20px' }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                                     {/* Avatar */}
                                                     <div style={{
@@ -258,19 +258,19 @@ export default function AdminClientsPage() {
                                             </td>
 
                                             {/* Sessions count */}
-                                            <td style={{ textAlign: 'center' }}>
+                                            <td data-label="Sessões" style={{ textAlign: 'center' }}>
                                                 <div style={{ fontWeight: 700, fontSize: '1rem' }}>{u._count.bookings}</div>
                                                 <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)' }}>sessões</div>
                                             </td>
 
                                             {/* Contracts count */}
-                                            <td style={{ textAlign: 'center' }}>
+                                            <td data-label="Contratos" style={{ textAlign: 'center' }}>
                                                 <div style={{ fontWeight: 700, fontSize: '1rem' }}>{u._count.contracts}</div>
                                                 <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)' }}>contratos</div>
                                             </td>
 
                                             {/* Valor Pago */}
-                                            <td style={{ textAlign: 'right' }}>
+                                            <td data-label="Pago" style={{ textAlign: 'right' }}>
                                                 {u.totalPaid > 0 ? (
                                                     <span style={{ fontWeight: 700, fontSize: '0.8125rem', color: '#10b981', fontVariantNumeric: 'tabular-nums' }}>
                                                         {formatBRL(u.totalPaid)}
@@ -281,7 +281,7 @@ export default function AdminClientsPage() {
                                             </td>
 
                                             {/* A Receber */}
-                                            <td style={{ textAlign: 'right' }}>
+                                            <td data-label="A Receber" style={{ textAlign: 'right' }}>
                                                 {u.totalPending > 0 ? (
                                                     <span style={{ fontWeight: 700, fontSize: '0.8125rem', color: '#f59e0b', fontVariantNumeric: 'tabular-nums' }}>
                                                         {formatBRL(u.totalPending)}
@@ -292,14 +292,14 @@ export default function AdminClientsPage() {
                                             </td>
 
                                             {/* Registration date */}
-                                            <td>
+                                            <td data-label="Desde">
                                                 <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                                                     {new Date(u.createdAt).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
                                                 </div>
                                             </td>
 
                                             {/* Actions */}
-                                            <td style={{ textAlign: 'center' }}>
+                                            <td data-label="" style={{ textAlign: 'center' }}>
                                                 <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
                                                     <button style={{
                                                         background: 'var(--bg-elevated)', border: '1px solid var(--border-color)',

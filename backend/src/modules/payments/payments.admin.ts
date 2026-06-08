@@ -19,7 +19,7 @@ const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
     PENDING:  ['PAID', 'FAILED', 'CANCELLED', 'REFUNDED'],
     FAILED:   ['PENDING', 'PAID'],
     PAID:     ['REFUNDED'],
-    CANCELLED: ['PENDING'],
+    CANCELLED: [], // terminal: a voided installment (contract cancelled) must not be re-opened/paid
     REFUNDED: [], // terminal state
 };
 
@@ -58,17 +58,26 @@ export function registerPaymentAdminRoutes(router: Router) {
                 };
             }
 
-            const payments = await prisma.payment.findMany({
-                where,
-                include: {
-                    user: { select: { id: true, name: true, email: true } },
-                    contract: { select: { id: true, name: true, type: true, tier: true, durationMonths: true } },
-                    booking: { select: { id: true, date: true, startTime: true } },
-                },
-                orderBy: { dueDate: 'asc' },
-            });
+            // Bounded by default (no full-table scan); optional ?page/?limit keep the { payments }
+            // shape and add an optional pagination block.
+            const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit ?? ''), 10) || 200));
+            const page = Math.max(1, parseInt(String(req.query.page ?? ''), 10) || 1);
+            const [payments, total] = await Promise.all([
+                prisma.payment.findMany({
+                    where,
+                    include: {
+                        user: { select: { id: true, name: true, email: true } },
+                        contract: { select: { id: true, name: true, type: true, tier: true, durationMonths: true } },
+                        booking: { select: { id: true, date: true, startTime: true } },
+                    },
+                    orderBy: { dueDate: 'asc' },
+                    skip: (page - 1) * limit,
+                    take: limit,
+                }),
+                prisma.payment.count({ where }),
+            ]);
 
-            res.json({ payments });
+            res.json({ payments, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
         } catch (err) {
             console.error('Erro ao listar pagamentos:', err);
             res.status(500).json({ error: 'Erro ao listar pagamentos.' });
@@ -107,16 +116,20 @@ export function registerPaymentAdminRoutes(router: Router) {
             const overdueCount = overduePayments.length;
             const overdueAmount = overduePayments.reduce((s, p) => s + p.amount, 0);
 
-            // Monthly breakdown for chart (last 6 months)
+            // Monthly breakdown for chart (last 6 months) — ONE query for the whole window,
+            // grouped in-memory (was 6 separate findMany calls = 6 round-trips per dashboard load).
+            const sixMonthStart = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+            const sixMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+            const windowPayments = await prisma.payment.findMany({
+                where: { dueDate: { gte: sixMonthStart, lt: sixMonthEnd } },
+                select: { amount: true, status: true, dueDate: true },
+            });
+
             const monthlyBreakdown = [];
             for (let i = 5; i >= 0; i--) {
                 const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-                const dEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-                dEnd.setDate(dEnd.getDate() + 1);
-
-                const monthPayments = await prisma.payment.findMany({
-                    where: { dueDate: { gte: d, lt: dEnd } },
-                });
+                const dEnd = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+                const monthPayments = windowPayments.filter(p => p.dueDate && p.dueDate >= d && p.dueDate < dEnd);
 
                 monthlyBreakdown.push({
                     month: d.toISOString().slice(0, 7), // YYYY-MM
@@ -170,22 +183,67 @@ export function registerPaymentAdminRoutes(router: Router) {
                 }
             }
 
-            const updated = await prisma.payment.update({
-                where: { id },
+            // Atomic guard: when changing status, only flip if the row is STILL in the state we
+            // validated against. This makes a concurrent double-PATCH (or a PATCH racing a webhook)
+            // a no-op for the loser, so the confirmation effects below can never run twice and
+            // double-fulfill (e.g. materialize two contracts). Non-status edits guard by id only.
+            const isStatusChange = !!data.status && data.status !== existing.status;
+            const guardWhere = isStatusChange ? { id, status: existing.status } : { id };
+            const flip = await prisma.payment.updateMany({
+                where: guardWhere,
                 data: {
                     ...(data.status && { status: data.status }),
                     ...(data.status === 'PAID' && !existing.paidAt && { paidAt: new Date() }),
                     ...(data.providerRef !== undefined && { providerRef: data.providerRef }),
                 },
+            });
+            if (flip.count === 0) {
+                const current = await prisma.payment.findUnique({
+                    where: { id },
+                    include: {
+                        user: { select: { id: true, name: true, email: true } },
+                        contract: { select: { id: true, name: true, type: true, tier: true } },
+                    },
+                });
+                res.status(409).json({ error: 'O pagamento já foi atualizado por outra ação.', payment: current });
+                return;
+            }
+
+            const updated = await prisma.payment.findUnique({
+                where: { id },
                 include: {
                     user: { select: { id: true, name: true, email: true } },
                     contract: { select: { id: true, name: true, type: true, tier: true } },
                 },
             });
 
-            // Audit log for financial state changes
+            // When an admin marks a payment PAID (e.g. recording an offline payment), run the same
+            // confirmation effects as the webhook/verify paths so the client still gets booking
+            // confirmation, contract fulfillment and the "payment confirmed" push. We won the atomic
+            // flip above (flip.count>0), so this runs exactly once. Best-effort: never fail the
+            // status update if a downstream effect errors.
+            if (data.status === 'PAID' && existing.status !== 'PAID') {
+                try {
+                    const { onPaymentConfirmed } = await import('../../lib/paymentEffects.js');
+                    await onPaymentConfirmed(id);
+                } catch (e) {
+                    console.error('[PAYMENT-ADMIN] onPaymentConfirmed failed:', e instanceof Error ? e.message : e);
+                }
+            }
+
+            // Audit log for financial state changes — persisted (compliance), not just console.
             if (data.status && data.status !== existing.status) {
                 console.log(`[PAYMENT-ADMIN] ${req.user!.userId} changed payment ${id}: ${existing.status} → ${data.status}`);
+                try {
+                    const { logAudit } = await import('../../lib/audit.js');
+                    await logAudit('PAYMENT', id, `STATUS_${data.status}`, req.user!.userId, {
+                        oldStatus: existing.status,
+                        newStatus: data.status,
+                        notes: data.notes,
+                    });
+                } catch (e) {
+                    console.error('[PAYMENT-ADMIN] audit log failed:', e instanceof Error ? e.message : e);
+                }
             }
 
             res.json({ payment: updated, message: 'Pagamento atualizado com sucesso.' });

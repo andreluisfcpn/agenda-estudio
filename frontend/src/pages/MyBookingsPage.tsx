@@ -1,21 +1,17 @@
 import { getErrorMessage } from '../utils/errors';
 import { useState, useEffect } from 'react';
-import { bookingsApi, Booking } from '../api/client';
+import { bookingsApi, pricingApi, Booking } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
-import { Clapperboard, ChevronDown } from 'lucide-react';
+import { Clapperboard, ChevronDown, Sparkles, Radio, ExternalLink } from 'lucide-react';
 import Skeleton from '../components/ui/SkeletonLoader';
-
-const PLATFORMS = [
-    { key: 'YOUTUBE', label: 'YouTube', color: '#FF0000' },
-    { key: 'TIKTOK', label: 'TikTok', color: '#00F2EA' },
-    { key: 'INSTAGRAM', label: 'Instagram', color: '#E1306C' },
-    { key: 'FACEBOOK', label: 'Facebook', color: '#1877F2' },
-];
+import StreamMetricsChart from '../components/client/StreamMetricsChart';
+import { PLATFORMS, PLATFORM_BY_KEY, parseStreamMetrics, parsePlatforms, parsePlatformLinks } from '../constants/platforms';
 
 export default function MyBookingsPage() {
     const { user } = useAuth();
     const [bookings, setBookings] = useState<Booking[]>([]);
+    const [addonNames, setAddonNames] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(true);
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
@@ -35,6 +31,11 @@ export default function MyBookingsPage() {
     const [rescheduling, setRescheduling] = useState(false);
 
     useEffect(() => { loadBookings(); }, []);
+    useEffect(() => {
+        pricingApi.getAddons()
+            .then(r => setAddonNames(Object.fromEntries(r.addons.map(a => [a.key, a.name]))))
+            .catch(() => {});
+    }, []);
 
     const loadBookings = async () => {
         setLoading(true);
@@ -126,6 +127,22 @@ export default function MyBookingsPage() {
         return endDateTime <= now;
     });
 
+    // Aggregate livestream stats across all completed recordings (for the summary strip).
+    const completedRecs = finalized.filter(b => b.status === 'COMPLETED');
+    const agg = completedRecs.reduce((acc, b) => {
+        const m = parseStreamMetrics(b.streamMetrics);
+        for (const pm of Object.values(m)) {
+            acc.views += Number(pm.views) || 0;
+            acc.likes += Number(pm.likes) || 0;
+            acc.comments += Number(pm.comments) || 0;
+            acc.peak = Math.max(acc.peak, Number(pm.peak) || 0);
+        }
+        return acc;
+    }, { views: 0, likes: 0, comments: 0, peak: 0 });
+    const liveCount = completedRecs.filter(b => b.isLivestream).length;
+    const hasStreamData = agg.views > 0 || liveCount > 0;
+    const fmtNum = (n: number) => n.toLocaleString('pt-BR');
+
     return (
         <div>
             {/* Hero */}
@@ -141,10 +158,28 @@ export default function MyBookingsPage() {
                     </div>
                     <div>
                         <h1 className="client-hero__title">Minhas Gravações</h1>
-                        <p className="client-hero__subtitle">Histórico de sessões · Gerencie plataformas e links</p>
+                        <p className="client-hero__subtitle">Histórico de sessões · Métricas das suas transmissões</p>
                     </div>
                 </div>
             </div>
+
+            {/* Aggregate summary of livestream performance */}
+            {!loading && hasStreamData && (
+                <div className="recordings-summary animate-card-enter">
+                    {[
+                        { label: 'Gravações', value: fmtNum(completedRecs.length) },
+                        { label: 'Transmissões', value: fmtNum(liveCount) },
+                        { label: 'Visualizações', value: fmtNum(agg.views) },
+                        { label: 'Pico ao vivo', value: fmtNum(agg.peak) },
+                        { label: 'Curtidas', value: fmtNum(agg.likes) },
+                    ].map(s => (
+                        <div key={s.label} className="recordings-summary__card">
+                            <div className="recordings-summary__value">{s.value}</div>
+                            <div className="recordings-summary__label">{s.label}</div>
+                        </div>
+                    ))}
+                </div>
+            )}
 
             {loading ? (
                 <div className="bookings-list">
@@ -194,7 +229,30 @@ export default function MyBookingsPage() {
                                         </div>
                                         <div className="booking-card__time">
                                             {b.startTime} — {b.endTime} · <span className={`badge badge-${b.tierApplied.toLowerCase()}`}>{b.tierApplied}</span>
+                                            {b.isLivestream && (
+                                                <span style={{ marginLeft: 6, fontSize: '0.625rem', fontWeight: 700, padding: '1px 7px', borderRadius: 999, background: 'rgba(239,68,68,0.12)', color: '#ef4444', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                                                    <Radio size={10} /> AO VIVO
+                                                </span>
+                                            )}
                                         </div>
+                                        {parsePlatforms(b.platforms).length > 0 && (
+                                            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 4 }}>
+                                                {parsePlatforms(b.platforms).map(k => (
+                                                    <span key={k} style={{ fontSize: '0.625rem', fontWeight: 700, padding: '1px 7px', borderRadius: 999, color: '#fff', background: PLATFORM_BY_KEY[k]?.color || 'var(--accent-primary)' }}>
+                                                        {PLATFORM_BY_KEY[k]?.label || k}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {b.addOns && b.addOns.length > 0 && (
+                                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                                                {b.addOns.map(k => (
+                                                    <span key={k} style={{ fontSize: '0.625rem', fontWeight: 600, padding: '1px 7px', borderRadius: 999, background: 'var(--tier-audiencia-bg)', color: 'var(--accent-primary)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                                                        <Sparkles size={10} /> {addonNames[k] || k}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="booking-card__right">
@@ -316,6 +374,32 @@ export default function MyBookingsPage() {
                                                 <div className="metric-card__label">Origem</div>
                                                 <div className="metric-card__value" style={{ fontSize: '1rem' }}>{b.audienceOrigin || '--'}</div>
                                             </div>
+                                        </div>
+                                    )}
+
+                                    {/* Per-network livestream metrics + links */}
+                                    {b.status === 'COMPLETED' && parseStreamMetrics(b.streamMetrics) && Object.keys(parseStreamMetrics(b.streamMetrics)).length > 0 && (
+                                        <div style={{ marginTop: 18 }}>
+                                            <div className="booking-section-header">
+                                                <h3 className="booking-section-header__title">
+                                                    <Radio size={14} style={{ color: '#ef4444', marginRight: 6 }} /> Desempenho por rede
+                                                </h3>
+                                            </div>
+                                            {(() => {
+                                                const links = parsePlatformLinks(b.platformLinks);
+                                                const keys = Object.keys(links).filter(k => links[k]);
+                                                return keys.length > 0 ? (
+                                                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                                                        {keys.map(k => (
+                                                            <a key={k} href={links[k]} target="_blank" rel="noopener noreferrer"
+                                                                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.75rem', fontWeight: 600, padding: '5px 10px', borderRadius: 8, textDecoration: 'none', color: '#fff', background: PLATFORM_BY_KEY[k]?.color || 'var(--accent-primary)' }}>
+                                                                {PLATFORM_BY_KEY[k]?.label || k} <ExternalLink size={12} />
+                                                            </a>
+                                                        ))}
+                                                    </div>
+                                                ) : null;
+                                            })()}
+                                            <StreamMetricsChart streamMetrics={b.streamMetrics} />
                                         </div>
                                     )}
 

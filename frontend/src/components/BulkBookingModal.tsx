@@ -9,7 +9,6 @@ export interface BulkBookingModalProps {
     contract: {
         id: string;
         tier: string;
-        type: string;
         flexCreditsRemaining: number;
         endDate: string;
     };

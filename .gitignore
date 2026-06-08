@@ -64,3 +64,6 @@ tmp_*.js
 
 # Prisma generated client (regenerated via postinstall)
 backend/src/generated/
+
+# Runtime data backups (cleanupTestData dumps — never commit test/PII data)
+backend/backups/

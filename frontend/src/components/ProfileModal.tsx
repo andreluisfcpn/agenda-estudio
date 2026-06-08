@@ -4,6 +4,7 @@ import ImageCropper from './ImageCropper';
 import { useAuth } from '../context/AuthContext';
 import { authApi } from '../api/client';
 import { maskCpfCnpj, isValidCpfCnpj } from '../utils/mask';
+import ToggleSwitch from './ui/ToggleSwitch';
 
 interface ProfileModalProps {
     isOpen?: boolean;
@@ -33,6 +34,7 @@ export default function ProfileModal({ isOpen = true, onClose, onSuccess }: Prof
 
     const [instagram, setInstagram] = useState(initialInsta);
     const [linkedin, setLinkedin] = useState(initialLink);
+    const [essentialOnly, setEssentialOnly] = useState(user?.essentialNotificationsOnly ?? false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -42,7 +44,7 @@ export default function ProfileModal({ isOpen = true, onClose, onSuccess }: Prof
     const handleSave = async () => {
         setSaving(true); setError('');
         try {
-            const data: Record<string, string> = {};
+            const data: Parameters<typeof authApi.updateProfile>[0] = {};
             if (name && name !== user?.name) data.name = name;
             if (phone !== (user?.phone || '')) data.phone = phone;
             if (password) data.password = password;
@@ -61,6 +63,9 @@ export default function ProfileModal({ isOpen = true, onClose, onSuccess }: Prof
 
             if (instagram !== initialInsta || linkedin !== initialLink) {
                 data.socialLinks = JSON.stringify({ instagram, linkedin });
+            }
+            if (essentialOnly !== (user?.essentialNotificationsOnly ?? false)) {
+                data.essentialNotificationsOnly = essentialOnly;
             }
 
             if (Object.keys(data).length > 0) {
@@ -218,6 +223,14 @@ export default function ProfileModal({ isOpen = true, onClose, onSuccess }: Prof
                     <div className="form-group">
                         <label className="form-label">LinkedIn (URL)</label>
                         <input className="form-input" value={linkedin} onChange={e => setLinkedin(e.target.value)} placeholder="https://linkedin.com/in/..." />
+                    </div>
+
+                    <div className="form-group">
+                        <label className="form-label">🔔 Notificações</label>
+                        <ToggleSwitch checked={essentialOnly} onChange={setEssentialOnly} label="Apenas notificações essenciais" disabled={saving} />
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 6 }}>
+                            Receba só avisos importantes (pagamentos e perda de crédito). Lembretes e dicas ficam silenciados.
+                        </div>
                     </div>
 
                     <div className="modal-actions" style={{ marginTop: '16px' }}>

@@ -5,6 +5,7 @@
 import Stripe from 'stripe';
 import { prisma } from './prisma.js';
 import { getErrorMessage } from '../utils/errors.js';
+import { CONFIG_DEFAULT_VALUES } from '../config/businessConfigCatalog.js';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -23,23 +24,6 @@ interface StripeCredentials {
 interface StripeConfigDual {
     sandbox?: StripeCredentials;
     production?: StripeCredentials;
-}
-
-export interface StripeCheckoutPayload {
-    amount: number;          // in cents (BRL)
-    description: string;
-    customerEmail: string;
-    customerName: string;
-    paymentId: string;       // our internal payment ID for metadata
-    successUrl: string;
-    cancelUrl: string;
-    installments?: number;   // number of installments (parcelas)
-}
-
-export interface StripeCheckoutResult {
-    sessionId: string;
-    checkoutUrl: string;
-    paymentIntentId?: string;
 }
 
 // ─── Helpers ─────────────────────────────────────────────
@@ -116,69 +100,9 @@ async function getStripeClient(): Promise<Stripe> {
 
 // ─── Public API ──────────────────────────────────────────
 
-export async function stripeCreateCheckoutSession(payload: StripeCheckoutPayload): Promise<StripeCheckoutResult> {
-    const stripe = await getStripeClient();
-
-    const sessionParams: Stripe.Checkout.SessionCreateParams = {
-        payment_method_types: ['card'],
-        mode: 'payment',
-        currency: 'brl',
-        customer_email: payload.customerEmail,
-        line_items: [{
-            price_data: {
-                currency: 'brl',
-                product_data: {
-                    name: payload.description,
-                    description: `Pagamento - ${payload.customerName}`,
-                },
-                unit_amount: payload.amount,
-            },
-            quantity: 1,
-        }],
-        metadata: {
-            paymentId: payload.paymentId,
-            customerName: payload.customerName,
-        },
-        success_url: payload.successUrl,
-        cancel_url: payload.cancelUrl,
-    };
-
-    // Add installments support for Brazilian cards
-    if (payload.installments && payload.installments > 1) {
-        sessionParams.payment_method_options = {
-            card: {
-                installments: { enabled: true },
-            },
-        };
-    }
-
-    const session = await stripe.checkout.sessions.create(sessionParams);
-
-    return {
-        sessionId: session.id,
-        checkoutUrl: session.url || '',
-        paymentIntentId: typeof session.payment_intent === 'string'
-            ? session.payment_intent
-            : session.payment_intent?.id,
-    };
-}
-
 export async function stripeGetPaymentIntent(paymentIntentId: string): Promise<Stripe.PaymentIntent> {
     const stripe = await getStripeClient();
     return stripe.paymentIntents.retrieve(paymentIntentId);
-}
-
-export async function stripeCreateRefund(paymentIntentId: string, amount?: number): Promise<Stripe.Refund> {
-    const stripe = await getStripeClient();
-    return stripe.refunds.create({
-        payment_intent: paymentIntentId,
-        ...(amount ? { amount } : {}),
-    });
-}
-
-export async function stripeGetSession(sessionId: string): Promise<Stripe.Checkout.Session> {
-    const stripe = await getStripeClient();
-    return stripe.checkout.sessions.retrieve(sessionId);
 }
 
 /** Verify Stripe webhook signature */
@@ -567,19 +491,22 @@ export async function stripeGetInstallmentPlans(
 ): Promise<InstallmentPlan[]> {
     const plans: InstallmentPlan[] = [];
 
-    // Get fee rates from BusinessConfig
-    const feeConfigs = await prisma.businessConfig.findMany({
-        where: { key: { startsWith: 'card_fee_' } },
-    });
-    const feeMap: Record<number, number> = {};
-    for (const fc of feeConfigs) {
-        const match = fc.key.match(/card_fee_(\d+)x_pct/);
-        if (match) feeMap[parseInt(match[1])] = parseFloat(fc.value);
-    }
+    // Central card-installment tariff (1x..12x → %) — single source for all card
+    // services. Admin-editable via BusinessConfig; falls back to the catalog default.
+    const surchargeRow = await prisma.businessConfig.findUnique({ where: { key: 'card_installment_surcharges' } });
+    let tariff: Record<string, number> = {};
+    try {
+        tariff = JSON.parse(surchargeRow?.value ?? CONFIG_DEFAULT_VALUES.card_installment_surcharges ?? '{}');
+    } catch { tariff = {}; }
+    // Ultimate fallback for any installment count missing from the table.
+    const defaultFeeRow = await prisma.businessConfig.findUnique({ where: { key: 'card_fee_default_pct' } });
+    const defaultFeePct = parseFloat(defaultFeeRow?.value ?? CONFIG_DEFAULT_VALUES.card_fee_default_pct ?? '0');
 
     for (let n = 1; n <= 12; n++) {
+        // Contract benefit: installments within the contract's duration are absorbed (free).
         const freeOfCharge = n <= contractDurationMonths;
-        const feePercent = n === 1 ? 0 : (freeOfCharge ? 0 : (feeMap[n] || feeMap[6] || 5));
+        const tariffRate = tariff[String(n)];
+        const feePercent = n === 1 ? 0 : (freeOfCharge ? 0 : (tariffRate != null ? tariffRate : defaultFeePct));
         const total = n === 1 ? amount : Math.round(amount * (1 + feePercent / 100));
         const perInstallment = Math.round(total / n);
 

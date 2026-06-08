@@ -20,10 +20,14 @@ function getEncryptionKey(): Buffer {
         return crypto.createHash('sha256').update(dedicatedKey).digest();
     }
 
-    // Backward compatibility: fall back to JWT_SECRET with a startup warning
+    // Backward compatibility: fall back to JWT_SECRET. We deliberately do NOT throw here — the
+    // existing stored credentials were encrypted with SHA-256(JWT_SECRET), so a hard requirement
+    // for a *different* key would both crash prod and make those credentials undecryptable. Instead
+    // we log loudly (error-level). MIGRATION: set ENCRYPTION_KEY = current JWT_SECRET first (no
+    // re-encryption needed), then rotate to a distinct 32-byte key with a re-encrypt migration.
     const secret = process.env.JWT_SECRET || '';
     if (process.env.NODE_ENV === 'production' && !_encryptionKeyWarned) {
-        console.warn('[SECURITY] ENCRYPTION_KEY not set — falling back to JWT_SECRET. Set a dedicated ENCRYPTION_KEY for production.');
+        console.error('[SECURITY][CRITICAL] ENCRYPTION_KEY is NOT set — gateway credentials are being encrypted with JWT_SECRET (key reuse). Set a dedicated ENCRYPTION_KEY in the environment. See utils/crypto.ts for the safe migration path.');
         _encryptionKeyWarned = true;
     }
     return crypto.createHash('sha256').update(secret).digest();

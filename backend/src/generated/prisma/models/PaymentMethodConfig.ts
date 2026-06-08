@@ -44,6 +44,7 @@ export type PaymentMethodConfigMinAggregateOutputType = {
   active: boolean | null
   sortOrder: number | null
   accessMode: string | null
+  contexts: string | null
   updatedAt: Date | null
 }
 
@@ -57,6 +58,7 @@ export type PaymentMethodConfigMaxAggregateOutputType = {
   active: boolean | null
   sortOrder: number | null
   accessMode: string | null
+  contexts: string | null
   updatedAt: Date | null
 }
 
@@ -70,6 +72,7 @@ export type PaymentMethodConfigCountAggregateOutputType = {
   active: number
   sortOrder: number
   accessMode: number
+  contexts: number
   updatedAt: number
   _all: number
 }
@@ -93,6 +96,7 @@ export type PaymentMethodConfigMinAggregateInputType = {
   active?: true
   sortOrder?: true
   accessMode?: true
+  contexts?: true
   updatedAt?: true
 }
 
@@ -106,6 +110,7 @@ export type PaymentMethodConfigMaxAggregateInputType = {
   active?: true
   sortOrder?: true
   accessMode?: true
+  contexts?: true
   updatedAt?: true
 }
 
@@ -119,6 +124,7 @@ export type PaymentMethodConfigCountAggregateInputType = {
   active?: true
   sortOrder?: true
   accessMode?: true
+  contexts?: true
   updatedAt?: true
   _all?: true
 }
@@ -219,6 +225,7 @@ export type PaymentMethodConfigGroupByOutputType = {
   active: boolean
   sortOrder: number
   accessMode: string
+  contexts: string
   updatedAt: Date
   _count: PaymentMethodConfigCountAggregateOutputType | null
   _avg: PaymentMethodConfigAvgAggregateOutputType | null
@@ -255,6 +262,7 @@ export type PaymentMethodConfigWhereInput = {
   active?: Prisma.BoolFilter<"PaymentMethodConfig"> | boolean
   sortOrder?: Prisma.IntFilter<"PaymentMethodConfig"> | number
   accessMode?: Prisma.StringFilter<"PaymentMethodConfig"> | string
+  contexts?: Prisma.StringFilter<"PaymentMethodConfig"> | string
   updatedAt?: Prisma.DateTimeFilter<"PaymentMethodConfig"> | Date | string
 }
 
@@ -268,6 +276,7 @@ export type PaymentMethodConfigOrderByWithRelationInput = {
   active?: Prisma.SortOrder
   sortOrder?: Prisma.SortOrder
   accessMode?: Prisma.SortOrder
+  contexts?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
 
@@ -284,6 +293,7 @@ export type PaymentMethodConfigWhereUniqueInput = Prisma.AtLeast<{
   active?: Prisma.BoolFilter<"PaymentMethodConfig"> | boolean
   sortOrder?: Prisma.IntFilter<"PaymentMethodConfig"> | number
   accessMode?: Prisma.StringFilter<"PaymentMethodConfig"> | string
+  contexts?: Prisma.StringFilter<"PaymentMethodConfig"> | string
   updatedAt?: Prisma.DateTimeFilter<"PaymentMethodConfig"> | Date | string
 }, "key">
 
@@ -297,6 +307,7 @@ export type PaymentMethodConfigOrderByWithAggregationInput = {
   active?: Prisma.SortOrder
   sortOrder?: Prisma.SortOrder
   accessMode?: Prisma.SortOrder
+  contexts?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   _count?: Prisma.PaymentMethodConfigCountOrderByAggregateInput
   _avg?: Prisma.PaymentMethodConfigAvgOrderByAggregateInput
@@ -318,6 +329,7 @@ export type PaymentMethodConfigScalarWhereWithAggregatesInput = {
   active?: Prisma.BoolWithAggregatesFilter<"PaymentMethodConfig"> | boolean
   sortOrder?: Prisma.IntWithAggregatesFilter<"PaymentMethodConfig"> | number
   accessMode?: Prisma.StringWithAggregatesFilter<"PaymentMethodConfig"> | string
+  contexts?: Prisma.StringWithAggregatesFilter<"PaymentMethodConfig"> | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"PaymentMethodConfig"> | Date | string
 }
 
@@ -331,6 +343,7 @@ export type PaymentMethodConfigCreateInput = {
   active?: boolean
   sortOrder?: number
   accessMode?: string
+  contexts?: string
   updatedAt?: Date | string
 }
 
@@ -344,6 +357,7 @@ export type PaymentMethodConfigUncheckedCreateInput = {
   active?: boolean
   sortOrder?: number
   accessMode?: string
+  contexts?: string
   updatedAt?: Date | string
 }
 
@@ -357,6 +371,7 @@ export type PaymentMethodConfigUpdateInput = {
   active?: Prisma.BoolFieldUpdateOperationsInput | boolean
   sortOrder?: Prisma.IntFieldUpdateOperationsInput | number
   accessMode?: Prisma.StringFieldUpdateOperationsInput | string
+  contexts?: Prisma.StringFieldUpdateOperationsInput | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -370,6 +385,7 @@ export type PaymentMethodConfigUncheckedUpdateInput = {
   active?: Prisma.BoolFieldUpdateOperationsInput | boolean
   sortOrder?: Prisma.IntFieldUpdateOperationsInput | number
   accessMode?: Prisma.StringFieldUpdateOperationsInput | string
+  contexts?: Prisma.StringFieldUpdateOperationsInput | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -383,6 +399,7 @@ export type PaymentMethodConfigCreateManyInput = {
   active?: boolean
   sortOrder?: number
   accessMode?: string
+  contexts?: string
   updatedAt?: Date | string
 }
 
@@ -396,6 +413,7 @@ export type PaymentMethodConfigUpdateManyMutationInput = {
   active?: Prisma.BoolFieldUpdateOperationsInput | boolean
   sortOrder?: Prisma.IntFieldUpdateOperationsInput | number
   accessMode?: Prisma.StringFieldUpdateOperationsInput | string
+  contexts?: Prisma.StringFieldUpdateOperationsInput | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -409,6 +427,7 @@ export type PaymentMethodConfigUncheckedUpdateManyInput = {
   active?: Prisma.BoolFieldUpdateOperationsInput | boolean
   sortOrder?: Prisma.IntFieldUpdateOperationsInput | number
   accessMode?: Prisma.StringFieldUpdateOperationsInput | string
+  contexts?: Prisma.StringFieldUpdateOperationsInput | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -422,6 +441,7 @@ export type PaymentMethodConfigCountOrderByAggregateInput = {
   active?: Prisma.SortOrder
   sortOrder?: Prisma.SortOrder
   accessMode?: Prisma.SortOrder
+  contexts?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
 
@@ -439,6 +459,7 @@ export type PaymentMethodConfigMaxOrderByAggregateInput = {
   active?: Prisma.SortOrder
   sortOrder?: Prisma.SortOrder
   accessMode?: Prisma.SortOrder
+  contexts?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
 
@@ -452,6 +473,7 @@ export type PaymentMethodConfigMinOrderByAggregateInput = {
   active?: Prisma.SortOrder
   sortOrder?: Prisma.SortOrder
   accessMode?: Prisma.SortOrder
+  contexts?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
 
@@ -471,6 +493,7 @@ export type PaymentMethodConfigSelect<ExtArgs extends runtime.Types.Extensions.I
   active?: boolean
   sortOrder?: boolean
   accessMode?: boolean
+  contexts?: boolean
   updatedAt?: boolean
 }, ExtArgs["result"]["paymentMethodConfig"]>
 
@@ -484,6 +507,7 @@ export type PaymentMethodConfigSelectCreateManyAndReturn<ExtArgs extends runtime
   active?: boolean
   sortOrder?: boolean
   accessMode?: boolean
+  contexts?: boolean
   updatedAt?: boolean
 }, ExtArgs["result"]["paymentMethodConfig"]>
 
@@ -497,6 +521,7 @@ export type PaymentMethodConfigSelectUpdateManyAndReturn<ExtArgs extends runtime
   active?: boolean
   sortOrder?: boolean
   accessMode?: boolean
+  contexts?: boolean
   updatedAt?: boolean
 }, ExtArgs["result"]["paymentMethodConfig"]>
 
@@ -510,10 +535,11 @@ export type PaymentMethodConfigSelectScalar = {
   active?: boolean
   sortOrder?: boolean
   accessMode?: boolean
+  contexts?: boolean
   updatedAt?: boolean
 }
 
-export type PaymentMethodConfigOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"key" | "label" | "shortLabel" | "emoji" | "description" | "color" | "active" | "sortOrder" | "accessMode" | "updatedAt", ExtArgs["result"]["paymentMethodConfig"]>
+export type PaymentMethodConfigOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"key" | "label" | "shortLabel" | "emoji" | "description" | "color" | "active" | "sortOrder" | "accessMode" | "contexts" | "updatedAt", ExtArgs["result"]["paymentMethodConfig"]>
 
 export type $PaymentMethodConfigPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "PaymentMethodConfig"
@@ -528,6 +554,7 @@ export type $PaymentMethodConfigPayload<ExtArgs extends runtime.Types.Extensions
     active: boolean
     sortOrder: number
     accessMode: string
+    contexts: string
     updatedAt: Date
   }, ExtArgs["result"]["paymentMethodConfig"]>
   composites: {}
@@ -961,6 +988,7 @@ export interface PaymentMethodConfigFieldRefs {
   readonly active: Prisma.FieldRef<"PaymentMethodConfig", 'Boolean'>
   readonly sortOrder: Prisma.FieldRef<"PaymentMethodConfig", 'Int'>
   readonly accessMode: Prisma.FieldRef<"PaymentMethodConfig", 'String'>
+  readonly contexts: Prisma.FieldRef<"PaymentMethodConfig", 'String'>
   readonly updatedAt: Prisma.FieldRef<"PaymentMethodConfig", 'DateTime'>
 }
     

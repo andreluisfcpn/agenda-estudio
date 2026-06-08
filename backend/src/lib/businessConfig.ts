@@ -1,6 +1,8 @@
 import { prisma } from './prisma.js';
+import { CONFIG_DEFAULT_VALUES } from '../config/businessConfigCatalog.js';
 
-// Default values used if DB has no row for a key
+// Default values used if DB has no row for a key. Catalog (fees etc.) merged in
+// at the end so it stays the single source of truth for those keys.
 const DEFAULTS: Record<string, string> = {
     // ── plans ──
     discount_3months: '30',
@@ -17,8 +19,6 @@ const DEFAULTS: Record<string, string> = {
     booking_min_advance_minutes: '30',
     // ── payments ──
     pix_extra_discount_pct: '10',
-    card_fee_3x_pct: '15',
-    card_fee_6x_pct: '20',
     service_discount_3months: '30',
     service_discount_6months: '40',
     // ── schedule ──
@@ -37,6 +37,8 @@ const DEFAULTS: Record<string, string> = {
     studio_email: 'contato@buzios.digital',
     studio_hero_image: 'https://buzios.digital/wp-content/uploads/elementor/thumbs/bd-estudio-enhanced-sr-r9lm9twze86yo0wxu68fp1e0yf8baho28zrniyf1o0.jpg',
     studio_location: 'Búzios, RJ',
+    // Fees and all catalog-managed keys (single source of truth) — overrides any above.
+    ...CONFIG_DEFAULT_VALUES,
 };
 
 // Simple in-memory cache (60s TTL)

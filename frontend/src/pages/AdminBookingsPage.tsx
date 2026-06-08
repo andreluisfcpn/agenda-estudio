@@ -146,7 +146,7 @@ export default function AdminBookingsPage() {
                         onFocus={e => (e.currentTarget.style.borderColor = '#10b981')}
                         onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
                     />
-                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🔎</span>
+                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5, pointerEvents: 'none' }}>🔎</span>
                 </div>
 
                 {/* Date filter */}
@@ -216,7 +216,7 @@ export default function AdminBookingsPage() {
                     ) : (
                         <div className="table-container" style={{ margin: 0 }}>
                             <div className="admin-table-wrap">
-                            <table>
+                            <table className="admin-table--cards">
                                 <thead>
                                     <tr>
                                         <th style={{ paddingLeft: '20px' }}>Cliente</th>
@@ -244,7 +244,7 @@ export default function AdminBookingsPage() {
                                                 onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)')}
                                             >
                                                 {/* Client */}
-                                                <td style={{ paddingLeft: '20px' }}>
+                                                <td className="admin-card-title" style={{ paddingLeft: '20px' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                                         <div style={{
                                                             width: '36px', height: '36px', borderRadius: '10px',
@@ -267,7 +267,7 @@ export default function AdminBookingsPage() {
                                                 </td>
 
                                                 {/* Date + Time */}
-                                                <td>
+                                                <td data-label="Quando">
                                                     <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{dayStr}</div>
                                                     <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                         <span style={{ fontSize: '0.6875rem' }}>⏰</span>
@@ -276,7 +276,7 @@ export default function AdminBookingsPage() {
                                                 </td>
 
                                                 {/* Contract */}
-                                                <td>
+                                                <td data-label="Contrato">
                                                     {b.contract ? (
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                             <StatusBadge meta={getMeta(TIER_META, b.contract.tier)} label={b.contract.name} />
@@ -287,17 +287,17 @@ export default function AdminBookingsPage() {
                                                 </td>
 
                                                 {/* Created at */}
-                                                <td>
+                                                <td data-label="Agendado">
                                                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{createdStr}</div>
                                                 </td>
 
                                                 {/* Valor */}
-                                                <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '0.875rem', fontVariantNumeric: 'tabular-nums', color: '#10b981' }}>
+                                                <td data-label="Valor" style={{ textAlign: 'right', fontWeight: 700, fontSize: '0.875rem', fontVariantNumeric: 'tabular-nums', color: '#10b981' }}>
                                                     {formatBRL(b.price)}
                                                 </td>
 
                                                 {/* Status - premium inline select */}
-                                                <td style={{ textAlign: 'center' }}>
+                                                <td data-label="Status" style={{ textAlign: 'center' }}>
                                                     <div style={{ display: 'inline-flex', alignItems: 'center', position: 'relative' }}>
                                                         {/* Animated dot */}
                                                         <span style={{
@@ -338,7 +338,7 @@ export default function AdminBookingsPage() {
                                                 </td>
 
                                                 {/* Actions */}
-                                                <td style={{ textAlign: 'center' }}>
+                                                <td data-label="" style={{ textAlign: 'center' }}>
                                                     <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
                                                         <button style={{
                                                             background: 'var(--bg-elevated)', border: '1px solid var(--border-color)',

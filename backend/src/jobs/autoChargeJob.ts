@@ -1,0 +1,92 @@
+import { prisma } from '../lib/prisma.js';
+import { createNotification } from '../modules/notifications/notificationService.js';
+import { stripeChargeOffSession } from '../lib/stripeService.js';
+import { onPaymentConfirmed } from '../lib/paymentEffects.js';
+
+/**
+ * Auto-Charge Job — runs daily.
+ *
+ * For every PENDING contract installment whose dueDate has arrived, if the client opted
+ * into auto-charge (User.autoChargeEnabled) AND has a saved card, charge their default
+ * card OFF-SESSION via Stripe. On synchronous success the payment is confirmed atomically
+ * (PENDING→PAID → onPaymentConfirmed, exactly once even if the webhook also fires); on a
+ * decline / authentication-required the client is notified to pay manually.
+ *
+ * Idempotency: Stripe's Idempotency-Key embeds paymentId+amount (see stripeCreatePaymentIntent),
+ * so re-running across days never double-charges — a repeat returns the same PaymentIntent.
+ */
+export async function runAutoChargeJob(): Promise<void> {
+    const now = new Date();
+    const endOfToday = new Date(now);
+    endOfToday.setHours(23, 59, 59, 999);
+
+    const duePayments = await prisma.payment.findMany({
+        where: {
+            status: 'PENDING',
+            dueDate: { lte: endOfToday },
+            contractId: { not: null },
+            user: { autoChargeEnabled: true, stripeCustomerId: { not: null } },
+        },
+        include: { user: { select: { id: true, name: true, stripeCustomerId: true } } },
+        orderBy: { dueDate: 'asc' },
+        take: 200,
+    });
+
+    let charged = 0, failed = 0, skipped = 0;
+
+    for (const p of duePayments) {
+        const customerId = p.user.stripeCustomerId;
+        if (!customerId) { skipped++; continue; }
+
+        // Prefer the default saved card; fall back to the most recent one.
+        const card = (await prisma.savedPaymentMethod.findFirst({ where: { userId: p.userId, isDefault: true } }))
+            ?? (await prisma.savedPaymentMethod.findFirst({ where: { userId: p.userId }, orderBy: { createdAt: 'desc' } }));
+        if (!card) { skipped++; continue; } // no saved card → client pays manually
+
+        try {
+            const result = await stripeChargeOffSession(customerId, card.stripePaymentMethodId, p.amount, {
+                paymentId: p.id,
+                userId: p.userId,
+                contractId: p.contractId ?? '',
+                description: 'Cobrança automática de parcela',
+            });
+
+            if (result.status === 'succeeded') {
+                // Atomic PENDING→PAID guard so the off-session charge and a late webhook
+                // can't both run the confirmation effects.
+                const upd = await prisma.payment.updateMany({
+                    where: { id: p.id, status: 'PENDING' },
+                    data: { status: 'PAID', paidAt: new Date(), provider: 'STRIPE', providerRef: result.paymentIntentId },
+                });
+                if (upd.count > 0) {
+                    await onPaymentConfirmed(p.id);
+                    charged++;
+                }
+            } else {
+                // requires_action / processing — record the ref and let the webhook finish it.
+                await prisma.payment.update({
+                    where: { id: p.id },
+                    data: { provider: 'STRIPE', providerRef: result.paymentIntentId },
+                });
+            }
+        } catch (err) {
+            failed++;
+            const msg = err instanceof Error ? err.message : 'Falha na cobrança automática.';
+            console.error(`[AUTO-CHARGE] Payment ${p.id} failed:`, msg);
+            await createNotification({
+                userId: p.userId,
+                type: 'PAYMENT_FAILED',
+                severity: 'critical',
+                title: 'Cobrança automática não concluída',
+                message: 'Não conseguimos cobrar sua parcela no cartão cadastrado. Pague manualmente na aba Pagamentos ou atualize seu cartão.',
+                entityType: 'payment',
+                entityId: p.id,
+                actionUrl: '/my-payments',
+            }).catch(() => {});
+        }
+    }
+
+    if (charged || failed || skipped) {
+        console.log(`[AUTO-CHARGE] charged=${charged} failed=${failed} skipped=${skipped} of ${duePayments.length} due`);
+    }
+}

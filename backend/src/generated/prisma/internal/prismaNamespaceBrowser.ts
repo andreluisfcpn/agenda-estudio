@@ -102,6 +102,7 @@ export const UserScalarFieldEnum = {
   clientStatus: 'clientStatus',
   stripeCustomerId: 'stripeCustomerId',
   autoChargeEnabled: 'autoChargeEnabled',
+  essentialNotificationsOnly: 'essentialNotificationsOnly',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
@@ -141,6 +142,8 @@ export const ContractScalarFieldEnum = {
   flexCreditsRemaining: 'flexCreditsRemaining',
   flexCycleStart: 'flexCycleStart',
   flexWeeksCompensated: 'flexWeeksCompensated',
+  flexCreditsForfeited: 'flexCreditsForfeited',
+  flexForfeitFloor: 'flexForfeitFloor',
   customSchedule: 'customSchedule',
   sessionsPerWeek: 'sessionsPerWeek',
   sessionsPerCycle: 'sessionsPerCycle',
@@ -149,6 +152,8 @@ export const ContractScalarFieldEnum = {
   accessMode: 'accessMode',
   addOns: 'addOns',
   paymentMethod: 'paymentMethod',
+  boletoAllowed: 'boletoAllowed',
+  paymentPlan: 'paymentPlan',
   pausedAt: 'pausedAt',
   pauseReason: 'pauseReason',
   resumeDate: 'resumeDate',
@@ -182,6 +187,8 @@ export const BookingScalarFieldEnum = {
   peakViewers: 'peakViewers',
   chatMessages: 'chatMessages',
   audienceOrigin: 'audienceOrigin',
+  isLivestream: 'isLivestream',
+  streamMetrics: 'streamMetrics',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
@@ -260,6 +267,14 @@ export const AddOnConfigScalarFieldEnum = {
   price: 'price',
   description: 'description',
   monthly: 'monthly',
+  active: 'active',
+  sortOrder: 'sortOrder',
+  icon: 'icon',
+  showOnLanding: 'showOnLanding',
+  benefits: 'benefits',
+  durationsOffered: 'durationsOffered',
+  plansAllowed: 'plansAllowed',
+  billingCadence: 'billingCadence',
   updatedAt: 'updatedAt'
 } as const
 
@@ -288,6 +303,7 @@ export const PaymentMethodConfigScalarFieldEnum = {
   active: 'active',
   sortOrder: 'sortOrder',
   accessMode: 'accessMode',
+  contexts: 'contexts',
   updatedAt: 'updatedAt'
 } as const
 

@@ -1,15 +1,14 @@
 import { getErrorMessage } from '../../../utils/errors';
-import React, { useState, useCallback } from 'react';
-import { bookingsApi, contractsApi, UserSummary, Contract, Slot } from '../../../api/client';
+import React, { useState, useCallback, useEffect } from 'react';
+import { bookingsApi, contractsApi, pricingApi, UserSummary, Contract, Slot, AddOnConfig } from '../../../api/client';
 import { useUI } from '../../../context/UIContext';
-import ModalOverlay from '../../ModalOverlay';
+import BottomSheetModal from '../../BottomSheetModal';
+import InlineCheckout from '../../InlineCheckout';
+import ServiceLineItem from '../../ui/ServiceLineItem';
+import { formatBRL } from '../../../utils/format';
+import { TIER_META } from '../../../constants/adminMeta';
 
 const TIER_EMOJI: Record<string, string> = { COMERCIAL: '🏢', AUDIENCIA: '🎤', SABADO: '🌟' };
-const TIER_COLORS: Record<string, { color: string; bg: string }> = {
-    COMERCIAL: { color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
-    AUDIENCIA: { color: '#2dd4bf', bg: 'rgba(45,212,191,0.12)' },
-    SABADO: { color: '#fbbf24', bg: 'rgba(245,158,11,0.12)' },
-};
 
 interface CreateBookingModalProps {
     isOpen: boolean;
@@ -31,6 +30,17 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
     const [creating, setCreating] = useState(false);
     const [customPrice, setCustomPrice] = useState<number | null>(null);
     const [priceDisplay, setPriceDisplay] = useState('');
+    // Per-episode services on this recording (inherit the linked contract's discount; avulso = 0%).
+    const [addons, setAddons] = useState<AddOnConfig[]>([]);
+    const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
+    useEffect(() => {
+        if (!isOpen) return;
+        pricingApi.getAddons().then(r => setAddons(r.addons.filter(a => !a.monthly))).catch(() => setAddons([]));
+    }, [isOpen]);
+    // Avulso "charge now" (unified with the client): generate PIX / charge the client's card.
+    const [chargeNow, setChargeNow] = useState(false);
+    const [chargeMethod, setChargeMethod] = useState<'CARTAO' | 'PIX'>('CARTAO');
+    const [chargePaymentId, setChargePaymentId] = useState<string | null>(null);
 
     const resetCreateModal = () => {
         onClose();
@@ -42,20 +52,36 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
         setDaySlots([]);
         setCustomPrice(null);
         setPriceDisplay('');
+        setSelectedAddons([]);
+        setChargeNow(false);
+        setChargeMethod('CARTAO');
+        setChargePaymentId(null);
     };
 
     const handleCreate = async () => {
         setCreateError('');
         setCreating(true);
         try {
-            const payload: any = { userId: createForm.userId, date: createForm.date, startTime: createForm.startTime, status: createForm.status };
+            const isAvulsoCharge = !createForm.contractId && chargeNow;
+            const payload: any = {
+                userId: createForm.userId, date: createForm.date, startTime: createForm.startTime,
+                // To charge inline the booking must await payment (RESERVED), then the payment confirms it.
+                status: isAvulsoCharge ? 'RESERVED' : createForm.status,
+            };
             if (createForm.contractId) payload.contractId = createForm.contractId;
             if (createForm.adminNotes.trim()) payload.adminNotes = createForm.adminNotes;
             if (!createForm.contractId && customPrice != null) payload.customPrice = customPrice;
-            await bookingsApi.adminCreate(payload);
-            resetCreateModal();
-            showToast('Agendamento criado com sucesso!');
+            if (selectedAddons.length > 0) payload.addOns = selectedAddons;
+            if (isAvulsoCharge) payload.paymentMethod = chargeMethod;
+            const res = await bookingsApi.adminCreate(payload);
             onCreated();
+            if (isAvulsoCharge && res.paymentId) {
+                // Open the same InlineCheckout the client uses — charges the CLIENT (payment.userId).
+                setChargePaymentId(res.paymentId);
+            } else {
+                resetCreateModal();
+                showToast('Agendamento criado com sucesso!');
+            }
         } catch (err: unknown) { setCreateError(getErrorMessage(err)); }
         finally { setCreating(false); }
     };
@@ -83,18 +109,53 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
     const selectedUser = users.find(u => u.id === createForm.userId);
     const selectedSlot = daySlots.find(s => s.time === createForm.startTime);
     const selectedContract = clientContracts.find(c => c.id === createForm.contractId);
+    // Services on this recording inherit the contract's loyalty discount (avulso = 0%).
+    const inheritedDiscount = selectedContract?.discountPct || 0;
+    const servicesValue = selectedAddons.reduce((acc, key) => {
+        const a = addons.find(x => x.key === key);
+        return a ? acc + Math.round(a.price * (1 - inheritedDiscount / 100)) : acc;
+    }, 0);
     const filteredClients = users.filter(u => u.role !== 'ADMIN').filter(u => {
         if (!createSearch) return true;
         const q = createSearch.toLowerCase();
         return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
     });
-    const tc = (tier: string) => TIER_COLORS[tier] || TIER_COLORS.COMERCIAL;
+    const tc = (tier: string) => TIER_META[tier] || TIER_META.COMERCIAL;
 
     const stepLabels = ['Cliente', 'Horário', 'Confirmar'];
 
+    // Charge-now step (avulso): same InlineCheckout + unified policy as the client.
+    if (chargePaymentId) {
+        return (
+            <BottomSheetModal isOpen onClose={() => { resetCreateModal(); showToast('Agendamento criado (pagamento pendente).'); }} hideHeader maxWidth="460px" className="admin-sheet" title="Cobrar agendamento">
+                    <div style={{ padding: '24px 28px' }}>
+                        <h3 style={{ fontSize: '1.0625rem', fontWeight: 800, margin: '0 0 4px' }}>Cobrar agendamento</h3>
+                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0 0 16px' }}>
+                            {chargeMethod === 'PIX' ? 'Mostre o QR Code PIX ao cliente.' : 'Use o cartão do cliente (presente).'} A reserva confirma ao pagar.
+                        </p>
+                        <InlineCheckout
+                            amount={(customPrice || 0) + servicesValue}
+                            paymentId={chargePaymentId}
+                            description="Agendamento avulso"
+                            allowedMethods={[chargeMethod]}
+                            isAdmin
+                            context="avulso"
+                            onSuccess={() => { resetCreateModal(); showToast('Pagamento confirmado!'); }}
+                            onError={(msg) => setCreateError(msg)}
+                            onCancel={() => { resetCreateModal(); showToast('Agendamento criado (pagamento pendente).'); }}
+                        />
+                        {createError && <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', color: '#ef4444', fontSize: '0.75rem' }}>{createError}</div>}
+                        <button onClick={() => { resetCreateModal(); showToast('Agendamento criado (pagamento pendente).'); }}
+                            style={{ marginTop: 12, width: '100%', padding: '10px', borderRadius: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer' }}>
+                            Fechar (deixar pendente)
+                        </button>
+                    </div>
+                </BottomSheetModal>
+        );
+    }
+
     return (
-        <ModalOverlay onClose={resetCreateModal}>
-            <div className="modal" style={{ maxWidth: 580, maxHeight: '92vh', overflowY: 'auto', padding: 0 }}>
+        <BottomSheetModal isOpen onClose={resetCreateModal} hideHeader maxWidth="580px" className="admin-sheet" title="Novo Agendamento">
                 {/* --- HEADER --- */}
                 <div style={{ padding: '28px 32px 0', borderBottom: 'none' }}>
                     <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -562,6 +623,63 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                 </div>
                             </div>
 
+                            {/* Serviços por gravação — herdam o desconto do contrato (avulso = 0%) */}
+                            {addons.length > 0 && (
+                                <div style={{ marginBottom: '14px' }}>
+                                    <label style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        ✨ Serviços desta gravação
+                                        {selectedContract && inheritedDiscount > 0 && (
+                                            <span style={{ fontSize: '0.5625rem', fontWeight: 700, padding: '1px 6px', borderRadius: '4px', background: 'rgba(45,212,191,0.12)', color: '#2dd4bf' }}>-{inheritedDiscount}% do contrato</span>
+                                        )}
+                                    </label>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        {addons.map(addon => {
+                                            const selected = selectedAddons.includes(addon.key);
+                                            const perRecording = Math.round(addon.price * (1 - inheritedDiscount / 100));
+                                            return (
+                                                <ServiceLineItem
+                                                    key={addon.key}
+                                                    name={addon.name}
+                                                    perRecordingCents={perRecording}
+                                                    compact
+                                                    selected={selected}
+                                                    onToggle={() => setSelectedAddons(prev => selected ? prev.filter(k => k !== addon.key) : [...prev, addon.key])}
+                                                />
+                                            );
+                                        })}
+                                    </div>
+                                    {servicesValue > 0 && (
+                                        <div style={{ marginTop: 8, fontSize: '0.75rem', color: '#2dd4bf', fontWeight: 700, textAlign: 'right' }}>
+                                            +{formatBRL(servicesValue)} em serviços {createForm.contractId ? '(somados a esta gravação)' : '(somados ao valor)'}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Avulso: cobrar agora (mesmo InlineCheckout do cliente) */}
+                            {!createForm.contractId && (
+                                <div style={{ marginBottom: '14px' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '12px 14px', borderRadius: '10px', background: chargeNow ? 'rgba(99,102,241,0.06)' : 'var(--bg-elevated)', border: `1px solid ${chargeNow ? 'rgba(99,102,241,0.3)' : 'var(--border-default)'}` }}>
+                                        <input type="checkbox" checked={chargeNow} onChange={e => setChargeNow(e.target.checked)} style={{ width: 18, height: 18, accentColor: '#818cf8', cursor: 'pointer' }} />
+                                        <div>
+                                            <div style={{ fontSize: '0.8125rem', fontWeight: 600 }}>💳 Cobrar o cliente agora</div>
+                                            <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', marginTop: '2px' }}>Gera PIX ou cobra o cartão do cliente (presente). Sem marcar, segue o status escolhido.</div>
+                                        </div>
+                                    </label>
+                                    {chargeNow && (
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '8px' }}>
+                                            {([{ key: 'PIX' as const, icon: '⚡', label: 'PIX' }, { key: 'CARTAO' as const, icon: '💳', label: 'Cartão' }]).map(m => {
+                                                const active = chargeMethod === m.key;
+                                                return (
+                                                    <button key={m.key} onClick={() => setChargeMethod(m.key)} style={{ padding: '10px', borderRadius: '10px', cursor: 'pointer', textAlign: 'center', background: active ? 'rgba(99,102,241,0.08)' : 'var(--bg-elevated)', border: `1.5px solid ${active ? 'rgba(99,102,241,0.3)' : 'var(--border-default)'}` }}>
+                                                        <span style={{ fontSize: '0.875rem' }}>{m.icon}</span> <span style={{ fontSize: '0.75rem', fontWeight: 700, color: active ? '#818cf8' : 'var(--text-primary)' }}>{m.label}</span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                             {/* Status */}
                             <div style={{ marginBottom: '14px' }}>
                                 <label style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px', display: 'block' }}>Status inicial</label>
@@ -616,7 +734,6 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                         </div>
                     )}
                 </div>
-            </div>
-        </ModalOverlay>
+        </BottomSheetModal>
     );
 }

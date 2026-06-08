@@ -6,10 +6,7 @@ import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import BottomSheetModal from './BottomSheetModal';
 import PaymentModal from './PaymentModal';
 import { ArrowLeft, CalendarDays, Clock, Tag, Youtube, FileText, Sparkles, Plus, Check, ChevronLeft, RefreshCw } from 'lucide-react';
-
-function formatBRL(cents: number): string {
-    return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
-}
+import { formatBRL } from '../utils/format';
 
 export interface BookingDetailData {
     id: string;
@@ -225,7 +222,7 @@ export default function BookingDetailModal({
         return d.toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: 'long', year: 'numeric' });
     })();
 
-    const episodeAddons = allAddons.filter(a => !a.monthly && a.key !== 'GESTAO_SOCIAL');
+    const episodeAddons = allAddons.filter(a => !a.monthly);
     const activeAddons = episodeAddons.filter(a => localAddOns.includes(a.key) || contractAddOns.includes(a.key));
     const availableForPurchase = episodeAddons.filter(a => !localAddOns.includes(a.key) && !contractAddOns.includes(a.key));
     const contractAvailable = episodeAddons.filter(a => contractAddOns.includes(a.key) && !localAddOns.includes(a.key));

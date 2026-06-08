@@ -1,6 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useId } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import { X } from 'lucide-react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 interface BottomSheetModalProps {
     isOpen: boolean;
@@ -31,6 +33,11 @@ export default function BottomSheetModal({
     zIndex,
 }: BottomSheetModalProps) {
     const [isDesktop, setIsDesktop] = useState(false);
+    // Height of the mobile bottom-tab bar when it is on screen — the sheet rises from
+    // ABOVE it (menu stays visible/usable below) rather than covering it. 0 when absent.
+    const [bottomNavInset, setBottomNavInset] = useState(0);
+    const trapRef = useFocusTrap<HTMLDivElement>(isOpen);
+    const titleId = useId();
 
     const safeClose = useCallback(() => {
         if (!preventClose) onClose();
@@ -44,6 +51,21 @@ export default function BottomSheetModal({
         mq.addEventListener('change', listener);
         return () => mq.removeEventListener('change', listener);
     }, []);
+
+    // Measure the bottom-tab bar (only present + visible on authenticated mobile pages) so
+    // the sheet can sit on top of it instead of over it.
+    useEffect(() => {
+        if (!isOpen) return;
+        const measure = () => {
+            const nav = document.querySelector('.bottom-tab-bar-wrap');
+            const rect = nav?.getBoundingClientRect();
+            const visible = !!nav && getComputedStyle(nav).display !== 'none' && (rect?.height ?? 0) > 0;
+            setBottomNavInset(visible ? Math.round(rect!.height) : 0);
+        };
+        measure();
+        window.addEventListener('resize', measure);
+        return () => window.removeEventListener('resize', measure);
+    }, [isOpen]);
 
     // Lock body scroll
     useEffect(() => {
@@ -75,10 +97,19 @@ export default function BottomSheetModal({
         }
     };
 
-    const overlayStyle: React.CSSProperties = zIndex ? { zIndex } : {};
-    const cardStyle: React.CSSProperties = maxWidth ? { maxWidth } : {};
+    const overlayStyle: React.CSSProperties = {
+        ...(zIndex ? { zIndex } : {}),
+        // Shorten the overlay so it ends at the top of the bottom-tab bar (mobile only).
+        ...(bottomNavInset > 0 ? { height: `calc(100svh - ${bottomNavInset}px)` } : {}),
+    };
+    const cardStyle: React.CSSProperties = {
+        ...(maxWidth ? { maxWidth } : {}),
+        ...(bottomNavInset > 0 ? { maxHeight: `calc(100svh - ${bottomNavInset}px - 16px)` } : {}),
+    };
+    // The <h2 id={titleId}> only renders when the header is shown AND a title is set.
+    const hasRenderedTitle = !hideHeader && !!title;
 
-    return (
+    const content = (
         <AnimatePresence>
             {isOpen && (
                 <motion.div
@@ -95,6 +126,7 @@ export default function BottomSheetModal({
                     }}
                 >
                     <motion.div
+                        ref={trapRef}
                         className={`bottom-sheet-card ${className || ''}`}
                         style={cardStyle}
                         initial={{ y: "100%" }}
@@ -106,6 +138,11 @@ export default function BottomSheetModal({
                         dragElastic={{ top: 0.05, bottom: 0.5 }}
                         onDragEnd={handleDragEnd}
                         onMouseDown={(e) => e.stopPropagation()}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label={hasRenderedTitle ? undefined : (title || 'Janela')}
+                        aria-labelledby={hasRenderedTitle ? titleId : undefined}
+                        tabIndex={-1}
                     >
                         {/* Grab handle (mobile) — sits outside the scroll body, so dragging it
                             triggers the sheet's drag-to-dismiss while the body keeps scrolling. */}
@@ -119,7 +156,7 @@ export default function BottomSheetModal({
                             <div className="bottom-sheet-header">
                                 {(title || !isDesktop) && (
                                     <div className="bottom-sheet-title-row">
-                                        <h2 className="bottom-sheet-title">{title}</h2>
+                                        <h2 className="bottom-sheet-title" id={titleId}>{title}</h2>
                                         <button
                                             onClick={safeClose}
                                             aria-label="Fechar"
@@ -143,4 +180,9 @@ export default function BottomSheetModal({
             )}
         </AnimatePresence>
     );
+
+    // Portal to <body> so the fixed overlay escapes any ancestor stacking context /
+    // containing block (e.g. the topbar's backdrop-filter), keeping it above the
+    // bottom-tab bar and everything else.
+    return typeof document !== 'undefined' ? createPortal(content, document.body) : content;
 }

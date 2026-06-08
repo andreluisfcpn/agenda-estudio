@@ -117,27 +117,27 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
             });
         }
 
-        // 3. Unconfirmed bookings (today or tomorrow)
+        // 3. Unconfirmed bookings — TODAY only (action needed now). Tomorrow's session is
+        // already covered by the 24h BOOKING_REMINDER job, so we don't double-notify.
         const tomorrow = new Date(today);
         tomorrow.setDate(tomorrow.getDate() + 1);
 
         const unconfirmedBookings = await prisma.booking.findMany({
             where: {
                 status: 'RESERVED',
-                date: { gte: today, lte: tomorrow },
+                date: { gte: today, lt: tomorrow },
                 ...(userRole !== 'ADMIN' ? { userId } : {}),
             },
             include: { user: { select: { name: true } } },
         });
 
         for (const b of unconfirmedBookings) {
-            const isToday = new Date(b.date).toISOString().split('T')[0] === today.toISOString().split('T')[0];
             notifications.push({
                 id: `booking-unconfirmed-${b.id}`,
                 type: 'BOOKING_UNCONFIRMED',
-                severity: isToday ? 'critical' : 'warning',
+                severity: 'critical',
                 title: '⏳ Sessão Não Confirmada',
-                message: userRole === 'ADMIN' ? `${b.user.name} — ${isToday ? 'HOJE' : 'Amanhã'} às ${b.startTime}` : `Sua sessão de ${isToday ? 'HOJE' : 'Amanhã'} às ${b.startTime} precisa ser confirmada`,
+                message: userRole === 'ADMIN' ? `${b.user.name} — HOJE às ${b.startTime}` : `Sua sessão de HOJE às ${b.startTime} precisa ser confirmada`,
                 entityType: 'BOOKING', entityId: b.id,
                 actionUrl: userRole === 'ADMIN' ? '/admin/today' : '/dashboard',
                 createdAt: now.toISOString(),
@@ -192,67 +192,10 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
             });
         }
 
-        // 5. Flex contracts with low credits
-        const lowCreditContracts = await prisma.contract.findMany({
-            where: {
-                status: 'ACTIVE',
-                type: 'FLEX',
-                flexCreditsRemaining: { lte: 2, gt: 0 },
-                ...(userRole !== 'ADMIN' ? { userId } : {}),
-            },
-            include: { user: { select: { name: true } } },
-        });
-
-        for (const c of lowCreditContracts) {
-            notifications.push({
-                id: `flex-credits-low-${c.id}`,
-                type: 'FLEX_CREDITS_LOW',
-                severity: 'info',
-                title: '🔄 Créditos Flex Baixos',
-                message: userRole === 'ADMIN' ? `${c.user.name} — ${c.flexCreditsRemaining} crédito${c.flexCreditsRemaining !== 1 ? 's' : ''} restante${c.flexCreditsRemaining !== 1 ? 's' : ''}` : `Seu plano Flex tem apenas ${c.flexCreditsRemaining} crédito${c.flexCreditsRemaining !== 1 ? 's' : ''} restante${c.flexCreditsRemaining !== 1 ? 's' : ''}. Deseja recarregar?`,
-                entityType: 'CONTRACT', entityId: c.id,
-                actionUrl: userRole === 'ADMIN' ? `/admin/clients/${c.userId}` : '/my-contracts',
-                createdAt: now.toISOString(),
-                read: false,
-                source: 'computed',
-            });
-        }
-
-        // 6. Inactive clients (admin only)
-        if (userRole === 'ADMIN') {
-            const fourteenDaysAgo = new Date(today);
-            fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
-
-            const activeContractsQuery = await prisma.contract.findMany({
-                where: { status: 'ACTIVE' },
-                include: {
-                    user: { select: { id: true, name: true } },
-                    bookings: {
-                        where: { date: { gte: fourteenDaysAgo }, status: { not: 'CANCELLED' } },
-                        take: 1,
-                    },
-                },
-            });
-
-            for (const c of activeContractsQuery) {
-                if (c.bookings.length === 0) {
-                    if (!notifications.find(n => n.id === `client-inactive-${c.userId}`)) {
-                        notifications.push({
-                            id: `client-inactive-${c.userId}`,
-                            type: 'CLIENT_INACTIVE',
-                            severity: 'info',
-                            title: '😴 Cliente Inativo',
-                            message: `${c.user.name} — sem gravações há 14+ dias`,
-                            entityType: 'USER', entityId: c.userId,
-                            actionUrl: `/admin/clients/${c.userId}`,
-                            createdAt: now.toISOString(),
-                            read: false,
-                            source: 'computed',
-                        });
-                    }
-                }
-            }
-        }
+        // NOTE (notification pruning, jun/2026): the noisy "info" FLEX_CREDITS_LOW (≤2 credits)
+        // and the admin-only CLIENT_INACTIVE computed notifications were removed — they fired on
+        // every poll and added little value. The meaningful FLEX signals (crédito perdido =
+        // critical, "grave esta semana" = warning) still come from the jobs as persisted rows.
 
         // ── Persisted Notifications (from DB) ──
         const persistedNotifs = await getUserNotifications(userId, 30);

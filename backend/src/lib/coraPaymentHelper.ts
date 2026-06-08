@@ -15,6 +15,7 @@ export interface CoraPaymentRequest {
     description: string;
     withPixQrCode: boolean;  // true = PIX, false = boleto puro
     dueDays?: number;        // days from now until due (default: 1 for PIX, 3 for boleto)
+    idempotencyKey?: string; // stable per-payment key → retries reuse the same Cora invoice
 }
 
 export interface CoraPaymentResponse {
@@ -85,7 +86,12 @@ export async function createCoraPayment(req: CoraPaymentRequest): Promise<CoraPa
         throw new Error('CPF/CNPJ não cadastrado ou inválido. Atualize o perfil antes de pagar com PIX/Boleto.');
     }
 
-    // Calculate due date
+    // Calculate due date (now + dueDays). Note: this is recomputed per call, so a retry that
+    // crosses midnight produces a different due_date in the request body. That does NOT create a
+    // duplicate invoice — the deterministic Idempotency-Key (the raw payment UUID) makes Cora return
+    // the original invoice for a repeated key. The body delta only matters if Cora strictly
+    // rejects same-key/different-body (rare; Stripe-style idempotency returns the cached response),
+    // in which case the (very rare) midnight-crossing retry surfaces an error and the user retries.
     const defaultDueDays = req.withPixQrCode ? 1 : 3;
     const dueDays = req.dueDays ?? defaultDueDays;
     const dueDate = new Date();
@@ -100,6 +106,7 @@ export async function createCoraPayment(req: CoraPaymentRequest): Promise<CoraPa
         dueDate: dueDate.toISOString().split('T')[0],
         description: req.description,
         withPixQrCode: req.withPixQrCode,
+        idempotencyKey: req.idempotencyKey,
         customer: {
             name: user.name,
             email: user.email || 'cliente@estudio.com',
@@ -107,6 +114,16 @@ export async function createCoraPayment(req: CoraPaymentRequest): Promise<CoraPa
             address: addressData,
         },
     });
+
+    // A 2xx Cora response that lacks the payable artifact (PIX EMV when a QR was
+    // requested, or a boleto URL) is unpayable — fail loudly so callers return an
+    // error instead of persisting a blank QR/boleto the client would poll forever.
+    if (req.withPixQrCode && !result.pixString) {
+        throw new Error('A Cora não retornou o código PIX. Tente novamente em instantes.');
+    }
+    if (!req.withPixQrCode && !result.boletoUrl) {
+        throw new Error('A Cora não retornou o boleto. Tente novamente em instantes.');
+    }
 
     return {
         result,

@@ -1,18 +1,21 @@
-import React, { createContext, useContext, useCallback } from 'react';
+import React, { createContext, useContext, useCallback, useTransition, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 interface NavigationContextType {
-    /** Start a transition: show loader → wait → navigate */
+    /** Navigate inside a React transition (keeps the current page until the next is ready). */
     navigateTo: (path: string) => void;
-    /** True while the loader overlay is visible */
+    /** True while a navigation transition is pending (target chunk/render not committed yet). */
     isTransitioning: boolean;
-    /** True during the fade-out phase */
+    /** Path being navigated TO during a pending transition (null when idle). */
+    pendingPath: string | null;
+    /** Kept for API compatibility (no separate exit phase anymore). */
     isExiting: boolean;
 }
 
 const NavigationContext = createContext<NavigationContextType>({
     navigateTo: () => {},
     isTransitioning: false,
+    pendingPath: null,
     isExiting: false,
 });
 
@@ -21,25 +24,34 @@ export function useNavigation() {
 }
 
 /**
- * NavigationProvider — navigates immediately and lets React <Suspense> show the
- * branded loader ONLY while a lazy page chunk is actually downloading.
- *
- * The old implementation forced a fixed ~1s loader on EVERY navigation and ran
- * its own overlay on a timer that didn't coordinate with the chunk download,
- * which stacked two loaders and caused the "flicker / intermediate state".
- * Pages are preloaded on idle (see App.tsx), so cached navigation is instant.
+ * NavigationProvider — navigates inside `useTransition` so React 19 keeps the CURRENT
+ * page visible until the target route's lazy chunk + first render are ready, then commits
+ * the URL and the new page together. This removes the full-screen `<Suspense>` loader
+ * flash (`.ptl`) that previously blinked between tab states, so the selected tab always
+ * matches what's on screen. Pages are preloaded on idle (App.tsx), so it's usually instant;
+ * the Suspense fallback only appears if a transition genuinely takes long (uncached chunk).
  */
 export function NavigationProvider({ children }: { children: React.ReactNode }) {
     const navigate = useNavigate();
     const location = useLocation();
+    const [isPending, startTransition] = useTransition();
+    const [pendingPath, setPendingPath] = useState<string | null>(null);
 
     const navigateTo = useCallback((path: string) => {
         if (path === location.pathname) return;
-        navigate(path);
+        setPendingPath(path);
+        startTransition(() => {
+            navigate(path);
+        });
     }, [navigate, location.pathname]);
 
+    // Clear the pending target once the location actually reflects it.
+    React.useEffect(() => {
+        if (pendingPath && location.pathname === pendingPath) setPendingPath(null);
+    }, [location.pathname, pendingPath]);
+
     return (
-        <NavigationContext.Provider value={{ navigateTo, isTransitioning: false, isExiting: false }}>
+        <NavigationContext.Provider value={{ navigateTo, isTransitioning: isPending, pendingPath, isExiting: false }}>
             {children}
         </NavigationContext.Provider>
     );

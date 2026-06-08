@@ -152,6 +152,15 @@ export function getClientPaymentMethods(): PaymentMethodConfig[] {
   return _cachedMethods.filter(m => m.key !== 'BOLETO');
 }
 
+/**
+ * Boleto config for per-contract release. Falls back to the static default so it
+ * works even when boleto is globally inactive (and thus absent from the cache).
+ */
+export function getBoletoMethodConfig(): PaymentMethodConfig {
+  return _cachedMethods.find(m => m.key === 'BOLETO')
+    ?? STATIC_DEFAULTS.find(m => m.key === 'BOLETO')!;
+}
+
 /** Whether a method is enabled for a given checkout context (avulso/contract/invoice). */
 export function methodInContext(m: PaymentMethodConfig, context: string): boolean {
   if (!m.contexts) return true; // no restriction configured → show everywhere

@@ -242,23 +242,23 @@ export default function IntegrationSettings() {
                 labels={{ sandbox: 'Sandbox', production: 'Produção' }}
               />
 
-              {/* Client ID */}
-              <div className="int-field">
-                <label className="int-label"><Icons.Key /> Client ID ({coraEnvKey})</label>
-                <input className="int-input int-input--cora" type="text"
-                  placeholder={`Client ID da Cora para ${coraEnvKey === 'sandbox' ? 'homologação' : 'produção'}`}
-                  value={coraCreds.clientId}
-                  onChange={e => setCoraForm(f => ({ ...f, [coraEnvKey]: { ...f[coraEnvKey], clientId: e.target.value } }))}
-                />
-              </div>
-
-              {/* Chave PIX */}
-              <div className="int-field">
-                <label className="int-label"><Icons.Globe /> Chave PIX ({coraEnvKey})</label>
-                <input className="int-input int-input--cora" type="text" placeholder="email@empresa.com ou CPF/CNPJ"
-                  value={coraCreds.pixKey}
-                  onChange={e => setCoraForm(f => ({ ...f, [coraEnvKey]: { ...f[coraEnvKey], pixKey: e.target.value } }))}
-                />
+              {/* Client ID + Chave PIX — short fields side-by-side on tablet+ */}
+              <div className="int-field-row">
+                <div className="int-field">
+                  <label className="int-label"><Icons.Key /> Client ID ({coraEnvKey})</label>
+                  <input className="int-input int-input--cora" type="text"
+                    placeholder={`Client ID da Cora para ${coraEnvKey === 'sandbox' ? 'homologação' : 'produção'}`}
+                    value={coraCreds.clientId}
+                    onChange={e => setCoraForm(f => ({ ...f, [coraEnvKey]: { ...f[coraEnvKey], clientId: e.target.value } }))}
+                  />
+                </div>
+                <div className="int-field">
+                  <label className="int-label"><Icons.Globe /> Chave PIX ({coraEnvKey})</label>
+                  <input className="int-input int-input--cora" type="text" placeholder="email@empresa.com ou CPF/CNPJ"
+                    value={coraCreds.pixKey}
+                    onChange={e => setCoraForm(f => ({ ...f, [coraEnvKey]: { ...f[coraEnvKey], pixKey: e.target.value } }))}
+                  />
+                </div>
               </div>
 
               {/* Certificate Upload */}
@@ -360,24 +360,24 @@ export default function IntegrationSettings() {
                 labels={{ sandbox: 'Teste (sk_test)', production: 'Produção (sk_live)' }}
               />
 
-              {/* Secret Key */}
-              <div className="int-field">
-                <label className="int-label"><Icons.Key /> Secret Key ({stripeEnvKey})</label>
-                <input className="int-input int-input--stripe" type="password"
-                  placeholder={hasSavedStripeKey ? '✅ Já configurada. Deixe em branco para manter.' : stripeEnvKey === 'sandbox' ? 'sk_test_xxx' : 'sk_live_xxx'}
-                  value={stripeCreds.secretKey}
-                  onChange={e => setStripeForm(f => ({ ...f, [stripeEnvKey]: { ...f[stripeEnvKey], secretKey: e.target.value } }))}
-                />
-              </div>
-
-              {/* Publishable Key */}
-              <div className="int-field">
-                <label className="int-label"><Icons.Globe /> Publishable Key ({stripeEnvKey})</label>
-                <input className="int-input int-input--stripe" type="text"
-                  placeholder={stripeEnvKey === 'sandbox' ? 'pk_test_xxx' : 'pk_live_xxx'}
-                  value={stripeCreds.publishableKey}
-                  onChange={e => setStripeForm(f => ({ ...f, [stripeEnvKey]: { ...f[stripeEnvKey], publishableKey: e.target.value } }))}
-                />
+              {/* Secret + Publishable Key — credentials pair side-by-side on tablet+ */}
+              <div className="int-field-row">
+                <div className="int-field">
+                  <label className="int-label"><Icons.Key /> Secret Key ({stripeEnvKey})</label>
+                  <input className="int-input int-input--stripe" type="password"
+                    placeholder={hasSavedStripeKey ? '✅ Já configurada. Deixe em branco para manter.' : stripeEnvKey === 'sandbox' ? 'sk_test_xxx' : 'sk_live_xxx'}
+                    value={stripeCreds.secretKey}
+                    onChange={e => setStripeForm(f => ({ ...f, [stripeEnvKey]: { ...f[stripeEnvKey], secretKey: e.target.value } }))}
+                  />
+                </div>
+                <div className="int-field">
+                  <label className="int-label"><Icons.Globe /> Publishable Key ({stripeEnvKey})</label>
+                  <input className="int-input int-input--stripe" type="text"
+                    placeholder={stripeEnvKey === 'sandbox' ? 'pk_test_xxx' : 'pk_live_xxx'}
+                    value={stripeCreds.publishableKey}
+                    onChange={e => setStripeForm(f => ({ ...f, [stripeEnvKey]: { ...f[stripeEnvKey], publishableKey: e.target.value } }))}
+                  />
+                </div>
               </div>
 
               {/* Webhook Secret */}

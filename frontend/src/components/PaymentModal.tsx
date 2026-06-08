@@ -19,6 +19,8 @@ interface PaymentModalProps {
     contractDuration?: number;
     /** Which methods to show */
     allowedMethods?: PaymentMethodKey[];
+    /** Release boleto for this checkout (per-contract authorization) */
+    allowBoleto?: boolean;
     /** Called when payment succeeds */
     onSuccess: () => void;
     /** Called when an error occurs */
@@ -34,6 +36,7 @@ export default function PaymentModal({
     description,
     contractDuration,
     allowedMethods = ['CARTAO', 'PIX'],
+    allowBoleto = false,
     onSuccess,
     onError,
     onClose,
@@ -49,6 +52,7 @@ export default function PaymentModal({
                 description={description}
                 contractDuration={contractDuration}
                 allowedMethods={allowedMethods}
+                allowBoleto={allowBoleto}
                 context="invoice"
                 onSuccess={onSuccess}
                 onError={onError}

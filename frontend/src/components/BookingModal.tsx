@@ -5,6 +5,8 @@ import { bookingsApi, contractsApi, pricingApi, stripeApi, ContractWithStats } f
 import { useAuth } from '../context/AuthContext';
 import InlineCheckout from './InlineCheckout';
 import PaymentSuccess from './PaymentSuccess';
+import ServiceLineItem from './ui/ServiceLineItem';
+import { formatBRL } from '../utils/format';
 import { XCircle } from 'lucide-react';
 
 interface BookingModalProps {
@@ -16,10 +18,6 @@ interface BookingModalProps {
     onClose: () => void;
     onBooked: () => void;
     onNewContract?: (date: string, time: string) => void;
-}
-
-function formatBRL(cents: number): string {
-    return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
 }
 
 const TIER_LABELS: Record<string, string> = {
@@ -178,6 +176,9 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
     }, 0);
     const addonsCost = addonsRawCost * (1 - (discountPct / 100));
     const avulsoTotal = avulsoPrice + addonsRawCost; // No discount for avulso
+    // Plan path: offer only EXTRA per-episode services NOT already included by the contract
+    // (the contract's recurring services already accompany every recording / billed monthly).
+    const planExtraAddons = availableAddons.filter(a => !(selectedContract?.addOns || []).includes(a.key));
 
     // Handle booking with a contract (use plan)
     const handleUsePlan = async () => {
@@ -311,7 +312,32 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
                             </div>
                         )}
 
-                        {/* Removed Add-ons from Step 1 */}
+                        {/* Per-episode services for the plan booking — inherit the contract discount */}
+                        {selectedContractId && hasCompatible && planExtraAddons.length > 0 && (
+                            <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '16px', marginBottom: '4px' }}>
+                                <div style={{ fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                                    Serviços desta gravação
+                                </div>
+                                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0 0 10px' }}>
+                                    Opcional{discountPct > 0 ? ` · herdam ${discountPct}% de desconto do seu plano` : ''}.
+                                </p>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {planExtraAddons.map(addon => {
+                                        const isSelected = selectedAddons.includes(addon.key);
+                                        return (
+                                            <ServiceLineItem
+                                                key={addon.key}
+                                                name={addon.name}
+                                                description={addon.description}
+                                                perRecordingCents={Math.round(addon.price * (1 - discountPct / 100))}
+                                                selected={isSelected}
+                                                onToggle={() => setSelectedAddons(prev => isSelected ? prev.filter(k => k !== addon.key) : [...prev, addon.key])}
+                                            />
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
 
                         {/* Actions */}
                         <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '16px' }}>
@@ -393,26 +419,14 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
                                     {availableAddons.map(addon => {
                                         const isSelected = selectedAddons.includes(addon.key);
                                         return (
-                                            <div key={addon.key}
-                                                onClick={() => {
-                                                    if (isSelected) setSelectedAddons(prev => prev.filter(k => k !== addon.key));
-                                                    else setSelectedAddons(prev => [...prev, addon.key]);
-                                                }}
-                                                style={{
-                                                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                                    padding: '12px 16px', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
-                                                    background: isSelected ? 'rgba(139, 92, 246, 0.1)' : 'var(--bg-secondary)',
-                                                    border: `1px solid ${isSelected ? 'var(--accent-primary)' : 'var(--border-subtle)'}`,
-                                                    transition: 'all 0.2s ease',
-                                                }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                    <input type="checkbox" checked={isSelected} readOnly style={{ accentColor: 'var(--accent-primary)', width: '18px', height: '18px', cursor: 'pointer' }} />
-                                                    <div>
-                                                        <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{addon.name}</div>
-                                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>+ {formatBRL(addon.price)}</div>
-                                                    </div>
-                                                </div>
-                                            </div>
+                                            <ServiceLineItem
+                                                key={addon.key}
+                                                name={addon.name}
+                                                description={addon.description}
+                                                perRecordingCents={addon.price}
+                                                selected={isSelected}
+                                                onToggle={() => setSelectedAddons(prev => isSelected ? prev.filter(k => k !== addon.key) : [...prev, addon.key])}
+                                            />
                                         );
                                     })}
                                 </div>
@@ -446,6 +460,16 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
                             Ao pagar, o horário será <strong>confirmado imediatamente</strong>.
                         </div>
 
+                        {error && (
+                            <div style={{
+                                padding: '12px 14px', borderRadius: 'var(--radius-md)',
+                                background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)',
+                                fontSize: '0.8125rem', color: 'var(--danger, #ef4444)', marginBottom: '12px',
+                            }}>
+                                {error}
+                            </div>
+                        )}
+
                         <InlineCheckout
                             amount={avulsoTotal}
                             description={`Avulso ${dateDisplay} às ${time}`}
@@ -457,17 +481,9 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
                                 if (paymentRef.current) {
                                     const pid = paymentRef.current;
                                     if (method === 'CARTAO') {
-                                        // Create card payment for existing booking
-                                        const res = await stripeApi.createPayment({
-                                            paymentId: pid,
-                                            installments: 1,
-                                            paymentMethod: 'cartao',
-                                        });
-                                        return {
-                                            paymentId: pid,
-                                            clientSecret: res.clientSecret || undefined,
-                                            paymentIntentId: res.paymentIntentId || undefined,
-                                        };
+                                        // Return the existing payment id; InlineCheckout creates the
+                                        // PaymentIntent with the chosen installments (1–12x, juros above 1x).
+                                        return { paymentId: pid };
                                     }
                                     // PIX for existing booking
                                     const pixRes = await stripeApi.createPayment({
@@ -481,7 +497,8 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
                                     };
                                 }
 
-                                // First time: create booking + payment
+                                // First time: create the booking (hold) only. InlineCheckout then
+                                // creates the PaymentIntent with the selected installments.
                                 if (method === 'CARTAO') {
                                     const res = await bookingsApi.create({
                                         date, startTime: time, addOns: selectedAddons,
@@ -492,11 +509,7 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
                                     setHoldExpiresAt(res.booking.holdExpiresAt || null);
                                     const payId = res.paymentId || res.booking.id;
                                     paymentRef.current = payId;
-                                    return {
-                                        paymentId: payId,
-                                        clientSecret: res.clientSecret || undefined,
-                                        paymentIntentId: undefined,
-                                    };
+                                    return { paymentId: payId };
                                 }
                                 // PIX: create booking first, then create PIX payment
                                 const res = await bookingsApi.create({

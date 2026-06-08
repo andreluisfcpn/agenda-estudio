@@ -68,7 +68,7 @@ export function registerUserCrudRoutes(router: Router) {
                 return;
             }
 
-            const passwordHash = await bcrypt.hash(data.password, 10);
+            const passwordHash = await bcrypt.hash(data.password, 12);
 
             const user = await prisma.user.create({
                 data: {
@@ -143,7 +143,7 @@ export function registerUserCrudRoutes(router: Router) {
             if (data.socialLinks !== undefined) updateData.socialLinks = data.socialLinks;
             if (data.clientStatus) updateData.clientStatus = data.clientStatus;
             if (data.password) {
-                updateData.passwordHash = await bcrypt.hash(data.password, 10);
+                updateData.passwordHash = await bcrypt.hash(data.password, 12);
             }
 
             const user = await prisma.user.update({
@@ -197,6 +197,72 @@ export function registerUserCrudRoutes(router: Router) {
         } catch (err: any) {
             console.error(`[DELETE USER ERROR]:`, err);
             res.status(500).json({ error: 'Erro ao excluir usuário.', details: err.message });
+        }
+    });
+
+    // ─── GET /api/users/:id/payment-overview (ADMIN) ────────
+    // The admin's window into a client's billing: auto-charge status, saved cards (last4),
+    // and upcoming/overdue installments — mirrors what the client sees in "Meus Pagamentos".
+    router.get('/:id/payment-overview', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
+        try {
+            const userId = req.params.id as string;
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: { autoChargeEnabled: true, stripeCustomerId: true },
+            });
+            if (!user) { res.status(404).json({ error: 'Usuário não encontrado.' }); return; }
+
+            const cards = await prisma.savedPaymentMethod.findMany({
+                where: { userId },
+                select: { id: true, brand: true, last4: true, expMonth: true, expYear: true, isDefault: true },
+                orderBy: { isDefault: 'desc' },
+            });
+
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const duePayments = await prisma.payment.findMany({
+                where: { userId, status: 'PENDING' },
+                orderBy: { dueDate: 'asc' },
+                take: 36,
+                select: { id: true, amount: true, dueDate: true, provider: true, contract: { select: { name: true } } },
+            });
+
+            res.json({
+                autoChargeEnabled: user.autoChargeEnabled,
+                hasSavedCard: cards.length > 0,
+                cards,
+                duePayments: duePayments.map(p => ({
+                    id: p.id,
+                    amount: p.amount,
+                    dueDate: p.dueDate,
+                    overdue: p.dueDate ? p.dueDate < today : false,
+                    contractName: p.contract?.name ?? 'Avulso',
+                })),
+            });
+        } catch (err) {
+            console.error('[PAYMENT-OVERVIEW]', err);
+            res.status(500).json({ error: 'Erro ao carregar a visão de pagamento.' });
+        }
+    });
+
+    // ─── PATCH /api/users/:id/auto-charge (ADMIN) ───────────
+    // Admin toggles a client's automatic charging (requires a saved card to enable).
+    router.patch('/:id/auto-charge', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
+        try {
+            const userId = req.params.id as string;
+            const enabled = !!req.body?.enabled;
+            if (enabled) {
+                const cardCount = await prisma.savedPaymentMethod.count({ where: { userId } });
+                if (cardCount === 0) {
+                    res.status(400).json({ error: 'O cliente precisa ter um cartão salvo para ativar a cobrança automática.' });
+                    return;
+                }
+            }
+            await prisma.user.update({ where: { id: userId }, data: { autoChargeEnabled: enabled } });
+            res.json({ autoChargeEnabled: enabled });
+        } catch (err) {
+            console.error('[AUTO-CHARGE-TOGGLE]', err);
+            res.status(500).json({ error: 'Erro ao atualizar a cobrança automática.' });
         }
     });
 }

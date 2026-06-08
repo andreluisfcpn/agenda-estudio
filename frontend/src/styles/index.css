@@ -57,6 +57,40 @@
   --transition-fast: 100ms ease;
   --transition-base: 200ms ease;
   --transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Spacing scale (base 4px) - aligned to existing hardcoded values for 1:1 migration */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-1-5: 6px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-3-5: 14px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* Z-index scale (centralizes stacking to avoid overlaps) */
+  --z-base: 1;
+  --z-sticky: 10;
+  --z-dropdown: 50;
+  --z-savebar: 90;
+  --z-bottomtab: 120;
+  --z-modal: 1000;
+
+  /* Missing alias used across the admin (fell back to currentColor before) */
+  --border-color: var(--border-default);
+
+  /* Semantic card/layout tokens */
+  --card-pad: var(--space-5);
+  --card-pad-sm: var(--space-3-5);
+  --card-radius: var(--radius-lg);
+  --bottom-tab-h: 64px;
+
+  /* Standard height for ALL form controls (inputs, selects, steppers,
+     segmented, color, time) so they line up at the same height everywhere. */
+  --control-h: 42px;
 }
 
 /* â”€â”€â”€ Reset & Base â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
@@ -310,7 +344,12 @@ a:hover {
   font-family: inherit;
   transition: border-color var(--transition-fast);
   outline: none;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-h);
 }
+/* Textareas opt out of the fixed control height (they grow with content). */
+textarea.form-input { min-height: 80px; }
 
 .form-input:focus,
 .form-select:focus {
@@ -1325,5 +1364,20 @@ tr:hover td {
 
   .toggle-switch__thumb {
     transition: transform 0.1s ease;
+  }
+}
+
+/* ─── Global reduced-motion safety net ─────────────────────────
+   For users who prefer reduced motion, collapse animations/transitions
+   to near-instant and disable smooth scrolling. Specific blocks above
+   still apply; this is a conservative catch-all so no animation lingers. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

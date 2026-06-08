@@ -29,21 +29,87 @@
 .admin-kpi-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 12px;
-    margin-bottom: 20px;
+    gap: var(--space-3);
+    margin-bottom: var(--space-5);
+}
+.admin-kpi-grid--compact {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+/* ── Standard card / section primitives ─────────────────────────
+   Replaces the divergent inline `padding:18/20/24px` + border blocks
+   repeated across the admin pages. Mobile-safe (min-width:0). */
+.admin-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--card-radius);
+    padding: var(--card-pad);
+    min-width: 0;
+}
+.admin-card--lg { padding: var(--space-6); }
+.admin-card--interactive {
+    cursor: pointer;
+    transition: border-color var(--transition-base), background var(--transition-base);
+}
+@media (hover: hover) {
+    .admin-card--interactive:hover { border-color: var(--border-hover); }
+}
+.admin-card--active { border-color: var(--accent-primary); }
+/* Accent-tinted hover, where the card carries a dynamic --card-accent. */
+.admin-card--accent { --card-accent: var(--accent-primary); }
+@media (hover: hover) {
+    .admin-card--accent:hover:not(.admin-card--active) {
+        border-color: color-mix(in srgb, var(--card-accent) 33%, transparent);
+    }
+}
+@media (max-width: 768px) {
+    .admin-card { padding: var(--card-pad-sm); }
+}
+
+.admin-section { margin-bottom: var(--space-6); }
+.admin-section__title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: var(--space-1);
+}
+.admin-section__subtitle {
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    margin-bottom: var(--space-4);
+}
+
+/* Two-column grid that collapses to one column on small screens
+   (replaces hardcoded `gridTemplateColumns:'1fr 1fr'` without media query). */
+.admin-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4);
+}
+@media (max-width: 640px) {
+    .admin-grid-2 { grid-template-columns: 1fr; }
+}
+
+/* Hover background via CSS (replaces inline onMouseEnter/Leave). */
+.admin-hover-bg { transition: background var(--transition-fast); }
+@media (hover: hover) {
+    .admin-hover-bg:hover { background: var(--bg-elevated); }
 }
 
 /* ── Consolidated Settings page (/admin/configuracoes) ──────────
    Left-rail sub-nav on desktop, scrollable segmented pills on mobile. */
+/* Desktop: no internal rail — content is full-width, driven by the sidebar's
+   expandable "Configurações". The rail reappears as scrollable pills on mobile. */
 .admin-settings {
-    display: grid;
-    grid-template-columns: 232px 1fr;
-    gap: 24px;
-    align-items: start;
+    display: block;
+}
+/* Wrapper hosts the mobile-only scrollable rail + the side arrows. Hidden by
+   default on desktop (the .admin-settings-rail--mobile-only inside is too). */
+.admin-settings-rail-wrap {
+    position: relative;
+    width: 100%;
 }
 .admin-settings-rail {
-    position: sticky;
-    top: 16px;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -51,6 +117,9 @@
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: 14px;
+}
+.admin-settings-rail--mobile-only {
+    display: none;
 }
 .admin-settings-rail-item {
     display: flex;
@@ -85,21 +154,27 @@
 .admin-settings-panel {
     min-width: 0;
 }
-@media (max-width: 900px) {
-    .admin-settings {
-        grid-template-columns: 1fr;
-        gap: 16px;
-    }
-    .admin-settings-rail {
-        position: static;
+@media (max-width: 768px) {
+    /* Sidebar is hidden ≤768px → the section nav reappears inside the page as
+       a sticky, horizontally-scrollable pill strip. Breakpoint matches the
+       sidebar's so exactly one section navigator is ever active. */
+    .admin-settings-rail--mobile-only {
+        display: flex;
         flex-direction: row;
         gap: 6px;
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
-        padding: 6px;
+        padding: 6px 0 10px;
+        margin-bottom: 8px;
         scrollbar-width: none;
+        position: sticky;
+        top: 0;
+        z-index: var(--z-sticky);
+        background: var(--bg-primary);
+        border: none;
+        border-radius: 0;
     }
-    .admin-settings-rail::-webkit-scrollbar { display: none; }
+    .admin-settings-rail--mobile-only::-webkit-scrollbar { display: none; }
     .admin-settings-rail-item {
         width: auto;
         flex-shrink: 0;
@@ -123,7 +198,7 @@
     left: 220px;
     right: 24px;
     bottom: 24px;
-    z-index: 90;
+    z-index: var(--z-savebar);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -147,9 +222,58 @@
     .app-layout--sidebar-collapsed .admin-save-bar {
         left: 12px;
         right: 12px;
-        bottom: calc(64px + env(safe-area-inset-bottom, 0px) + 12px);
+        bottom: calc(var(--bottom-tab-h) + env(safe-area-inset-bottom, 0px) + var(--space-3));
     }
     .admin-save-bar--stacked {
-        bottom: calc(64px + env(safe-area-inset-bottom, 0px) + 12px + 76px);
+        bottom: calc(var(--bottom-tab-h) + env(safe-area-inset-bottom, 0px) + var(--space-3) + 76px);
     }
+}
+
+/* ── Admin modals reuse the client BottomSheetModal (mobile sheet + desktop dialog +
+   spring animation + focus trap). Their content carries its own padding, so the sheet
+   body adds none (keeps the iOS safe-area inset). ── */
+.bottom-sheet-card.admin-sheet .bottom-sheet-body {
+    padding: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ── Responsive table → cards on mobile (mobile-first, like the client).
+   Add `admin-table--cards` to a <table class="admin-table"> and `data-label="Header"`
+   to each <td>. On <768px the header is hidden and each row becomes a card with
+   label/value pairs. An empty data-label hides the label (use for the actions cell). ── */
+@media (max-width: 768px) {
+    .admin-table-wrap:has(.admin-table--cards) { overflow-x: visible; }
+    .admin-table-wrap .admin-table--cards { min-width: 0; }
+    .admin-table--cards,
+    .admin-table--cards tbody,
+    .admin-table--cards tr,
+    .admin-table--cards td { display: block; width: 100%; }
+    .admin-table--cards thead,
+    .admin-table--cards tfoot { display: none; }
+    .admin-table--cards tr {
+        background: var(--bg-card);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-md);
+        padding: 10px 14px;
+        margin-bottom: 10px;
+    }
+    .admin-table--cards td {
+        display: flex; align-items: center; justify-content: space-between; gap: 12px;
+        padding: 6px 0; border: none; text-align: right; min-height: 30px;
+    }
+    .admin-table--cards td + td { border-top: 1px solid var(--border-subtle); }
+    .admin-table--cards td::before {
+        content: attr(data-label);
+        font-weight: 600; color: var(--text-muted); text-transform: uppercase;
+        font-size: 0.6875rem; letter-spacing: 0.04em; text-align: left; flex-shrink: 0;
+    }
+    .admin-table--cards td[data-label=""]::before,
+    .admin-table--cards td:not([data-label])::before { content: none; }
+    .admin-table--cards td[data-label=""] { justify-content: flex-end; padding-top: 10px; }
+    /* The identifying column becomes the card title: full-width, left-aligned, no label. */
+    .admin-table--cards td.admin-card-title {
+        display: block; text-align: left; padding: 2px 0 8px; border-top: none;
+    }
+    .admin-table--cards td.admin-card-title::before { content: none; }
+    .admin-table--cards td.admin-card-title + td { border-top: none; }
 }

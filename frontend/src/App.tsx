@@ -26,6 +26,7 @@ const MyPaymentsPage = React.lazy(() => import('./pages/MyPaymentsPage'));
 const AdminClientsPage = React.lazy(() => import('./pages/AdminClientsPage'));
 const AdminBookingsPage = React.lazy(() => import('./pages/AdminBookingsPage'));
 const AdminContractsPage = React.lazy(() => import('./pages/AdminContractsPage'));
+const AdminContractDetailPage = React.lazy(() => import('./pages/AdminContractDetailPage'));
 const AdminTodayPage = React.lazy(() => import('./pages/AdminTodayPage'));
 const AdminFinancePage = React.lazy(() => import('./pages/AdminFinancePage'));
 const AdminReportsPage = React.lazy(() => import('./pages/AdminReportsPage'));
@@ -48,6 +49,7 @@ function preloadPages() {
         () => import('./pages/AdminBookingsPage'),
         () => import('./pages/AdminClientsPage'),
         () => import('./pages/AdminContractsPage'),
+        () => import('./pages/AdminContractDetailPage'),
         () => import('./pages/AdminFinancePage'),
         () => import('./pages/AdminReportsPage'),
         () => import('./pages/AdminSettingsPage'),
@@ -189,7 +191,8 @@ function AppRoutes() {
 
     return (
         <Routes>
-            <Route path="/" element={<LandingPage />} />
+            {/* Logged-in users (incl. installed PWA launching at start_url '/') go straight to the app. */}
+            <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <LandingPage />} />
             <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
             <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
             <Route path="/calendar" element={<ProtectedRoute><CalendarPage /></ProtectedRoute>} />
@@ -203,6 +206,7 @@ function AppRoutes() {
             <Route path="/admin/clients" element={<ProtectedRoute><AdminRoute><AdminClientsPage /></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/clients/:id" element={<ProtectedRoute><AdminRoute><ClientProfilePage /></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/contracts" element={<ProtectedRoute><AdminRoute><AdminContractsPage /></AdminRoute></ProtectedRoute>} />
+            <Route path="/admin/contracts/:id" element={<ProtectedRoute><AdminRoute><AdminContractDetailPage /></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/finance" element={<ProtectedRoute><AdminRoute><AdminFinancePage /></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/reports" element={<ProtectedRoute><AdminRoute><AdminReportsPage /></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/configuracoes" element={<ProtectedRoute><AdminRoute><AdminSettingsPage /></AdminRoute></ProtectedRoute>} />

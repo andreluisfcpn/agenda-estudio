@@ -9,6 +9,18 @@ const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_SECONDS = 30 * 60; // 30 minutes lockout after max failures
 const SEND_COOLDOWN_SECONDS = 30; // anti-spam: min interval between sends to the same target
 
+/**
+ * Persist an OTP security event to the AuditLog so failed-attempt/lockout history survives a
+ * Redis flush/restart and is queryable for brute-force detection (Redis still drives the live
+ * rate-limit; this is the durable audit trail). Best-effort — never blocks verification.
+ */
+async function logOtpEvent(target: string, action: string, attempt: number): Promise<void> {
+    try {
+        const { logAudit } = await import('./audit.js');
+        await logAudit('OTP', target, action, 'SYSTEM', { attempt, max: MAX_FAILED_ATTEMPTS });
+    } catch { /* audit is best-effort */ }
+}
+
 export const otpService = {
     async generateAndSendMock(target: string, name: string): Promise<void> {
         // Generate a 6-digit numeric code
@@ -41,6 +53,7 @@ export const otpService = {
 
         if (failCount >= MAX_FAILED_ATTEMPTS) {
             console.warn(`[OTP] Target ${target} is locked out (${failCount} failed attempts)`);
+            void logOtpEvent(target, 'LOCKED_OUT', failCount);
             return false;
         }
 
@@ -62,6 +75,7 @@ export const otpService = {
         }
 
         console.warn(`[OTP] Failed attempt ${newCount}/${MAX_FAILED_ATTEMPTS} for ${target}`);
+        void logOtpEvent(target, 'FAILED_ATTEMPT', newCount);
         return false;
     },
 

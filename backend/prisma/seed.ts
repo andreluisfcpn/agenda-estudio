@@ -141,7 +141,7 @@ async function main() {
       }),
       type: "json",
       label: "Taxas de Parcelamento Cartão (%)",
-      group: "gateway",
+      group: "payments",
     },
     // booking
     {
@@ -149,49 +149,49 @@ async function main() {
       value: "1",
       type: "number",
       label: "Dias mín. p/ 1º agendamento",
-      group: "schedule",
+      group: "policies",
     },
     {
       key: "first_booking_max_days",
       value: "14",
       type: "number",
       label: "Dias máx. p/ 1º agendamento",
-      group: "schedule",
+      group: "policies",
     },
     {
       key: "sessions_per_month",
       value: "4",
       type: "number",
       label: "Sessões por mês",
-      group: "schedule",
+      group: "plans",
     },
     {
       key: "discount_3months",
       value: "30",
       type: "percent",
       label: "Desconto Fidelidade 3 meses (%)",
-      group: "gateway",
+      group: "plans",
     },
     {
       key: "discount_6months",
       value: "40",
       type: "percent",
       label: "Desconto Fidelidade 6 meses (%)",
-      group: "gateway",
+      group: "plans",
     },
     {
       key: "episodes_3months",
       value: "12",
       type: "number",
       label: "Episódios p/ contrato 3 meses",
-      group: "schedule",
+      group: "plans",
     },
     {
       key: "episodes_6months",
       value: "24",
       type: "number",
       label: "Episódios p/ contrato 6 meses",
-      group: "schedule",
+      group: "plans",
     },
     // studio
     {
@@ -276,6 +276,10 @@ async function main() {
   console.log(`  ✅ Pricing config: ${pricingEntries.length} tiers`);
 
   // ─── 5. AddOn Configs (extra services) ──────────────────────
+  // Two families discriminated by `monthly`: per-episode add-ons (false, accompany every
+  // recording) and monthly subscription services (true, standalone SERVICO contracts).
+  // Monthly services carry richer metadata (benefits/durations/plans/cadence) used by the
+  // self-serve wizard; the admin can edit all of this in Configurações → Serviços.
   const addonEntries = [
     {
       key: "CORTES_IA",
@@ -284,6 +288,11 @@ async function main() {
       description:
         "Cortes automáticos do episódio usando inteligência artificial para shorts e reels.",
       monthly: false,
+      icon: "Scissors",
+      benefits: null as string | null,
+      durationsOffered: "3,6",
+      plansAllowed: "FULL",
+      billingCadence: "BILLING_CYCLE_28",
     },
     {
       key: "CORTES_HUMANO",
@@ -292,14 +301,49 @@ async function main() {
       description:
         "Cortes manuais feitos por editor profissional com curadoria e storytelling.",
       monthly: false,
+      icon: "Film",
+      benefits: null as string | null,
+      durationsOffered: "3,6",
+      plansAllowed: "FULL",
+      billingCadence: "BILLING_CYCLE_28",
     },
     {
       key: "GESTAO_SOCIAL",
       name: "Gestão de Redes Sociais",
       price: 200000,
       description:
-        "Gestão completa das redes sociais do seu podcast: postagens, stories, engajamento e relatórios mensais.",
+        "Seu podcast presente todos os dias: nossa equipe cuida da publicação, dos cortes, do SEO e do crescimento das suas redes — você foca em gravar e nós cuidamos do alcance.",
       monthly: true,
+      icon: "Share2",
+      benefits: JSON.stringify([
+        "Criação de artes para publicação",
+        "Contato e agendamento com os convidados",
+        "Making-of e bastidores das gravações",
+        "Cortes e edição com foco em alcance",
+        "Otimização de SEO, títulos e descrições",
+        "Relatório mensal de métricas e crescimento",
+      ]),
+      durationsOffered: "3,6",
+      plansAllowed: "MONTHLY,FULL",
+      billingCadence: "CALENDAR_MONTH",
+    },
+    {
+      key: "GESTAO_TRAFEGO",
+      name: "Gestão de Tráfego e Anúncios",
+      price: 150000,
+      description:
+        "Gestão completa de campanhas de anúncios (Meta e Google) para o seu podcast: criativos, segmentação e otimização contínua para escalar alcance e audiência.",
+      monthly: true,
+      icon: "TrendingUp",
+      benefits: JSON.stringify([
+        "Criação de criativos para anúncios",
+        "Segmentação e públicos estratégicos",
+        "Gestão e otimização contínua das campanhas",
+        "Relatório mensal de resultados (ROAS)",
+      ]),
+      durationsOffered: "3,6",
+      plansAllowed: "MONTHLY,FULL",
+      billingCadence: "CALENDAR_MONTH",
     },
     {
       key: "YOUTUBE_SEO",
@@ -308,6 +352,11 @@ async function main() {
       description:
         "Otimização de título, descrição, tags e thumbnail para melhor ranqueamento no YouTube.",
       monthly: false,
+      icon: "Search",
+      benefits: null as string | null,
+      durationsOffered: "3,6",
+      plansAllowed: "FULL",
+      billingCadence: "BILLING_CYCLE_28",
     },
     {
       key: "PAUTAS",
@@ -316,6 +365,11 @@ async function main() {
       description:
         "Criação de roteiro e pauta para cada episódio, com pesquisa de temas e perguntas-chave.",
       monthly: false,
+      icon: "FileText",
+      benefits: null as string | null,
+      durationsOffered: "3,6",
+      plansAllowed: "FULL",
+      billingCadence: "BILLING_CYCLE_28",
     },
   ];
 
@@ -323,10 +377,17 @@ async function main() {
     await prisma.addOnConfig.upsert({
       where: { key: entry.key },
       create: entry,
-      update: {},
+      // Refresh only the service-contract behavior metadata so existing rows pick up the
+      // correct family settings, WITHOUT clobbering admin-editable presentation
+      // (icon/benefits) or price/name/description/active.
+      update: {
+        durationsOffered: entry.durationsOffered,
+        plansAllowed: entry.plansAllowed,
+        billingCadence: entry.billingCadence,
+      },
     });
   }
-  console.log(`  ✅ AddOn config: ${addonEntries.length} serviços extras`);
+  console.log(`  ✅ AddOn config: ${addonEntries.length} serviços (por episódio + mensais)`);
 
   // ── PaymentMethodConfig ──────────────────────────────────
   const paymentMethods = [

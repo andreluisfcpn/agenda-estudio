@@ -31,7 +31,7 @@ router.post('/check-fixo', authenticate, async (req: Request, res: Response) => 
             current.setDate(current.getDate() + 7);
         }
 
-        const conflicts: { date: string, originalTime: string, suggestedReplacement?: { date: string, time: string } }[] = [];
+        const conflicts: { date: string, originalTime: string, suggestedReplacement?: { date: string, time: string }, alternatives: { date: string, time: string }[] }[] = [];
         const POSSIBLE_SLOTS = await generateTimeSlots();
         const comercialSlotsCSV = await getConfigString('comercial_slots');
         const comercialSlotsList = comercialSlotsCSV.split(',').map(s => s.trim());
@@ -59,7 +59,9 @@ router.post('/check-fixo', authenticate, async (req: Request, res: Response) => 
             });
 
             if (existingBooking || existingBlock) {
-                let suggestion: { date: string, time: string } | undefined = undefined;
+                // Collect every free slot on the same day (respecting tier),
+                // so the client can hand-pick a substitute time per conflict.
+                const alternatives: { date: string, time: string }[] = [];
 
                 for (const slot of POSSIBLE_SLOTS) {
                     if (slot === data.fixedTime) continue;
@@ -86,14 +88,16 @@ router.post('/check-fixo', authenticate, async (req: Request, res: Response) => 
                     });
 
                     if (!overlapBooking && !overlapBlock) {
-                        suggestion = { date: dateStr, time: slot };
-                        break;
+                        alternatives.push({ date: dateStr, time: slot });
                     }
                 }
+
+                const suggestion = alternatives[0];
 
                 conflicts.push({
                     date: dateStr,
                     originalTime: data.fixedTime,
+                    alternatives,
                     ...(suggestion && { suggestedReplacement: suggestion })
                 });
             }

@@ -9,8 +9,6 @@ const DEFAULTS: Record<string, number> = {
     episodes_3months: 12,
     episodes_6months: 24,
     pix_extra_discount_pct: 10,
-    card_fee_3x_pct: 15,
-    card_fee_6x_pct: 20,
     service_discount_3months: 30,
     service_discount_6months: 40,
     cancellation_fine_pct: 20,

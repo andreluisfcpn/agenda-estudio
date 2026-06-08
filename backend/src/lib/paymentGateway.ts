@@ -6,6 +6,42 @@
 import { coraCreateBoleto, isCoraEnabled, type CoraBoletoPayload } from './coraService.js';
 import { stripeCreatePaymentIntent, stripeGetOrCreateCustomer, isStripeEnabled } from './stripeService.js';
 import { prisma } from './prisma.js';
+import { cleanDocument, isValidCpfCnpj } from '../utils/document.js';
+
+/**
+ * Cora REJECTS payments whose customer document is not a real CPF/CNPJ
+ * (e.g. the old '00000000000' fallback) with a cryptic 400. Resolve and
+ * validate the document up-front so callers get a clear, actionable error
+ * instead of an orphaned PENDING payment with no QR code.
+ */
+function resolveCoraDocument(cpf: string | undefined | null): { identity: string; type: 'CPF' | 'CNPJ' } {
+    const cleaned = cleanDocument(cpf);
+    if (!isValidCpfCnpj(cleaned)) {
+        throw new Error('CPF/CNPJ inválido ou ausente no cadastro. Atualize seu perfil com um CPF válido antes de pagar via PIX ou boleto.');
+    }
+    return { identity: cleaned, type: cleaned.length > 11 ? 'CNPJ' : 'CPF' };
+}
+
+/**
+ * Single up-front guard for every Cora (PIX/boleto) dispatch. Validates the
+ * inputs Cora strictly checks — document, positive amount, a non-blank payer
+ * email, and a due_date that is not in the past — so a bad value fails fast
+ * with a clear message instead of a cryptic Cora 400 that leaves an orphan
+ * PENDING payment. Mirrors the placeholder-email behavior of coraPaymentHelper.
+ */
+function resolveCoraInputs(opts: CreatePaymentOpts): { doc: { identity: string; type: 'CPF' | 'CNPJ' }; email: string; dueDateStr: string } {
+    if (!Number.isInteger(opts.amount) || opts.amount <= 0) {
+        throw new Error('Valor do pagamento inválido (deve ser maior que zero).');
+    }
+    const doc = resolveCoraDocument(opts.customer.cpf);
+    const email = (opts.customer.email && opts.customer.email.trim()) || 'cliente@estudio.com';
+    // Cora rejects an invoice whose due_date is in the past — clamp to today.
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const due = opts.dueDate && opts.dueDate >= today ? opts.dueDate : today;
+    const dueDateStr = due.toISOString().split('T')[0]!;
+    return { doc, email, dueDateStr };
+}
 
 // ─── Global Provider Routing ────────────────────────────
 // Fixed mapping: which provider handles which payment method.
@@ -151,26 +187,36 @@ export async function createPayment(opts: CreatePaymentOpts): Promise<PaymentRes
             return generateMockResult(opts);
         }
 
+        // Validate inputs up-front (outside try) so a missing CPF / invalid
+        // amount / past due-date surfaces a clear error instead of a masked
+        // generic PIX failure that strands an orphan PENDING payment.
+        const pix = resolveCoraInputs(opts);
+
         try {
             const result = await coraCreateBoleto({
                 amount: opts.amount,
-                dueDate: opts.dueDate.toISOString().split('T')[0],
+                dueDate: pix.dueDateStr,
                 customer: {
                     name: opts.customer.name,
-                    email: opts.customer.email,
-                    document: {
-                        identity: opts.customer.cpf || '00000000000',
-                        type: (opts.customer.cpf && opts.customer.cpf.length > 11) ? 'CNPJ' : 'CPF',
-                    },
+                    email: pix.email,
+                    document: pix.doc,
                 },
                 description: opts.description,
                 withPixQrCode: true,
+                idempotencyKey: opts.paymentId,
             });
+
+            // A 2xx Cora response without an EMV string is unpayable — treat it
+            // as a failure so the caller returns an error instead of a blank QR
+            // that the client would poll forever.
+            if (!result.pixString) {
+                throw new Error('A Cora não retornou o código PIX. Tente novamente em instantes.');
+            }
 
             return {
                 provider: 'CORA',
                 providerRef: result.id,
-                pixString: result.pixString || null,
+                pixString: result.pixString,
                 boletoUrl: result.boletoUrl || null,
                 paymentUrl: null,
                 clientSecret: null,
@@ -194,27 +240,34 @@ export async function createPayment(opts: CreatePaymentOpts): Promise<PaymentRes
             return generateMockResult(opts);
         }
 
+        // Validate inputs up-front (outside try) so a missing CPF / invalid
+        // amount / past due-date surfaces a clear error instead of a masked
+        // generic boleto failure that strands an orphan PENDING payment.
+        const boleto = resolveCoraInputs(opts);
+
         try {
             const result = await coraCreateBoleto({
                 amount: opts.amount,
-                dueDate: opts.dueDate.toISOString().split('T')[0],
+                dueDate: boleto.dueDateStr,
                 customer: {
                     name: opts.customer.name,
-                    email: opts.customer.email,
-                    document: {
-                        identity: opts.customer.cpf || '00000000000',
-                        type: (opts.customer.cpf && opts.customer.cpf.length > 11) ? 'CNPJ' : 'CPF',
-                    },
+                    email: boleto.email,
+                    document: boleto.doc,
                 },
                 description: opts.description,
                 withPixQrCode: false,
+                idempotencyKey: opts.paymentId,
             });
+
+            if (!result.boletoUrl) {
+                throw new Error('A Cora não retornou o boleto. Tente novamente em instantes.');
+            }
 
             return {
                 provider: 'CORA',
                 providerRef: result.id,
                 pixString: null,
-                boletoUrl: result.boletoUrl || null,
+                boletoUrl: result.boletoUrl,
                 paymentUrl: null,
                 clientSecret: null,
                 qrCodeBase64: null,

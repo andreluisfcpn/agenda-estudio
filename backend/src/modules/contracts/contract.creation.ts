@@ -7,6 +7,8 @@ import { getBasePriceDynamic, applyDiscount, calculateEndTime } from '../../util
 import { getConfig } from '../../lib/businessConfig.js';
 import { createPayment as gatewayCreatePayment, updatePaymentWithGatewayResult, validatePaymentMethod, getProviderForMethod, PaymentMethodDisabledError } from '../../lib/paymentGateway.js';
 import { createContractSchema, selfContractSchema, customContractSchema } from './validators.js';
+import { computeAddonsCost } from '../../lib/contractPricing.js';
+import { resolvePlanAmounts } from '../../lib/paymentPolicy.js';
 
 export function registerCreationRoutes(router: Router) {
 
@@ -54,9 +56,14 @@ router.post('/', authenticate, authorize('ADMIN'), async (req: Request, res: Res
                 fixedTime: data.type === 'FIXO' ? data.fixedTime : null,
                 flexCreditsTotal: data.type === 'FLEX' ? totalEpisodes : null,
                 flexCreditsRemaining: data.type === 'FLEX' ? totalEpisodes : null,
-                flexCycleStart: data.type === 'FLEX' ? startDate : null,
+                // FLEX clock starts on the 1st recording (set when the 1st booking is made).
+                flexCycleStart: null,
                 flexWeeksCompensated: data.type === 'FLEX' ? 0 : null,
+                flexForfeitFloor: data.type === 'FLEX' ? 0 : null,
                 addOns: data.addOns || [],
+                boletoAllowed: data.boletoAllowed ?? false,
+                paymentMethod: data.paymentMethod ?? null,
+                paymentPlan: data.paymentPlan ?? 'MONTHLY',
             },
         });
 
@@ -117,27 +124,33 @@ router.post('/', authenticate, authorize('ADMIN'), async (req: Request, res: Res
             }
         }
 
-        // Generate payment installments
+        // Generate payment installments — centralized pricing (add-ons + card surcharge +
+        // PIX à-vista discount), identical to the client /self path so the creation endpoint
+        // can never under-charge relative to it.
         const basePrice = await getBasePriceDynamic(data.tier);
         const discountedPrice = applyDiscount(basePrice, discountPct);
-        // Each month = sessions_per_month sessions → Payment per month = sessions * discountedPrice
         const sessionsPerMonthAdmin = await getConfig('sessions_per_month');
-        const monthlyAmount = sessionsPerMonthAdmin * discountedPrice;
-        const payments = [];
-
-        for (let i = 0; i < data.durationMonths; i++) {
-            const dueDate = new Date(startDate);
-            dueDate.setMonth(dueDate.getMonth() + i);
-
-            payments.push({
-                userId: data.userId,
-                contractId: contract.id,
-                provider: getProviderForMethod(contract.paymentMethod || 'CARTAO'),
-                amount: monthlyAmount,
-                status: 'PENDING' as const,
-                dueDate,
-            });
-        }
+        const adminAddonsCost = await computeAddonsCost(data.addOns, discountPct, sessionsPerMonthAdmin);
+        const baseMonthly = (sessionsPerMonthAdmin * discountedPrice) + adminAddonsCost;
+        const adminProvider = getProviderForMethod(data.paymentMethod || contract.paymentMethod || 'CARTAO');
+        const adminIsFull = data.paymentPlan === 'FULL';
+        // Centralized: FULL → single à-vista invoice; MONTHLY → durationMonths charges of the
+        // plain base (no surcharge) on a 28-day cadence. Same rule as self/custom.
+        const adminPlan = await resolvePlanAmounts({
+            baseMonthly,
+            durationMonths: data.durationMonths,
+            plan: (data.paymentPlan || 'MONTHLY') as 'MONTHLY' | 'FULL',
+            paymentMethod: data.paymentMethod,
+            startDate,
+        });
+        const payments = adminPlan.scheduleDueDates.map((dueDate) => ({
+            userId: data.userId,
+            contractId: contract.id,
+            provider: adminProvider,
+            amount: adminIsFull ? adminPlan.fullAmount : adminPlan.monthlyAmount,
+            status: 'PENDING' as const,
+            dueDate,
+        }));
 
         if (payments.length > 0) {
             await prisma.payment.createMany({ data: payments });
@@ -166,6 +179,8 @@ router.post('/', authenticate, authorize('ADMIN'), async (req: Request, res: Res
                 dueDate: p.dueDate?.toISOString().split('T')[0],
                 status: p.status,
             })),
+            // First (earliest) payment so the admin can optionally charge it inline on the spot.
+            firstPaymentId: createdPayments[0]?.id ?? null,
             message: `Contrato ${data.type} criado com sucesso! ${createdPayments.length} parcelas geradas.`,
         });
     } catch (err) {
@@ -224,28 +239,19 @@ router.post('/self', authenticate, async (req: Request, res: Response) => {
         const discountedPrice = applyDiscount(basePrice, discountPct);
         const sessionsPerMonth = await getConfig('sessions_per_month');
 
-        let addonsCost = 0;
-        if (data.addOns && data.addOns.length > 0) {
-            const addonConfigs = await prisma.addOnConfig.findMany({
-                where: { key: { in: data.addOns } },
-            });
-            const baseAddonsCost = addonConfigs.reduce((acc, curr) => acc + curr.price, 0);
-            addonsCost = applyDiscount(baseAddonsCost, discountPct);
-        }
-
-        let monthlyAmount = (sessionsPerMonth * discountedPrice) + addonsCost;
-
-        // Apply card installment surcharge from admin config
-        if (data.paymentMethod === 'CARTAO') {
-            const surchargeConfig = await prisma.businessConfig.findUnique({ where: { key: 'card_installment_surcharges' } });
-            if (surchargeConfig) {
-                try {
-                    const surcharges = JSON.parse(surchargeConfig.value) as Record<string, number>;
-                    const pct = surcharges[String(data.durationMonths)] ?? 0;
-                    monthlyAmount = Math.round(monthlyAmount * (1 + pct / 100));
-                } catch { /* use base amount */ }
-            }
-        }
+        const addonsCost = await computeAddonsCost(data.addOns, discountPct, sessionsPerMonth);
+        const baseMonthly = (sessionsPerMonth * discountedPrice) + addonsCost;
+        // Centralized plan rules (single source of truth): monthly = base (no card
+        // surcharge); FULL = à-vista total with PIX discount. Schedule = 28-day cadence.
+        const planAmounts = await resolvePlanAmounts({
+            baseMonthly,
+            durationMonths: data.durationMonths,
+            plan: (data.paymentPlan || 'MONTHLY') as 'MONTHLY' | 'FULL',
+            paymentMethod: data.paymentMethod,
+            startDate: firstDate,
+        });
+        const monthlyAmount = planAmounts.monthlyAmount;
+        const firstAmount = planAmounts.firstAmount;
 
         // Store contract creation data in payment metadata
         const contractData = {
@@ -259,7 +265,11 @@ router.post('/self', authenticate, async (req: Request, res: Response) => {
             addOns: data.addOns || [],
             fixedDayOfWeek: data.fixedDayOfWeek,
             fixedTime: data.fixedTime,
+            paymentPlan: data.paymentPlan,
             resolvedConflicts: data.resolvedConflicts,
+            // Persist the resolved per-month amount so fulfillment of months 2..N uses the
+            // SAME figure even if the surcharge config changes before the payment confirms.
+            monthlyAmountResolved: monthlyAmount,
         };
 
         // Create ONLY the first payment (no contract yet)
@@ -267,43 +277,57 @@ router.post('/self', authenticate, async (req: Request, res: Response) => {
             data: {
                 userId,
                 provider: getProviderForMethod(data.paymentMethod),
-                amount: monthlyAmount,
+                amount: firstAmount,
                 status: 'PENDING',
                 dueDate: firstDate,
                 metadata: { contractData },
             },
         });
 
-        // Enrich with gateway (PIX QR code / Stripe PaymentIntent)
-        const user = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } });
+        // Enrich with gateway data. PIX/BOLETO generate the QR/boleto up-front so the client
+        // can pay immediately. CARTÃO does NOT pre-create the PaymentIntent here — the inline
+        // checkout creates it with the chosen installments (matching idempotency key + juros
+        // policy); pre-creating it would collide with that second call.
+        const user = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true, cpfCnpj: true } });
         let clientSecret: string | null = null;
         let pixString: string | null = null;
 
-        try {
-            const result = await gatewayCreatePayment({
-                paymentMethod: data.paymentMethod as 'PIX' | 'BOLETO' | 'CARTAO',
-                amount: monthlyAmount,
-                description: `${data.name} - 1ª Parcela`,
-                customer: { name: user?.name || 'Cliente', email: user?.email || '' },
-                dueDate: firstDate,
-                paymentId: firstPayment.id,
-                userId,
-            });
-            await updatePaymentWithGatewayResult(firstPayment.id, result);
+        if (data.paymentMethod !== 'CARTAO') {
+            try {
+                const result = await gatewayCreatePayment({
+                    paymentMethod: data.paymentMethod as 'PIX' | 'BOLETO' | 'CARTAO',
+                    amount: firstAmount,
+                    description: `${data.name} - 1ª Parcela`,
+                    customer: { name: user?.name || 'Cliente', email: user?.email || '', cpf: user?.cpfCnpj?.replace(/\D/g, '') || undefined },
+                    dueDate: firstDate,
+                    paymentId: firstPayment.id,
+                    userId,
+                });
+                await updatePaymentWithGatewayResult(firstPayment.id, result);
 
-            if (result.clientSecret) clientSecret = result.clientSecret;
-            if (result.pixString) pixString = result.pixString;
-        } catch (err) {
-            console.error(`[Contract:Self] Failed to create gateway payment:`, err);
+                if (result.clientSecret) clientSecret = result.clientSecret;
+                if (result.pixString) pixString = result.pixString;
+            } catch (err) {
+                // Gateway failed (e.g. invalid CPF, Cora down). Do NOT return a misleading
+                // 201 — the payment would linger as PENDING with no QR/secret to pay it.
+                // Delete the orphan pre-contract payment and surface a clear error.
+                console.error(`[Contract:Self] Failed to create gateway payment:`, err);
+                await prisma.payment.delete({ where: { id: firstPayment.id } }).catch(() => {});
+                const msg = err instanceof Error ? err.message : 'Erro ao gerar o pagamento. Tente novamente ou use outro método.';
+                res.status(502).json({ error: msg });
+                return;
+            }
         }
 
         const duration = data.durationMonths;
-        console.log(`CONTRACT PAYMENT ${firstPayment.id} created for user ${userId}, amount: ${monthlyAmount}, method: ${data.paymentMethod}`);
+        console.log(`CONTRACT PAYMENT ${firstPayment.id} created for user ${userId}, amount: ${firstAmount}, plan: ${data.paymentPlan}, method: ${data.paymentMethod}`);
 
         res.status(201).json({
-            message: `Pagamento da 1ª parcela gerado. Efetue o pagamento para ativar seu contrato.`,
+            message: data.paymentPlan === 'FULL'
+                ? `Pagamento integral gerado. Efetue o pagamento para ativar seu contrato.`
+                : `Pagamento da 1ª parcela gerado. Efetue o pagamento para ativar seu contrato.`,
             firstPaymentId: firstPayment.id,
-            amount: monthlyAmount,
+            amount: firstAmount,
             duration,
             ...(clientSecret && { clientSecret }),
             ...(pixString && { firstPixString: pixString }),
@@ -406,6 +430,7 @@ router.post('/custom', authenticate, async (req: Request, res: Response) => {
                 totalSessions,
                 addonCredits: data.addonConfig ? JSON.stringify(data.addonConfig) : null,
                 accessMode,
+                paymentPlan: data.paymentPlan ?? 'MONTHLY',
             },
         });
 
@@ -520,41 +545,55 @@ router.post('/custom', authenticate, async (req: Request, res: Response) => {
         const cycleBaseAmount = sessionsPerCycle * discountedPrice;
         const cycleAmount = cycleBaseAmount + addonsCostPerCycle;
 
-        const payments: any[] = [];
-        for (let i = 0; i < data.durationMonths; i++) {
-            const dueDate = new Date(startDate);
-            dueDate.setDate(dueDate.getDate() + i * 28); // 4-week cycles
-
-            payments.push({
-                userId,
-                contractId: contract.id,
-                provider: getProviderForMethod(data.paymentMethod),
-                amount: cycleAmount,
-                status: 'PENDING' as const,
-                dueDate,
-            });
-        }
+        // Centralized: same plan rules as FIXO/FLEX — FULL → single à-vista invoice (PIX
+        // discounted); MONTHLY → durationMonths charges of the plain cycle amount (no card
+        // surcharge) on a 28-day cadence.
+        const customIsFull = data.paymentPlan === 'FULL';
+        const customPlan = await resolvePlanAmounts({
+            baseMonthly: cycleAmount,
+            durationMonths: data.durationMonths,
+            plan: (data.paymentPlan || 'MONTHLY') as 'MONTHLY' | 'FULL',
+            paymentMethod: data.paymentMethod,
+            startDate,
+        });
+        const customProvider = getProviderForMethod(data.paymentMethod);
+        const payments: any[] = customPlan.scheduleDueDates.map((dueDate) => ({
+            userId,
+            contractId: contract.id,
+            provider: customProvider,
+            amount: customIsFull ? customPlan.fullAmount : customPlan.monthlyAmount,
+            status: 'PENDING' as const,
+            dueDate,
+        }));
 
         if (payments.length > 0) {
             await prisma.payment.createMany({ data: payments });
         }
 
         // Enrich payments with gateway (Cora/Stripe) data
-        const userInfo = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } });
+        const userInfo = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true, cpfCnpj: true } });
+        const userCpf = userInfo?.cpfCnpj?.replace(/\D/g, '') || undefined;
         const allPayments = await prisma.payment.findMany({
             where: { contractId: contract.id },
             orderBy: { dueDate: 'asc' },
         });
 
         let firstClientSecret: string | null = null;
+        let firstPaymentId: string | null = allPayments.length > 0 ? (allPayments[0]?.id ?? null) : null;
+        let firstPixString: string | null = null;
 
-        for (const p of allPayments) {
+        // CARTÃO: do NOT pre-create PaymentIntents here — the inline checkout creates the first
+        // one with the chosen installments (matching idempotency key + juros policy), and the
+        // remaining installments are charged later (Meus Pagamentos / auto-charge). Pre-creating
+        // would collide with that call. PIX/BOLETO still generate their QR/boleto up-front.
+        let isFirst = true;
+        for (const p of (data.paymentMethod === 'CARTAO' ? [] : allPayments)) {
             try {
                 const result = await gatewayCreatePayment({
                     paymentMethod: data.paymentMethod as 'PIX' | 'BOLETO' | 'CARTAO',
                     amount: p.amount,
                     description: `${data.name} - Parcela`,
-                    customer: { name: userInfo?.name || 'Cliente', email: userInfo?.email || '' },
+                    customer: { name: userInfo?.name || 'Cliente', email: userInfo?.email || '', cpf: userCpf },
                     dueDate: p.dueDate || new Date(),
                     paymentId: p.id,
                     contractId: contract.id,
@@ -562,12 +601,30 @@ router.post('/custom', authenticate, async (req: Request, res: Response) => {
                 });
                 await updatePaymentWithGatewayResult(p.id, result);
 
+                if (isFirst) {
+                    firstPaymentId = p.id;
+                    if (result.pixString) firstPixString = result.pixString;
+                }
                 if (!firstClientSecret && result.clientSecret) {
                     firstClientSecret = result.clientSecret;
                 }
             } catch (err) {
                 console.error(`[Gateway] Failed to create payment for ${p.id}:`, err);
+                if (isFirst) {
+                    // The first installment is what the client pays NOW. If its gateway
+                    // dispatch fails we must NOT leave a phantom ACTIVE contract with
+                    // reserved slots and an unpayable payment while reporting success.
+                    // Roll back contract + bookings + payments (FK-safe) and return 502.
+                    await prisma.payment.deleteMany({ where: { contractId: contract.id } }).catch(() => {});
+                    await prisma.booking.deleteMany({ where: { contractId: contract.id } }).catch(() => {});
+                    await prisma.contract.delete({ where: { id: contract.id } }).catch(() => {});
+                    const msg = err instanceof Error ? err.message : 'Erro ao gerar o pagamento. Tente novamente ou use outro método.';
+                    res.status(502).json({ error: msg });
+                    return;
+                }
+                // months 2..N: best-effort — they are regenerated when paid via Meus Pagamentos.
             }
+            isFirst = false;
         }
 
         const createdPayments = await prisma.payment.findMany({
@@ -597,6 +654,8 @@ router.post('/custom', authenticate, async (req: Request, res: Response) => {
             },
             message: `Plano Personalizado criado! ${bookings.length} sessões reservadas com ${discountPct}% de desconto.`,
             ...(firstClientSecret && { clientSecret: firstClientSecret }),
+            ...(firstPaymentId && { firstPaymentId }),
+            ...(firstPixString && { firstPixString }),
         });
     } catch (err) {
         if (err instanceof z.ZodError) {

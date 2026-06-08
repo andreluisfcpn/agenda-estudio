@@ -1,17 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Scissors, User, Share2, Youtube, FileText, ChevronRight, ChevronLeft, Sparkles, Tag } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { pricingApi, AddOnConfig } from '../api/client';
-
-const ICON_MAP: Record<string, React.ReactNode> = {
-    'CORTES_IA': <Scissors size={24} />,
-    'CORTES_HUMANO': <User size={24} />,
-    'GESTAO_SOCIAL': <Share2 size={24} />,
-    'YOUTUBE_SEO': <Youtube size={24} />,
-    'PAUTAS': <FileText size={24} />
-};
-
-const DEFAULT_ORDER = ['CORTES_IA', 'CORTES_HUMANO', 'GESTAO_SOCIAL', 'YOUTUBE_SEO', 'PAUTAS'];
+import { renderServiceIcon } from '../utils/serviceIcons';
 
 export default function ServicesCarousel() {
     const [addons, setAddons] = useState<AddOnConfig[]>([]);
@@ -21,11 +12,12 @@ export default function ServicesCarousel() {
 
     useEffect(() => {
         pricingApi.getAddons().then(res => {
-            // Sort to match DEFAULT_ORDER
-            const sorted = [...res.addons].sort((a, b) => {
-                return DEFAULT_ORDER.indexOf(a.key) - DEFAULT_ORDER.indexOf(b.key);
-            });
-            setAddons(sorted);
+            // Admin-driven: only services flagged to appear on the landing, ordered by sortOrder.
+            // (getAddons already returns active-only.)
+            const visible = res.addons
+                .filter(a => a.showOnLanding !== false)
+                .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+            setAddons(visible);
         }).catch(err => console.error("Error fetching addons:", err));
     }, []);
 
@@ -124,7 +116,7 @@ export default function ServicesCarousel() {
                                         marginBottom: '24px', flexShrink: 0, border: '1px solid rgba(17, 129, 155, 0.3)',
                                         boxShadow: '0 0 20px rgba(17, 129, 155, 0.2)'
                                     }}>
-                                        {ICON_MAP[activeService.key] || <Sparkles size={24} />}
+                                        {renderServiceIcon(activeService.icon, 24)}
                                     </div>
                                     <h3 style={{ fontSize: '2rem', fontWeight: 800, marginBottom: '16px' }}>{activeService.name}</h3>
                                     <p style={{ fontSize: '1.125rem', color: 'var(--text-muted)', lineHeight: 1.6, marginBottom: '0', maxWidth: '600px', flexGrow: 1 }}>
@@ -142,7 +134,6 @@ export default function ServicesCarousel() {
                         width: 'fit-content', margin: '0 auto'
                     }}>
                         {addons.map((addon, index) => {
-                            const iconElement = ICON_MAP[addon.key] || <Sparkles size={24} />;
                             return (
                                 <button
                                     key={addon.key}
@@ -162,7 +153,7 @@ export default function ServicesCarousel() {
                                     }}
                                 >
                                     <span style={{ transform: activeIndex === index ? 'scale(1.1)' : 'scale(1)' }}>
-                                        {React.cloneElement(iconElement as any, { size: 16 })}
+                                        {renderServiceIcon(addon.icon, 16)}
                                     </span>
                                     <span className="carousel-thumb-label">{addon.name}</span>
                                 </button>

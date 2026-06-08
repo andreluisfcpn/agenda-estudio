@@ -4,6 +4,7 @@ import { usersApi, bookingsApi, UserDetail, Booking, Contract } from '../api/cli
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import StatusBadge from '../components/ui/StatusBadge';
+import SavedCardItem from '../components/ui/SavedCardItem';
 import { TIER_META, BOOKING_STATUS_META, CONTRACT_STATUS_META, CONTRACT_TYPE_META, getMeta } from '../constants/adminMeta';
 
 import { formatBRL } from '../utils/format';
@@ -121,7 +122,20 @@ export default function ClientProfilePage() {
     const [bookingNotesSaving, setBookingNotesSaving] = useState(false);
     const [bookingNotesSaved, setBookingNotesSaved] = useState(false);
 
+    // Admin payment overview: auto-charge, saved cards, upcoming installments.
+    const [payOverview, setPayOverview] = useState<Awaited<ReturnType<typeof usersApi.paymentOverview>> | null>(null);
+    const [autoSaving, setAutoSaving] = useState(false);
+
     useEffect(() => { if (id) loadUser(); }, [id]);
+
+    const handleAutoCharge = async (enabled: boolean) => {
+        setAutoSaving(true);
+        try {
+            const r = await usersApi.setAutoCharge(id!, enabled);
+            setPayOverview(p => (p ? { ...p, autoChargeEnabled: r.autoChargeEnabled } : p));
+        } catch (err) { console.error(err); }
+        finally { setAutoSaving(false); }
+    };
 
     const loadUser = async () => {
         setLoading(true);
@@ -129,6 +143,7 @@ export default function ClientProfilePage() {
             const res = await usersApi.getById(id!);
             setUser(res.user);
             setNotes(res.user.notes || '');
+            usersApi.paymentOverview(id!).then(setPayOverview).catch(() => setPayOverview(null));
         } catch (err) { console.error(err); }
         finally { setLoading(false); }
     };
@@ -458,6 +473,48 @@ export default function ClientProfilePage() {
                 );
             })()}
 
+            {/* Payment: auto-charge + saved cards + upcoming installments (admin view) */}
+            {payOverview && (
+                <div className="card" style={{ padding: '20px', marginBottom: '16px' }}>
+                    <h2 style={{ fontSize: '1.0625rem', fontWeight: 700, marginBottom: '16px' }}>💳 Pagamento</h2>
+                    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '12px 14px', borderRadius: 'var(--radius-md)', background: payOverview.autoChargeEnabled ? 'rgba(16,185,129,0.06)' : 'var(--bg-elevated)', border: `1px solid ${payOverview.autoChargeEnabled ? 'rgba(16,185,129,0.25)' : 'var(--border-default)'}`, cursor: payOverview.hasSavedCard ? 'pointer' : 'not-allowed', opacity: payOverview.hasSavedCard ? 1 : 0.6 }}>
+                        <div>
+                            <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>🔁 Cobrança automática</div>
+                            <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '2px' }}>{payOverview.hasSavedCard ? 'Cobra o cartão salvo na data de vencimento.' : 'Requer um cartão salvo do cliente.'}</div>
+                        </div>
+                        <input type="checkbox" checked={payOverview.autoChargeEnabled} disabled={!payOverview.hasSavedCard || autoSaving} onChange={e => handleAutoCharge(e.target.checked)} style={{ width: 20, height: 20, accentColor: '#10b981', cursor: payOverview.hasSavedCard ? 'pointer' : 'not-allowed' }} />
+                    </label>
+
+                    <div style={{ marginTop: '14px' }}>
+                        <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>Cartões salvos</div>
+                        {payOverview.cards.length === 0 ? (
+                            <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Nenhum cartão salvo</div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                {payOverview.cards.map(c => (
+                                    <SavedCardItem key={c.id} card={c} />
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    <div style={{ marginTop: '14px' }}>
+                        <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>Parcelas a vencer ({payOverview.duePayments.length})</div>
+                        {payOverview.duePayments.length === 0 ? (
+                            <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Nenhuma parcela pendente</div>
+                        ) : payOverview.duePayments.slice(0, 8).map(p => (
+                            <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '8px 12px', borderRadius: 'var(--radius-sm)', background: p.overdue ? 'rgba(220,38,38,0.06)' : 'var(--bg-elevated)', border: p.overdue ? '1px solid rgba(220,38,38,0.2)' : '1px solid transparent', marginBottom: '6px' }}>
+                                <div style={{ minWidth: 0 }}>
+                                    <div style={{ fontSize: '0.8125rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.contractName}</div>
+                                    <div style={{ fontSize: '0.6875rem', color: p.overdue ? '#dc2626' : 'var(--text-muted)' }}>{p.overdue ? '⚠️ Vencida · ' : ''}{p.dueDate ? new Date(p.dueDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '—'}</div>
+                                </div>
+                                <span style={{ fontSize: '0.875rem', fontWeight: 700, color: p.overdue ? '#dc2626' : 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>{formatBRL(p.amount)}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {/* Contracts */}
             <div className="card" style={{ padding: '20px', marginBottom: '16px' }}>
                 <h2 style={{ fontSize: '1.0625rem', fontWeight: 700, marginBottom: '16px' }}>📋 Contratos ({user.contracts.length})</h2>
@@ -486,12 +543,18 @@ export default function ClientProfilePage() {
                                         </div>
                                     )}
                                 </div>
-                                {c.contractUrl && (
-                                    <a href={c.contractUrl} target="_blank" rel="noopener noreferrer"
-                                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '8px', fontSize: '0.8125rem', color: 'var(--accent-primary)', textDecoration: 'none' }}>
-                                        📄 Ver contrato digital ↗
-                                    </a>
-                                )}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px', flexWrap: 'wrap' }}>
+                                    <button onClick={() => navigate(`/admin/contracts/${c.id}`)}
+                                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--accent-primary)' }}>
+                                        📂 Abrir contrato →
+                                    </button>
+                                    {c.contractUrl && (
+                                        <a href={c.contractUrl} target="_blank" rel="noopener noreferrer"
+                                            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.8125rem', color: 'var(--accent-primary)', textDecoration: 'none' }}>
+                                            📄 Ver contrato digital ↗
+                                        </a>
+                                    )}
+                                </div>
                             </div>
                         ))}
                     </div>

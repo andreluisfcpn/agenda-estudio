@@ -15,6 +15,7 @@ import {
 } from '../../utils/pricing.js';
 import { BookingStatus, Prisma } from '../../generated/prisma/client.js';
 import { getConfig } from '../../lib/businessConfig.js';
+import { deriveStreamAggregates } from '../../lib/streamMetrics.js';
 import {
     adminUpdateBookingSchema,
     clientUpdateBookingSchema,
@@ -137,6 +138,8 @@ router.get('/my', authenticate, async (req: Request, res: Response) => {
             peakViewers: true,
             chatMessages: true,
             audienceOrigin: true,
+            isLivestream: true,
+            streamMetrics: true,
             addOns: true,
             contract: {
                 select: {
@@ -220,8 +223,8 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
         if (data.platforms !== undefined) updateData.platforms = data.platforms;
         if (data.platformLinks !== undefined) updateData.platformLinks = data.platformLinks;
 
-        // Phase 2 Metrics Logic
-        const hasMetricsPayload = data.durationMinutes !== undefined || data.peakViewers !== undefined || data.chatMessages !== undefined || data.audienceOrigin !== undefined;
+        // Phase 2 Metrics Logic (incl. livestream flag + per-network streamMetrics)
+        const hasMetricsPayload = data.durationMinutes !== undefined || data.peakViewers !== undefined || data.chatMessages !== undefined || data.audienceOrigin !== undefined || data.isLivestream !== undefined || data.streamMetrics !== undefined;
         const targetStatus = data.status || booking.status;
 
         if (hasMetricsPayload) {
@@ -230,9 +233,15 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
                 return;
             }
             if (data.durationMinutes !== undefined) updateData.durationMinutes = data.durationMinutes;
-            if (data.peakViewers !== undefined) updateData.peakViewers = data.peakViewers;
-            if (data.chatMessages !== undefined) updateData.chatMessages = data.chatMessages;
             if (data.audienceOrigin !== undefined) updateData.audienceOrigin = data.audienceOrigin;
+            if (data.isLivestream !== undefined) updateData.isLivestream = data.isLivestream;
+            if (data.streamMetrics !== undefined) updateData.streamMetrics = data.streamMetrics;
+            // Legacy aggregates: explicit value wins, else derived from the per-network metrics.
+            const agg = deriveStreamAggregates(data.streamMetrics !== undefined ? data.streamMetrics : booking.streamMetrics);
+            const peak = data.peakViewers != null ? data.peakViewers : agg.peakViewers;
+            const comments = data.chatMessages != null ? data.chatMessages : agg.chatMessages;
+            if (peak != null) updateData.peakViewers = peak;
+            if (comments != null) updateData.chatMessages = comments;
         }
 
         if (data.date) {
@@ -317,6 +326,7 @@ router.patch('/:id/client-update', authenticate, async (req: Request, res: Respo
                 status: true, tierApplied: true, price: true, contractId: true,
                 adminNotes: true, clientNotes: true, platforms: true, platformLinks: true,
                 durationMinutes: true, peakViewers: true, chatMessages: true, audienceOrigin: true,
+                isLivestream: true, streamMetrics: true,
             },
         });
 

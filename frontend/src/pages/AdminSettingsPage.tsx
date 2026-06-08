@@ -9,8 +9,11 @@ import {
     Sparkles,
     CreditCard,
     Plug,
+    ChevronLeft,
+    ChevronRight,
     type LucideIcon,
 } from 'lucide-react';
+import { useDragScroll } from '../hooks/useDragScroll';
 import AdminPageHeader from '../components/admin/AdminPageHeader';
 import SettingsBusinessConfigSection from '../components/admin/settings/SettingsBusinessConfigSection';
 import SettingsTiersSection from '../components/admin/settings/SettingsTiersSection';
@@ -116,6 +119,7 @@ const DEFAULT_SECTION: SectionId = 'gerais';
 
 export default function AdminSettingsPage() {
     const [searchParams, setSearchParams] = useSearchParams();
+    const { ref: railRef, showLeft, showRight, scrollByPage } = useDragScroll<HTMLElement>();
 
     const activeId: SectionId = useMemo(() => {
         const sec = searchParams.get('sec') as SectionId | null;
@@ -141,27 +145,57 @@ export default function AdminSettingsPage() {
             />
 
             <div className="admin-settings">
-                {/* ── Sub-nav (left rail on desktop / segmented on mobile) ── */}
-                <nav className="admin-settings-rail" aria-label="Seções de configurações">
-                    {SECTIONS.map(section => {
-                        const Icon = section.icon;
-                        const isActive = section.id === activeId;
-                        return (
-                            <button
-                                key={section.id}
-                                type="button"
-                                className={`admin-settings-rail-item ${isActive ? 'admin-settings-rail-item--active' : ''}`}
-                                aria-current={isActive ? 'page' : undefined}
-                                onClick={() => goToSection(section.id)}
-                            >
-                                <span className="admin-settings-rail-icon">
-                                    <Icon size={18} strokeWidth={1.8} />
-                                </span>
-                                {section.label}
-                            </button>
-                        );
-                    })}
-                </nav>
+                {/* ── Sub-nav: hidden on desktop (driven by the sidebar's expandable
+                       "Configurações"); shown as scrollable pills on mobile (sidebar hidden).
+                       Wrapper hosts the side arrows + drag-to-scroll affordances. ── */}
+                <div className="admin-settings-rail-wrap scrollrow-wrap">
+                    {showLeft && (
+                        <button
+                            type="button"
+                            className="scrollrow-arrow scrollrow-arrow--left"
+                            aria-label="Rolar seções para a esquerda"
+                            onClick={() => scrollByPage(-1)}
+                            tabIndex={-1}
+                        >
+                            <ChevronLeft size={16} />
+                        </button>
+                    )}
+                    <nav
+                        ref={railRef}
+                        className="admin-settings-rail admin-settings-rail--mobile-only scrollrow-track"
+                        aria-label="Seções de configurações"
+                    >
+                        {SECTIONS.map(section => {
+                            const Icon = section.icon;
+                            const isActive = section.id === activeId;
+                            return (
+                                <button
+                                    key={section.id}
+                                    type="button"
+                                    className={`admin-settings-rail-item ${isActive ? 'admin-settings-rail-item--active' : ''}`}
+                                    aria-current={isActive ? 'page' : undefined}
+                                    onClick={() => goToSection(section.id)}
+                                >
+                                    <span className="admin-settings-rail-icon">
+                                        <Icon size={18} strokeWidth={1.8} />
+                                    </span>
+                                    {section.label}
+                                </button>
+                            );
+                        })}
+                    </nav>
+                    {showRight && (
+                        <button
+                            type="button"
+                            className="scrollrow-arrow scrollrow-arrow--right scrollrow-arrow--pulse"
+                            aria-label="Rolar seções para a direita"
+                            onClick={() => scrollByPage(1)}
+                            tabIndex={-1}
+                        >
+                            <ChevronRight size={16} />
+                        </button>
+                    )}
+                </div>
 
                 {/* ── Active section only ── */}
                 <div className="admin-settings-panel">

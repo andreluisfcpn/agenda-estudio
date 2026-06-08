@@ -269,7 +269,7 @@ export default function AdminFinancePage() {
                                         onFocus={e => (e.currentTarget.style.borderColor = '#10b981')}
                                         onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
                                     />
-                                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🔎</span>
+                                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5, pointerEvents: 'none' }}>🔎</span>
                                 </div>
 
                                 {/* Status Filter Pills */}
@@ -311,7 +311,7 @@ export default function AdminFinancePage() {
                             <>
                                 <div className="table-container" style={{ margin: 0 }}>
                                   <div className="admin-table-wrap">
-                                    <table>
+                                    <table className="admin-table--cards">
                                         <thead>
                                             <tr>
                                                 <th style={{ paddingLeft: '20px' }}>Cliente</th>
@@ -334,11 +334,11 @@ export default function AdminFinancePage() {
                                                     onMouseEnter={e => (e.currentTarget.style.background = 'rgba(16,185,129,0.04)')}
                                                     onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)')}
                                                     >
-                                                        <td style={{ paddingLeft: '20px' }}>
+                                                        <td className="admin-card-title" style={{ paddingLeft: '20px' }}>
                                                             <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{p.user?.name || 'Removido'}</div>
                                                             <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '2px' }}>{p.user?.email}</div>
                                                         </td>
-                                                        <td>
+                                                        <td data-label="Contrato">
                                                             {p.contract ? (
                                                                 <div>
                                                                     <div style={{ fontWeight: 500, fontSize: '0.8125rem' }}>{p.contract.name}</div>
@@ -355,10 +355,10 @@ export default function AdminFinancePage() {
                                                                 <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Avulso</span>
                                                             )}
                                                         </td>
-                                                        <td style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+                                                        <td data-label="Vencimento" style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
                                                             {(p.dueDate ? new Date(p.dueDate) : new Date(p.createdAt)).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
                                                         </td>
-                                                        <td>
+                                                        <td data-label="Canal">
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                                 <span style={{ fontSize: '0.9375rem' }}>
                                                                     {p.methodEmoji || '💳'}
@@ -369,16 +369,16 @@ export default function AdminFinancePage() {
                                                                 </div>
                                                             </div>
                                                         </td>
-                                                        <td style={{ textAlign: 'right', fontWeight: 600, fontSize: '0.875rem', fontVariantNumeric: 'tabular-nums' }}>
+                                                        <td data-label="Bruto" style={{ textAlign: 'right', fontWeight: 600, fontSize: '0.875rem', fontVariantNumeric: 'tabular-nums' }}>
                                                             {formatBRL(p.amount)}
                                                         </td>
-                                                        <td style={{ textAlign: 'right', color: p.feeDeduced > 0 ? '#ef4444' : 'var(--text-muted)', fontSize: '0.8125rem', fontVariantNumeric: 'tabular-nums' }}>
+                                                        <td data-label="Taxa" style={{ textAlign: 'right', color: p.feeDeduced > 0 ? '#ef4444' : 'var(--text-muted)', fontSize: '0.8125rem', fontVariantNumeric: 'tabular-nums' }}>
                                                             {p.feeDeduced > 0 ? `- ${formatBRL(p.feeDeduced)}` : '—'}
                                                         </td>
-                                                        <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '0.875rem', color: p.status === 'PAID' ? '#10b981' : 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                                                        <td data-label="Líquido" style={{ textAlign: 'right', fontWeight: 700, fontSize: '0.875rem', color: p.status === 'PAID' ? '#10b981' : 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
                                                             {p.status === 'PAID' ? formatBRL(p.netAmount) : '—'}
                                                         </td>
-                                                        <td style={{ textAlign: 'center' }}>
+                                                        <td data-label="Status" style={{ textAlign: 'center' }}>
                                                             <StatusBadge meta={getMeta(PAYMENT_STATUS_META, p.status)} size="md" />
                                                         </td>
                                                     </tr>

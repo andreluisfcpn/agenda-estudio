@@ -2,6 +2,36 @@
    my-bookings.css — Minhas Gravações (Mobile-First)
    ═══════════════════════════════════════════════════════════════ */
 
+/* ─── Aggregate summary strip (livestream stats) ───────────── */
+.recordings-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.recordings-summary__card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: 14px 12px;
+  text-align: center;
+}
+.recordings-summary__value {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--accent-primary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.recordings-summary__label {
+  margin-top: 4px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
 /* ─── Page Hero ────────────────────────────────────────────── */
 .bookings-hero {
   padding: 24px 0 16px;

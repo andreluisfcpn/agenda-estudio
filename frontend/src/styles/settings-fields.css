@@ -1,0 +1,667 @@
+/* ═══════════════════════════════════════════════════════════
+   Settings Fields — primitivas reutilizáveis (sf- prefix)
+   SegmentedControl · ColorField · EmojiField · StepperField · TimeField ·
+   WeekdayToggles · TimeSlotListField · SavedCardItem · "Avançado" disclosure
+   ═══════════════════════════════════════════════════════════ */
+
+/* ─── SegmentedControl (pill-sliding radio group, fills 100% width) ─── */
+.sf-segmented {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-height: var(--control-h);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 0;
+}
+.sf-segmented-opt {
+  flex: 1 1 0;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  background: none;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  z-index: 1;
+  padding: 8px var(--space-3);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.2s ease;
+}
+.sf-segmented-opt.is-active { color: var(--text-primary); }
+.sf-segmented-opt:not(.is-active):hover { color: var(--text-primary); }
+.sf-segmented-slider {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  background: var(--bg-elevated);
+  border-radius: 7px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: left 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 0;
+}
+
+/* ─── ColorField (native <input type=color> + hex) ─── */
+.sf-color {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  gap: var(--space-2);
+  align-items: center;
+}
+.sf-color-swatch {
+  width: 44px;
+  height: var(--control-h);
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+  overflow: hidden;
+}
+.sf-color-swatch::-webkit-color-swatch-wrapper { padding: 0; }
+.sf-color-swatch::-webkit-color-swatch { border: none; border-radius: 6px; }
+.sf-color-hex {
+  /* Inherits .form-input via composed className */
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-transform: lowercase;
+}
+
+/* ─── EmojiField (input + popover de emojis curados) ─── */
+.sf-emoji {
+  position: relative;
+  display: inline-block;
+}
+.sf-emoji-input {
+  width: 64px;
+  text-align: center;
+  font-size: 1.5rem;
+  padding: 8px;
+}
+.sf-emoji-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: var(--z-dropdown);
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+  padding: var(--space-2);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: var(--shadow-md);
+}
+.sf-emoji-pick {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 1.25rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.sf-emoji-pick:hover { background: var(--bg-card); border-color: var(--border-color); }
+
+/* ─── StepperField (number with −/+ buttons and optional suffix) ─── */
+.sf-stepper {
+  display: inline-flex;
+  align-items: stretch;
+  min-height: var(--control-h);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  width: 100%;
+  max-width: 180px;
+}
+.sf-stepper-btn {
+  width: 32px;
+  background: var(--bg-elevated);
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 700;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+.sf-stepper-btn:hover { background: var(--bg-card-hover); }
+.sf-stepper-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.sf-stepper-input {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  outline: none;
+  -moz-appearance: textfield;
+  appearance: textfield;
+  /* Remove spinners in WebKit */
+}
+.sf-stepper-input::-webkit-inner-spin-button,
+.sf-stepper-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.sf-stepper-suffix {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-3);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  border-left: 1px solid var(--border-color);
+}
+
+/* ─── TimeField — wraps native <input type=time> with form-input look ─── */
+.sf-time {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.04em;
+  /* Composed with .form-input — additional rules layer on top. */
+}
+
+/* ─── WeekdayToggles ─── */
+.sf-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--space-2);
+}
+.sf-weekday {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--control-h);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.sf-weekday:hover { color: var(--text-primary); border-color: var(--border-hover); }
+.sf-weekday.is-active {
+  background: rgba(17, 129, 155, 0.28);
+  border-color: var(--accent-primary);
+  color: #fff;
+  box-shadow: 0 0 0 1px var(--accent-primary) inset, 0 0 12px rgba(17, 129, 155, 0.18);
+}
+
+/* ─── TimeSlotListField ─── */
+.sf-timeslots {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.sf-timeslot-row {
+  display: grid;
+  grid-template-columns: 1fr var(--control-h);
+  gap: var(--space-2);
+  align-items: center;
+}
+.sf-timeslot-remove {
+  width: var(--control-h);
+  height: var(--control-h);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.sf-timeslot-remove:hover { color: #ef4444; border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.06); }
+.sf-timeslot-add {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 8px var(--space-3);
+  background: transparent;
+  border: 1px dashed var(--border-color);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.sf-timeslot-add:hover { color: var(--text-primary); border-color: var(--border-hover); }
+
+/* ─── SavedCardItem (used in InlineCheckout + ClientProfilePage admin view) ─── */
+.sf-card {
+  display: grid;
+  grid-template-columns: 32px 1fr auto auto auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-3) var(--space-3-5);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  width: 100%;
+  text-align: left;
+  cursor: default;
+  transition: border-color 0.15s, background 0.15s;
+}
+button.sf-card { cursor: pointer; font-family: inherit; color: inherit; }
+button.sf-card:hover { border-color: var(--border-hover); }
+.sf-card.is-selected {
+  border-color: var(--accent-primary);
+  background: rgba(17, 129, 155, 0.08);
+}
+.sf-card-brand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+.sf-card-num {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sf-card-exp {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.sf-card-default {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent-primary);
+  background: rgba(17, 129, 155, 0.12);
+  border-radius: 5px;
+  white-space: nowrap;
+}
+.sf-card-radio {
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid var(--border-color);
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-primary);
+}
+.sf-card.is-selected .sf-card-radio {
+  border-color: var(--accent-primary);
+  background: var(--accent-primary);
+  color: #fff;
+}
+
+/* ─── "Avançado" disclosure (used in SettingsPaymentMethodsSection) ─── */
+.sf-advanced {
+  margin-top: var(--space-3);
+  border-top: 1px dashed var(--border-color);
+  padding-top: var(--space-3);
+}
+.sf-advanced > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  cursor: pointer;
+  list-style: none;
+  padding: 4px 0;
+}
+.sf-advanced > summary::-webkit-details-marker { display: none; }
+.sf-advanced > summary::before {
+  content: '▸';
+  display: inline-block;
+  font-size: 0.625rem;
+  transition: transform 0.15s ease;
+}
+.sf-advanced[open] > summary::before { transform: rotate(90deg); }
+.sf-advanced > summary:hover { color: var(--text-secondary); }
+.sf-advanced-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+.sf-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+@media (max-width: 480px) {
+  .sf-grid-2 { grid-template-columns: 1fr; }
+}
+
+/* ─── ToggleField (iOS-style switch) ─── */
+.sf-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  user-select: none;
+}
+.sf-toggle-switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 0;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+  flex-shrink: 0;
+}
+.sf-toggle.is-on .sf-toggle-switch {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+.sf-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: left 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.sf-toggle.is-on .sf-toggle-thumb {
+  left: 22px;
+}
+.sf-toggle-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* ─── UrlField / EmailField (leading icon + open-in-tab) ─── */
+.sf-url,
+.sf-email {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+.sf-url-icon,
+.sf-email-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+  display: inline-flex;
+}
+.sf-url-input,
+.sf-email-input {
+  padding-left: 34px;
+}
+.sf-url-input {
+  padding-right: 38px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8125rem;
+}
+.sf-url-open {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--accent-primary);
+  background: rgba(17, 129, 155, 0.12);
+  text-decoration: none;
+  transition: background 0.15s;
+}
+.sf-url-open:hover { background: rgba(17, 129, 155, 0.22); }
+
+/* ─── ScrollableRow — drag-to-scroll + left/right indicator arrows ─── */
+/* The wrap intentionally does NOT set `position` — the caller chooses
+   `position: fixed` (BottomTabBar) or `position: relative`
+   (admin-settings-rail-wrap). Both establish the containing block the
+   absolute side-arrows need. Setting it here would override the fixed
+   positioning of the bottom-tab-bar (source order). */
+.scrollrow-wrap {
+  width: 100%;
+}
+.scrollrow-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 3;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-color);
+  color: var(--accent-primary);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  opacity: 0.95;
+  transition: opacity 0.15s, transform 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.scrollrow-arrow:hover {
+  background: var(--bg-card-hover);
+  opacity: 1;
+}
+.scrollrow-arrow:active { transform: translateY(-50%) scale(0.92); }
+.scrollrow-arrow--left { left: 4px; }
+.scrollrow-arrow--right { right: 4px; }
+.scrollrow-arrow--pulse {
+  animation: scrollrow-pulse 1.6s ease-in-out 0.4s 2;
+}
+@keyframes scrollrow-pulse {
+  0%, 100% { transform: translateY(-50%) scale(1); }
+  50%      { transform: translateY(-50%) scale(1.12); }
+}
+
+/* Drag affordance: cursor + disable text selection + disable snap while dragging */
+.scrollrow-track {
+  cursor: grab;
+  user-select: none;
+}
+.scrollrow-track.is-dragging {
+  cursor: grabbing;
+  scroll-snap-type: none !important;
+  scroll-behavior: auto !important;
+}
+@media (hover: none) {
+  /* Touch-only: drag is native, no need for grab cursor. */
+  .scrollrow-track { cursor: default; }
+}
+
+/* ─── Unified config grid (Gerais/Financeiro/Políticas) ───────────
+   One concept for every setting: clean label (no type badge, no redundant
+   unit — the field's own suffix carries it) + a control that fills the cell,
+   so all controls line up symmetrically regardless of type. */
+.sf-config-grid {
+  display: grid;
+  gap: var(--space-5) var(--space-4);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr));
+  align-items: stretch;
+}
+.sf-config-cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.sf-config-cell--full { grid-column: 1 / -1; }
+/* Push the control to the bottom so controls align across a row even when
+   labels wrap to different line counts. */
+.sf-config-cell > :last-child { margin-top: auto; }
+.sf-config-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+/* Every control fills the cell uniformly (symmetry). */
+.sf-config-cell .sf-stepper,
+.sf-config-cell .sf-segmented,
+.sf-config-cell .form-input,
+.sf-config-cell .sf-url,
+.sf-config-cell .sf-email,
+.sf-config-cell .sf-color,
+.sf-config-cell .sf-time {
+  width: 100%;
+  max-width: none;
+}
+
+/* ─── Installment surcharge grid (Tarifa de Cartão por Parcela) ─── */
+.sf-pct-grid {
+  display: grid;
+  gap: var(--space-2);
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+}
+.sf-pct {
+  display: flex;
+  align-items: stretch;
+  min-height: var(--control-h);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.sf-pct:focus-within {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(17, 129, 155, 0.15);
+}
+/* Empty = inherits the system default → dashed, muted */
+.sf-pct--default { border-style: dashed; }
+/* 0% = sem juros (free) → subtle green accent */
+.sf-pct--free {
+  border-color: rgba(16, 185, 129, 0.4);
+  background: rgba(16, 185, 129, 0.06);
+}
+.sf-pct-prefix {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  padding: 0 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--accent-primary);
+  background: rgba(17, 129, 155, 0.1);
+  border-right: 1px solid var(--border-color);
+}
+.sf-pct--free .sf-pct-prefix {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.12);
+}
+.sf-pct-input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  text-align: center;
+  padding: 9px 2px;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.sf-pct-input::-webkit-inner-spin-button,
+.sf-pct-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.sf-pct-input::placeholder { color: var(--text-muted); font-weight: 400; }
+.sf-pct-suffix {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  border-left: 1px solid var(--border-color);
+}
+.sf-pct--free .sf-pct-suffix { color: #10b981; }
+.sf-pct-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+.sf-pct-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.sf-pct-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  border: 1px solid var(--border-color);
+}
+.sf-pct-legend-dot--free { background: rgba(16, 185, 129, 0.5); border-color: rgba(16, 185, 129, 0.6); }
+.sf-pct-legend-dot--default { border-style: dashed; }
+
+/* ─── ScheduleEditor sections ─── */
+.sf-schedule {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+.sf-schedule-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.sf-schedule-block-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+.sf-schedule-help {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}

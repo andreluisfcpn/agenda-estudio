@@ -34,6 +34,8 @@ export type ContractAvgAggregateOutputType = {
   flexCreditsTotal: number | null
   flexCreditsRemaining: number | null
   flexWeeksCompensated: number | null
+  flexCreditsForfeited: number | null
+  flexForfeitFloor: number | null
   sessionsPerWeek: number | null
   sessionsPerCycle: number | null
   totalSessions: number | null
@@ -47,6 +49,8 @@ export type ContractSumAggregateOutputType = {
   flexCreditsTotal: number | null
   flexCreditsRemaining: number | null
   flexWeeksCompensated: number | null
+  flexCreditsForfeited: number | null
+  flexForfeitFloor: number | null
   sessionsPerWeek: number | null
   sessionsPerCycle: number | null
   totalSessions: number | null
@@ -71,6 +75,8 @@ export type ContractMinAggregateOutputType = {
   flexCreditsRemaining: number | null
   flexCycleStart: Date | null
   flexWeeksCompensated: number | null
+  flexCreditsForfeited: number | null
+  flexForfeitFloor: number | null
   customSchedule: string | null
   sessionsPerWeek: number | null
   sessionsPerCycle: number | null
@@ -78,6 +84,8 @@ export type ContractMinAggregateOutputType = {
   addonCredits: string | null
   accessMode: string | null
   paymentMethod: $Enums.PaymentMethod | null
+  boletoAllowed: boolean | null
+  paymentPlan: string | null
   pausedAt: Date | null
   pauseReason: string | null
   resumeDate: Date | null
@@ -106,6 +114,8 @@ export type ContractMaxAggregateOutputType = {
   flexCreditsRemaining: number | null
   flexCycleStart: Date | null
   flexWeeksCompensated: number | null
+  flexCreditsForfeited: number | null
+  flexForfeitFloor: number | null
   customSchedule: string | null
   sessionsPerWeek: number | null
   sessionsPerCycle: number | null
@@ -113,6 +123,8 @@ export type ContractMaxAggregateOutputType = {
   addonCredits: string | null
   accessMode: string | null
   paymentMethod: $Enums.PaymentMethod | null
+  boletoAllowed: boolean | null
+  paymentPlan: string | null
   pausedAt: Date | null
   pauseReason: string | null
   resumeDate: Date | null
@@ -141,6 +153,8 @@ export type ContractCountAggregateOutputType = {
   flexCreditsRemaining: number
   flexCycleStart: number
   flexWeeksCompensated: number
+  flexCreditsForfeited: number
+  flexForfeitFloor: number
   customSchedule: number
   sessionsPerWeek: number
   sessionsPerCycle: number
@@ -149,6 +163,8 @@ export type ContractCountAggregateOutputType = {
   accessMode: number
   addOns: number
   paymentMethod: number
+  boletoAllowed: number
+  paymentPlan: number
   pausedAt: number
   pauseReason: number
   resumeDate: number
@@ -168,6 +184,8 @@ export type ContractAvgAggregateInputType = {
   flexCreditsTotal?: true
   flexCreditsRemaining?: true
   flexWeeksCompensated?: true
+  flexCreditsForfeited?: true
+  flexForfeitFloor?: true
   sessionsPerWeek?: true
   sessionsPerCycle?: true
   totalSessions?: true
@@ -181,6 +199,8 @@ export type ContractSumAggregateInputType = {
   flexCreditsTotal?: true
   flexCreditsRemaining?: true
   flexWeeksCompensated?: true
+  flexCreditsForfeited?: true
+  flexForfeitFloor?: true
   sessionsPerWeek?: true
   sessionsPerCycle?: true
   totalSessions?: true
@@ -205,6 +225,8 @@ export type ContractMinAggregateInputType = {
   flexCreditsRemaining?: true
   flexCycleStart?: true
   flexWeeksCompensated?: true
+  flexCreditsForfeited?: true
+  flexForfeitFloor?: true
   customSchedule?: true
   sessionsPerWeek?: true
   sessionsPerCycle?: true
@@ -212,6 +234,8 @@ export type ContractMinAggregateInputType = {
   addonCredits?: true
   accessMode?: true
   paymentMethod?: true
+  boletoAllowed?: true
+  paymentPlan?: true
   pausedAt?: true
   pauseReason?: true
   resumeDate?: true
@@ -240,6 +264,8 @@ export type ContractMaxAggregateInputType = {
   flexCreditsRemaining?: true
   flexCycleStart?: true
   flexWeeksCompensated?: true
+  flexCreditsForfeited?: true
+  flexForfeitFloor?: true
   customSchedule?: true
   sessionsPerWeek?: true
   sessionsPerCycle?: true
@@ -247,6 +273,8 @@ export type ContractMaxAggregateInputType = {
   addonCredits?: true
   accessMode?: true
   paymentMethod?: true
+  boletoAllowed?: true
+  paymentPlan?: true
   pausedAt?: true
   pauseReason?: true
   resumeDate?: true
@@ -275,6 +303,8 @@ export type ContractCountAggregateInputType = {
   flexCreditsRemaining?: true
   flexCycleStart?: true
   flexWeeksCompensated?: true
+  flexCreditsForfeited?: true
+  flexForfeitFloor?: true
   customSchedule?: true
   sessionsPerWeek?: true
   sessionsPerCycle?: true
@@ -283,6 +313,8 @@ export type ContractCountAggregateInputType = {
   accessMode?: true
   addOns?: true
   paymentMethod?: true
+  boletoAllowed?: true
+  paymentPlan?: true
   pausedAt?: true
   pauseReason?: true
   resumeDate?: true
@@ -398,6 +430,8 @@ export type ContractGroupByOutputType = {
   flexCreditsRemaining: number | null
   flexCycleStart: Date | null
   flexWeeksCompensated: number | null
+  flexCreditsForfeited: number
+  flexForfeitFloor: number | null
   customSchedule: string | null
   sessionsPerWeek: number | null
   sessionsPerCycle: number | null
@@ -406,6 +440,8 @@ export type ContractGroupByOutputType = {
   accessMode: string | null
   addOns: string[]
   paymentMethod: $Enums.PaymentMethod | null
+  boletoAllowed: boolean
+  paymentPlan: string
   pausedAt: Date | null
   pauseReason: string | null
   resumeDate: Date | null
@@ -457,6 +493,8 @@ export type ContractWhereInput = {
   flexCreditsRemaining?: Prisma.IntNullableFilter<"Contract"> | number | null
   flexCycleStart?: Prisma.DateTimeNullableFilter<"Contract"> | Date | string | null
   flexWeeksCompensated?: Prisma.IntNullableFilter<"Contract"> | number | null
+  flexCreditsForfeited?: Prisma.IntFilter<"Contract"> | number
+  flexForfeitFloor?: Prisma.IntNullableFilter<"Contract"> | number | null
   customSchedule?: Prisma.StringNullableFilter<"Contract"> | string | null
   sessionsPerWeek?: Prisma.IntNullableFilter<"Contract"> | number | null
   sessionsPerCycle?: Prisma.IntNullableFilter<"Contract"> | number | null
@@ -465,6 +503,8 @@ export type ContractWhereInput = {
   accessMode?: Prisma.StringNullableFilter<"Contract"> | string | null
   addOns?: Prisma.StringNullableListFilter<"Contract">
   paymentMethod?: Prisma.EnumPaymentMethodNullableFilter<"Contract"> | $Enums.PaymentMethod | null
+  boletoAllowed?: Prisma.BoolFilter<"Contract"> | boolean
+  paymentPlan?: Prisma.StringFilter<"Contract"> | string
   pausedAt?: Prisma.DateTimeNullableFilter<"Contract"> | Date | string | null
   pauseReason?: Prisma.StringNullableFilter<"Contract"> | string | null
   resumeDate?: Prisma.DateTimeNullableFilter<"Contract"> | Date | string | null
@@ -498,6 +538,8 @@ export type ContractOrderByWithRelationInput = {
   flexCreditsRemaining?: Prisma.SortOrderInput | Prisma.SortOrder
   flexCycleStart?: Prisma.SortOrderInput | Prisma.SortOrder
   flexWeeksCompensated?: Prisma.SortOrderInput | Prisma.SortOrder
+  flexCreditsForfeited?: Prisma.SortOrder
+  flexForfeitFloor?: Prisma.SortOrderInput | Prisma.SortOrder
   customSchedule?: Prisma.SortOrderInput | Prisma.SortOrder
   sessionsPerWeek?: Prisma.SortOrderInput | Prisma.SortOrder
   sessionsPerCycle?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -506,6 +548,8 @@ export type ContractOrderByWithRelationInput = {
   accessMode?: Prisma.SortOrderInput | Prisma.SortOrder
   addOns?: Prisma.SortOrder
   paymentMethod?: Prisma.SortOrderInput | Prisma.SortOrder
+  boletoAllowed?: Prisma.SortOrder
+  paymentPlan?: Prisma.SortOrder
   pausedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   pauseReason?: Prisma.SortOrderInput | Prisma.SortOrder
   resumeDate?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -542,6 +586,8 @@ export type ContractWhereUniqueInput = Prisma.AtLeast<{
   flexCreditsRemaining?: Prisma.IntNullableFilter<"Contract"> | number | null
   flexCycleStart?: Prisma.DateTimeNullableFilter<"Contract"> | Date | string | null
   flexWeeksCompensated?: Prisma.IntNullableFilter<"Contract"> | number | null
+  flexCreditsForfeited?: Prisma.IntFilter<"Contract"> | number
+  flexForfeitFloor?: Prisma.IntNullableFilter<"Contract"> | number | null
   customSchedule?: Prisma.StringNullableFilter<"Contract"> | string | null
   sessionsPerWeek?: Prisma.IntNullableFilter<"Contract"> | number | null
   sessionsPerCycle?: Prisma.IntNullableFilter<"Contract"> | number | null
@@ -550,6 +596,8 @@ export type ContractWhereUniqueInput = Prisma.AtLeast<{
   accessMode?: Prisma.StringNullableFilter<"Contract"> | string | null
   addOns?: Prisma.StringNullableListFilter<"Contract">
   paymentMethod?: Prisma.EnumPaymentMethodNullableFilter<"Contract"> | $Enums.PaymentMethod | null
+  boletoAllowed?: Prisma.BoolFilter<"Contract"> | boolean
+  paymentPlan?: Prisma.StringFilter<"Contract"> | string
   pausedAt?: Prisma.DateTimeNullableFilter<"Contract"> | Date | string | null
   pauseReason?: Prisma.StringNullableFilter<"Contract"> | string | null
   resumeDate?: Prisma.DateTimeNullableFilter<"Contract"> | Date | string | null
@@ -583,6 +631,8 @@ export type ContractOrderByWithAggregationInput = {
   flexCreditsRemaining?: Prisma.SortOrderInput | Prisma.SortOrder
   flexCycleStart?: Prisma.SortOrderInput | Prisma.SortOrder
   flexWeeksCompensated?: Prisma.SortOrderInput | Prisma.SortOrder
+  flexCreditsForfeited?: Prisma.SortOrder
+  flexForfeitFloor?: Prisma.SortOrderInput | Prisma.SortOrder
   customSchedule?: Prisma.SortOrderInput | Prisma.SortOrder
   sessionsPerWeek?: Prisma.SortOrderInput | Prisma.SortOrder
   sessionsPerCycle?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -591,6 +641,8 @@ export type ContractOrderByWithAggregationInput = {
   accessMode?: Prisma.SortOrderInput | Prisma.SortOrder
   addOns?: Prisma.SortOrder
   paymentMethod?: Prisma.SortOrderInput | Prisma.SortOrder
+  boletoAllowed?: Prisma.SortOrder
+  paymentPlan?: Prisma.SortOrder
   pausedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   pauseReason?: Prisma.SortOrderInput | Prisma.SortOrder
   resumeDate?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -627,6 +679,8 @@ export type ContractScalarWhereWithAggregatesInput = {
   flexCreditsRemaining?: Prisma.IntNullableWithAggregatesFilter<"Contract"> | number | null
   flexCycleStart?: Prisma.DateTimeNullableWithAggregatesFilter<"Contract"> | Date | string | null
   flexWeeksCompensated?: Prisma.IntNullableWithAggregatesFilter<"Contract"> | number | null
+  flexCreditsForfeited?: Prisma.IntWithAggregatesFilter<"Contract"> | number
+  flexForfeitFloor?: Prisma.IntNullableWithAggregatesFilter<"Contract"> | number | null
   customSchedule?: Prisma.StringNullableWithAggregatesFilter<"Contract"> | string | null
   sessionsPerWeek?: Prisma.IntNullableWithAggregatesFilter<"Contract"> | number | null
   sessionsPerCycle?: Prisma.IntNullableWithAggregatesFilter<"Contract"> | number | null
@@ -635,6 +689,8 @@ export type ContractScalarWhereWithAggregatesInput = {
   accessMode?: Prisma.StringNullableWithAggregatesFilter<"Contract"> | string | null
   addOns?: Prisma.StringNullableListFilter<"Contract">
   paymentMethod?: Prisma.EnumPaymentMethodNullableWithAggregatesFilter<"Contract"> | $Enums.PaymentMethod | null
+  boletoAllowed?: Prisma.BoolWithAggregatesFilter<"Contract"> | boolean
+  paymentPlan?: Prisma.StringWithAggregatesFilter<"Contract"> | string
   pausedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Contract"> | Date | string | null
   pauseReason?: Prisma.StringNullableWithAggregatesFilter<"Contract"> | string | null
   resumeDate?: Prisma.DateTimeNullableWithAggregatesFilter<"Contract"> | Date | string | null
@@ -662,6 +718,8 @@ export type ContractCreateInput = {
   flexCreditsRemaining?: number | null
   flexCycleStart?: Date | string | null
   flexWeeksCompensated?: number | null
+  flexCreditsForfeited?: number
+  flexForfeitFloor?: number | null
   customSchedule?: string | null
   sessionsPerWeek?: number | null
   sessionsPerCycle?: number | null
@@ -670,6 +728,8 @@ export type ContractCreateInput = {
   accessMode?: string | null
   addOns?: Prisma.ContractCreateaddOnsInput | string[]
   paymentMethod?: $Enums.PaymentMethod | null
+  boletoAllowed?: boolean
+  paymentPlan?: string
   pausedAt?: Date | string | null
   pauseReason?: string | null
   resumeDate?: Date | string | null
@@ -702,6 +762,8 @@ export type ContractUncheckedCreateInput = {
   flexCreditsRemaining?: number | null
   flexCycleStart?: Date | string | null
   flexWeeksCompensated?: number | null
+  flexCreditsForfeited?: number
+  flexForfeitFloor?: number | null
   customSchedule?: string | null
   sessionsPerWeek?: number | null
   sessionsPerCycle?: number | null
@@ -710,6 +772,8 @@ export type ContractUncheckedCreateInput = {
   accessMode?: string | null
   addOns?: Prisma.ContractCreateaddOnsInput | string[]
   paymentMethod?: $Enums.PaymentMethod | null
+  boletoAllowed?: boolean
+  paymentPlan?: string
   pausedAt?: Date | string | null
   pauseReason?: string | null
   resumeDate?: Date | string | null
@@ -740,6 +804,8 @@ export type ContractUpdateInput = {
   flexCreditsRemaining?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   flexCycleStart?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   flexWeeksCompensated?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  flexCreditsForfeited?: Prisma.IntFieldUpdateOperationsInput | number
+  flexForfeitFloor?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   customSchedule?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sessionsPerWeek?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   sessionsPerCycle?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -748,6 +814,8 @@ export type ContractUpdateInput = {
   accessMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   addOns?: Prisma.ContractUpdateaddOnsInput | string[]
   paymentMethod?: Prisma.NullableEnumPaymentMethodFieldUpdateOperationsInput | $Enums.PaymentMethod | null
+  boletoAllowed?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  paymentPlan?: Prisma.StringFieldUpdateOperationsInput | string
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pauseReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resumeDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -780,6 +848,8 @@ export type ContractUncheckedUpdateInput = {
   flexCreditsRemaining?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   flexCycleStart?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   flexWeeksCompensated?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  flexCreditsForfeited?: Prisma.IntFieldUpdateOperationsInput | number
+  flexForfeitFloor?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   customSchedule?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sessionsPerWeek?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   sessionsPerCycle?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -788,6 +858,8 @@ export type ContractUncheckedUpdateInput = {
   accessMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   addOns?: Prisma.ContractUpdateaddOnsInput | string[]
   paymentMethod?: Prisma.NullableEnumPaymentMethodFieldUpdateOperationsInput | $Enums.PaymentMethod | null
+  boletoAllowed?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  paymentPlan?: Prisma.StringFieldUpdateOperationsInput | string
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pauseReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resumeDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -819,6 +891,8 @@ export type ContractCreateManyInput = {
   flexCreditsRemaining?: number | null
   flexCycleStart?: Date | string | null
   flexWeeksCompensated?: number | null
+  flexCreditsForfeited?: number
+  flexForfeitFloor?: number | null
   customSchedule?: string | null
   sessionsPerWeek?: number | null
   sessionsPerCycle?: number | null
@@ -827,6 +901,8 @@ export type ContractCreateManyInput = {
   accessMode?: string | null
   addOns?: Prisma.ContractCreateaddOnsInput | string[]
   paymentMethod?: $Enums.PaymentMethod | null
+  boletoAllowed?: boolean
+  paymentPlan?: string
   pausedAt?: Date | string | null
   pauseReason?: string | null
   resumeDate?: Date | string | null
@@ -854,6 +930,8 @@ export type ContractUpdateManyMutationInput = {
   flexCreditsRemaining?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   flexCycleStart?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   flexWeeksCompensated?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  flexCreditsForfeited?: Prisma.IntFieldUpdateOperationsInput | number
+  flexForfeitFloor?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   customSchedule?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sessionsPerWeek?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   sessionsPerCycle?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -862,6 +940,8 @@ export type ContractUpdateManyMutationInput = {
   accessMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   addOns?: Prisma.ContractUpdateaddOnsInput | string[]
   paymentMethod?: Prisma.NullableEnumPaymentMethodFieldUpdateOperationsInput | $Enums.PaymentMethod | null
+  boletoAllowed?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  paymentPlan?: Prisma.StringFieldUpdateOperationsInput | string
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pauseReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resumeDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -889,6 +969,8 @@ export type ContractUncheckedUpdateManyInput = {
   flexCreditsRemaining?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   flexCycleStart?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   flexWeeksCompensated?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  flexCreditsForfeited?: Prisma.IntFieldUpdateOperationsInput | number
+  flexForfeitFloor?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   customSchedule?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sessionsPerWeek?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   sessionsPerCycle?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -897,6 +979,8 @@ export type ContractUncheckedUpdateManyInput = {
   accessMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   addOns?: Prisma.ContractUpdateaddOnsInput | string[]
   paymentMethod?: Prisma.NullableEnumPaymentMethodFieldUpdateOperationsInput | $Enums.PaymentMethod | null
+  boletoAllowed?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  paymentPlan?: Prisma.StringFieldUpdateOperationsInput | string
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pauseReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resumeDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -940,6 +1024,8 @@ export type ContractCountOrderByAggregateInput = {
   flexCreditsRemaining?: Prisma.SortOrder
   flexCycleStart?: Prisma.SortOrder
   flexWeeksCompensated?: Prisma.SortOrder
+  flexCreditsForfeited?: Prisma.SortOrder
+  flexForfeitFloor?: Prisma.SortOrder
   customSchedule?: Prisma.SortOrder
   sessionsPerWeek?: Prisma.SortOrder
   sessionsPerCycle?: Prisma.SortOrder
@@ -948,6 +1034,8 @@ export type ContractCountOrderByAggregateInput = {
   accessMode?: Prisma.SortOrder
   addOns?: Prisma.SortOrder
   paymentMethod?: Prisma.SortOrder
+  boletoAllowed?: Prisma.SortOrder
+  paymentPlan?: Prisma.SortOrder
   pausedAt?: Prisma.SortOrder
   pauseReason?: Prisma.SortOrder
   resumeDate?: Prisma.SortOrder
@@ -965,6 +1053,8 @@ export type ContractAvgOrderByAggregateInput = {
   flexCreditsTotal?: Prisma.SortOrder
   flexCreditsRemaining?: Prisma.SortOrder
   flexWeeksCompensated?: Prisma.SortOrder
+  flexCreditsForfeited?: Prisma.SortOrder
+  flexForfeitFloor?: Prisma.SortOrder
   sessionsPerWeek?: Prisma.SortOrder
   sessionsPerCycle?: Prisma.SortOrder
   totalSessions?: Prisma.SortOrder
@@ -989,6 +1079,8 @@ export type ContractMaxOrderByAggregateInput = {
   flexCreditsRemaining?: Prisma.SortOrder
   flexCycleStart?: Prisma.SortOrder
   flexWeeksCompensated?: Prisma.SortOrder
+  flexCreditsForfeited?: Prisma.SortOrder
+  flexForfeitFloor?: Prisma.SortOrder
   customSchedule?: Prisma.SortOrder
   sessionsPerWeek?: Prisma.SortOrder
   sessionsPerCycle?: Prisma.SortOrder
@@ -996,6 +1088,8 @@ export type ContractMaxOrderByAggregateInput = {
   addonCredits?: Prisma.SortOrder
   accessMode?: Prisma.SortOrder
   paymentMethod?: Prisma.SortOrder
+  boletoAllowed?: Prisma.SortOrder
+  paymentPlan?: Prisma.SortOrder
   pausedAt?: Prisma.SortOrder
   pauseReason?: Prisma.SortOrder
   resumeDate?: Prisma.SortOrder
@@ -1024,6 +1118,8 @@ export type ContractMinOrderByAggregateInput = {
   flexCreditsRemaining?: Prisma.SortOrder
   flexCycleStart?: Prisma.SortOrder
   flexWeeksCompensated?: Prisma.SortOrder
+  flexCreditsForfeited?: Prisma.SortOrder
+  flexForfeitFloor?: Prisma.SortOrder
   customSchedule?: Prisma.SortOrder
   sessionsPerWeek?: Prisma.SortOrder
   sessionsPerCycle?: Prisma.SortOrder
@@ -1031,6 +1127,8 @@ export type ContractMinOrderByAggregateInput = {
   addonCredits?: Prisma.SortOrder
   accessMode?: Prisma.SortOrder
   paymentMethod?: Prisma.SortOrder
+  boletoAllowed?: Prisma.SortOrder
+  paymentPlan?: Prisma.SortOrder
   pausedAt?: Prisma.SortOrder
   pauseReason?: Prisma.SortOrder
   resumeDate?: Prisma.SortOrder
@@ -1048,6 +1146,8 @@ export type ContractSumOrderByAggregateInput = {
   flexCreditsTotal?: Prisma.SortOrder
   flexCreditsRemaining?: Prisma.SortOrder
   flexWeeksCompensated?: Prisma.SortOrder
+  flexCreditsForfeited?: Prisma.SortOrder
+  flexForfeitFloor?: Prisma.SortOrder
   sessionsPerWeek?: Prisma.SortOrder
   sessionsPerCycle?: Prisma.SortOrder
   totalSessions?: Prisma.SortOrder
@@ -1251,6 +1351,8 @@ export type ContractCreateWithoutUserInput = {
   flexCreditsRemaining?: number | null
   flexCycleStart?: Date | string | null
   flexWeeksCompensated?: number | null
+  flexCreditsForfeited?: number
+  flexForfeitFloor?: number | null
   customSchedule?: string | null
   sessionsPerWeek?: number | null
   sessionsPerCycle?: number | null
@@ -1259,6 +1361,8 @@ export type ContractCreateWithoutUserInput = {
   accessMode?: string | null
   addOns?: Prisma.ContractCreateaddOnsInput | string[]
   paymentMethod?: $Enums.PaymentMethod | null
+  boletoAllowed?: boolean
+  paymentPlan?: string
   pausedAt?: Date | string | null
   pauseReason?: string | null
   resumeDate?: Date | string | null
@@ -1289,6 +1393,8 @@ export type ContractUncheckedCreateWithoutUserInput = {
   flexCreditsRemaining?: number | null
   flexCycleStart?: Date | string | null
   flexWeeksCompensated?: number | null
+  flexCreditsForfeited?: number
+  flexForfeitFloor?: number | null
   customSchedule?: string | null
   sessionsPerWeek?: number | null
   sessionsPerCycle?: number | null
@@ -1297,6 +1403,8 @@ export type ContractUncheckedCreateWithoutUserInput = {
   accessMode?: string | null
   addOns?: Prisma.ContractCreateaddOnsInput | string[]
   paymentMethod?: $Enums.PaymentMethod | null
+  boletoAllowed?: boolean
+  paymentPlan?: string
   pausedAt?: Date | string | null
   pauseReason?: string | null
   resumeDate?: Date | string | null
@@ -1357,6 +1465,8 @@ export type ContractScalarWhereInput = {
   flexCreditsRemaining?: Prisma.IntNullableFilter<"Contract"> | number | null
   flexCycleStart?: Prisma.DateTimeNullableFilter<"Contract"> | Date | string | null
   flexWeeksCompensated?: Prisma.IntNullableFilter<"Contract"> | number | null
+  flexCreditsForfeited?: Prisma.IntFilter<"Contract"> | number
+  flexForfeitFloor?: Prisma.IntNullableFilter<"Contract"> | number | null
   customSchedule?: Prisma.StringNullableFilter<"Contract"> | string | null
   sessionsPerWeek?: Prisma.IntNullableFilter<"Contract"> | number | null
   sessionsPerCycle?: Prisma.IntNullableFilter<"Contract"> | number | null
@@ -1365,6 +1475,8 @@ export type ContractScalarWhereInput = {
   accessMode?: Prisma.StringNullableFilter<"Contract"> | string | null
   addOns?: Prisma.StringNullableListFilter<"Contract">
   paymentMethod?: Prisma.EnumPaymentMethodNullableFilter<"Contract"> | $Enums.PaymentMethod | null
+  boletoAllowed?: Prisma.BoolFilter<"Contract"> | boolean
+  paymentPlan?: Prisma.StringFilter<"Contract"> | string
   pausedAt?: Prisma.DateTimeNullableFilter<"Contract"> | Date | string | null
   pauseReason?: Prisma.StringNullableFilter<"Contract"> | string | null
   resumeDate?: Prisma.DateTimeNullableFilter<"Contract"> | Date | string | null
@@ -1392,6 +1504,8 @@ export type ContractCreateWithoutRenewalsInput = {
   flexCreditsRemaining?: number | null
   flexCycleStart?: Date | string | null
   flexWeeksCompensated?: number | null
+  flexCreditsForfeited?: number
+  flexForfeitFloor?: number | null
   customSchedule?: string | null
   sessionsPerWeek?: number | null
   sessionsPerCycle?: number | null
@@ -1400,6 +1514,8 @@ export type ContractCreateWithoutRenewalsInput = {
   accessMode?: string | null
   addOns?: Prisma.ContractCreateaddOnsInput | string[]
   paymentMethod?: $Enums.PaymentMethod | null
+  boletoAllowed?: boolean
+  paymentPlan?: string
   pausedAt?: Date | string | null
   pauseReason?: string | null
   resumeDate?: Date | string | null
@@ -1431,6 +1547,8 @@ export type ContractUncheckedCreateWithoutRenewalsInput = {
   flexCreditsRemaining?: number | null
   flexCycleStart?: Date | string | null
   flexWeeksCompensated?: number | null
+  flexCreditsForfeited?: number
+  flexForfeitFloor?: number | null
   customSchedule?: string | null
   sessionsPerWeek?: number | null
   sessionsPerCycle?: number | null
@@ -1439,6 +1557,8 @@ export type ContractUncheckedCreateWithoutRenewalsInput = {
   accessMode?: string | null
   addOns?: Prisma.ContractCreateaddOnsInput | string[]
   paymentMethod?: $Enums.PaymentMethod | null
+  boletoAllowed?: boolean
+  paymentPlan?: string
   pausedAt?: Date | string | null
   pauseReason?: string | null
   resumeDate?: Date | string | null
@@ -1473,6 +1593,8 @@ export type ContractCreateWithoutRenewedFromInput = {
   flexCreditsRemaining?: number | null
   flexCycleStart?: Date | string | null
   flexWeeksCompensated?: number | null
+  flexCreditsForfeited?: number
+  flexForfeitFloor?: number | null
   customSchedule?: string | null
   sessionsPerWeek?: number | null
   sessionsPerCycle?: number | null
@@ -1481,6 +1603,8 @@ export type ContractCreateWithoutRenewedFromInput = {
   accessMode?: string | null
   addOns?: Prisma.ContractCreateaddOnsInput | string[]
   paymentMethod?: $Enums.PaymentMethod | null
+  boletoAllowed?: boolean
+  paymentPlan?: string
   pausedAt?: Date | string | null
   pauseReason?: string | null
   resumeDate?: Date | string | null
@@ -1512,6 +1636,8 @@ export type ContractUncheckedCreateWithoutRenewedFromInput = {
   flexCreditsRemaining?: number | null
   flexCycleStart?: Date | string | null
   flexWeeksCompensated?: number | null
+  flexCreditsForfeited?: number
+  flexForfeitFloor?: number | null
   customSchedule?: string | null
   sessionsPerWeek?: number | null
   sessionsPerCycle?: number | null
@@ -1520,6 +1646,8 @@ export type ContractUncheckedCreateWithoutRenewedFromInput = {
   accessMode?: string | null
   addOns?: Prisma.ContractCreateaddOnsInput | string[]
   paymentMethod?: $Enums.PaymentMethod | null
+  boletoAllowed?: boolean
+  paymentPlan?: string
   pausedAt?: Date | string | null
   pauseReason?: string | null
   resumeDate?: Date | string | null
@@ -1570,6 +1698,8 @@ export type ContractUpdateWithoutRenewalsInput = {
   flexCreditsRemaining?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   flexCycleStart?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   flexWeeksCompensated?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  flexCreditsForfeited?: Prisma.IntFieldUpdateOperationsInput | number
+  flexForfeitFloor?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   customSchedule?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sessionsPerWeek?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   sessionsPerCycle?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1578,6 +1708,8 @@ export type ContractUpdateWithoutRenewalsInput = {
   accessMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   addOns?: Prisma.ContractUpdateaddOnsInput | string[]
   paymentMethod?: Prisma.NullableEnumPaymentMethodFieldUpdateOperationsInput | $Enums.PaymentMethod | null
+  boletoAllowed?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  paymentPlan?: Prisma.StringFieldUpdateOperationsInput | string
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pauseReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resumeDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -1609,6 +1741,8 @@ export type ContractUncheckedUpdateWithoutRenewalsInput = {
   flexCreditsRemaining?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   flexCycleStart?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   flexWeeksCompensated?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  flexCreditsForfeited?: Prisma.IntFieldUpdateOperationsInput | number
+  flexForfeitFloor?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   customSchedule?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sessionsPerWeek?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   sessionsPerCycle?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1617,6 +1751,8 @@ export type ContractUncheckedUpdateWithoutRenewalsInput = {
   accessMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   addOns?: Prisma.ContractUpdateaddOnsInput | string[]
   paymentMethod?: Prisma.NullableEnumPaymentMethodFieldUpdateOperationsInput | $Enums.PaymentMethod | null
+  boletoAllowed?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  paymentPlan?: Prisma.StringFieldUpdateOperationsInput | string
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pauseReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resumeDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -1662,6 +1798,8 @@ export type ContractCreateWithoutBookingsInput = {
   flexCreditsRemaining?: number | null
   flexCycleStart?: Date | string | null
   flexWeeksCompensated?: number | null
+  flexCreditsForfeited?: number
+  flexForfeitFloor?: number | null
   customSchedule?: string | null
   sessionsPerWeek?: number | null
   sessionsPerCycle?: number | null
@@ -1670,6 +1808,8 @@ export type ContractCreateWithoutBookingsInput = {
   accessMode?: string | null
   addOns?: Prisma.ContractCreateaddOnsInput | string[]
   paymentMethod?: $Enums.PaymentMethod | null
+  boletoAllowed?: boolean
+  paymentPlan?: string
   pausedAt?: Date | string | null
   pauseReason?: string | null
   resumeDate?: Date | string | null
@@ -1701,6 +1841,8 @@ export type ContractUncheckedCreateWithoutBookingsInput = {
   flexCreditsRemaining?: number | null
   flexCycleStart?: Date | string | null
   flexWeeksCompensated?: number | null
+  flexCreditsForfeited?: number
+  flexForfeitFloor?: number | null
   customSchedule?: string | null
   sessionsPerWeek?: number | null
   sessionsPerCycle?: number | null
@@ -1709,6 +1851,8 @@ export type ContractUncheckedCreateWithoutBookingsInput = {
   accessMode?: string | null
   addOns?: Prisma.ContractCreateaddOnsInput | string[]
   paymentMethod?: $Enums.PaymentMethod | null
+  boletoAllowed?: boolean
+  paymentPlan?: string
   pausedAt?: Date | string | null
   pauseReason?: string | null
   resumeDate?: Date | string | null
@@ -1754,6 +1898,8 @@ export type ContractUpdateWithoutBookingsInput = {
   flexCreditsRemaining?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   flexCycleStart?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   flexWeeksCompensated?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  flexCreditsForfeited?: Prisma.IntFieldUpdateOperationsInput | number
+  flexForfeitFloor?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   customSchedule?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sessionsPerWeek?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   sessionsPerCycle?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1762,6 +1908,8 @@ export type ContractUpdateWithoutBookingsInput = {
   accessMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   addOns?: Prisma.ContractUpdateaddOnsInput | string[]
   paymentMethod?: Prisma.NullableEnumPaymentMethodFieldUpdateOperationsInput | $Enums.PaymentMethod | null
+  boletoAllowed?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  paymentPlan?: Prisma.StringFieldUpdateOperationsInput | string
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pauseReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resumeDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -1793,6 +1941,8 @@ export type ContractUncheckedUpdateWithoutBookingsInput = {
   flexCreditsRemaining?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   flexCycleStart?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   flexWeeksCompensated?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  flexCreditsForfeited?: Prisma.IntFieldUpdateOperationsInput | number
+  flexForfeitFloor?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   customSchedule?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sessionsPerWeek?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   sessionsPerCycle?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1801,6 +1951,8 @@ export type ContractUncheckedUpdateWithoutBookingsInput = {
   accessMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   addOns?: Prisma.ContractUpdateaddOnsInput | string[]
   paymentMethod?: Prisma.NullableEnumPaymentMethodFieldUpdateOperationsInput | $Enums.PaymentMethod | null
+  boletoAllowed?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  paymentPlan?: Prisma.StringFieldUpdateOperationsInput | string
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pauseReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resumeDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -1830,6 +1982,8 @@ export type ContractCreateWithoutPaymentsInput = {
   flexCreditsRemaining?: number | null
   flexCycleStart?: Date | string | null
   flexWeeksCompensated?: number | null
+  flexCreditsForfeited?: number
+  flexForfeitFloor?: number | null
   customSchedule?: string | null
   sessionsPerWeek?: number | null
   sessionsPerCycle?: number | null
@@ -1838,6 +1992,8 @@ export type ContractCreateWithoutPaymentsInput = {
   accessMode?: string | null
   addOns?: Prisma.ContractCreateaddOnsInput | string[]
   paymentMethod?: $Enums.PaymentMethod | null
+  boletoAllowed?: boolean
+  paymentPlan?: string
   pausedAt?: Date | string | null
   pauseReason?: string | null
   resumeDate?: Date | string | null
@@ -1869,6 +2025,8 @@ export type ContractUncheckedCreateWithoutPaymentsInput = {
   flexCreditsRemaining?: number | null
   flexCycleStart?: Date | string | null
   flexWeeksCompensated?: number | null
+  flexCreditsForfeited?: number
+  flexForfeitFloor?: number | null
   customSchedule?: string | null
   sessionsPerWeek?: number | null
   sessionsPerCycle?: number | null
@@ -1877,6 +2035,8 @@ export type ContractUncheckedCreateWithoutPaymentsInput = {
   accessMode?: string | null
   addOns?: Prisma.ContractCreateaddOnsInput | string[]
   paymentMethod?: $Enums.PaymentMethod | null
+  boletoAllowed?: boolean
+  paymentPlan?: string
   pausedAt?: Date | string | null
   pauseReason?: string | null
   resumeDate?: Date | string | null
@@ -1922,6 +2082,8 @@ export type ContractUpdateWithoutPaymentsInput = {
   flexCreditsRemaining?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   flexCycleStart?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   flexWeeksCompensated?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  flexCreditsForfeited?: Prisma.IntFieldUpdateOperationsInput | number
+  flexForfeitFloor?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   customSchedule?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sessionsPerWeek?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   sessionsPerCycle?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1930,6 +2092,8 @@ export type ContractUpdateWithoutPaymentsInput = {
   accessMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   addOns?: Prisma.ContractUpdateaddOnsInput | string[]
   paymentMethod?: Prisma.NullableEnumPaymentMethodFieldUpdateOperationsInput | $Enums.PaymentMethod | null
+  boletoAllowed?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  paymentPlan?: Prisma.StringFieldUpdateOperationsInput | string
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pauseReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resumeDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -1961,6 +2125,8 @@ export type ContractUncheckedUpdateWithoutPaymentsInput = {
   flexCreditsRemaining?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   flexCycleStart?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   flexWeeksCompensated?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  flexCreditsForfeited?: Prisma.IntFieldUpdateOperationsInput | number
+  flexForfeitFloor?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   customSchedule?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sessionsPerWeek?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   sessionsPerCycle?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1969,6 +2135,8 @@ export type ContractUncheckedUpdateWithoutPaymentsInput = {
   accessMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   addOns?: Prisma.ContractUpdateaddOnsInput | string[]
   paymentMethod?: Prisma.NullableEnumPaymentMethodFieldUpdateOperationsInput | $Enums.PaymentMethod | null
+  boletoAllowed?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  paymentPlan?: Prisma.StringFieldUpdateOperationsInput | string
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pauseReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resumeDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -1998,6 +2166,8 @@ export type ContractCreateManyUserInput = {
   flexCreditsRemaining?: number | null
   flexCycleStart?: Date | string | null
   flexWeeksCompensated?: number | null
+  flexCreditsForfeited?: number
+  flexForfeitFloor?: number | null
   customSchedule?: string | null
   sessionsPerWeek?: number | null
   sessionsPerCycle?: number | null
@@ -2006,6 +2176,8 @@ export type ContractCreateManyUserInput = {
   accessMode?: string | null
   addOns?: Prisma.ContractCreateaddOnsInput | string[]
   paymentMethod?: $Enums.PaymentMethod | null
+  boletoAllowed?: boolean
+  paymentPlan?: string
   pausedAt?: Date | string | null
   pauseReason?: string | null
   resumeDate?: Date | string | null
@@ -2033,6 +2205,8 @@ export type ContractUpdateWithoutUserInput = {
   flexCreditsRemaining?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   flexCycleStart?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   flexWeeksCompensated?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  flexCreditsForfeited?: Prisma.IntFieldUpdateOperationsInput | number
+  flexForfeitFloor?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   customSchedule?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sessionsPerWeek?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   sessionsPerCycle?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -2041,6 +2215,8 @@ export type ContractUpdateWithoutUserInput = {
   accessMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   addOns?: Prisma.ContractUpdateaddOnsInput | string[]
   paymentMethod?: Prisma.NullableEnumPaymentMethodFieldUpdateOperationsInput | $Enums.PaymentMethod | null
+  boletoAllowed?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  paymentPlan?: Prisma.StringFieldUpdateOperationsInput | string
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pauseReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resumeDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -2071,6 +2247,8 @@ export type ContractUncheckedUpdateWithoutUserInput = {
   flexCreditsRemaining?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   flexCycleStart?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   flexWeeksCompensated?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  flexCreditsForfeited?: Prisma.IntFieldUpdateOperationsInput | number
+  flexForfeitFloor?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   customSchedule?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sessionsPerWeek?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   sessionsPerCycle?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -2079,6 +2257,8 @@ export type ContractUncheckedUpdateWithoutUserInput = {
   accessMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   addOns?: Prisma.ContractUpdateaddOnsInput | string[]
   paymentMethod?: Prisma.NullableEnumPaymentMethodFieldUpdateOperationsInput | $Enums.PaymentMethod | null
+  boletoAllowed?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  paymentPlan?: Prisma.StringFieldUpdateOperationsInput | string
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pauseReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resumeDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -2109,6 +2289,8 @@ export type ContractUncheckedUpdateManyWithoutUserInput = {
   flexCreditsRemaining?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   flexCycleStart?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   flexWeeksCompensated?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  flexCreditsForfeited?: Prisma.IntFieldUpdateOperationsInput | number
+  flexForfeitFloor?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   customSchedule?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sessionsPerWeek?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   sessionsPerCycle?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -2117,6 +2299,8 @@ export type ContractUncheckedUpdateManyWithoutUserInput = {
   accessMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   addOns?: Prisma.ContractUpdateaddOnsInput | string[]
   paymentMethod?: Prisma.NullableEnumPaymentMethodFieldUpdateOperationsInput | $Enums.PaymentMethod | null
+  boletoAllowed?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  paymentPlan?: Prisma.StringFieldUpdateOperationsInput | string
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pauseReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resumeDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -2145,6 +2329,8 @@ export type ContractCreateManyRenewedFromInput = {
   flexCreditsRemaining?: number | null
   flexCycleStart?: Date | string | null
   flexWeeksCompensated?: number | null
+  flexCreditsForfeited?: number
+  flexForfeitFloor?: number | null
   customSchedule?: string | null
   sessionsPerWeek?: number | null
   sessionsPerCycle?: number | null
@@ -2153,6 +2339,8 @@ export type ContractCreateManyRenewedFromInput = {
   accessMode?: string | null
   addOns?: Prisma.ContractCreateaddOnsInput | string[]
   paymentMethod?: $Enums.PaymentMethod | null
+  boletoAllowed?: boolean
+  paymentPlan?: string
   pausedAt?: Date | string | null
   pauseReason?: string | null
   resumeDate?: Date | string | null
@@ -2179,6 +2367,8 @@ export type ContractUpdateWithoutRenewedFromInput = {
   flexCreditsRemaining?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   flexCycleStart?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   flexWeeksCompensated?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  flexCreditsForfeited?: Prisma.IntFieldUpdateOperationsInput | number
+  flexForfeitFloor?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   customSchedule?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sessionsPerWeek?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   sessionsPerCycle?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -2187,6 +2377,8 @@ export type ContractUpdateWithoutRenewedFromInput = {
   accessMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   addOns?: Prisma.ContractUpdateaddOnsInput | string[]
   paymentMethod?: Prisma.NullableEnumPaymentMethodFieldUpdateOperationsInput | $Enums.PaymentMethod | null
+  boletoAllowed?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  paymentPlan?: Prisma.StringFieldUpdateOperationsInput | string
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pauseReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resumeDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -2218,6 +2410,8 @@ export type ContractUncheckedUpdateWithoutRenewedFromInput = {
   flexCreditsRemaining?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   flexCycleStart?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   flexWeeksCompensated?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  flexCreditsForfeited?: Prisma.IntFieldUpdateOperationsInput | number
+  flexForfeitFloor?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   customSchedule?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sessionsPerWeek?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   sessionsPerCycle?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -2226,6 +2420,8 @@ export type ContractUncheckedUpdateWithoutRenewedFromInput = {
   accessMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   addOns?: Prisma.ContractUpdateaddOnsInput | string[]
   paymentMethod?: Prisma.NullableEnumPaymentMethodFieldUpdateOperationsInput | $Enums.PaymentMethod | null
+  boletoAllowed?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  paymentPlan?: Prisma.StringFieldUpdateOperationsInput | string
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pauseReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resumeDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -2256,6 +2452,8 @@ export type ContractUncheckedUpdateManyWithoutRenewedFromInput = {
   flexCreditsRemaining?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   flexCycleStart?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   flexWeeksCompensated?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  flexCreditsForfeited?: Prisma.IntFieldUpdateOperationsInput | number
+  flexForfeitFloor?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   customSchedule?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sessionsPerWeek?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   sessionsPerCycle?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -2264,6 +2462,8 @@ export type ContractUncheckedUpdateManyWithoutRenewedFromInput = {
   accessMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   addOns?: Prisma.ContractUpdateaddOnsInput | string[]
   paymentMethod?: Prisma.NullableEnumPaymentMethodFieldUpdateOperationsInput | $Enums.PaymentMethod | null
+  boletoAllowed?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  paymentPlan?: Prisma.StringFieldUpdateOperationsInput | string
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pauseReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resumeDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -2340,6 +2540,8 @@ export type ContractSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs
   flexCreditsRemaining?: boolean
   flexCycleStart?: boolean
   flexWeeksCompensated?: boolean
+  flexCreditsForfeited?: boolean
+  flexForfeitFloor?: boolean
   customSchedule?: boolean
   sessionsPerWeek?: boolean
   sessionsPerCycle?: boolean
@@ -2348,6 +2550,8 @@ export type ContractSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs
   accessMode?: boolean
   addOns?: boolean
   paymentMethod?: boolean
+  boletoAllowed?: boolean
+  paymentPlan?: boolean
   pausedAt?: boolean
   pauseReason?: boolean
   resumeDate?: boolean
@@ -2382,6 +2586,8 @@ export type ContractSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exte
   flexCreditsRemaining?: boolean
   flexCycleStart?: boolean
   flexWeeksCompensated?: boolean
+  flexCreditsForfeited?: boolean
+  flexForfeitFloor?: boolean
   customSchedule?: boolean
   sessionsPerWeek?: boolean
   sessionsPerCycle?: boolean
@@ -2390,6 +2596,8 @@ export type ContractSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exte
   accessMode?: boolean
   addOns?: boolean
   paymentMethod?: boolean
+  boletoAllowed?: boolean
+  paymentPlan?: boolean
   pausedAt?: boolean
   pauseReason?: boolean
   resumeDate?: boolean
@@ -2420,6 +2628,8 @@ export type ContractSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exte
   flexCreditsRemaining?: boolean
   flexCycleStart?: boolean
   flexWeeksCompensated?: boolean
+  flexCreditsForfeited?: boolean
+  flexForfeitFloor?: boolean
   customSchedule?: boolean
   sessionsPerWeek?: boolean
   sessionsPerCycle?: boolean
@@ -2428,6 +2638,8 @@ export type ContractSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exte
   accessMode?: boolean
   addOns?: boolean
   paymentMethod?: boolean
+  boletoAllowed?: boolean
+  paymentPlan?: boolean
   pausedAt?: boolean
   pauseReason?: boolean
   resumeDate?: boolean
@@ -2458,6 +2670,8 @@ export type ContractSelectScalar = {
   flexCreditsRemaining?: boolean
   flexCycleStart?: boolean
   flexWeeksCompensated?: boolean
+  flexCreditsForfeited?: boolean
+  flexForfeitFloor?: boolean
   customSchedule?: boolean
   sessionsPerWeek?: boolean
   sessionsPerCycle?: boolean
@@ -2466,6 +2680,8 @@ export type ContractSelectScalar = {
   accessMode?: boolean
   addOns?: boolean
   paymentMethod?: boolean
+  boletoAllowed?: boolean
+  paymentPlan?: boolean
   pausedAt?: boolean
   pauseReason?: boolean
   resumeDate?: boolean
@@ -2475,7 +2691,7 @@ export type ContractSelectScalar = {
   updatedAt?: boolean
 }
 
-export type ContractOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "name" | "userId" | "type" | "tier" | "durationMonths" | "discountPct" | "startDate" | "endDate" | "status" | "fixedDayOfWeek" | "fixedTime" | "customCreditsRemaining" | "contractUrl" | "flexCreditsTotal" | "flexCreditsRemaining" | "flexCycleStart" | "flexWeeksCompensated" | "customSchedule" | "sessionsPerWeek" | "sessionsPerCycle" | "totalSessions" | "addonCredits" | "accessMode" | "addOns" | "paymentMethod" | "pausedAt" | "pauseReason" | "resumeDate" | "paymentDeadline" | "renewedFromId" | "createdAt" | "updatedAt", ExtArgs["result"]["contract"]>
+export type ContractOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "name" | "userId" | "type" | "tier" | "durationMonths" | "discountPct" | "startDate" | "endDate" | "status" | "fixedDayOfWeek" | "fixedTime" | "customCreditsRemaining" | "contractUrl" | "flexCreditsTotal" | "flexCreditsRemaining" | "flexCycleStart" | "flexWeeksCompensated" | "flexCreditsForfeited" | "flexForfeitFloor" | "customSchedule" | "sessionsPerWeek" | "sessionsPerCycle" | "totalSessions" | "addonCredits" | "accessMode" | "addOns" | "paymentMethod" | "boletoAllowed" | "paymentPlan" | "pausedAt" | "pauseReason" | "resumeDate" | "paymentDeadline" | "renewedFromId" | "createdAt" | "updatedAt", ExtArgs["result"]["contract"]>
 export type ContractInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
   bookings?: boolean | Prisma.Contract$bookingsArgs<ExtArgs>
@@ -2521,6 +2737,8 @@ export type $ContractPayload<ExtArgs extends runtime.Types.Extensions.InternalAr
     flexCreditsRemaining: number | null
     flexCycleStart: Date | null
     flexWeeksCompensated: number | null
+    flexCreditsForfeited: number
+    flexForfeitFloor: number | null
     customSchedule: string | null
     sessionsPerWeek: number | null
     sessionsPerCycle: number | null
@@ -2529,6 +2747,8 @@ export type $ContractPayload<ExtArgs extends runtime.Types.Extensions.InternalAr
     accessMode: string | null
     addOns: string[]
     paymentMethod: $Enums.PaymentMethod | null
+    boletoAllowed: boolean
+    paymentPlan: string
     pausedAt: Date | null
     pauseReason: string | null
     resumeDate: Date | null
@@ -2982,6 +3202,8 @@ export interface ContractFieldRefs {
   readonly flexCreditsRemaining: Prisma.FieldRef<"Contract", 'Int'>
   readonly flexCycleStart: Prisma.FieldRef<"Contract", 'DateTime'>
   readonly flexWeeksCompensated: Prisma.FieldRef<"Contract", 'Int'>
+  readonly flexCreditsForfeited: Prisma.FieldRef<"Contract", 'Int'>
+  readonly flexForfeitFloor: Prisma.FieldRef<"Contract", 'Int'>
   readonly customSchedule: Prisma.FieldRef<"Contract", 'String'>
   readonly sessionsPerWeek: Prisma.FieldRef<"Contract", 'Int'>
   readonly sessionsPerCycle: Prisma.FieldRef<"Contract", 'Int'>
@@ -2990,6 +3212,8 @@ export interface ContractFieldRefs {
   readonly accessMode: Prisma.FieldRef<"Contract", 'String'>
   readonly addOns: Prisma.FieldRef<"Contract", 'String[]'>
   readonly paymentMethod: Prisma.FieldRef<"Contract", 'PaymentMethod'>
+  readonly boletoAllowed: Prisma.FieldRef<"Contract", 'Boolean'>
+  readonly paymentPlan: Prisma.FieldRef<"Contract", 'String'>
   readonly pausedAt: Prisma.FieldRef<"Contract", 'DateTime'>
   readonly pauseReason: Prisma.FieldRef<"Contract", 'String'>
   readonly resumeDate: Prisma.FieldRef<"Contract", 'DateTime'>

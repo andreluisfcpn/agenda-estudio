@@ -3,40 +3,72 @@
    Matches ClientDashboard visual language
    ═══════════════════════════════════════════════════════════ */
 
-/* ── Hero Banner ── */
-.payments-hero {
-  background: linear-gradient(135deg, rgba(17, 129, 155, 0.12), rgba(16, 185, 129, 0.06));
-  border: 1px solid rgba(17, 129, 155, 0.15);
-  border-radius: var(--radius-lg);
-  padding: 24px 20px;
+/* ── Segmented Tabs (Em aberto · Pagas · Plano · Carteira) — mirrors contracts-tabs ── */
+.payments-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-md);
+  padding: 4px;
   margin-bottom: 20px;
 }
 
-.payments-hero--alert {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(239, 68, 68, 0.04));
-  border-color: rgba(239, 68, 68, 0.2);
+.payments-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 10px 8px;
+  min-height: 56px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: all 0.2s ease;
 }
 
-.payments-hero__title {
-  font-size: 1.375rem;
+.payments-tab:hover:not(.payments-tab--active) {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.payments-tab--active {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.payments-tab__count {
+  font-size: 1.125rem;
   font-weight: 800;
   letter-spacing: -0.02em;
-  color: var(--text-primary);
-  margin-bottom: 4px;
 }
 
-.payments-hero__subtitle {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  line-height: 1.5;
+.payments-tab__label {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
-/* ── Stats Grid ── */
-.payments-stats {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-  margin-bottom: 24px;
+/* Contract-type chip on a pending card */
+.pending-card__type {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 99px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  vertical-align: middle;
 }
 
 /* ── Section Headers ── */
@@ -512,19 +544,9 @@
    Desktop Enhancements (≥768px)
    ═══════════════════════════════════════════════════════════ */
 @media (min-width: 768px) {
-  .payments-hero {
-    padding: 28px 24px;
+  .payments-tabs {
+    max-width: 480px;
     margin-bottom: 24px;
-  }
-
-  .payments-hero__title {
-    font-size: 1.5rem;
-  }
-
-  .payments-stats {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
-    margin-bottom: 28px;
   }
 
   .pending-card {
@@ -543,14 +565,158 @@
     flex-shrink: 0;
   }
 
+  /* Even 2-column wallet grid on desktop (avoids the auto-fill uneven wrap). */
   .wallet-grid {
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(2, 1fr);
     gap: 16px;
   }
 
   .autocharge-card {
     padding: 20px 24px;
   }
+}
+
+/* Stack wallet card actions on very small screens to keep 44px touch targets. */
+@media (max-width: 479px) {
+  .wallet-card__actions {
+    flex-direction: column;
+  }
+}
+
+/* ── Payment Plan (per active contract) ── */
+.payment-plans {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.payment-plan-card {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  padding: 16px;
+}
+
+.payment-plan-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.payment-plan-card__name {
+  font-weight: 700;
+  font-size: 0.9375rem;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.payment-plan-card__tag {
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.payment-plan-card__tag--full {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+}
+
+.payment-plan-card__tag--servico {
+  background: rgba(17, 129, 155, 0.14);
+  color: var(--accent-primary);
+}
+
+.payment-plan-card__cadence {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  margin: -6px 0 10px;
+}
+
+/* Highlight the next upcoming installment so rows aren't all equal weight. */
+.payment-plan-row--next {
+  border-left: 2px solid var(--accent-primary);
+  background: rgba(17, 129, 155, 0.05);
+  margin-left: -8px;
+  padding-left: 8px;
+  border-radius: 6px;
+}
+
+.payment-plan-card__full {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.payment-plan-card__full-label {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.payment-plan-card__full-amount {
+  font-weight: 800;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.payment-plan-schedule {
+  display: flex;
+  flex-direction: column;
+}
+
+.payment-plan-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.payment-plan-row:first-child {
+  border-top: none;
+}
+
+.payment-plan-row__left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.payment-plan-row__num {
+  font-weight: 800;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  min-width: 28px;
+}
+
+.payment-plan-row__date {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.payment-plan-row__right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.payment-plan-row__amount {
+  font-weight: 700;
+  font-size: 0.8125rem;
+  color: var(--text-primary);
 }
 
 /* ── Reduced Motion ── */

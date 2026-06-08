@@ -297,6 +297,85 @@
   color: var(--accent-primary);
 }
 
+/* ─── Expandable group (Configurações → sub-sections) ─── */
+.sidebar-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-link-caret {
+  margin-left: auto;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+.sidebar-link-caret--open {
+  transform: rotate(90deg);
+}
+
+.sidebar-subnav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 2px 0 4px;
+  padding-left: 18px;
+  position: relative;
+}
+.sidebar-subnav::before {
+  content: '';
+  position: absolute;
+  left: 17px;
+  top: 4px;
+  bottom: 4px;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.sidebar-sublink {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px 7px 14px;
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.sidebar-sublink:hover {
+  background: rgba(17, 129, 155, 0.08);
+  color: var(--text-primary);
+}
+.sidebar-sublink-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+.sidebar-sublink.active {
+  color: var(--accent-primary);
+  background: rgba(17, 129, 155, 0.12);
+  font-weight: 600;
+}
+.sidebar-sublink.active .sidebar-sublink-dot {
+  opacity: 1;
+}
+
+/* Collapsed rail: hide the sub-nav and caret entirely. */
+.sidebar--collapsed .sidebar-subnav,
+.sidebar--collapsed .sidebar-link-caret {
+  display: none;
+}
+
 /* ─── Tooltip (collapsed) ─── */
 .sidebar-tooltip {
   position: absolute;

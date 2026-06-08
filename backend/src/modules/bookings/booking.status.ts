@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import { authenticate, authorize } from '../../middleware/auth.js';
 import { releaseMultiSlotLock } from '../../lib/redis.js';
@@ -7,6 +8,8 @@ import { getPackageSlots } from '../../utils/pricing.js';
 import { BookingStatus } from '../../generated/prisma/client.js';
 import { restoreCredit } from './booking.service.js';
 import { createNotification } from '../notifications/notificationService.js';
+import { completeBookingSchema } from './validators.js';
+import { deriveStreamAggregates } from '../../lib/streamMetrics.js';
 
 export function registerStatusRoutes(router: Router) {
 
@@ -78,7 +81,7 @@ router.post('/:id/complete-payment', authenticate, async (req: Request, res: Res
         });
 
         // Update Payment record to PAID (atomic — only if still PENDING)
-        await prisma.payment.updateMany({
+        const paid = await prisma.payment.updateMany({
             where: {
                 bookingId,
                 providerRef: paymentIntentId,
@@ -93,6 +96,20 @@ router.post('/:id/complete-payment', authenticate, async (req: Request, res: Res
                 where: { id: booking.contractId!, status: 'AWAITING_PAYMENT' },
                 data: { status: 'ACTIVE', paymentDeadline: null },
             });
+        }
+
+        // Run the centralized confirmation effects only if THIS call won the PENDING→PAID race.
+        // The booking/contract were already confirmed above (idempotent no-ops inside), but this
+        // adds the effects this path was missing — notably the "payment confirmed" push.
+        if (paid.count > 0) {
+            const paidPayment = await prisma.payment.findFirst({
+                where: { bookingId, providerRef: paymentIntentId },
+                select: { id: true },
+            });
+            if (paidPayment) {
+                const { onPaymentConfirmed } = await import('../../lib/paymentEffects.js');
+                await onPaymentConfirmed(paidPayment.id);
+            }
         }
 
         // Release Redis locks (booking is now confirmed in DB)
@@ -261,23 +278,40 @@ router.put('/:id/check-in', authenticate, authorize('ADMIN'), async (req: Reques
 // ─── PUT /api/bookings/:id/complete (Admin) ──────────────
 
 router.put('/:id/complete', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
-    const id = req.params.id as string;
-    const { durationMinutes, peakViewers, chatMessages } = req.body || {};
-    const booking = await prisma.booking.findUnique({ where: { id } });
-    if (!booking) { res.status(404).json({ error: 'Agendamento não encontrado.' }); return; }
-    if (booking.status !== 'CONFIRMED' && booking.status !== 'RESERVED') {
-        res.status(400).json({ error: `Não é possível finalizar um agendamento com status ${booking.status}.` }); return;
+    try {
+        const id = req.params.id as string;
+        const data = completeBookingSchema.parse(req.body || {});
+        const booking = await prisma.booking.findUnique({ where: { id } });
+        if (!booking) { res.status(404).json({ error: 'Agendamento não encontrado.' }); return; }
+        // Allow finalizing an in-progress booking, or re-saving metrics on an already-finalized one.
+        if (!['CONFIRMED', 'RESERVED', 'COMPLETED'].includes(booking.status)) {
+            res.status(400).json({ error: `Não é possível finalizar um agendamento com status ${booking.status}.` }); return;
+        }
+        // Legacy aggregates: explicit value wins, else derive from per-network streamMetrics.
+        const agg = deriveStreamAggregates(data.streamMetrics);
+        const peakViewers = data.peakViewers != null ? data.peakViewers : agg.peakViewers;
+        const chatMessages = data.chatMessages != null ? data.chatMessages : agg.chatMessages;
+        const updated = await prisma.booking.update({
+            where: { id },
+            data: {
+                status: BookingStatus.COMPLETED,
+                ...(data.durationMinutes !== undefined && { durationMinutes: data.durationMinutes }),
+                ...(data.isLivestream !== undefined && { isLivestream: data.isLivestream }),
+                ...(data.platforms !== undefined && { platforms: data.platforms }),
+                ...(data.platformLinks !== undefined && { platformLinks: data.platformLinks }),
+                ...(data.streamMetrics !== undefined && { streamMetrics: data.streamMetrics }),
+                ...(data.audienceOrigin !== undefined && { audienceOrigin: data.audienceOrigin }),
+                ...(data.adminNotes !== undefined && { adminNotes: data.adminNotes }),
+                ...(data.clientNotes !== undefined && { clientNotes: data.clientNotes }),
+                ...(peakViewers != null && { peakViewers }),
+                ...(chatMessages != null && { chatMessages }),
+            },
+        });
+        res.json({ booking: updated, message: '🏁 Sessão finalizada com sucesso!' });
+    } catch (err) {
+        if (err instanceof z.ZodError) { res.status(400).json({ error: 'Dados inválidos.', details: err.errors }); return; }
+        throw err;
     }
-    const updated = await prisma.booking.update({
-        where: { id },
-        data: {
-            status: BookingStatus.COMPLETED,
-            ...(durationMinutes !== undefined && { durationMinutes }),
-            ...(peakViewers !== undefined && { peakViewers }),
-            ...(chatMessages !== undefined && { chatMessages }),
-        },
-    });
-    res.json({ booking: updated, message: '🏁 Sessão finalizada com sucesso!' });
 });
 
 // ─── PUT /api/bookings/:id/mark-falta (Admin) ───────────

@@ -52,6 +52,16 @@ export async function reconcileCoraPayment(paymentId: string): Promise<boolean> 
 
     if (!isCoraInvoicePaid(invoice)) return false;
 
+    // Validate the Cora invoice amount matches our stored payment amount BEFORE marking PAID —
+    // parity with the Stripe webhook's amount check (webhooks/routes.ts). Guards against Cora API
+    // inconsistency or a tampered/low-value invoice being accepted for a higher-value payment.
+    // (1-cent tolerance for currency rounding.)
+    const invoiceAmount = Number(invoice.total_amount);
+    if (Number.isFinite(invoiceAmount) && invoiceAmount > 0 && Math.abs(invoiceAmount - payment.amount) > 1) {
+        console.error(`[Cora-Reconcile][SECURITY] Amount mismatch: invoice=${invoiceAmount}, DB=${payment.amount} (payment ${payment.id}) — refusing to mark PAID`);
+        return false;
+    }
+
     // Atomic PENDING→PAID guard prevents double-processing with the cron / webhook
     const updated = await prisma.payment.updateMany({
         where: { id: payment.id, status: 'PENDING' },

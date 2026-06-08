@@ -3,6 +3,13 @@ import { useState, useEffect } from 'react';
 import { pricingApi, BusinessConfigItem } from '../../../api/client';
 import LoadingSpinner from '../../ui/LoadingSpinner';
 import SettingsSaveBar, { SettingsMessages } from './SettingsSaveBar';
+import ScheduleEditor from './ScheduleEditor';
+import ToggleField from '../../ui/fields/ToggleField';
+import StepperField from '../../ui/fields/StepperField';
+import TimeField from '../../ui/fields/TimeField';
+import ColorField from '../../ui/fields/ColorField';
+import UrlField from '../../ui/fields/UrlField';
+import EmailField from '../../ui/fields/EmailField';
 
 /**
  * Group metadata copied verbatim from AdminPricingPage so the section headers,
@@ -16,6 +23,17 @@ const GROUP_LABELS: Record<string, { label: string; emoji: string; desc: string;
     gateway:  { label: 'Taxas de Gateway',       emoji: '🏦', desc: 'Taxas de processamento dos meios de pagamento (Stripe e Cora)', color: '#ef4444' },
     studio:   { label: 'Estúdio & Branding',     emoji: '🏢', desc: 'Nome, logo, e-mail e imagens do estúdio', color: '#f97316' },
 };
+
+/**
+ * Strips a trailing unit-only parenthetical (e.g. "(%)", "(R$)", "(centavos)",
+ * "(horas)") from a config label — the field's own suffix already conveys the
+ * unit, so repeating it in the label is noise. Meaningful parentheticals like
+ * "(pacotes 2h)" or "(parcelas sem taxa própria)" are preserved.
+ */
+const UNIT_PAREN_RE = /\s*\((?:%|R\$|reais?|centavos?|horas?|hrs?|minutos?|mins?|dias?|meses?|h|min|d)\)\s*$/i;
+function cleanConfigLabel(label: string): string {
+    return label.replace(UNIT_PAREN_RE, '').trim();
+}
 
 interface SettingsBusinessConfigSectionProps {
     /** Which business-config groups to render in this section. */
@@ -123,45 +141,35 @@ export default function SettingsBusinessConfigSection({ groups, title, subtitle,
                                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '36px' }}>{groupMeta.desc}</p>
                             </div>
 
-                            <div style={{ display: 'grid', gap: '14px', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}>
-                                {items.map(cfg => (
-                                    <div key={cfg.key} className="form-group" style={{ marginBottom: 0 }}>
-                                        <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <span>{cfg.label}</span>
-                                            <span style={{
-                                                fontSize: '0.5625rem', color: 'var(--text-muted)', background: 'var(--bg-elevated)',
-                                                padding: '1px 6px', borderRadius: '4px', fontFamily: "'JetBrains Mono', monospace",
-                                                letterSpacing: '0.03em',
-                                            }}>
-                                                {cfg.type}
-                                            </span>
-                                        </label>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <input
-                                                className="form-input"
-                                                type={cfg.type === 'string' ? 'text' : 'number'}
-                                                min={cfg.type !== 'string' ? '0' : undefined}
-                                                step="1"
-                                                value={cfg.value}
-                                                onChange={e => handleConfigChange(cfg.key, e.target.value)}
-                                                style={{
-                                                    fontWeight: cfg.type === 'string' ? 400 : 700,
-                                                    fontSize: cfg.type === 'string' ? '0.8125rem' : '1.125rem',
-                                                    flexShrink: 0,
-                                                }}
-                                            />
-                                            {cfg.type !== 'string' && (
-                                                <span style={{
-                                                    fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)',
-                                                    minWidth: 28, textAlign: 'center',
-                                                }}>
-                                                    {cfg.type === 'percent' ? '%' : cfg.key.includes('minutes') ? 'min' : cfg.key.includes('hours') ? 'h' : cfg.key.includes('days') ? 'd' : cfg.key.includes('cents') ? '¢' : ''}
-                                                </span>
-                                            )}
+                            {/* `schedule` gets a fully visual editor (toggles, time pickers, steppers)
+                                instead of the generic input grid below. */}
+                            {groupKey === 'schedule' ? (
+                                <ScheduleEditor items={items} onChange={handleConfigChange} />
+                            ) : (
+                            <div className="sf-config-grid">
+                                {items.map(cfg => {
+                                    // JSON configs (e.g. card_installment_surcharges) get a
+                                    // friendly editor and span the full grid row.
+                                    if (cfg.type === 'json') {
+                                        return (
+                                            <div key={cfg.key} className="sf-config-cell sf-config-cell--full">
+                                                <label className="sf-config-label">{cleanConfigLabel(cfg.label)}</label>
+                                                <InstallmentSurchargesEditor
+                                                    value={cfg.value}
+                                                    onChange={v => handleConfigChange(cfg.key, v)}
+                                                />
+                                            </div>
+                                        );
+                                    }
+                                    return (
+                                        <div key={cfg.key} className="sf-config-cell">
+                                            <label className="sf-config-label">{cleanConfigLabel(cfg.label)}</label>
+                                            <SpecializedConfigField cfg={cfg} onChange={handleConfigChange} />
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
+                            )}
                         </div>
                     );
                 })}
@@ -191,5 +199,161 @@ export default function SettingsBusinessConfigSection({ groups, title, subtitle,
                 <SettingsSaveBar saving={saving} onSave={handleSaveConfigs} onDiscard={loadConfigs} stacked={stackedSaveBar} />
             )}
         </div>
+    );
+}
+
+/** Number of installments shown in the surcharge editor (1x..12x). */
+const INSTALLMENT_COUNT = 12;
+
+/** Safely parse a `{ "1": 0, "2": 6, ... }` JSON string into a number map. */
+function parseSurcharges(raw: string): Record<string, number> {
+    try {
+        const obj = JSON.parse(raw || '{}');
+        if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return {};
+        const out: Record<string, number> = {};
+        for (const [k, v] of Object.entries(obj)) {
+            const n = Number(v);
+            if (Number.isFinite(n)) out[k] = n;
+        }
+        return out;
+    } catch {
+        return {};
+    }
+}
+
+/**
+ * Friendly editor for `card_installment_surcharges` (type 'json'): one % input
+ * per installment (1x..12x). Re-serializes to a JSON string on every change and
+ * pushes it up via `onChange`, so the existing PUT save flow is unchanged.
+ */
+function InstallmentSurchargesEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+    const surcharges = parseSurcharges(value);
+
+    const setOne = (installment: number, raw: string) => {
+        const next = { ...surcharges };
+        if (raw === '') {
+            delete next[String(installment)];
+        } else {
+            const n = Number(raw);
+            next[String(installment)] = Number.isFinite(n) ? n : 0;
+        }
+        // Serialize with numerically-sorted keys for a stable, readable payload.
+        const ordered: Record<string, number> = {};
+        Object.keys(next)
+            .map(k => Number(k))
+            .filter(n => Number.isFinite(n))
+            .sort((a, b) => a - b)
+            .forEach(k => { ordered[String(k)] = next[String(k)]; });
+        onChange(JSON.stringify(ordered));
+    };
+
+    return (
+        <div>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '10px' }}>
+                Acréscimo (%) aplicado ao parcelar no cartão, por número de parcelas. Deixe em branco para usar o padrão.
+            </p>
+            <div className="sf-pct-grid">
+                {Array.from({ length: INSTALLMENT_COUNT }, (_, i) => i + 1).map(n => {
+                    const raw = surcharges[String(n)];
+                    const isEmpty = raw === undefined;
+                    const isFree = !isEmpty && Number(raw) === 0;
+                    const cls = `sf-pct${isEmpty ? ' sf-pct--default' : ''}${isFree ? ' sf-pct--free' : ''}`;
+                    return (
+                        <label key={n} className={cls} title={`${n}x`}>
+                            <span className="sf-pct-prefix">{n}x</span>
+                            <input
+                                className="sf-pct-input"
+                                type="number"
+                                min="0"
+                                step="1"
+                                inputMode="numeric"
+                                placeholder="—"
+                                aria-label={`Acréscimo para ${n}x`}
+                                value={raw ?? ''}
+                                onChange={e => setOne(n, e.target.value)}
+                            />
+                            <span className="sf-pct-suffix">%</span>
+                        </label>
+                    );
+                })}
+            </div>
+            <div className="sf-pct-legend">
+                <span><span className="sf-pct-legend-dot sf-pct-legend-dot--free" /> 0% = sem juros</span>
+                <span><span className="sf-pct-legend-dot sf-pct-legend-dot--default" /> vazio = usa o padrão</span>
+            </div>
+        </div>
+    );
+}
+
+/**
+ * Dispatcher: chooses the right specialized field by `type` and `key` heuristic,
+ * so URLs get a UrlField, emails get an EmailField, percent/cents/hours/minutes/days
+ * numerics get a StepperField with the right suffix, booleans get a Toggle, etc.
+ * Falls back to a plain text input for unknown string fields.
+ */
+function SpecializedConfigField({ cfg, onChange }: { cfg: BusinessConfigItem; onChange: (key: string, value: string) => void }) {
+    const key = cfg.key.toLowerCase();
+    const type = cfg.type;
+
+    // Boolean → switch
+    if (type === 'boolean' || cfg.value === 'true' || cfg.value === 'false') {
+        return (
+            <ToggleField
+                checked={cfg.value === 'true'}
+                onChange={v => onChange(cfg.key, String(v))}
+                aria-label={cfg.label}
+            />
+        );
+    }
+
+    // Time field: keys ending in _time or open_/close_ time
+    if (key.endsWith('_time') || key === 'open_time' || key === 'close_time') {
+        return <TimeField value={cfg.value} onChange={v => onChange(cfg.key, v)} aria-label={cfg.label} />;
+    }
+
+    // Color field: keys with "color"
+    if (key === 'color' || key.endsWith('_color') || key.includes('color_')) {
+        return <ColorField value={cfg.value} onChange={v => onChange(cfg.key, v)} />;
+    }
+
+    // URL field: any URL/link key
+    if (key.includes('url') || key.includes('link') || key.endsWith('_logo') || key.endsWith('_image')) {
+        return <UrlField value={cfg.value} onChange={v => onChange(cfg.key, v)} />;
+    }
+
+    // Email field: any email/mail key (kept above generic string so it gets validated)
+    if (key.includes('email') || key.includes('mail_')) {
+        return <EmailField value={cfg.value} onChange={v => onChange(cfg.key, v)} />;
+    }
+
+    // Numeric (number/percent/cents) → stepper with sensible suffix
+    if (type !== 'string') {
+        const suffix =
+            type === 'percent' ? '%' :
+            type === 'cents' || key.includes('cents') ? '¢' :
+            key.includes('minute') ? 'min' :
+            key.includes('hour') ? 'h' :
+            key.includes('day') ? 'd' :
+            key.includes('month') ? 'm' :
+            '';
+        const n = Number(cfg.value);
+        return (
+            <StepperField
+                value={Number.isFinite(n) ? n : 0}
+                onChange={v => onChange(cfg.key, String(v))}
+                min={0}
+                suffix={suffix || undefined}
+            />
+        );
+    }
+
+    // Fallback: plain text input (no suffix, single-line). Same look as before.
+    return (
+        <input
+            className="form-input"
+            type="text"
+            value={cfg.value}
+            onChange={e => onChange(cfg.key, e.target.value)}
+        />
     );
 }

@@ -4,6 +4,10 @@ import { pricingApi, PaymentMethodConfigItem } from '../../../api/client';
 import { setPaymentMethods as setCachedPaymentMethods } from '../../../constants/paymentMethods';
 import LoadingSpinner from '../../ui/LoadingSpinner';
 import SettingsSaveBar, { SettingsMessages } from './SettingsSaveBar';
+import SegmentedControl from '../../ui/fields/SegmentedControl';
+import ColorField from '../../ui/fields/ColorField';
+import EmojiField from '../../ui/fields/EmojiField';
+import StepperField from '../../ui/fields/StepperField';
 
 /**
  * Self-contained payment-methods editor. Reuses the payment-method cards from
@@ -75,7 +79,9 @@ export default function SettingsPaymentMethodsSection() {
                 Gerencie os métodos de pagamento disponíveis em todo o sistema. Desativar um método o remove de todos os wizards e modais.
             </div>
 
-            <div style={{ display: 'grid', gap: '16px', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))' }}>
+            {/* `min(100%, 380px)` forces a single real column when the container is narrow
+                (the card never demands 380px if it doesn't fit) → no overflow at narrow widths. */}
+            <div style={{ display: 'grid', gap: 'var(--space-4)', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 380px), 1fr))' }}>
                 {paymentMethods.map((pm) => (
                     <div key={pm.key} style={{
                         padding: '24px', borderRadius: '16px',
@@ -143,12 +149,11 @@ export default function SettingsPaymentMethodsSection() {
                             </div>
                         </div>
 
-                        <div style={{ display: 'grid', gap: '12px', gridTemplateColumns: '80px 1fr', marginTop: '12px' }}>
+                        {/* Emoji + Descrição (visíveis sempre) */}
+                        <div style={{ display: 'grid', gap: '12px', gridTemplateColumns: 'auto 1fr', marginTop: '12px', alignItems: 'end' }}>
                             <div className="form-group" style={{ marginBottom: 0 }}>
                                 <label className="form-label">Emoji</label>
-                                <input className="form-input" value={pm.emoji}
-                                    style={{ textAlign: 'center', fontSize: '1.25rem' }}
-                                    onChange={e => handlePmChange(pm.key, 'emoji', e.target.value)} />
+                                <EmojiField value={pm.emoji} onChange={v => handlePmChange(pm.key, 'emoji', v)} />
                             </div>
                             <div className="form-group" style={{ marginBottom: 0 }}>
                                 <label className="form-label">Descrição</label>
@@ -157,53 +162,7 @@ export default function SettingsPaymentMethodsSection() {
                             </div>
                         </div>
 
-                        <div style={{ display: 'grid', gap: '12px', gridTemplateColumns: '1fr 1fr', marginTop: '12px' }}>
-                            <div className="form-group" style={{ marginBottom: 0 }}>
-                                <label className="form-label">Cor</label>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <input type="color" value={pm.color.startsWith('#') ? pm.color : '#14b8a6'}
-                                        onChange={e => handlePmChange(pm.key, 'color', e.target.value)}
-                                        style={{ width: 36, height: 36, border: 'none', borderRadius: '8px', cursor: 'pointer', padding: 0 }} />
-                                    <input className="form-input" value={pm.color}
-                                        onChange={e => handlePmChange(pm.key, 'color', e.target.value)}
-                                        style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem' }} />
-                                </div>
-                            </div>
-                            <div className="form-group" style={{ marginBottom: 0 }}>
-                                <label className="form-label">Modo de Acesso</label>
-                                <select className="form-select" value={pm.accessMode}
-                                    onChange={e => handlePmChange(pm.key, 'accessMode', e.target.value)}>
-                                    <option value="FULL">🟢 Imediato (FULL)</option>
-                                    <option value="PROGRESSIVE">🟡 Progressivo (PROGRESSIVE)</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        {/* Preview */}
-                        <div style={{
-                            marginTop: '16px', padding: '12px 14px', borderRadius: '10px',
-                            background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)',
-                        }}>
-                            <div style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>Prévia no Sistema</div>
-                            <div style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                padding: '8px 14px', borderRadius: '8px',
-                                background: `${pm.color}18`, border: `2px solid ${pm.color}`,
-                            }}>
-                                <span style={{ fontSize: '1rem' }}>{pm.emoji}</span>
-                                <span style={{ fontWeight: 700, fontSize: '0.875rem', color: pm.color }}>{pm.label}</span>
-                            </div>
-                            <div style={{ marginTop: '6px', fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
-                                Badge: <span style={{
-                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                    padding: '2px 8px', borderRadius: '6px', fontSize: '0.6875rem', fontWeight: 600,
-                                    background: 'var(--bg-elevated)', color: 'var(--text-secondary)',
-                                }}>{pm.emoji} {pm.shortLabel}</span>
-                                &nbsp;·&nbsp; Acesso: <strong>{pm.accessMode === 'FULL' ? 'Imediato' : 'Progressivo'}</strong>
-                            </div>
-                        </div>
-
-                        {/* Contexts — which checkouts show this method */}
+                        {/* Contexts — onde aparece (always visible: key business decision) */}
                         <div style={{ marginTop: '16px' }}>
                             <label className="form-label" style={{ marginBottom: '6px' }}>Aparece em</label>
                             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -229,13 +188,61 @@ export default function SettingsPaymentMethodsSection() {
                             </div>
                         </div>
 
-                        {/* Sort order */}
-                        <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>Ordem:</span>
-                            <input type="number" className="form-input" value={pm.sortOrder} min={0}
-                                onChange={e => handlePmChange(pm.key, 'sortOrder', parseInt(e.target.value) || 0)}
-                                style={{ width: 60, textAlign: 'center', fontWeight: 700, fontSize: '0.875rem' }} />
-                        </div>
+                        {/* Advanced settings: collapsed by default to reduce card density. */}
+                        <details className="sf-advanced">
+                            <summary>Avançado</summary>
+                            <div className="sf-advanced-body">
+                                <div className="sf-grid-2">
+                                    <div className="form-group" style={{ marginBottom: 0 }}>
+                                        <label className="form-label">Cor</label>
+                                        <ColorField value={pm.color}
+                                            onChange={v => handlePmChange(pm.key, 'color', v)} />
+                                    </div>
+                                    <div className="form-group" style={{ marginBottom: 0 }}>
+                                        <label className="form-label">Modo de Acesso</label>
+                                        <SegmentedControl
+                                            aria-label="Modo de Acesso"
+                                            value={pm.accessMode as 'FULL' | 'PROGRESSIVE'}
+                                            onChange={v => handlePmChange(pm.key, 'accessMode', v)}
+                                            options={[
+                                                { value: 'FULL', label: 'Imediato' },
+                                                { value: 'PROGRESSIVE', label: 'Progressivo' },
+                                            ]}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                    <label className="form-label">Ordem de exibição</label>
+                                    <StepperField value={pm.sortOrder} min={0} max={99}
+                                        onChange={n => handlePmChange(pm.key, 'sortOrder', n)} />
+                                </div>
+
+                                {/* Preview */}
+                                <div style={{
+                                    padding: '12px 14px', borderRadius: '10px',
+                                    background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)',
+                                }}>
+                                    <div style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>Prévia no Sistema</div>
+                                    <div style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                        padding: '8px 14px', borderRadius: '8px',
+                                        background: `${pm.color}18`, border: `2px solid ${pm.color}`,
+                                    }}>
+                                        <span style={{ fontSize: '1rem' }}>{pm.emoji}</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.875rem', color: pm.color }}>{pm.label}</span>
+                                    </div>
+                                    <div style={{ marginTop: '6px', fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
+                                        Badge: <span style={{
+                                            display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                            padding: '2px 8px', borderRadius: '6px', fontSize: '0.6875rem', fontWeight: 600,
+                                            background: 'var(--bg-elevated)', color: 'var(--text-secondary)',
+                                        }}>{pm.emoji} {pm.shortLabel}</span>
+                                        &nbsp;·&nbsp; Acesso: <strong>{pm.accessMode === 'FULL' ? 'Imediato' : 'Progressivo'}</strong>
+                                    </div>
+                                </div>
+                            </div>
+                        </details>
                     </div>
                 ))}
             </div>

@@ -91,6 +91,37 @@ export function formatBRL(cents: number): string {
     return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
 }
 
+/**
+ * Adds `months` calendar months to `date`, keeping the SAME day-of-month and
+ * clamping to the last day of the target month when it would overflow
+ * (e.g. 31/Jan + 1 → 28/Feb, never 03/Mar). Use this for monthly installment
+ * due-dates so they land on the same day each month and never skip a month —
+ * raw Date.setMonth() rolls days 29–31 forward into the following month.
+ */
+export function addMonths(date: Date, months: number): Date {
+    const d = new Date(date);
+    const day = d.getDate();
+    d.setDate(1);                          // avoid mid-set overflow
+    d.setMonth(d.getMonth() + months);
+    const lastDayOfTarget = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    d.setDate(Math.min(day, lastDayOfTarget));
+    return d;
+}
+
+/**
+ * A billing cycle is a fixed 4-week (28-day) window — NOT a calendar month.
+ * The studio's sessions run weekly, so installment due dates advance by exactly
+ * 28 days per cycle (no calendar-month drift of 28–31 days). Use this for EVERY
+ * monthly-installment due date so all creation paths (self, admin, custom,
+ * renewal) stay consistent.
+ */
+export const BILLING_CYCLE_DAYS = 28;
+export function addBillingCycles(date: Date, cycles: number): Date {
+    const d = new Date(date);
+    d.setDate(d.getDate() + cycles * BILLING_CYCLE_DAYS);
+    return d;
+}
+
 // ─── Tier Hierarchy ─────────────────────────────────────
 
 const TIER_LEVEL: Record<Tier, number> = {

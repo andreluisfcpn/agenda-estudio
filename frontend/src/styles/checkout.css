@@ -82,6 +82,10 @@
   background: var(--accent-primary);
 }
 
+.checkout-tab--boleto.checkout-tab--active {
+  background: #f59e0b;
+}
+
 /* ── Error Alert ── */
 .checkout-error {
   padding: 10px 14px;

@@ -42,6 +42,7 @@ export type UserMinAggregateOutputType = {
   clientStatus: string | null
   stripeCustomerId: string | null
   autoChargeEnabled: boolean | null
+  essentialNotificationsOnly: boolean | null
   createdAt: Date | null
   updatedAt: Date | null
 }
@@ -64,6 +65,7 @@ export type UserMaxAggregateOutputType = {
   clientStatus: string | null
   stripeCustomerId: string | null
   autoChargeEnabled: boolean | null
+  essentialNotificationsOnly: boolean | null
   createdAt: Date | null
   updatedAt: Date | null
 }
@@ -87,6 +89,7 @@ export type UserCountAggregateOutputType = {
   clientStatus: number
   stripeCustomerId: number
   autoChargeEnabled: number
+  essentialNotificationsOnly: number
   createdAt: number
   updatedAt: number
   _all: number
@@ -111,6 +114,7 @@ export type UserMinAggregateInputType = {
   clientStatus?: true
   stripeCustomerId?: true
   autoChargeEnabled?: true
+  essentialNotificationsOnly?: true
   createdAt?: true
   updatedAt?: true
 }
@@ -133,6 +137,7 @@ export type UserMaxAggregateInputType = {
   clientStatus?: true
   stripeCustomerId?: true
   autoChargeEnabled?: true
+  essentialNotificationsOnly?: true
   createdAt?: true
   updatedAt?: true
 }
@@ -156,6 +161,7 @@ export type UserCountAggregateInputType = {
   clientStatus?: true
   stripeCustomerId?: true
   autoChargeEnabled?: true
+  essentialNotificationsOnly?: true
   createdAt?: true
   updatedAt?: true
   _all?: true
@@ -252,6 +258,7 @@ export type UserGroupByOutputType = {
   clientStatus: string
   stripeCustomerId: string | null
   autoChargeEnabled: boolean
+  essentialNotificationsOnly: boolean
   createdAt: Date
   updatedAt: Date
   _count: UserCountAggregateOutputType | null
@@ -296,6 +303,7 @@ export type UserWhereInput = {
   clientStatus?: Prisma.StringFilter<"User"> | string
   stripeCustomerId?: Prisma.StringNullableFilter<"User"> | string | null
   autoChargeEnabled?: Prisma.BoolFilter<"User"> | boolean
+  essentialNotificationsOnly?: Prisma.BoolFilter<"User"> | boolean
   createdAt?: Prisma.DateTimeFilter<"User"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"User"> | Date | string
   bookings?: Prisma.BookingListRelationFilter
@@ -326,6 +334,7 @@ export type UserOrderByWithRelationInput = {
   clientStatus?: Prisma.SortOrder
   stripeCustomerId?: Prisma.SortOrderInput | Prisma.SortOrder
   autoChargeEnabled?: Prisma.SortOrder
+  essentialNotificationsOnly?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   bookings?: Prisma.BookingOrderByRelationAggregateInput
@@ -359,6 +368,7 @@ export type UserWhereUniqueInput = Prisma.AtLeast<{
   socialLinks?: Prisma.StringNullableFilter<"User"> | string | null
   clientStatus?: Prisma.StringFilter<"User"> | string
   autoChargeEnabled?: Prisma.BoolFilter<"User"> | boolean
+  essentialNotificationsOnly?: Prisma.BoolFilter<"User"> | boolean
   createdAt?: Prisma.DateTimeFilter<"User"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"User"> | Date | string
   bookings?: Prisma.BookingListRelationFilter
@@ -389,6 +399,7 @@ export type UserOrderByWithAggregationInput = {
   clientStatus?: Prisma.SortOrder
   stripeCustomerId?: Prisma.SortOrderInput | Prisma.SortOrder
   autoChargeEnabled?: Prisma.SortOrder
+  essentialNotificationsOnly?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   _count?: Prisma.UserCountOrderByAggregateInput
@@ -418,6 +429,7 @@ export type UserScalarWhereWithAggregatesInput = {
   clientStatus?: Prisma.StringWithAggregatesFilter<"User"> | string
   stripeCustomerId?: Prisma.StringNullableWithAggregatesFilter<"User"> | string | null
   autoChargeEnabled?: Prisma.BoolWithAggregatesFilter<"User"> | boolean
+  essentialNotificationsOnly?: Prisma.BoolWithAggregatesFilter<"User"> | boolean
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"User"> | Date | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"User"> | Date | string
 }
@@ -441,6 +453,7 @@ export type UserCreateInput = {
   clientStatus?: string
   stripeCustomerId?: string | null
   autoChargeEnabled?: boolean
+  essentialNotificationsOnly?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
   bookings?: Prisma.BookingCreateNestedManyWithoutUserInput
@@ -471,6 +484,7 @@ export type UserUncheckedCreateInput = {
   clientStatus?: string
   stripeCustomerId?: string | null
   autoChargeEnabled?: boolean
+  essentialNotificationsOnly?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
   bookings?: Prisma.BookingUncheckedCreateNestedManyWithoutUserInput
@@ -501,6 +515,7 @@ export type UserUpdateInput = {
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   autoChargeEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  essentialNotificationsOnly?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   bookings?: Prisma.BookingUpdateManyWithoutUserNestedInput
@@ -531,6 +546,7 @@ export type UserUncheckedUpdateInput = {
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   autoChargeEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  essentialNotificationsOnly?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   bookings?: Prisma.BookingUncheckedUpdateManyWithoutUserNestedInput
@@ -561,6 +577,7 @@ export type UserCreateManyInput = {
   clientStatus?: string
   stripeCustomerId?: string | null
   autoChargeEnabled?: boolean
+  essentialNotificationsOnly?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -584,6 +601,7 @@ export type UserUpdateManyMutationInput = {
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   autoChargeEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  essentialNotificationsOnly?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -607,6 +625,7 @@ export type UserUncheckedUpdateManyInput = {
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   autoChargeEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  essentialNotificationsOnly?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -638,6 +657,7 @@ export type UserCountOrderByAggregateInput = {
   clientStatus?: Prisma.SortOrder
   stripeCustomerId?: Prisma.SortOrder
   autoChargeEnabled?: Prisma.SortOrder
+  essentialNotificationsOnly?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -660,6 +680,7 @@ export type UserMaxOrderByAggregateInput = {
   clientStatus?: Prisma.SortOrder
   stripeCustomerId?: Prisma.SortOrder
   autoChargeEnabled?: Prisma.SortOrder
+  essentialNotificationsOnly?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -682,6 +703,7 @@ export type UserMinOrderByAggregateInput = {
   clientStatus?: Prisma.SortOrder
   stripeCustomerId?: Prisma.SortOrder
   autoChargeEnabled?: Prisma.SortOrder
+  essentialNotificationsOnly?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -837,6 +859,7 @@ export type UserCreateWithoutPushSubscriptionsInput = {
   clientStatus?: string
   stripeCustomerId?: string | null
   autoChargeEnabled?: boolean
+  essentialNotificationsOnly?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
   bookings?: Prisma.BookingCreateNestedManyWithoutUserInput
@@ -866,6 +889,7 @@ export type UserUncheckedCreateWithoutPushSubscriptionsInput = {
   clientStatus?: string
   stripeCustomerId?: string | null
   autoChargeEnabled?: boolean
+  essentialNotificationsOnly?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
   bookings?: Prisma.BookingUncheckedCreateNestedManyWithoutUserInput
@@ -911,6 +935,7 @@ export type UserUpdateWithoutPushSubscriptionsInput = {
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   autoChargeEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  essentialNotificationsOnly?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   bookings?: Prisma.BookingUpdateManyWithoutUserNestedInput
@@ -940,6 +965,7 @@ export type UserUncheckedUpdateWithoutPushSubscriptionsInput = {
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   autoChargeEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  essentialNotificationsOnly?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   bookings?: Prisma.BookingUncheckedUpdateManyWithoutUserNestedInput
@@ -969,6 +995,7 @@ export type UserCreateWithoutContractsInput = {
   clientStatus?: string
   stripeCustomerId?: string | null
   autoChargeEnabled?: boolean
+  essentialNotificationsOnly?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
   bookings?: Prisma.BookingCreateNestedManyWithoutUserInput
@@ -998,6 +1025,7 @@ export type UserUncheckedCreateWithoutContractsInput = {
   clientStatus?: string
   stripeCustomerId?: string | null
   autoChargeEnabled?: boolean
+  essentialNotificationsOnly?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
   bookings?: Prisma.BookingUncheckedCreateNestedManyWithoutUserInput
@@ -1043,6 +1071,7 @@ export type UserUpdateWithoutContractsInput = {
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   autoChargeEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  essentialNotificationsOnly?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   bookings?: Prisma.BookingUpdateManyWithoutUserNestedInput
@@ -1072,6 +1101,7 @@ export type UserUncheckedUpdateWithoutContractsInput = {
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   autoChargeEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  essentialNotificationsOnly?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   bookings?: Prisma.BookingUncheckedUpdateManyWithoutUserNestedInput
@@ -1101,6 +1131,7 @@ export type UserCreateWithoutBookingsInput = {
   clientStatus?: string
   stripeCustomerId?: string | null
   autoChargeEnabled?: boolean
+  essentialNotificationsOnly?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
   contracts?: Prisma.ContractCreateNestedManyWithoutUserInput
@@ -1130,6 +1161,7 @@ export type UserUncheckedCreateWithoutBookingsInput = {
   clientStatus?: string
   stripeCustomerId?: string | null
   autoChargeEnabled?: boolean
+  essentialNotificationsOnly?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
   contracts?: Prisma.ContractUncheckedCreateNestedManyWithoutUserInput
@@ -1175,6 +1207,7 @@ export type UserUpdateWithoutBookingsInput = {
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   autoChargeEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  essentialNotificationsOnly?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   contracts?: Prisma.ContractUpdateManyWithoutUserNestedInput
@@ -1204,6 +1237,7 @@ export type UserUncheckedUpdateWithoutBookingsInput = {
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   autoChargeEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  essentialNotificationsOnly?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   contracts?: Prisma.ContractUncheckedUpdateManyWithoutUserNestedInput
@@ -1233,6 +1267,7 @@ export type UserCreateWithoutPaymentsInput = {
   clientStatus?: string
   stripeCustomerId?: string | null
   autoChargeEnabled?: boolean
+  essentialNotificationsOnly?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
   bookings?: Prisma.BookingCreateNestedManyWithoutUserInput
@@ -1262,6 +1297,7 @@ export type UserUncheckedCreateWithoutPaymentsInput = {
   clientStatus?: string
   stripeCustomerId?: string | null
   autoChargeEnabled?: boolean
+  essentialNotificationsOnly?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
   bookings?: Prisma.BookingUncheckedCreateNestedManyWithoutUserInput
@@ -1307,6 +1343,7 @@ export type UserUpdateWithoutPaymentsInput = {
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   autoChargeEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  essentialNotificationsOnly?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   bookings?: Prisma.BookingUpdateManyWithoutUserNestedInput
@@ -1336,6 +1373,7 @@ export type UserUncheckedUpdateWithoutPaymentsInput = {
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   autoChargeEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  essentialNotificationsOnly?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   bookings?: Prisma.BookingUncheckedUpdateManyWithoutUserNestedInput
@@ -1365,6 +1403,7 @@ export type UserCreateWithoutSavedPaymentMethodsInput = {
   clientStatus?: string
   stripeCustomerId?: string | null
   autoChargeEnabled?: boolean
+  essentialNotificationsOnly?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
   bookings?: Prisma.BookingCreateNestedManyWithoutUserInput
@@ -1394,6 +1433,7 @@ export type UserUncheckedCreateWithoutSavedPaymentMethodsInput = {
   clientStatus?: string
   stripeCustomerId?: string | null
   autoChargeEnabled?: boolean
+  essentialNotificationsOnly?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
   bookings?: Prisma.BookingUncheckedCreateNestedManyWithoutUserInput
@@ -1439,6 +1479,7 @@ export type UserUpdateWithoutSavedPaymentMethodsInput = {
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   autoChargeEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  essentialNotificationsOnly?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   bookings?: Prisma.BookingUpdateManyWithoutUserNestedInput
@@ -1468,6 +1509,7 @@ export type UserUncheckedUpdateWithoutSavedPaymentMethodsInput = {
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   autoChargeEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  essentialNotificationsOnly?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   bookings?: Prisma.BookingUncheckedUpdateManyWithoutUserNestedInput
@@ -1497,6 +1539,7 @@ export type UserCreateWithoutBlockedSlotsInput = {
   clientStatus?: string
   stripeCustomerId?: string | null
   autoChargeEnabled?: boolean
+  essentialNotificationsOnly?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
   bookings?: Prisma.BookingCreateNestedManyWithoutUserInput
@@ -1526,6 +1569,7 @@ export type UserUncheckedCreateWithoutBlockedSlotsInput = {
   clientStatus?: string
   stripeCustomerId?: string | null
   autoChargeEnabled?: boolean
+  essentialNotificationsOnly?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
   bookings?: Prisma.BookingUncheckedCreateNestedManyWithoutUserInput
@@ -1571,6 +1615,7 @@ export type UserUpdateWithoutBlockedSlotsInput = {
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   autoChargeEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  essentialNotificationsOnly?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   bookings?: Prisma.BookingUpdateManyWithoutUserNestedInput
@@ -1600,6 +1645,7 @@ export type UserUncheckedUpdateWithoutBlockedSlotsInput = {
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   autoChargeEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  essentialNotificationsOnly?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   bookings?: Prisma.BookingUncheckedUpdateManyWithoutUserNestedInput
@@ -1629,6 +1675,7 @@ export type UserCreateWithoutNotificationsInput = {
   clientStatus?: string
   stripeCustomerId?: string | null
   autoChargeEnabled?: boolean
+  essentialNotificationsOnly?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
   bookings?: Prisma.BookingCreateNestedManyWithoutUserInput
@@ -1658,6 +1705,7 @@ export type UserUncheckedCreateWithoutNotificationsInput = {
   clientStatus?: string
   stripeCustomerId?: string | null
   autoChargeEnabled?: boolean
+  essentialNotificationsOnly?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
   bookings?: Prisma.BookingUncheckedCreateNestedManyWithoutUserInput
@@ -1703,6 +1751,7 @@ export type UserUpdateWithoutNotificationsInput = {
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   autoChargeEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  essentialNotificationsOnly?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   bookings?: Prisma.BookingUpdateManyWithoutUserNestedInput
@@ -1732,6 +1781,7 @@ export type UserUncheckedUpdateWithoutNotificationsInput = {
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
   stripeCustomerId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   autoChargeEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  essentialNotificationsOnly?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   bookings?: Prisma.BookingUncheckedUpdateManyWithoutUserNestedInput
@@ -1846,6 +1896,7 @@ export type UserSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = r
   clientStatus?: boolean
   stripeCustomerId?: boolean
   autoChargeEnabled?: boolean
+  essentialNotificationsOnly?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   bookings?: boolean | Prisma.User$bookingsArgs<ExtArgs>
@@ -1877,6 +1928,7 @@ export type UserSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensio
   clientStatus?: boolean
   stripeCustomerId?: boolean
   autoChargeEnabled?: boolean
+  essentialNotificationsOnly?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }, ExtArgs["result"]["user"]>
@@ -1900,6 +1952,7 @@ export type UserSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensio
   clientStatus?: boolean
   stripeCustomerId?: boolean
   autoChargeEnabled?: boolean
+  essentialNotificationsOnly?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }, ExtArgs["result"]["user"]>
@@ -1923,11 +1976,12 @@ export type UserSelectScalar = {
   clientStatus?: boolean
   stripeCustomerId?: boolean
   autoChargeEnabled?: boolean
+  essentialNotificationsOnly?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }
 
-export type UserOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "email" | "passwordHash" | "name" | "phone" | "googleId" | "role" | "photoUrl" | "notes" | "cpfCnpj" | "address" | "city" | "state" | "tags" | "socialLinks" | "clientStatus" | "stripeCustomerId" | "autoChargeEnabled" | "createdAt" | "updatedAt", ExtArgs["result"]["user"]>
+export type UserOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "email" | "passwordHash" | "name" | "phone" | "googleId" | "role" | "photoUrl" | "notes" | "cpfCnpj" | "address" | "city" | "state" | "tags" | "socialLinks" | "clientStatus" | "stripeCustomerId" | "autoChargeEnabled" | "essentialNotificationsOnly" | "createdAt" | "updatedAt", ExtArgs["result"]["user"]>
 export type UserInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   bookings?: boolean | Prisma.User$bookingsArgs<ExtArgs>
   contracts?: boolean | Prisma.User$contractsArgs<ExtArgs>
@@ -1971,6 +2025,7 @@ export type $UserPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs =
     clientStatus: string
     stripeCustomerId: string | null
     autoChargeEnabled: boolean
+    essentialNotificationsOnly: boolean
     createdAt: Date
     updatedAt: Date
   }, ExtArgs["result"]["user"]>
@@ -2421,6 +2476,7 @@ export interface UserFieldRefs {
   readonly clientStatus: Prisma.FieldRef<"User", 'String'>
   readonly stripeCustomerId: Prisma.FieldRef<"User", 'String'>
   readonly autoChargeEnabled: Prisma.FieldRef<"User", 'Boolean'>
+  readonly essentialNotificationsOnly: Prisma.FieldRef<"User", 'Boolean'>
   readonly createdAt: Prisma.FieldRef<"User", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"User", 'DateTime'>
 }

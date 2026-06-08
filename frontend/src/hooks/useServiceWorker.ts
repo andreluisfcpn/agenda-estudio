@@ -18,6 +18,8 @@ export function useServiceWorker() {
             }
         };
 
+        let cleanupChecks = () => {};
+
         navigator.serviceWorker.ready.then((reg) => {
             checkWaiting(reg);
 
@@ -32,12 +34,27 @@ export function useServiceWorker() {
                     }
                 });
             });
+
+            // Proactively poll for a new version so installed PWAs (which can stay open for
+            // days) pick up deploys without a manual hard-reload: every 30 min, when the tab
+            // becomes visible again, and when connectivity is restored.
+            const check = () => { reg.update().catch(() => {}); };
+            const interval = window.setInterval(check, 30 * 60 * 1000);
+            const onVisible = () => { if (document.visibilityState === 'visible') check(); };
+            document.addEventListener('visibilitychange', onVisible);
+            window.addEventListener('online', check);
+            cleanupChecks = () => {
+                window.clearInterval(interval);
+                document.removeEventListener('visibilitychange', onVisible);
+                window.removeEventListener('online', check);
+            };
         });
 
         navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
 
         return () => {
             navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
+            cleanupChecks();
         };
     }, []);
 

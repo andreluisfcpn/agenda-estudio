@@ -1,10 +1,14 @@
 import { getErrorMessage } from '../../../utils/errors';
-import React, { useState } from 'react';
-import { contractsApi, UserSummary, CreateContractData, PricingConfig } from '../../../api/client';
+import React, { useState, useEffect } from 'react';
+import { contractsApi, pricingApi, UserSummary, CreateContractData, PricingConfig, InstallmentPlan, AddOnConfig, ServiceBreakdownItem } from '../../../api/client';
 import { useBusinessConfig } from '../../../hooks/useBusinessConfig';
-import ModalOverlay from '../../ModalOverlay';
+import BottomSheetModal from '../../BottomSheetModal';
+import InlineCheckout from '../../InlineCheckout';
+import ServiceLineItem from '../../ui/ServiceLineItem';
 
 import { formatBRL } from '../../../utils/format';
+
+type AdminMethod = 'CARTAO' | 'PIX' | 'BOLETO';
 
 const DAY_NAMES_FULL = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
@@ -22,16 +26,41 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
     const ep6 = getRule('episodes_6months');
     const disc3 = getRule('discount_3months');
     const disc6 = getRule('discount_6months');
+    const sessionsPerMonth = getRule('sessions_per_month');
 
     const [createForm, setCreateForm] = useState<Partial<CreateContractData> & { contractUrl?: string }>({
-        name: '', type: 'FIXO', tier: 'COMERCIAL', durationMonths: 3, startDate: new Date().toISOString().split('T')[0], contractUrl: '',
+        name: '', type: 'FIXO', tier: 'COMERCIAL', durationMonths: 3, startDate: new Date().toISOString().split('T')[0], contractUrl: '', paymentPlan: 'MONTHLY',
     });
     const [createError, setCreateError] = useState('');
     const [createSuccess, setCreateSuccess] = useState('');
+    const [paymentMethod, setPaymentMethod] = useState<AdminMethod>('CARTAO');
 
     const [conflicts, setConflicts] = useState<{ date: string, originalTime: string, suggestedReplacement?: { date: string, time: string } }[]>([]);
     const [resolvedConflicts, setResolvedConflicts] = useState<{ originalDate: string, originalTime: string, newDate: string, newTime: string }[]>([]);
     const [showConflictModal, setShowConflictModal] = useState(false);
+
+    // Authoritative pricing (same rules as the client) + optional "charge now" step.
+    const [quote, setQuote] = useState<{ monthlyAmount: number; fullPix: number; fullCard: number; installmentPlans: InstallmentPlan[]; services: ServiceBreakdownItem[]; servicesPerRecordingCents: number } | null>(null);
+    const [chargePaymentId, setChargePaymentId] = useState<string | null>(null);
+
+    // Per-episode services (accompany every recording). GESTAO_SOCIAL (monthly) is excluded,
+    // matching the client wizard; the per-recording value is shown via ServiceLineItem.
+    const [addons, setAddons] = useState<AddOnConfig[]>([]);
+    const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
+    useEffect(() => {
+        if (!isOpen) return;
+        pricingApi.getAddons().then(r => setAddons(r.addons.filter(a => !a.monthly))).catch(() => setAddons([]));
+    }, [isOpen]);
+
+    const planSel = createForm.paymentPlan || 'MONTHLY';
+    useEffect(() => {
+        if (!isOpen) return;
+        let alive = true;
+        pricingApi.checkoutQuote({ durationMonths: createForm.durationMonths || 3, contractType: createForm.type, tier: createForm.tier, addOns: selectedAddons })
+            .then(q => { if (alive) setQuote(q); })
+            .catch(() => { if (alive) setQuote(null); });
+        return () => { alive = false; };
+    }, [isOpen, createForm.tier, createForm.durationMonths, createForm.type, selectedAddons]);
 
     const executeCreate = async (resolutions: any[] = []) => {
         setCreateError(''); setCreateSuccess('');
@@ -44,13 +73,25 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                 durationMonths: createForm.durationMonths as 3 | 6,
                 startDate: createForm.startDate!,
                 contractUrl: createForm.contractUrl || undefined,
+                boletoAllowed: createForm.boletoAllowed || undefined,
+                paymentPlan: createForm.paymentPlan || 'MONTHLY',
+                paymentMethod,
+                addOns: selectedAddons.length > 0 ? selectedAddons : undefined,
                 resolvedConflicts: resolutions.length > 0 ? resolutions : undefined,
                 ...(createForm.type === 'FIXO' && { fixedDayOfWeek: createForm.fixedDayOfWeek || 1, fixedTime: createForm.fixedTime || '14:00' }),
             };
             const res = await contractsApi.create(data);
-            setCreateSuccess(res.message);
             onCreated();
-            setTimeout(() => { onClose(); setShowConflictModal(false); setCreateSuccess(''); }, 1500);
+            setShowConflictModal(false);
+            // Offer to charge the first payment on the spot (PIX QR / client's card present),
+            // using the SAME InlineCheckout + unified policy as the client. Otherwise it stays
+            // PENDING and the client pays later (or via auto-charge).
+            if (res.firstPaymentId) {
+                setChargePaymentId(res.firstPaymentId);
+            } else {
+                setCreateSuccess(res.message);
+                setTimeout(() => { onClose(); setCreateSuccess(''); }, 1500);
+            }
         } catch (err: unknown) { setCreateError(getErrorMessage(err)); }
     };
 
@@ -120,14 +161,16 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
     const monthly = createForm.durationMonths ? Math.round(total / createForm.durationMonths) : 0;
 
     const canCreate = !!createForm.userId && !!createForm.name?.trim();
+    const chargeAmount = planSel === 'FULL'
+        ? (paymentMethod === 'PIX' ? (quote?.fullPix ?? total) : (quote?.fullCard ?? total))
+        : (quote?.monthlyAmount ?? monthly);
 
     const clientUsers = users.filter(u => u.role !== 'ADMIN');
     const selectedUser = clientUsers.find(u => u.id === createForm.userId);
 
     return (
         <>
-            <ModalOverlay onClose={onClose}>
-                <div className="modal" style={{ maxWidth: 580, maxHeight: '94vh', overflowY: 'auto', padding: 0 }}>
+            <BottomSheetModal isOpen onClose={onClose} hideHeader maxWidth="580px" className="admin-sheet" title="Novo Contrato">
                     {/* --- HEADER --- */}
                     <div style={{ padding: '28px 32px 0' }}>
                         <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -338,12 +381,101 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                                     </div>
                                 </div>
                             )}
+                            {/* Billing plan toggle: Mensal | Integral */}
+                            <div style={{ marginBottom: '14px' }}>
+                                <label style={labelStyle}>Plano de cobrança</label>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                    {[
+                                        { key: 'MONTHLY' as const, icon: '📆', label: 'Mensal', desc: `${createForm.durationMonths || 3} parcelas` },
+                                        { key: 'FULL' as const, icon: '💰', label: 'Integral', desc: '1 cobrança do total' },
+                                    ].map(p => {
+                                        const active = (createForm.paymentPlan || 'MONTHLY') === p.key;
+                                        return (
+                                            <button key={p.key} onClick={() => setCreateForm({ ...createForm, paymentPlan: p.key })}
+                                                style={{
+                                                    padding: '12px', borderRadius: '10px', cursor: 'pointer', textAlign: 'left',
+                                                    background: active ? 'rgba(99,102,241,0.08)' : 'var(--bg-elevated)',
+                                                    border: `1.5px solid ${active ? 'rgba(99,102,241,0.3)' : 'var(--border-default)'}`,
+                                                    transition: 'all 0.15s',
+                                                }}>
+                                                <div style={{ fontSize: '0.875rem', fontWeight: 700, color: active ? '#818cf8' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>{p.icon} {p.label}</div>
+                                                <div style={{ fontSize: '0.5625rem', color: 'var(--text-muted)', marginTop: '3px' }}>{p.desc}</div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            {/* Payment method selector — unified with the client (PIX / Cartão / Boleto se liberado) */}
+                            <div style={{ marginBottom: '14px' }}>
+                                <label style={labelStyle}>Forma de pagamento</label>
+                                <div style={{ display: 'grid', gridTemplateColumns: `repeat(${createForm.boletoAllowed ? 3 : 2}, 1fr)`, gap: '8px' }}>
+                                    {([
+                                        { key: 'PIX' as const, icon: '⚡', label: 'PIX' },
+                                        { key: 'CARTAO' as const, icon: '💳', label: 'Cartão' },
+                                        ...(createForm.boletoAllowed ? [{ key: 'BOLETO' as const, icon: '📄', label: 'Boleto' }] : []),
+                                    ]).map(m => {
+                                        const active = paymentMethod === m.key;
+                                        return (
+                                            <button key={m.key} onClick={() => setPaymentMethod(m.key)}
+                                                style={{
+                                                    padding: '10px 8px', borderRadius: '10px', cursor: 'pointer', textAlign: 'center',
+                                                    background: active ? 'rgba(99,102,241,0.08)' : 'var(--bg-elevated)',
+                                                    border: `1.5px solid ${active ? 'rgba(99,102,241,0.3)' : 'var(--border-default)'}`,
+                                                    transition: 'all 0.15s',
+                                                }}>
+                                                <div style={{ fontSize: '1rem' }}>{m.icon}</div>
+                                                <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: active ? '#818cf8' : 'var(--text-primary)', marginTop: '2px' }}>{m.label}</div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            {/* Boleto release toggle */}
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '12px 14px', borderRadius: '10px', background: createForm.boletoAllowed ? 'rgba(245,158,11,0.06)' : 'var(--bg-elevated)', border: `1px solid ${createForm.boletoAllowed ? 'rgba(245,158,11,0.3)' : 'var(--border-default)'}` }}>
+                                <input type="checkbox" checked={!!createForm.boletoAllowed} onChange={e => setCreateForm({ ...createForm, boletoAllowed: e.target.checked })} style={{ width: 18, height: 18, accentColor: '#f59e0b', cursor: 'pointer' }} />
+                                <div>
+                                    <div style={{ fontSize: '0.8125rem', fontWeight: 600 }}>📄 Permitir boleto neste contrato</div>
+                                    <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', marginTop: '2px' }}>O cliente poderá pagar as parcelas via boleto. Desligado por padrão.</div>
+                                </div>
+                            </label>
                         </div>
 
-                        {/* --- SECTION 3: Price Preview --- */}
+                        {/* --- SECTION 3: Serviços por Gravação --- */}
+                        {addons.length > 0 && (
+                            <div style={{ marginBottom: '20px' }}>
+                                {sectionHeader(3, 'Serviços por Gravação', '#2dd4bf')}
+                                <p style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', margin: '-8px 0 12px' }}>
+                                    Acompanham toda gravação do contrato e entram na parcela. Valor com {discount}% de desconto de fidelidade.
+                                </p>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {addons.map(addon => {
+                                        const selected = selectedAddons.includes(addon.key);
+                                        const perRecording = Math.round(addon.price * (1 - discount / 100));
+                                        return (
+                                            <ServiceLineItem
+                                                key={addon.key}
+                                                name={addon.name}
+                                                description={addon.description}
+                                                perRecordingCents={perRecording}
+                                                sessionsPerMonth={sessionsPerMonth}
+                                                selected={selected}
+                                                onToggle={() => setSelectedAddons(prev => selected ? prev.filter(k => k !== addon.key) : [...prev, addon.key])}
+                                            />
+                                        );
+                                    })}
+                                </div>
+                                {selectedAddons.length > 0 && quote && (
+                                    <div style={{ marginTop: 10, fontSize: '0.75rem', color: '#2dd4bf', fontWeight: 700, textAlign: 'right' }}>
+                                        +{formatBRL(quote.servicesPerRecordingCents)}/gravação em serviços
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* --- SECTION 4: Price Preview --- */}
                         {tierPrice && (
                             <div style={{ marginBottom: '20px' }}>
-                                {sectionHeader(3, 'Estimativa de Preço', '#f59e0b')}
+                                {sectionHeader(4, 'Estimativa de Preço', '#f59e0b')}
                                 <div style={{ padding: '16px', borderRadius: '12px', background: 'linear-gradient(135deg, rgba(16,185,129,0.06), rgba(6,78,59,0.03))', border: '1px solid rgba(16,185,129,0.15)' }}>
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '8px', fontSize: '0.8125rem' }}>
                                         <span style={{ color: 'var(--text-muted)' }}>Preço base/episódio</span>
@@ -360,8 +492,24 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                                         <span style={{ fontWeight: 700 }}>{episodes} episódios × {formatBRL(discounted)}</span>
                                         <span style={{ textAlign: 'right', fontSize: '1.125rem', fontWeight: 800, color: '#10b981' }}>{formatBRL(total)}</span>
 
-                                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Estimativa mensal</span>
-                                        <span style={{ textAlign: 'right', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>~{formatBRL(monthly)}/mês</span>
+                                        {selectedAddons.length > 0 && quote && (
+                                            <>
+                                                <span style={{ color: '#2dd4bf', fontWeight: 600 }}>Serviços ({episodes} grav. × {formatBRL(quote.servicesPerRecordingCents)})</span>
+                                                <span style={{ textAlign: 'right', color: '#2dd4bf', fontWeight: 700 }}>+{formatBRL(quote.servicesPerRecordingCents * episodes)}</span>
+                                            </>
+                                        )}
+
+                                        {planSel === 'FULL' ? (
+                                            <>
+                                                <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>À vista {paymentMethod === 'PIX' ? '(PIX, com desconto)' : '(cartão, até 12x)'}</span>
+                                                <span style={{ textAlign: 'right', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{formatBRL(quote ? (paymentMethod === 'PIX' ? quote.fullPix : quote.fullCard) : total)}</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Mensal (1x, sem acréscimo)</span>
+                                                <span style={{ textAlign: 'right', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{createForm.durationMonths || 3}× {formatBRL(quote ? quote.monthlyAmount : monthly)}/mês</span>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -385,13 +533,11 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                             </button>
                         </div>
                     </div>
-                </div>
-            </ModalOverlay>
+            </BottomSheetModal>
 
             {/* Conflict Resolution Modal */}
             {showConflictModal && (
-                <ModalOverlay onClose={() => setShowConflictModal(false)}>
-                    <div className="modal" style={{ maxWidth: 600 }}>
+                <BottomSheetModal isOpen onClose={() => setShowConflictModal(false)} hideHeader maxWidth="600px" title="Conflitos de Agenda">
                         <div style={{ textAlign: 'center', marginBottom: '20px' }}>
                             <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>⚠️</div>
                             <h3 style={{ fontSize: '1.25rem', color: '#ef4444' }}>Conflitos de Agenda</h3>
@@ -442,8 +588,38 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                                 🚫 Cancelar e voltar para escolhas
                             </button>
                         </div>
-                    </div>
-                </ModalOverlay>
+                </BottomSheetModal>
+            )}
+
+            {/* Charge-now step: same InlineCheckout + unified policy as the client. PIX shows a QR;
+                cartão uses Stripe Elements with the client's card present. Charges the CLIENT
+                (payment.userId) — the backend resolves the payer from the payment, not the admin. */}
+            {chargePaymentId && (
+                <BottomSheetModal isOpen onClose={() => { onCreated(); onClose(); }} hideHeader maxWidth="460px" className="admin-sheet" title="Cobrar 1ª parcela">
+                        <div style={{ padding: '24px 28px' }}>
+                            <h3 style={{ fontSize: '1.0625rem', fontWeight: 800, margin: '0 0 4px' }}>Cobrar 1ª parcela</h3>
+                            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0 0 16px' }}>
+                                Cobre agora (PIX ou cartão do cliente presente) ou deixe pendente — o cliente paga depois / cobrança automática.
+                            </p>
+                            <InlineCheckout
+                                amount={chargeAmount}
+                                paymentId={chargePaymentId}
+                                description={`${createForm.name || 'Contrato'} - 1ª cobrança`}
+                                contractDuration={planSel === 'FULL' ? (createForm.durationMonths || 3) : 1}
+                                allowedMethods={[paymentMethod]}
+                                isAdmin
+                                allowBoleto={!!createForm.boletoAllowed}
+                                context="contract"
+                                onSuccess={() => { onCreated(); onClose(); }}
+                                onError={(msg) => setCreateError(msg)}
+                                onCancel={() => { onCreated(); onClose(); }}
+                            />
+                            <button onClick={() => { onCreated(); onClose(); }}
+                                style={{ marginTop: 12, width: '100%', padding: '10px', borderRadius: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer' }}>
+                                Deixar pendente (cliente paga depois)
+                            </button>
+                        </div>
+                </BottomSheetModal>
             )}
         </>
     );

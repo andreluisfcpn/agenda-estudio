@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { registerTiersRoutes } from './pricing.tiers.js';
 import { registerMethodsRoutes } from './pricing.methods.js';
 import { registerConfigRoutes } from './pricing.config.js';
+import { registerQuoteRoutes } from './pricing.quote.js';
 
 const router = Router();
 
@@ -11,5 +12,6 @@ const router = Router();
 registerTiersRoutes(router);   // GET / [PUBLIC] | PUT /
 registerMethodsRoutes(router); // GET/PUT /addons | GET /payment-methods [PUBLIC] | GET /payment-methods/all | PUT /payment-methods
 registerConfigRoutes(router);  // GET /business-config/public [PUBLIC] | GET/PUT /business-config
+registerQuoteRoutes(router);   // POST /checkout-quote (authoritative checkout numbers)
 
 export default router;

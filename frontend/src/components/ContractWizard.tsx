@@ -9,6 +9,7 @@ import StripeCardForm from './StripeCardForm';
 import CpfCnpjPrompt from './CpfCnpjPrompt';
 import { useAuth } from '../context/AuthContext';
 import { isValidCpfCnpj } from '../utils/mask';
+import { formatBRL } from '../utils/format';
 import { X, Pin, Shuffle, CalendarDays, Clock, Lock, CheckCircle2, XCircle, AlertTriangle, ChevronLeft, ChevronRight, Sparkles, Film, TrendingUp, FileText, Receipt, Mic, Tag, CreditCard, ScrollText, ShieldCheck } from 'lucide-react';
 
 export interface ContractWizardProps {
@@ -29,10 +30,6 @@ const TIER_INFO: Record<string, { emoji: string; hours: string; desc: string }> 
 const DAY_NAMES_FULL = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 const DAY_NAMES_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const MONTH_NAMES_SHORT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-
-function formatBRL(cents: number): string {
-    return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
-}
 
 export default function ContractWizard({ pricing, onClose, onComplete, onOpenCustom }: ContractWizardProps) {
     const { user } = useAuth();
@@ -56,6 +53,8 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
     // Step 3: Terms + Payment
     const [acceptedTerms, setAcceptedTerms] = useState(false);
     const [paymentMethod, setPaymentMethod] = useState<'CARTAO' | 'PIX' | null>(null);
+    // Payment plan: MONTHLY (1 now + rest monthly, current behavior) or FULL (whole contract upfront).
+    const [paymentPlan, setPaymentPlan] = useState<'MONTHLY' | 'FULL'>('MONTHLY');
     const [addons, setAddons] = useState<AddOnConfig[]>([]);
     const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
 
@@ -71,13 +70,31 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
     const [cardClientSecret, setCardClientSecret] = useState<string | null>(null);
     const [firstPaymentId, setFirstPaymentId] = useState<string | null>(null);
     const [firstPixString, setFirstPixString] = useState<string | null>(null);
+    // Real amount of the first charge, returned by the backend. For FULL this is the
+    // whole contract (with PIX-at-once discount); for MONTHLY it's the 1st installment.
+    // Use this in the checkout so what is shown == what is charged.
+    const [checkoutAmount, setCheckoutAmount] = useState<number | null>(null);
 
     // Cancel confirmation modal
     const [showCancelModal, setShowCancelModal] = useState(false);
 
     // Conflicts
-    const [conflicts, setConflicts] = useState<{ date: string, originalTime: string, suggestedReplacement?: { date: string, time: string } }[]>([]);
+    const [conflicts, setConflicts] = useState<{ date: string, originalTime: string, suggestedReplacement?: { date: string, time: string }, alternatives?: { date: string, time: string }[] }[]>([]);
     const [resolvedConflicts, setResolvedConflicts] = useState<{ originalDate: string, originalTime: string, newDate: string, newTime: string }[]>([]);
+
+    // Per-conflict substitution: which alternative slot the client picked for a given conflict.
+    const getResolution = (originalDate: string, originalTime: string) =>
+        resolvedConflicts.find(r => r.originalDate === originalDate && r.originalTime === originalTime);
+    const selectAlternative = (originalDate: string, originalTime: string, alt: { date: string, time: string }) => {
+        setResolvedConflicts(prev => {
+            const others = prev.filter(r => !(r.originalDate === originalDate && r.originalTime === originalTime));
+            return [...others, { originalDate, originalTime, newDate: alt.date, newTime: alt.time }];
+        });
+    };
+    // Count conflicts still unresolved (no free alternative on that day).
+    const unresolvedConflicts = conflicts.filter(c =>
+        !getResolution(c.date, c.originalTime) && !(c.alternatives && c.alternatives.length > 0)
+    ).length;
 
     // Business rules from admin config
     const { get: getRule, getJson } = useBusinessConfig();
@@ -91,12 +108,22 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
     const discountedPrice = Math.round(basePrice * (1 - discountPct / 100));
     const totalGravacoes = duration * sessionsPerMonth;
 
+    // Per-episode services accompany every recording → × sessions/month; monthly
+    // services (e.g. GESTAO_SOCIAL) stay flat. Mirrors backend computeAddonsCost.
     const baseAddonsTotal = selectedAddons.reduce((acc, key) => {
         const addon = addons.find(a => a.key === key);
-        return acc + (addon ? addon.price : 0);
+        if (!addon) return acc;
+        return acc + (addon.monthly ? addon.price : addon.price * sessionsPerMonth);
     }, 0);
     const discountedAddonsTotal = Math.round(baseAddonsTotal * (1 - discountPct / 100));
     const monthlyTotal = (sessionsPerMonth * discountedPrice) + discountedAddonsTotal;
+
+    // ── Display-only totals for the payment-plan selector ──
+    // These mirror the backend so the user sees consistent numbers; the actual
+    // charged value comes from the createSelf response (checkoutAmount).
+    const pixExtraDiscountPct = getRule('pix_extra_discount_pct');
+    const contractFullTotal = monthlyTotal * duration; // FULL on card (no extra discount)
+    const pixFullTotal = Math.round(contractFullTotal * (1 - pixExtraDiscountPct / 100)); // FULL on PIX (à vista)
 
     // Generate 14 days ahead
     const now = new Date();
@@ -143,6 +170,7 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                 firstBookingDate: firstDate,
                 firstBookingTime: firstTime,
                 paymentMethod: paymentMethod!,
+                paymentPlan,
                 addOns: selectedAddons,
                 resolvedConflicts: resolutions.length > 0 ? resolutions : undefined,
                 ...(scheduleType === 'FIXO' ? { fixedDayOfWeek: dayOfWeek, fixedTime: firstTime } : {}),
@@ -150,6 +178,8 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
 
             if (res.firstPaymentId) setFirstPaymentId(res.firstPaymentId);
             if (res.firstPixString) setFirstPixString(res.firstPixString);
+            // Backend-authoritative amount of the first charge → drives the checkout.
+            if (typeof res.amount === 'number') setCheckoutAmount(res.amount);
 
             if (res.clientSecret && paymentMethod === 'CARTAO') {
                 setCardClientSecret(res.clientSecret);
@@ -278,9 +308,13 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                             <div className="wizard-payment-step__icon-v2">
                                 <ShieldCheck size={28} />
                             </div>
-                            <h3 className="wizard-payment-step__title">Pagamento da 1ª Parcela</h3>
+                            <h3 className="wizard-payment-step__title">
+                                {paymentPlan === 'FULL' ? 'Pagamento Integral' : 'Pagamento da 1ª Parcela'}
+                            </h3>
                             <p className="wizard-payment-step__desc">
-                                Complete o pagamento para ativar seu contrato. As demais parcelas serão cobradas mensalmente.
+                                {paymentPlan === 'FULL'
+                                    ? 'Complete o pagamento integral para ativar seu contrato.'
+                                    : 'Complete o pagamento para ativar seu contrato. As demais parcelas serão cobradas mensalmente.'}
                             </p>
                         </div>
 
@@ -290,65 +324,25 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                             <span>O contrato só será criado após a confirmação do pagamento. Sem pagamento, nenhum agendamento será reservado.</span>
                         </div>
 
-                        {paymentMethod === 'CARTAO' && cardClientSecret ? (
-                            <>
-                                <div className="wizard-receipt" style={{ marginBottom: 16, padding: '12px 16px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>1ª parcela de {duration}x</span>
-                                        <span style={{ fontWeight: 800, fontSize: '1.125rem', color: 'var(--accent-primary)' }}>{formatBRL(monthlyTotal)}</span>
-                                    </div>
-                                </div>
-                                <StripeCardForm
-                                    mode="payment"
-                                    clientSecret={cardClientSecret}
-                                    onSuccess={async (paymentIntentId) => {
-                                        // Confirm the payment on the backend so the contract is
-                                        // materialized synchronously instead of depending solely on
-                                        // the Stripe webhook (which may not be configured/delivered).
-                                        try {
-                                            if (firstPaymentId && paymentIntentId) {
-                                                const r = await stripeApi.verifyPayment({ paymentId: firstPaymentId, paymentIntentId });
-                                                if (r.status !== 'PAID') {
-                                                    setError('Não foi possível confirmar o pagamento. Verifique seu extrato antes de tentar novamente.');
-                                                    setStep(4);
-                                                    return;
-                                                }
-                                            }
-                                            setStep(6);
-                                        } catch {
-                                            setError('Pagamento realizado, mas não pôde ser confirmado automaticamente. Verifique "Meus Contratos" em instantes.');
-                                            setStep(4);
-                                        }
-                                    }}
-                                    onError={(msg) => { setError(msg); setStep(4); }}
-                                    onCancel={() => setShowCancelModal(true)}
-                                    submitLabel={`Pagar ${formatBRL(monthlyTotal)}`}
-                                />
-                            </>
-                        ) : (
-                            <InlineCheckout
-                                amount={monthlyTotal}
-                                paymentId={firstPaymentId || undefined}
-                                description={`1ª parcela - Contrato ${duration} meses`}
-                                contractDuration={duration}
-                                allowedMethods={paymentMethod === 'PIX' ? ['PIX'] : ['CARTAO', 'PIX']}
-                                context="contract"
-                                createPaymentFn={firstPaymentId ? async () => ({
-                                    paymentId: firstPaymentId,
-                                    pixString: firstPixString || undefined,
-                                }) : undefined}
-                                onSuccess={() => setStep(6)}
-                                onError={(msg) => { setError(msg); setStep(4); }}
-                                onCancel={() => setShowCancelModal(true)}
-                            />
-                        )}
-
-                        {/* Show external cancel only for Stripe card flow (InlineCheckout has its own) */}
-                        {paymentMethod === 'CARTAO' && cardClientSecret && (
-                            <button className="wizard-cancel-link" onClick={() => setShowCancelModal(true)}>
-                                Cancelar
-                            </button>
-                        )}
+                        {/* Unified checkout: card (with installments + juros via the policy) AND PIX
+                            both go through InlineCheckout so the rules stay centralized. */}
+                        <InlineCheckout
+                            amount={checkoutAmount ?? monthlyTotal}
+                            paymentId={firstPaymentId || undefined}
+                            description={paymentPlan === 'FULL'
+                                ? `Pagamento integral - Contrato ${duration} meses`
+                                : `1ª parcela - Contrato ${duration} meses`}
+                            contractDuration={paymentPlan === 'FULL' ? duration : 1}
+                            allowedMethods={paymentMethod === 'PIX' ? ['PIX'] : ['CARTAO']}
+                            context="contract"
+                            createPaymentFn={firstPaymentId ? async () => ({
+                                paymentId: firstPaymentId,
+                                pixString: firstPixString || undefined,
+                            }) : undefined}
+                            onSuccess={() => setStep(6)}
+                            onError={(msg) => { setError(msg); setStep(4); }}
+                            onCancel={() => setShowCancelModal(true)}
+                        />
 
                         {/* ── Cancel Confirmation Modal ── */}
                         {showCancelModal && (
@@ -625,10 +619,12 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
 
                         {/* Addon Cards */}
                         <div className="wizard-addons-grid">
-                            {addons.filter(a => a.key !== 'GESTAO_SOCIAL').map(addon => {
+                            {addons.filter(a => !a.monthly).map(addon => {
                                 const isSelected = selectedAddons.includes(addon.key);
-                                const monthlyAddonBase = addon.price * 4;
-                                const discountedAddonPrice = Math.round(monthlyAddonBase * (1 - discountPct / 100));
+                                // Per-recording is the primary unit (service accompanies every recording);
+                                // the monthly figure is the aggregate over the sessions in the cycle.
+                                const perRecording = Math.round(addon.price * (1 - discountPct / 100));
+                                const discountedMonthlyAddon = perRecording * sessionsPerMonth;
 
                                 const ADDON_ICONS: Record<string, React.ReactNode> = {
                                     CORTES_IA: <Sparkles size={20} />,
@@ -658,18 +654,18 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                                         <div className="wizard-addon-card__name">{addon.name}</div>
                                         <div className="wizard-addon-card__desc">{addon.description}</div>
 
-                                        {/* Price footer */}
+                                        {/* Price footer — per-recording leads, monthly aggregate below */}
                                         <div className="wizard-addon-card__footer">
                                             <div className="wizard-addon-card__price">
-                                                +{formatBRL(discountedAddonPrice)}
-                                                <span className="wizard-addon-card__per">/mês</span>
+                                                +{formatBRL(perRecording)}
+                                                <span className="wizard-addon-card__per">/gravação</span>
                                             </div>
-                                            {discountPct > 0 && (
-                                                <div className="wizard-addon-card__savings">
-                                                    <span className="wizard-addon-card__original">{formatBRL(monthlyAddonBase)}</span>
+                                            <div className="wizard-addon-card__savings">
+                                                <span className="wizard-addon-card__original">{sessionsPerMonth}× = {formatBRL(discountedMonthlyAddon)}/mês</span>
+                                                {discountPct > 0 && (
                                                     <span className="wizard-addon-card__badge">-{discountPct}%</span>
-                                                </div>
-                                            )}
+                                                )}
+                                            </div>
                                         </div>
                                     </button>
                                 );
@@ -682,11 +678,7 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                                 <CheckCircle2 size={16} />
                                 <span>{selectedAddons.length} serviço{selectedAddons.length > 1 ? 's' : ''} selecionado{selectedAddons.length > 1 ? 's' : ''}</span>
                                 <span className="wizard-addon-summary__total">
-                                    +{formatBRL(selectedAddons.reduce((acc, key) => {
-                                        const addon = addons.find(a => a.key === key);
-                                        if (!addon) return acc;
-                                        return acc + Math.round(addon.price * 4 * (1 - discountPct / 100));
-                                    }, 0))}/mês
+                                    +{formatBRL(discountedAddonsTotal)}/mês
                                 </span>
                             </div>
                         )}
@@ -757,7 +749,8 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                                     {selectedAddons.map(key => {
                                         const addon = addons.find(a => a.key === key);
                                         if(!addon) return null;
-                                        const discountedMonthly = Math.round((addon.price * sessionsPerMonth) * (1 - discountPct / 100));
+                                        const perRecording = Math.round(addon.price * (1 - discountPct / 100));
+                                        const discountedMonthly = addon.monthly ? perRecording : perRecording * sessionsPerMonth;
                                         const ADDON_ICON_MAP: Record<string, React.ReactNode> = {
                                             CORTES_IA: <Sparkles size={14} />,
                                             CORTES_HUMANO: <Film size={14} />,
@@ -769,6 +762,9 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                                                 <div className="wizard-receipt__addon-info">
                                                     <span className="wizard-receipt__addon-icon">{ADDON_ICON_MAP[key] || <Sparkles size={14} />}</span>
                                                     <span>{addon.name}</span>
+                                                    {!addon.monthly && (
+                                                        <span className="wizard-receipt__addon-unit">{formatBRL(perRecording)}/gravação</span>
+                                                    )}
                                                 </div>
                                                 <span className="wizard-receipt__addon-price">+{formatBRL(discountedMonthly)}/mês</span>
                                             </div>
@@ -790,7 +786,80 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                             </div>
                         </div>
 
-                        {/* ── Payment Method Selector ── */}
+                        {/* ── Payment Plan Selector (Mensal / À vista PIX / À vista Cartão) ── */}
+                        <div className="wizard-pay-section">
+                            <div className="wizard-pay-section__label">
+                                <CreditCard size={16} />
+                                <span>Plano de Pagamento</span>
+                            </div>
+
+                            <div className="wizard-pay-options">
+                                {/* Mensal */}
+                                <button
+                                    className={`wizard-pay-card ${paymentPlan === 'MONTHLY' ? 'wizard-pay-card--selected' : ''}`}
+                                    onClick={() => setPaymentPlan('MONTHLY')}>
+                                    <div className="wizard-pay-card__left">
+                                        <div className={`wizard-pay-card__radio ${paymentPlan === 'MONTHLY' ? 'wizard-pay-card__radio--on' : ''}`}>
+                                            {paymentPlan === 'MONTHLY' && <div className="wizard-pay-card__radio-dot" />}
+                                        </div>
+                                        <div>
+                                            <div className="wizard-pay-card__name">Mensal</div>
+                                            <div className="wizard-pay-card__desc">{duration} parcelas mensais</div>
+                                        </div>
+                                    </div>
+                                    <div className="wizard-pay-card__right">
+                                        <div className="wizard-pay-card__price">{duration}x {formatBRL(monthlyTotal)}</div>
+                                        <div className="wizard-pay-card__sub">Total: {formatBRL(contractFullTotal)}</div>
+                                    </div>
+                                </button>
+
+                                {/* À vista no PIX */}
+                                <button
+                                    className={`wizard-pay-card ${paymentPlan === 'FULL' && paymentMethod === 'PIX' ? 'wizard-pay-card--selected' : ''}`}
+                                    onClick={() => { setPaymentPlan('FULL'); setPaymentMethod('PIX'); }}>
+                                    <div className="wizard-pay-card__left">
+                                        <div className={`wizard-pay-card__radio ${paymentPlan === 'FULL' && paymentMethod === 'PIX' ? 'wizard-pay-card__radio--on' : ''}`}>
+                                            {paymentPlan === 'FULL' && paymentMethod === 'PIX' && <div className="wizard-pay-card__radio-dot" />}
+                                        </div>
+                                        <div>
+                                            <div className="wizard-pay-card__name">
+                                                À vista no PIX
+                                                {pixExtraDiscountPct > 0 && <span className="wizard-pay-card__surcharge">-{pixExtraDiscountPct}%</span>}
+                                            </div>
+                                            <div className="wizard-pay-card__desc">Pague tudo agora com desconto</div>
+                                        </div>
+                                    </div>
+                                    <div className="wizard-pay-card__right">
+                                        <div className="wizard-pay-card__price">{formatBRL(pixFullTotal)}</div>
+                                        {pixExtraDiscountPct > 0 && (
+                                            <div className="wizard-pay-card__sub" style={{ textDecoration: 'line-through' }}>{formatBRL(contractFullTotal)}</div>
+                                        )}
+                                    </div>
+                                </button>
+
+                                {/* À vista no Cartão */}
+                                <button
+                                    className={`wizard-pay-card ${paymentPlan === 'FULL' && paymentMethod === 'CARTAO' ? 'wizard-pay-card--selected' : ''}`}
+                                    onClick={() => { setPaymentPlan('FULL'); setPaymentMethod('CARTAO'); }}>
+                                    <div className="wizard-pay-card__left">
+                                        <div className={`wizard-pay-card__radio ${paymentPlan === 'FULL' && paymentMethod === 'CARTAO' ? 'wizard-pay-card__radio--on' : ''}`}>
+                                            {paymentPlan === 'FULL' && paymentMethod === 'CARTAO' && <div className="wizard-pay-card__radio-dot" />}
+                                        </div>
+                                        <div>
+                                            <div className="wizard-pay-card__name">À vista no Cartão</div>
+                                            <div className="wizard-pay-card__desc">Integral à vista ou parcelado no cartão</div>
+                                        </div>
+                                    </div>
+                                    <div className="wizard-pay-card__right">
+                                        <div className="wizard-pay-card__price">{formatBRL(contractFullTotal)}</div>
+                                        <div className="wizard-pay-card__sub">ou parcelado</div>
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* ── Payment Method Selector (MONTHLY only — PIX/Cartão) ── */}
+                        {paymentPlan === 'MONTHLY' && (
                         <div className="wizard-pay-section">
                             <div className="wizard-pay-section__label">
                                 <CreditCard size={16} />
@@ -810,12 +879,10 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                                         subPrice = `Total: ${formatBRL(monthlyTotal * duration)}`;
                                         desc = 'Parcelas mensais via PIX';
                                     } else if (pm.key === 'CARTAO') {
-                                        const surcharges = getJson<Record<string, number>>('card_installment_surcharges');
-                                        surchargePctVal = surcharges?.[String(duration)] ?? 0;
-                                        const cardMonthly = Math.round(monthlyTotal * (1 + surchargePctVal / 100));
-                                        displayPrice = `${duration}x ${formatBRL(cardMonthly)}`;
-                                        subPrice = `Total: ${formatBRL(cardMonthly * duration)}`;
-                                        desc = surchargePctVal > 0 ? `Acréscimo de ${surchargePctVal}%` : 'Parcelas no cartão';
+                                        // Monthly card has NO surcharge — each month is a single 1x charge (same as PIX).
+                                        displayPrice = `${duration}x ${formatBRL(monthlyTotal)}`;
+                                        subPrice = `Total: ${formatBRL(monthlyTotal * duration)}`;
+                                        desc = 'Parcelas mensais no cartão';
                                     } else {
                                         displayPrice = `${duration}x ${formatBRL(monthlyTotal)}`;
                                         subPrice = `Total: ${formatBRL(monthlyTotal * duration)}`;
@@ -848,6 +915,7 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                                 })}
                             </div>
                         </div>
+                        )}
 
                         {/* ── Terms ── */}
                         <div className="wizard-terms-v2">
@@ -897,13 +965,20 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                         </div>
 
                         <div style={{ background: 'var(--bg-secondary)', padding: 16, borderRadius: 'var(--radius-md)', marginBottom: 24 }}>
-                            <div style={{ fontWeight: 700, marginBottom: 12, fontSize: '0.875rem' }}>Datas em conflito:</div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                            <div style={{ fontWeight: 700, marginBottom: 4, fontSize: '0.875rem' }}>Datas em conflito:</div>
+                            <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '0 0 14px' }}>
+                                Para cada dia, escolha um horário livre como substituto — ou volte e selecione outro dia recorrente.
+                            </p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                                 {conflicts.map((c, i) => {
                                     const ymd = c.date.split('-');
                                     const dateObj = new Date(`${c.date}T12:00:00`);
                                     const localDate = `${ymd[2]}/${ymd[1]}/${ymd[0]}`;
                                     const dow = DAY_NAMES_FULL[dateObj.getDay()];
+                                    const alts = c.alternatives && c.alternatives.length > 0
+                                        ? c.alternatives
+                                        : (c.suggestedReplacement ? [c.suggestedReplacement] : []);
+                                    const selected = getResolution(c.date, c.originalTime);
 
                                     return (
                                         <div key={i} className="wizard-conflict">
@@ -912,16 +987,41 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                                                 <span className="wizard-conflict__badge">Ocupado</span>
                                             </div>
 
-                                            {c.suggestedReplacement ? (
-                                                <div className="wizard-conflict__suggestion">
-                                                    <span>💡 Nossa sugestão:</span>
-                                                    <span className="wizard-conflict__alt">
-                                                        {c.suggestedReplacement.time} no mesmo dia
-                                                    </span>
+                                            {alts.length > 0 ? (
+                                                <div style={{ marginTop: 10 }}>
+                                                    <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
+                                                        Novo horário neste dia:
+                                                    </div>
+                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                                        {alts.map(alt => {
+                                                            const isSel = selected?.newTime === alt.time && selected?.newDate === alt.date;
+                                                            return (
+                                                                <button
+                                                                    key={alt.time}
+                                                                    type="button"
+                                                                    onClick={() => selectAlternative(c.date, c.originalTime, alt)}
+                                                                    aria-pressed={isSel}
+                                                                    style={{
+                                                                        padding: '7px 14px',
+                                                                        borderRadius: 'var(--radius-sm)',
+                                                                        border: `1.5px solid ${isSel ? 'var(--accent-primary)' : 'var(--border-default)'}`,
+                                                                        background: isSel ? 'var(--accent-primary)' : 'var(--bg-card)',
+                                                                        color: isSel ? '#fff' : 'var(--text-primary)',
+                                                                        fontWeight: 600,
+                                                                        fontSize: '0.85rem',
+                                                                        cursor: 'pointer',
+                                                                        transition: 'all 0.15s',
+                                                                    }}
+                                                                >
+                                                                    {alt.time}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
                                                 </div>
                                             ) : (
                                                 <div className="wizard-conflict__warning">
-                                                    <span>⚠️ Este dia está completamente lotado para o seu pacote. Esta gravação pulará uma semana e será adicionada ao final do seu contrato.</span>
+                                                    <span>⚠️ Este dia está completamente lotado para o seu pacote. Volte e escolha outro dia/horário recorrente para evitar a sobreposição.</span>
                                                 </div>
                                             )}
                                         </div>
@@ -930,10 +1030,18 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                             </div>
                         </div>
 
+                        {unresolvedConflicts > 0 && (
+                            <p style={{ fontSize: '0.78rem', color: '#ef4444', textAlign: 'center', marginBottom: 12 }}>
+                                {unresolvedConflicts === 1
+                                    ? '1 dia continua lotado e será criado sobre o horário ocupado. Recomendamos voltar e ajustar.'
+                                    : `${unresolvedConflicts} dias continuam lotados e serão criados sobre os horários ocupados. Recomendamos voltar e ajustar.`}
+                            </p>
+                        )}
+
                         <div className="wizard-actions wizard-actions--stack">
                             <button className="btn btn-primary" style={{ width: '100%', padding: 14 }}
                                 onClick={() => executeCreation(resolvedConflicts)}>
-                                ✅ Aceitar Sugestões e Concluir
+                                ✅ Confirmar Substituições e Concluir
                             </button>
                             <button className="btn btn-secondary" style={{ width: '100%', padding: 14 }}
                                 onClick={() => setStep(2)}>

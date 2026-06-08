@@ -827,6 +827,16 @@
   display: flex;
 }
 
+.wizard-receipt__addon-unit {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--accent-primary);
+  background: var(--tier-audiencia-bg);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
 .wizard-receipt__addon-price {
   font-weight: 600;
   font-size: 0.8125rem;

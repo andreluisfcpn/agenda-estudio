@@ -76,6 +76,7 @@ export function registerUserListingRoutes(router: Router) {
                 createdAt: true,
                 contracts: {
                     orderBy: { createdAt: 'desc' },
+                    take: 100, // bound nested load (admin detail view)
                     select: {
                         id: true,
                         type: true,
@@ -92,6 +93,7 @@ export function registerUserListingRoutes(router: Router) {
                 },
                 bookings: {
                     orderBy: [{ date: 'desc' }, { startTime: 'desc' }],
+                    take: 200, // bound nested load (most-recent first)
                     select: {
                         id: true,
                         date: true,
@@ -111,6 +113,7 @@ export function registerUserListingRoutes(router: Router) {
                 },
                 payments: {
                     orderBy: { createdAt: 'desc' },
+                    take: 200, // bound nested load (most-recent first)
                     select: {
                         id: true,
                         amount: true,
