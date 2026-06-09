@@ -686,11 +686,34 @@ export default function CalendarPage() {
                                         const dayLabel = DAY_NAMES_FULL[item.dateObj.getUTCDay()];
                                         const dateLabel = item.dateObj.toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit' });
                                         const isToday = item.date === todayStrSaoPaulo();
+                                        const b = item.booking as { coverImageUrl?: string | null; episodeTitle?: string | null; contract?: { name?: string } | null; tierApplied: string; startTime: string; endTime: string };
+                                        const title = b.episodeTitle || b.contract?.name || b.tierApplied;
+                                        const open = () => setDetailBooking({ booking: item.booking, date: item.date });
+                                        // Mobile: card em formato fotografia (vertical) com capa; desktop: card compacto em lista.
+                                        if (isMobile) {
+                                            return (
+                                                <button key={`${item.date}-${item.booking.startTime}`}
+                                                    className={`agenda-poster animate-card-enter ${isToday ? 'agenda-poster--today' : ''}`}
+                                                    style={{ '--i': i } as React.CSSProperties} onClick={open}>
+                                                    <div className="agenda-poster__media">
+                                                        <span className="agenda-poster__mic" aria-hidden="true"><Mic size={52} strokeWidth={1.25} /></span>
+                                                        {b.coverImageUrl && <img src={b.coverImageUrl} alt="" loading="lazy" onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />}
+                                                    </div>
+                                                    <div className="agenda-poster__grad" />
+                                                    {isToday && <span className="agenda-poster__badge">Hoje</span>}
+                                                    <div className="agenda-poster__info">
+                                                        <div className="agenda-poster__date">{dayLabel}, {dateLabel}</div>
+                                                        <div className="agenda-poster__title">{title}</div>
+                                                        <div className="agenda-poster__time">{b.startTime} — {b.endTime}</div>
+                                                    </div>
+                                                </button>
+                                            );
+                                        }
                                         return (
                                             <div key={`${item.date}-${item.booking.startTime}`}
                                                 className={`client-booking-card client-booking-card--scroll animate-card-enter ${isToday ? 'client-booking-card--today' : ''}`}
                                                 style={{ '--i': i } as React.CSSProperties}
-                                                onClick={() => setDetailBooking({ booking: item.booking, date: item.date })}>
+                                                onClick={open}>
                                                 <span className="client-booking-card__watermark" aria-hidden="true">
                                                     <Mic size={96} strokeWidth={1.25} />
                                                 </span>
@@ -699,7 +722,7 @@ export default function CalendarPage() {
                                                     <div className={`client-booking-card__day-number ${isToday ? 'client-booking-card__day-number--today' : ''}`}>{dateLabel}</div>
                                                 </div>
                                                 <div className="client-booking-card__info">
-                                                    <div className="client-booking-card__contract-name">{item.booking.contract?.name || item.booking.tierApplied}</div>
+                                                    <div className="client-booking-card__contract-name">{title}</div>
                                                     <div className="client-booking-card__time">{item.booking.startTime} — {item.booking.endTime}</div>
                                                 </div>
                                             </div>
