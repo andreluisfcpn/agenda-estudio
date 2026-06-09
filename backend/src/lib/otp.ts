@@ -22,28 +22,19 @@ async function logOtpEvent(target: string, action: string, attempt: number): Pro
 }
 
 export const otpService = {
-    async generateAndSendMock(target: string, name: string): Promise<void> {
-        // Generate a 6-digit numeric code
-        const generateCode = customAlphabet('0123456789', 6);
-        const code = generateCode();
+    /**
+     * Generate a 6-digit code and deliver it by e-mail via the configured provider.
+     * Delivers FIRST, then persists the code + cooldown — so a send failure (e.g.
+     * provider misconfigured in prod) leaves no orphan code and doesn't block retry.
+     */
+    async generateAndSend(target: string, name: string): Promise<void> {
+        const code = customAlphabet('0123456789', 6)();
+        const { deliverOtpEmail } = await import('./email.js');
+        await deliverOtpEmail(target, name, code); // throws on misconfiguration (prod)
 
-        // Store in Redis with TTL (replaces in-memory Map)
-        const key = `${OTP_PREFIX}${target}`;
-        await redis.set(key, code, 'EX', OTP_EXPIRY_SECONDS);
-        // Anti-spam: register a short cooldown for this target
+        await redis.set(`${OTP_PREFIX}${target}`, code, 'EX', OTP_EXPIRY_SECONDS);
         await redis.set(`${OTP_COOLDOWN_PREFIX}${target}`, '1', 'EX', SEND_COOLDOWN_SECONDS);
-
-        // AUTH-M1 FIX: Do NOT reset failure counter on new code generation
-        // This prevents attackers from bypassing lockout by requesting new codes
-
-        const isEmail = target.includes('@');
-
-        // Simulate sending SMS/WhatsApp or Email. Note: In reality we'd hook up an API provider here.
-        console.log(`\n\n======================================================`);
-        console.log(`📡 MOCK ${isEmail ? 'EMAIL' : 'SMS'} SENT`);
-        console.log(`To: ${name} (${target})`);
-        console.log(`Message: Seu código de confirmação da Búzios Digital é: ${code}`);
-        console.log(`======================================================\n\n`);
+        // AUTH-M1: do NOT reset the failure counter on new code generation.
     },
 
     async verify(target: string, code: string): Promise<boolean> {

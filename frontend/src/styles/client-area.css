@@ -800,3 +800,13 @@
     transition: none;
   }
 }
+
+/* ── Página de Perfil (card único, padrão do app) ─────────── */
+.profile-page-section {
+  max-width: 640px;
+  margin: 0 auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 22px 20px 24px;
+}

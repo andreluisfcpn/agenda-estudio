@@ -6,6 +6,8 @@
 //   - modules/pricing/pricing.config.ts (GET merges absent keys; PUT upserts)
 // This guarantees admins can SEE and EDIT every config (no hardcoded rates).
 
+import { DEFAULT_OTP_EMAIL_HTML, DEFAULT_OTP_EMAIL_SUBJECT } from '../lib/emailTemplates.js';
+
 export interface ConfigCatalogItem {
     key: string;
     value: string;       // default value (string; JSON-encoded for type 'json')
@@ -54,7 +56,26 @@ export const BUSINESS_CONFIG_CATALOG: ConfigCatalogItem[] = [
     { key: 'platform_instagram_enabled', value: 'true', type: 'string', label: 'Plataforma: Instagram', group: 'recordings' },
     { key: 'platform_facebook_enabled',  value: 'true', type: 'string', label: 'Plataforma: Facebook',  group: 'recordings' },
     { key: 'platform_tiktok_enabled',    value: 'true', type: 'string', label: 'Plataforma: TikTok',    group: 'recordings' },
+    // ── E-mail (login por código + transacional) ──
+    // Grupo NUNCA exposto no endpoint público; segredos criptografados e mascarados.
+    { key: 'email_provider',       value: 'smtp',                    type: 'string', label: 'Provedor (smtp | resend)',  group: 'email' },
+    { key: 'email_from_name',      value: 'Estúdio Búzios Digital',  type: 'string', label: 'Remetente — Nome',          group: 'email' },
+    { key: 'email_from_address',   value: 'contato@buzios.digital',  type: 'string', label: 'Remetente — E-mail',        group: 'email' },
+    { key: 'email_smtp_host',      value: '',                        type: 'string', label: 'SMTP — Host',               group: 'email' },
+    { key: 'email_smtp_port',      value: '587',                     type: 'number', label: 'SMTP — Porta',              group: 'email' },
+    { key: 'email_smtp_user',      value: '',                        type: 'string', label: 'SMTP — Usuário',            group: 'email' },
+    { key: 'email_smtp_password',  value: '',                        type: 'string', label: 'SMTP — Senha',              group: 'email' },
+    { key: 'email_smtp_secure',    value: 'false',                   type: 'string', label: 'SMTP — Conexão segura (SSL)', group: 'email' },
+    { key: 'email_resend_api_key', value: '',                        type: 'string', label: 'Resend — API Key',          group: 'email' },
+    { key: 'login_email_subject',  value: DEFAULT_OTP_EMAIL_SUBJECT, type: 'string', label: 'E-mail de código — Assunto', group: 'email' },
+    { key: 'login_email_html',     value: DEFAULT_OTP_EMAIL_HTML,    type: 'string', label: 'E-mail de código — HTML',    group: 'email' },
 ];
+
+/** E-mail secret keys: encrypted at rest, masked in admin GET, excluded from public config. */
+export const EMAIL_SECRET_KEYS = new Set<string>([
+    'email_smtp_password',
+    'email_resend_api_key',
+]);
 
 /** key → default value (string), derived from the catalog. */
 export const CONFIG_DEFAULT_VALUES: Record<string, string> = Object.fromEntries(

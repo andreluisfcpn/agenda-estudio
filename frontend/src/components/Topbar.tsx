@@ -1,21 +1,21 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import NotificationBell from './NotificationBell';
 import {
     Menu,
     User,
-    Pencil,
     LogOut,
     ChevronDown,
 } from 'lucide-react';
 
 interface TopbarProps {
     onToggleSidebar: () => void;
-    onProfileClick: () => void;
 }
 
-export default function Topbar({ onToggleSidebar, onProfileClick }: TopbarProps) {
+export default function Topbar({ onToggleSidebar }: TopbarProps) {
     const { user, logout } = useAuth();
+    const navigate = useNavigate();
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
@@ -40,7 +40,7 @@ export default function Topbar({ onToggleSidebar, onProfileClick }: TopbarProps)
 
     const handleProfile = () => {
         setMenuOpen(false);
-        onProfileClick();
+        navigate('/perfil');
     };
 
     const handleLogout = async () => {
@@ -131,14 +131,6 @@ export default function Topbar({ onToggleSidebar, onProfileClick }: TopbarProps)
                             >
                                 <User size={16} strokeWidth={2} />
                                 <span>Meu Perfil</span>
-                            </button>
-                            <button
-                                className="topbar-profile-dropdown__item"
-                                onClick={handleProfile}
-                                role="menuitem"
-                            >
-                                <Pencil size={16} strokeWidth={2} />
-                                <span>Editar Perfil</span>
                             </button>
                             <div className="topbar-profile-dropdown__divider" />
                             <button

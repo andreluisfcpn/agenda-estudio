@@ -225,6 +225,31 @@
   background: #f1f3f4;
 }
 
+/* Secondary action (e.g. "Entrar com código por e-mail") — outlined, below the primary */
+.login-secondary-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 13px 16px;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text-primary, #e8eef2);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.18));
+  font-weight: 600;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  min-height: 50px;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+.login-secondary-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.3); }
+.login-secondary-btn:active:not(:disabled) { transform: scale(0.98); }
+.login-secondary-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
 /* ── Divider ── */
 .login-modal-divider {
   display: flex;

@@ -61,11 +61,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 // ─── Auth ───────────────────────────────────────────────
 export const authApi = {
     login: (email: string, password: string) => request<{ user: User }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
-    register: (data: { email: string; password: string; name: string; phone?: string; method?: 'email' | 'phone'; code?: string; }) => request<{ user: User }>('/auth/register', { method: 'POST', body: JSON.stringify(data) }),
+    register: (data: { email: string; password: string; name: string; code: string; }) => request<{ user: User }>('/auth/register', { method: 'POST', body: JSON.stringify(data) }),
     googleLogin: (idToken: string) => request<{ user: User }>('/auth/google', { method: 'POST', body: JSON.stringify({ idToken }) }),
-    sendRegistrationCode: (data: { phone: string, email: string, password: string, name: string, method: 'email' | 'phone' }) => request<{ message: string }>('/auth/register/send-code', { method: 'POST', body: JSON.stringify(data) }),
-    sendOtp: (phone: string, email: string, password: string, name?: string) => request<{ message: string }>('/auth/otp/send', { method: 'POST', body: JSON.stringify({ phone, email, password, name }) }),
-    verifyOtp: (phone: string, code: string, email: string, password: string, name?: string) => request<{ user: User }>('/auth/otp/verify', { method: 'POST', body: JSON.stringify({ phone, code, email, password, name }) }),
+    sendRegistrationCode: (data: { email: string, password: string, name: string }) => request<{ message: string }>('/auth/register/send-code', { method: 'POST', body: JSON.stringify(data) }),
+    // Passwordless e-mail login (OTP): request a code (existing accounts only), then verify it.
+    loginSendCode: (email: string) => request<{ message: string }>('/auth/login/send-code', { method: 'POST', body: JSON.stringify({ email }) }),
+    loginVerifyCode: (email: string, code: string) => request<{ user: User }>('/auth/login/verify-code', { method: 'POST', body: JSON.stringify({ email, code }) }),
     me: () => request<{ user: User }>('/auth/me'),
 
     refresh: () => request<{ message: string }>('/auth/refresh', { method: 'POST' }),
@@ -198,6 +199,7 @@ export const pricingApi = {
     getBusinessConfig: () => request<{ configs: BusinessConfigItem[]; grouped: Record<string, BusinessConfigItem[]> }>('/pricing/business-config'),
     updateBusinessConfig: (configs: { key: string; value: string }[]) => request<{ message: string }>('/pricing/business-config', { method: 'PUT', body: JSON.stringify({ configs }) }),
     getBusinessConfigPublic: () => request<{ config: Record<string, string | number> }>('/pricing/business-config/public'),
+    testEmail: (to: string) => request<{ success: boolean; message?: string; error?: string }>('/pricing/business-config/email/test', { method: 'POST', body: JSON.stringify({ to }) }),
     getPaymentMethods: () => request<{ methods: PaymentMethodConfigItem[] }>('/pricing/payment-methods'),
     getPaymentMethodsAll: () => request<{ methods: PaymentMethodConfigItem[] }>('/pricing/payment-methods/all'),
     updatePaymentMethods: (methods: PaymentMethodConfigItem[]) => request<{ methods: PaymentMethodConfigItem[]; message: string }>('/pricing/payment-methods', { method: 'PUT', body: JSON.stringify({ methods }) }),

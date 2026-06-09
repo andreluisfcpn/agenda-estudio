@@ -16,7 +16,6 @@ import {
     LucideIcon,
     ChevronRight,
     User,
-    Pencil,
     LogOut,
     Wallet,
     Settings,
@@ -67,6 +66,7 @@ const SETTINGS_SUBITEMS: { sec: string; label: string }[] = [
     { sec: 'politicas', label: 'Políticas' },
     { sec: 'servicos', label: 'Serviços' },
     { sec: 'pagamentos', label: 'Pagamentos' },
+    { sec: 'email', label: 'E-mail' },
     { sec: 'integracoes', label: 'Integrações' },
 ];
 
@@ -151,11 +151,11 @@ function ExpandableNavItem({ to, icon: Icon, label, collapsed, subItems }: Expan
 
 interface SidebarProps {
     collapsed: boolean;
-    onProfileClick: () => void;
 }
 
-export default function Sidebar({ collapsed, onProfileClick }: SidebarProps) {
+export default function Sidebar({ collapsed }: SidebarProps) {
     const { user, logout } = useAuth();
+    const { navigateTo } = useNavigation();
     const isAdmin = user?.role === 'ADMIN';
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -181,12 +181,7 @@ export default function Sidebar({ collapsed, onProfileClick }: SidebarProps) {
 
     const handleViewProfile = () => {
         setMenuOpen(false);
-        onProfileClick();
-    };
-
-    const handleEditProfile = () => {
-        setMenuOpen(false);
-        onProfileClick();
+        navigateTo('/perfil');
     };
 
     const handleLogout = async () => {
@@ -238,19 +233,10 @@ export default function Sidebar({ collapsed, onProfileClick }: SidebarProps) {
                             className="sidebar-profile-menu-item"
                             onClick={handleViewProfile}
                             role="menuitem"
-                            aria-label="Ver Perfil"
+                            aria-label="Meu Perfil"
                         >
                             <User size={15} strokeWidth={2} />
-                            <span>Ver Perfil</span>
-                        </button>
-                        <button
-                            className="sidebar-profile-menu-item"
-                            onClick={handleEditProfile}
-                            role="menuitem"
-                            aria-label="Editar Perfil"
-                        >
-                            <Pencil size={15} strokeWidth={2} />
-                            <span>Editar Perfil</span>
+                            <span>Meu Perfil</span>
                         </button>
                         <div className="sidebar-profile-menu-divider" />
                         <button

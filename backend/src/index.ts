@@ -168,8 +168,9 @@ app.get('/api/health', (_req, res) => {
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 app.use('/api/auth/refresh', refreshLimiter);
-app.use('/api/auth/otp', otpLimiter);
 app.use('/api/auth/register/send-code', otpLimiter);
+app.use('/api/auth/login/send-code', otpLimiter);
+app.use('/api/pricing/business-config/email/test', otpLimiter);
 app.use('/api/stripe/create-payment', paymentLimiter);
 app.use('/api/stripe/verify-payment', paymentLimiter);
 // VULN-H1 FIX: Rate limit ALL financial endpoints

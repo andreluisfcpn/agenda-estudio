@@ -5,8 +5,10 @@ interface AuthContextType {
     user: User | null;
     loading: boolean;
     login: (email: string, password: string) => Promise<void>;
-    register: (data: { email: string; password: string; name: string; phone?: string, code?: string, method?: 'email' | 'phone' }) => Promise<void>;
-    sendRegistrationCode: (data: { email: string; password: string; name: string; phone: string; method: 'email' | 'phone' }) => Promise<void>;
+    register: (data: { email: string; password: string; name: string; code: string }) => Promise<void>;
+    sendRegistrationCode: (data: { email: string; password: string; name: string }) => Promise<void>;
+    sendLoginCode: (email: string) => Promise<void>;
+    loginWithCode: (email: string, code: string) => Promise<void>;
     googleLogin: (idToken: string) => Promise<void>;
     logout: () => Promise<void>;
 
@@ -45,13 +47,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(user);
     }, []);
 
-    const register = useCallback(async (data: { email: string; password: string; name: string; phone?: string, code?: string, method?: 'email' | 'phone' }) => {
+    const register = useCallback(async (data: { email: string; password: string; name: string; code: string }) => {
         const { user } = await authApi.register(data);
         setUser(user);
     }, []);
 
-    const sendRegistrationCode = useCallback(async (data: { email: string; password: string; name: string; phone: string; method: 'email' | 'phone' }) => {
+    const sendRegistrationCode = useCallback(async (data: { email: string; password: string; name: string }) => {
         await authApi.sendRegistrationCode(data);
+    }, []);
+
+    const sendLoginCode = useCallback(async (email: string) => {
+        await authApi.loginSendCode(email);
+    }, []);
+
+    const loginWithCode = useCallback(async (email: string, code: string) => {
+        const { user } = await authApi.loginVerifyCode(email, code);
+        setUser(user);
     }, []);
 
 
@@ -83,7 +94,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, []);
 
     return (
-        <AuthContext.Provider value={{ user, loading, login, register, sendRegistrationCode, googleLogin, logout, updateUser, fetchUser }}>
+        <AuthContext.Provider value={{ user, loading, login, register, sendRegistrationCode, sendLoginCode, loginWithCode, googleLogin, logout, updateUser, fetchUser }}>
             {children}
         </AuthContext.Provider>
     );

@@ -44,9 +44,7 @@ const registerSchema = z.object({
     email: z.string().regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'E-mail inválido'),
     password: z.string().min(6, 'Deve conter no mínimo 6 caracteres'),
     name: z.string().min(2, 'Deve conter no mínimo 2 caracteres'),
-    phone: z.string().min(10, 'Telefone inválido'),
     code: z.string().min(6, 'Código inválido').max(6),
-    method: z.enum(['email', 'phone']),
 });
 
 
@@ -59,20 +57,14 @@ const googleLoginSchema = z.object({
     idToken: z.string().min(1)
 });
 
-const otpSendSchema = z.object({
-    phone: z.string().min(10, 'Telefone inválido'),
-    name: z.string().min(2, 'Nome inválido'),
+// Passwordless e-mail login (OTP): request a code, then verify it.
+const loginSendCodeSchema = z.object({
     email: z.string().regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'E-mail inválido'),
-    password: z.string().min(6, 'Deve conter no mínimo 6 caracteres')
 });
 
-
-const otpVerifySchema = z.object({
-    phone: z.string().min(1, 'Telefone obrigatório'),
-    code: z.string().min(6, 'Código inválido').max(6),
-    name: z.string().min(2, 'Nome inválido'),
+const loginVerifyCodeSchema = z.object({
     email: z.string().regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'E-mail inválido'),
-    password: z.string().min(6, 'Deve conter no mínimo 6 caracteres')
+    code: z.string().min(6, 'Código inválido').max(6),
 });
 
 
@@ -113,46 +105,36 @@ const registerSendCodeSchema = z.object({
     email: z.string().regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'E-mail inválido'),
     password: z.string().min(6, 'Deve conter no mínimo 6 caracteres'),
     name: z.string().min(2, 'Deve conter no mínimo 2 caracteres'),
-    phone: z.string().min(10, 'Telefone inválido'),
-    method: z.enum(['email', 'phone']),
 });
 
 router.post('/register/send-code', async (req: Request, res: Response) => {
     try {
         const data = registerSendCodeSchema.parse(req.body);
+        data.email = data.email.trim().toLowerCase();
 
-        const [existingEmail, existingPhone] = await Promise.all([
-            prisma.user.findUnique({ where: { email: data.email } }),
-            prisma.user.findUnique({ where: { phone: data.phone } })
-        ]);
-
+        const existingEmail = await prisma.user.findUnique({ where: { email: data.email } });
         if (existingEmail) {
             res.status(409).json({ error: 'E-mail já cadastrado.', details: { email: 'already in use' } });
             return;
         }
 
-        if (existingPhone) {
-            res.status(409).json({ error: 'Telefone já cadastrado.', details: { phone: 'already in use' } });
-            return;
-        }
-
-        const target = data.method === 'email' ? data.email : data.phone;
-
         // Anti-spam: enforce a short per-target resend cooldown
-        if (await otpService.isOnSendCooldown(target)) {
+        if (await otpService.isOnSendCooldown(data.email)) {
             res.status(429).json({ error: 'Aguarde alguns segundos antes de solicitar um novo código.' });
             return;
         }
 
-        await otpService.generateAndSendMock(target, data.name);
+        await otpService.generateAndSend(data.email, data.name);
 
-        res.json({ message: `Código enviado para ${target}` });
+        res.json({ message: `Código enviado para ${data.email}` });
     } catch (err) {
         if (err instanceof z.ZodError) {
             res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
             return;
         }
-        res.status(500).json({ error: 'Falha ao enviar código de verificação.' });
+        // Don't leak raw provider errors (SMTP host/port, Resend status) to anonymous callers.
+        console.error('[AUTH] register/send-code error:', err);
+        res.status(500).json({ error: 'Não foi possível enviar o código agora. Tente novamente em instantes.' });
     }
 });
 
@@ -162,38 +144,23 @@ router.post('/register/send-code', async (req: Request, res: Response) => {
 router.post('/register', async (req: Request, res: Response) => {
     try {
         const data = registerSchema.parse(req.body);
+        data.email = data.email.trim().toLowerCase();
 
-        console.log('Checking existing user for:', { email: data.email, phone: data.phone });
-        const [existingEmail, existingPhone] = await Promise.all([
-            prisma.user.findUnique({ where: { email: data.email } }),
-            prisma.user.findUnique({ where: { phone: data.phone } })
-        ]).catch(err => {
-            console.error('Prisma uniqueness check failed:', err);
-            throw err;
-        });
-
+        const existingEmail = await prisma.user.findUnique({ where: { email: data.email } });
         if (existingEmail) {
-            console.log('Conflict: Email already exists');
             res.status(409).json({ error: 'E-mail já cadastrado.', details: { email: 'already in use' } });
-            return;
-        }
-
-        if (existingPhone) {
-            console.log('Conflict: Phone already exists');
-            res.status(409).json({ error: 'Telefone já cadastrado.', details: { phone: 'already in use' } });
             return;
         }
 
         // Verify OTP (VULN-05 fix: require explicit flag instead of trusting NODE_ENV)
         // PAY-08 FIX: Double-check NODE_ENV — bypass NEVER works in production
-        const target = data.method === 'email' ? data.email : data.phone;
         const canBypass = process.env.ALLOW_OTP_BYPASS === 'true' && process.env.NODE_ENV !== 'production';
         let isValid = canBypass && data.code === '999999';
         if (!isValid) {
-            isValid = await otpService.verify(target, data.code);
+            isValid = await otpService.verify(data.email, data.code);
         }
         if (isValid && canBypass && data.code === '999999') {
-            console.warn(`[AUTH] OTP bypass used for ${target} (dev mode)`);
+            console.warn(`[AUTH] OTP bypass used for ${data.email} (dev mode)`);
         }
 
         if (!isValid) {
@@ -208,7 +175,6 @@ router.post('/register', async (req: Request, res: Response) => {
                 email: data.email,
                 passwordHash,
                 name: data.name,
-                phone: data.phone,
                 role: 'CLIENTE',
             },
         });
@@ -248,6 +214,7 @@ router.post('/register', async (req: Request, res: Response) => {
 router.post('/login', async (req: Request, res: Response) => {
     try {
         const data = loginSchema.parse(req.body);
+        data.email = data.email.trim().toLowerCase();
 
         const user = await prisma.user.findUnique({ where: { email: data.email } });
         if (!user) {
@@ -256,7 +223,7 @@ router.post('/login', async (req: Request, res: Response) => {
         }
 
         if (!user.passwordHash) {
-            res.status(401).json({ error: 'Conta não possui senha cadastrada. Faça login via Google ou SMS.' });
+            res.status(401).json({ error: 'Conta não possui senha cadastrada. Faça login via Google ou código por e-mail.' });
             return;
         }
 
@@ -290,6 +257,85 @@ router.post('/login', async (req: Request, res: Response) => {
             return;
         }
         throw err;
+    }
+});
+
+// ─── POST /api/auth/login/send-code ─────────────────────
+// Passwordless login: e-mail a 6-digit code. Existing accounts only.
+
+router.post('/login/send-code', async (req: Request, res: Response) => {
+    try {
+        const { email: rawEmail } = loginSendCodeSchema.parse(req.body);
+        const email = rawEmail.trim().toLowerCase();
+
+        const user = await prisma.user.findUnique({ where: { email } });
+        if (!user) {
+            res.status(404).json({ error: 'Conta não encontrada.' });
+            return;
+        }
+
+        // Anti-spam: enforce a short per-target resend cooldown
+        if (await otpService.isOnSendCooldown(email)) {
+            res.status(429).json({ error: 'Aguarde alguns segundos antes de solicitar um novo código.' });
+            return;
+        }
+
+        await otpService.generateAndSend(email, user.name);
+
+        res.json({ message: 'Código enviado para seu e-mail.' });
+    } catch (err) {
+        if (err instanceof z.ZodError) {
+            res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
+            return;
+        }
+        // Don't leak raw provider errors to anonymous callers.
+        console.error('[AUTH] login/send-code error:', err);
+        res.status(500).json({ error: 'Não foi possível enviar o código agora. Tente novamente em instantes.' });
+    }
+});
+
+// ─── POST /api/auth/login/verify-code ───────────────────
+
+router.post('/login/verify-code', async (req: Request, res: Response) => {
+    try {
+        const { email: rawEmail, code } = loginVerifyCodeSchema.parse(req.body);
+        const email = rawEmail.trim().toLowerCase();
+
+        const user = await prisma.user.findUnique({ where: { email } });
+        if (!user) {
+            res.status(404).json({ error: 'Conta não encontrada.' });
+            return;
+        }
+
+        const canBypass = process.env.ALLOW_OTP_BYPASS === 'true' && process.env.NODE_ENV !== 'production';
+        let isValid = canBypass && code === '999999';
+        if (!isValid) {
+            isValid = await otpService.verify(email, code);
+        }
+        if (isValid && canBypass && code === '999999') {
+            console.warn(`[AUTH] OTP login bypass used for ${email} (dev mode)`);
+        }
+
+        if (!isValid) {
+            res.status(401).json({ error: 'Código inválido ou expirado.' });
+            return;
+        }
+
+        const tokens = generateTokens({ userId: user.id, email: user.email || '', role: user.role });
+        setTokenCookies(res, tokens.accessToken, tokens.refreshToken);
+
+        res.json({
+            user: {
+                id: user.id, email: user.email, name: user.name, phone: user.phone, photoUrl: user.photoUrl, role: user.role,
+            },
+        });
+    } catch (err) {
+        if (err instanceof z.ZodError) {
+            res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
+            return;
+        }
+        console.error('[AUTH] login/verify-code error:', err);
+        res.status(500).json({ error: 'Falha ao validar o código.' });
     }
 });
 
@@ -349,6 +395,7 @@ router.post('/google', async (req: Request, res: Response) => {
             res.status(400).json({ error: 'Token Google inválido ou sem email.' });
             return;
         }
+        payload.email = String(payload.email).trim().toLowerCase();
 
         // AUTH-H1 FIX: First try to find by googleId (safe — unique identifier)
         let user = await prisma.user.findFirst({
@@ -402,94 +449,6 @@ router.post('/google', async (req: Request, res: Response) => {
         // AUTH-M3 FIX: Don't expose internal error object to client
         console.error('[AUTH:Google] Authentication error:', err);
         res.status(401).json({ error: 'Falha na autenticação via Google.' });
-    }
-});
-
-// ─── POST /api/auth/otp/send ────────────────────────────
-
-router.post('/otp/send', async (req: Request, res: Response) => {
-    try {
-        const { phone, name, email, password } = otpSendSchema.parse(req.body);
-
-        // Check if email is already registered
-        const existingEmail = await prisma.user.findUnique({ where: { email } });
-        if (existingEmail) {
-            res.status(409).json({ error: 'E-mail já cadastrado.' });
-            return;
-        }
-
-        // Anti-spam: enforce a short per-target resend cooldown
-        if (await otpService.isOnSendCooldown(phone)) {
-            res.status(429).json({ error: 'Aguarde alguns segundos antes de solicitar um novo código.' });
-            return;
-        }
-
-        // Will create the account later directly on /verify, here just sending SMS
-        const contactName = name || 'Novo Cliente';
-        await otpService.generateAndSendMock(phone, contactName);
-
-        res.json({ message: 'Código enviado com sucesso.' });
-    } catch (err) {
-        if (err instanceof z.ZodError) {
-            res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
-            return;
-        }
-        res.status(500).json({ error: 'Falha ao enviar código.' });
-    }
-});
-
-// ─── POST /api/auth/otp/verify ──────────────────────────
-
-router.post('/otp/verify', async (req: Request, res: Response) => {
-    try {
-        const { phone, code, name, email, password } = otpVerifySchema.parse(req.body);
-
-        // VULN-05 fix: require explicit flag for OTP bypass
-        // PAY-08 FIX: Double-check NODE_ENV — bypass NEVER works in production
-        const canBypass = process.env.ALLOW_OTP_BYPASS === 'true' && process.env.NODE_ENV !== 'production';
-        let isValid = canBypass && code === '999999';
-        if (!isValid) {
-            isValid = await otpService.verify(phone, code);
-        }
-        if (isValid && canBypass && code === '999999') {
-            console.warn(`[AUTH] OTP bypass used for ${phone} (dev mode)`);
-        }
-
-        if (!isValid) {
-            res.status(401).json({ error: 'Código inválido ou expirado.' });
-            return;
-        }
-
-        // Find or create the user by Phone
-        let user = await prisma.user.findUnique({ where: { phone } });
-
-        if (!user) {
-            const passwordHash = await bcrypt.hash(password, 12); // AUTH-H2 FIX: standardize cost to 12
-            user = await prisma.user.create({
-                data: {
-                    phone,
-                    email,
-                    passwordHash,
-                    name: name || `Visitante ${phone.substring(phone.length - 4)}`, // Fallback name
-                    role: 'CLIENTE',
-                }
-            });
-        }
-
-        const tokens = generateTokens({ userId: user.id, email: user.email || '', role: user.role });
-        setTokenCookies(res, tokens.accessToken, tokens.refreshToken);
-
-        res.json({
-            user: {
-                id: user.id, email: user.email, name: user.name, phone: user.phone, photoUrl: user.photoUrl, role: user.role
-            }
-        });
-    } catch (err) {
-        if (err instanceof z.ZodError) {
-            res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
-            return;
-        }
-        res.status(500).json({ error: 'Falha na verificação.' });
     }
 });
 

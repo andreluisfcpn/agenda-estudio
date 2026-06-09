@@ -95,7 +95,7 @@ model User {
   email        String?  @unique
   passwordHash String?  @map("password_hash")
   name         String
-  phone        String?  @unique
+  phone        String?
   googleId     String?  @unique @map("google_id")
   role         Role     @default(CLIENTE)
   photoUrl     String?  @map("photo_url")

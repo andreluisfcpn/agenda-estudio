@@ -8,7 +8,6 @@ import LandingPage from './pages/LandingPage';
 import AmbientBackground from './components/AmbientBackground';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
-import ProfileModal from './components/ProfileModal';
 import BottomTabBar from './components/BottomTabBar';
 import { PageTransitionLoader } from './components/PageTransitionLoader';
 import OfflineIndicator from './components/OfflineIndicator';
@@ -24,6 +23,7 @@ const MyBookingsPage = React.lazy(() => import('./pages/MyBookingsPage'));
 const MyResultsPage = React.lazy(() => import('./pages/MyResultsPage'));
 const MyContractsPage = React.lazy(() => import('./pages/MyContractsPage'));
 const MyPaymentsPage = React.lazy(() => import('./pages/MyPaymentsPage'));
+const MyProfilePage = React.lazy(() => import('./pages/MyProfilePage'));
 const AdminClientsPage = React.lazy(() => import('./pages/AdminClientsPage'));
 const AdminBookingsPage = React.lazy(() => import('./pages/AdminBookingsPage'));
 const AdminContractsPage = React.lazy(() => import('./pages/AdminContractsPage'));
@@ -46,6 +46,7 @@ function preloadPages() {
         () => import('./pages/MyBookingsPage'),
         () => import('./pages/MyContractsPage'),
         () => import('./pages/MyPaymentsPage'),
+        () => import('./pages/MyProfilePage'),
         () => import('./pages/AdminTodayPage'),
         () => import('./pages/AdminBookingsPage'),
         () => import('./pages/AdminClientsPage'),
@@ -60,34 +61,9 @@ function preloadPages() {
     loaders.forEach((load, i) => setTimeout(() => { load().catch(() => {}); }, i * 120));
 }
 
-// ─── Success Toast ──────────────────────────────────────
-
-function SuccessToast({ message, onDone }: { message: string; onDone: () => void }) {
-    useEffect(() => {
-        const timer = setTimeout(onDone, 3000);
-        return () => clearTimeout(timer);
-    }, [onDone]);
-
-    return (
-        <div style={{
-            position: 'fixed', top: 24, right: 24, zIndex: 9999,
-            padding: '12px 20px', borderRadius: 'var(--radius-md)',
-            background: 'var(--tier-comercial)', color: '#fff',
-            fontWeight: 600, fontSize: '0.875rem',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-            animation: 'slideIn 0.3s ease-out',
-            display: 'flex', alignItems: 'center', gap: '8px',
-        }}>
-            ✅ {message}
-        </div>
-    );
-}
-
 // ─── Layout ─────────────────────────────────────────────
 
 function Layout({ children }: { children: React.ReactNode }) {
-    const [showProfile, setShowProfile] = useState(false);
-    const [toast, setToast] = useState('');
     usePushSubscription();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
         try { return localStorage.getItem('sidebar-collapsed') === 'true'; } catch { return false; }
@@ -117,28 +93,14 @@ function Layout({ children }: { children: React.ReactNode }) {
         <div className={`app-layout ${sidebarCollapsed ? 'app-layout--sidebar-collapsed' : ''}`}>
             <OfflineIndicator />
             <AmbientBackground />
-            <Topbar
-                onToggleSidebar={toggleSidebar}
-                onProfileClick={() => setShowProfile(true)}
-            />
-            <Sidebar 
-                collapsed={sidebarCollapsed} 
-                onProfileClick={() => setShowProfile(true)}
-            />
+            <Topbar onToggleSidebar={toggleSidebar} />
+            <Sidebar collapsed={sidebarCollapsed} />
 
             <main className="main-content">
                 <Suspense fallback={<PageTransitionLoader />}>
                     {children}
                 </Suspense>
             </main>
-
-            <ProfileModal
-                    isOpen={showProfile}
-                    onClose={() => setShowProfile(false)}
-                    onSuccess={(msg) => { setShowProfile(false); setToast(msg); }}
-                />
-
-            {toast && <SuccessToast message={toast} onDone={() => setToast('')} />}
 
             <UpdateBanner />
             <BottomTabBar />
@@ -201,6 +163,7 @@ function AppRoutes() {
             <Route path="/meus-resultados" element={<ProtectedRoute><MyResultsPage /></ProtectedRoute>} />
             <Route path="/my-contracts" element={<ProtectedRoute><MyContractsPage /></ProtectedRoute>} />
             <Route path="/meus-pagamentos" element={<ProtectedRoute><MyPaymentsPage /></ProtectedRoute>} />
+            <Route path="/perfil" element={<ProtectedRoute><MyProfilePage /></ProtectedRoute>} />
 
             {/* Admin routes */}
             <Route path="/admin/today" element={<ProtectedRoute><AdminRoute><AdminTodayPage /></AdminRoute></ProtectedRoute>} />

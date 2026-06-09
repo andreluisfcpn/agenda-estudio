@@ -3,7 +3,15 @@ import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import { authenticate, authorize } from '../../middleware/auth.js';
 import { invalidateConfigCache } from '../../lib/businessConfig.js';
-import { BUSINESS_CONFIG_CATALOG, CONFIG_CATALOG_BY_KEY, DEPRECATED_CONFIG_KEYS } from '../../config/businessConfigCatalog.js';
+import { BUSINESS_CONFIG_CATALOG, CONFIG_CATALOG_BY_KEY, DEPRECATED_CONFIG_KEYS, EMAIL_SECRET_KEYS } from '../../config/businessConfigCatalog.js';
+import { encryptCredentials } from '../../utils/crypto.js';
+import { deliverOtpEmail } from '../../lib/email.js';
+import { getErrorMessage } from '../../utils/errors.js';
+
+// Placeholder returned (instead of the real value) for secret keys, and detected on save
+// so a re-save without retyping the secret keeps the stored value.
+const SECRET_MASK = '••••••••';
+const isBlankOrMasked = (v: string) => !v || v.trim() === '' || v.includes('•') || v.startsWith('***');
 
 export function registerConfigRoutes(router: Router) {
     // ─── GET /api/pricing/business-config/public (no auth, client-facing) ──────
@@ -15,6 +23,7 @@ export function registerConfigRoutes(router: Router) {
             const config: Record<string, string | number | Record<string, number>> = {};
             for (const row of rows) {
                 if (DEPRECATED_CONFIG_KEYS.has(row.key)) continue; // retired keys never ship to clients
+                if (row.group === 'email') continue; // e-mail config (incl. secrets) is admin-only — never public
                 if (row.type === 'json') {
                     try { config[row.key] = JSON.parse(row.value); } catch { config[row.key] = row.value; }
                 } else {
@@ -39,9 +48,14 @@ export function registerConfigRoutes(router: Router) {
             const merged = [
                 ...BUSINESS_CONFIG_CATALOG.map(c => {
                     const row = byKey.get(c.key);
+                    // Secrets are NEVER returned in plaintext — send a mask when set, '' when not,
+                    // so the admin can tell it's configured without exposing the value.
+                    const value = EMAIL_SECRET_KEYS.has(c.key)
+                        ? (row?.value ? SECRET_MASK : '')
+                        : (row?.value ?? c.value); // DB value wins (admin edits persist)
                     return {
                         key: c.key,
-                        value: row?.value ?? c.value, // DB value wins (admin edits persist)
+                        value,
                         // Catalog is the single source for metadata — fixes keys whose
                         // persisted rows were seeded with a stale group/label/type.
                         type: c.type,
@@ -52,7 +66,9 @@ export function registerConfigRoutes(router: Router) {
                 // Any DB rows not described by the catalog (legacy keys), excluding
                 // retired ones so they disappear from the admin UI even if still in the DB.
                 ...rows.filter(r => !CONFIG_CATALOG_BY_KEY[r.key] && !DEPRECATED_CONFIG_KEYS.has(r.key)).map(r => ({
-                    key: r.key, value: r.value, type: r.type, label: r.label, group: r.group,
+                    key: r.key,
+                    value: EMAIL_SECRET_KEYS.has(r.key) ? (r.value ? SECRET_MASK : '') : r.value,
+                    type: r.type, label: r.label, group: r.group,
                 })),
             ];
 
@@ -82,15 +98,24 @@ export function registerConfigRoutes(router: Router) {
 
             for (const { key, value } of configs) {
                 if (DEPRECATED_CONFIG_KEYS.has(key)) continue; // ignore retired keys
+
+                // Secrets: skip when the admin left the masked placeholder / blank (keep existing),
+                // otherwise encrypt at rest before persisting.
+                let storeValue = value;
+                if (EMAIL_SECRET_KEYS.has(key)) {
+                    if (isBlankOrMasked(value)) continue;
+                    storeValue = encryptCredentials(value);
+                }
+
                 // Upsert so editing a catalog key that isn't persisted yet creates it
                 // (with its catalog metadata) instead of failing.
                 const meta = CONFIG_CATALOG_BY_KEY[key];
                 await prisma.businessConfig.upsert({
                     where: { key },
-                    update: { value },
+                    update: { value: storeValue },
                     create: {
                         key,
-                        value,
+                        value: storeValue,
                         type: meta?.type ?? 'string',
                         label: meta?.label ?? key,
                         group: meta?.group ?? 'outros',
@@ -108,6 +133,27 @@ export function registerConfigRoutes(router: Router) {
                 return;
             }
             res.status(500).json({ error: 'Erro ao salvar configurações.' });
+        }
+    });
+
+    // ─── POST /api/pricing/business-config/email/test (ADMIN) ──
+    // Sends the configured OTP e-mail (code 123456) to validate the provider setup.
+    const emailTestSchema = z.object({
+        to: z.string().regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'E-mail inválido'),
+    });
+
+    router.post('/business-config/email/test', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
+        try {
+            const { to } = emailTestSchema.parse(req.body);
+            await deliverOtpEmail(to, 'Teste', '123456');
+            res.json({ success: true, message: `E-mail de teste enviado para ${to}.` });
+        } catch (err) {
+            if (err instanceof z.ZodError) {
+                res.status(400).json({ success: false, error: 'E-mail inválido.' });
+                return;
+            }
+            console.error('[CONFIG] email test error:', err);
+            res.status(500).json({ success: false, error: getErrorMessage(err) || 'Falha ao enviar e-mail de teste.' });
         }
     });
 }

@@ -11,6 +11,7 @@ import {
     Plug,
     Cloud,
     Clapperboard,
+    Mail,
     ChevronLeft,
     ChevronRight,
     type LucideIcon,
@@ -21,6 +22,7 @@ import SettingsBusinessConfigSection from '../components/admin/settings/Settings
 import SettingsTiersSection from '../components/admin/settings/SettingsTiersSection';
 import SettingsPaymentMethodsSection from '../components/admin/settings/SettingsPaymentMethodsSection';
 import SettingsServicesSection from '../components/admin/settings/SettingsServicesSection';
+import SettingsEmailSection from '../components/admin/settings/SettingsEmailSection';
 import IntegrationSettings from '../components/IntegrationSettings';
 
 type SectionId =
@@ -32,6 +34,7 @@ type SectionId =
     | 'pagamentos'
     | 'ambiente'
     | 'gravacoes'
+    | 'email'
     | 'integracoes';
 
 interface SectionDef {
@@ -134,6 +137,12 @@ const SECTIONS: SectionDef[] = [
                 subtitle="Habilite ou desabilite as plataformas de transmissão oferecidas ao cliente."
             />
         ),
+    },
+    {
+        id: 'email',
+        label: 'E-mail',
+        icon: Mail,
+        render: () => <SettingsEmailSection />,
     },
     {
         id: 'integracoes',
