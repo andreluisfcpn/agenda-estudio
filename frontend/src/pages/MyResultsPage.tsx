@@ -5,7 +5,7 @@ import HeroAmbient from '../components/client/HeroAmbient';
 import StatCard from '../components/ui/StatCard';
 import Skeleton from '../components/ui/SkeletonLoader';
 import { ResultsTimeline, ResultsByContract } from '../components/client/ResultsChart';
-import { ArrowLeft, BarChart3, Eye, TrendingUp, Heart, MessageCircle, Clapperboard, FolderOpen } from 'lucide-react';
+import { ArrowLeft, BarChart3, Eye, TrendingUp, Heart, MessageCircle, Clapperboard, FolderOpen, Users } from 'lucide-react';
 
 const PERIODS: { key: number; label: string }[] = [
     { key: 7, label: '7 dias' },
@@ -88,8 +88,9 @@ export default function MyResultsPage() {
                         <StatCard icon={Clapperboard} label="Sessões" value={fmt(overall!.sessions)} accent="#8b5cf6" index={0} />
                         <StatCard icon={Eye} label="Visualizações" value={fmt(overall!.views)} accent="#3b82f6" index={1} />
                         <StatCard icon={TrendingUp} label="Pico médio" value={fmt(overall!.avgPeak)} accent="#ef4444" index={2} />
-                        <StatCard icon={Heart} label="Curtidas" value={fmt(overall!.likes)} accent="#ec4899" index={3} />
-                        <StatCard icon={MessageCircle} label="Comentários" value={fmt(overall!.comments)} accent="#10b981" index={4} />
+                        <StatCard icon={Users} label="Inscritos" value={fmt(overall!.subscribers)} accent="#a855f7" index={3} />
+                        <StatCard icon={Heart} label="Curtidas" value={fmt(overall!.likes)} accent="#ec4899" index={4} />
+                        <StatCard icon={MessageCircle} label="Comentários" value={fmt(overall!.comments)} accent="#10b981" index={5} />
                     </div>
 
                     {/* Evolution chart */}

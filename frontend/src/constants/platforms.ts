@@ -1,7 +1,7 @@
 // ─── Streaming platforms (shared) ───────────────────────────────────────────
 // Single source for the networks a recording can be broadcast to, plus helpers to
 // parse the JSON-string columns the backend stores (Booking.platforms / platformLinks
-// / streamMetrics). Per-network livestream metrics are: views, peak, likes, comments.
+// / streamMetrics). Per-network livestream metrics are: views, peak, subscribers, likes, comments.
 
 export interface PlatformDef { key: string; label: string; color: string; emoji: string; }
 
@@ -14,13 +14,14 @@ export const PLATFORMS: PlatformDef[] = [
 
 export const PLATFORM_BY_KEY: Record<string, PlatformDef> = Object.fromEntries(PLATFORMS.map(p => [p.key, p]));
 
-export interface PlatformMetric { views?: number; peak?: number; likes?: number; comments?: number; }
+export interface PlatformMetric { views?: number; peak?: number; subscribers?: number; likes?: number; comments?: number; }
 export type StreamMetricsMap = Record<string, PlatformMetric>;
 
-/** The four metrics captured per network, with labels for forms/charts. */
+/** Snapshot metrics captured per network AT SESSION END, with labels for forms/cards. */
 export const METRIC_FIELDS: { key: keyof PlatformMetric; label: string; short: string }[] = [
     { key: 'views', label: 'Visualizações', short: 'Views' },
     { key: 'peak', label: 'Pico ao vivo', short: 'Pico' },
+    { key: 'subscribers', label: 'Inscritos', short: 'Inscritos' },
     { key: 'likes', label: 'Curtidas', short: 'Curtidas' },
     { key: 'comments', label: 'Comentários', short: 'Coment.' },
 ];

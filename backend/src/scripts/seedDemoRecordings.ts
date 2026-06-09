@@ -44,7 +44,7 @@ interface RecSpec {
     isLivestream?: boolean;
     platforms?: string[];
     links?: Record<string, string>;
-    metrics?: Record<string, { views: number; peak: number; likes: number; comments: number }>;
+    metrics?: Record<string, { views: number; peak: number; likes: number; comments: number; subscribers?: number }>;
     durationMinutes?: number;
     audienceOrigin?: string;
     clientNotes?: string;
@@ -63,9 +63,9 @@ const PAST: RecSpec[] = [
             INSTAGRAM: 'https://www.instagram.com/reel/CxYz123/',
         },
         metrics: {
-            YOUTUBE: { views: 15420, peak: 287, likes: 342, comments: 98 },
-            TIKTOK: { views: 8900, peak: 156, likes: 1205, comments: 342 },
-            INSTAGRAM: { views: 3100, peak: 87, likes: 450, comments: 124 },
+            YOUTUBE: { views: 15420, peak: 287, likes: 342, comments: 98, subscribers: 12500 },
+            TIKTOK: { views: 8900, peak: 156, likes: 1205, comments: 342, subscribers: 8300 },
+            INSTAGRAM: { views: 3100, peak: 87, likes: 450, comments: 124, subscribers: 4100 },
         },
         durationMinutes: 118, audienceOrigin: 'SP, RJ, MG', clientNotes: 'Episódio com convidado especial — ótima repercussão.',
         title: 'Entrevista com convidado especial',
@@ -75,8 +75,8 @@ const PAST: RecSpec[] = [
         platforms: ['YOUTUBE', 'INSTAGRAM'],
         links: { YOUTUBE: 'https://youtu.be/abcd1234', INSTAGRAM: 'https://www.instagram.com/reel/Cab456/' },
         metrics: {
-            YOUTUBE: { views: 9800, peak: 190, likes: 210, comments: 64 },
-            INSTAGRAM: { views: 2400, peak: 54, likes: 320, comments: 71 },
+            YOUTUBE: { views: 9800, peak: 190, likes: 210, comments: 64, subscribers: 12600 },
+            INSTAGRAM: { views: 2400, peak: 54, likes: 320, comments: 71, subscribers: 4150 },
         },
         durationMinutes: 122, audienceOrigin: 'SP Capital',
         title: 'Bastidores do estúdio',
@@ -89,17 +89,17 @@ const PAST: RecSpec[] = [
             INSTAGRAM: 'https://www.instagram.com/reel/Cqw789/', FACEBOOK: 'https://fb.watch/abc123/',
         },
         metrics: {
-            YOUTUBE: { views: 21300, peak: 410, likes: 512, comments: 188 },
-            TIKTOK: { views: 15600, peak: 240, likes: 2100, comments: 540 },
-            INSTAGRAM: { views: 5400, peak: 130, likes: 760, comments: 210 },
-            FACEBOOK: { views: 3200, peak: 70, likes: 140, comments: 55 },
+            YOUTUBE: { views: 21300, peak: 410, likes: 512, comments: 188, subscribers: 12800 },
+            TIKTOK: { views: 15600, peak: 240, likes: 2100, comments: 540, subscribers: 8500 },
+            INSTAGRAM: { views: 5400, peak: 130, likes: 760, comments: 210, subscribers: 4200 },
+            FACEBOOK: { views: 3200, peak: 70, likes: 140, comments: 55, subscribers: 2100 },
         },
         durationMinutes: 130, audienceOrigin: 'Brasil', clientNotes: 'Maior audiência até agora!',
         title: 'Especial de aniversário',
     },
     {
         daysAgo: 30, start: '10:00', tier: 'SABADO', status: BookingStatus.COMPLETED, isLivestream: false,
-        platforms: ['YOUTUBE'], links: { YOUTUBE: 'https://youtu.be/recorded001' },
+        platforms: [], links: { GRAVACAO: 'https://youtu.be/recorded001' },
         durationMinutes: 95, audienceOrigin: undefined, clientNotes: 'Gravação fechada (sem transmissão ao vivo).', title: 'Gravação de estúdio (fechada)',
     },
     {
@@ -107,8 +107,8 @@ const PAST: RecSpec[] = [
         platforms: ['YOUTUBE', 'TIKTOK'],
         links: { YOUTUBE: 'https://youtu.be/qwer4567', TIKTOK: 'https://www.tiktok.com/@estudio/video/7349999999999' },
         metrics: {
-            YOUTUBE: { views: 7200, peak: 140, likes: 180, comments: 50 },
-            TIKTOK: { views: 11200, peak: 200, likes: 1500, comments: 410 },
+            YOUTUBE: { views: 7200, peak: 140, likes: 180, comments: 50, subscribers: 12300 },
+            TIKTOK: { views: 11200, peak: 200, likes: 1500, comments: 410, subscribers: 8000 },
         },
         durationMinutes: 110, audienceOrigin: 'SP, PR', title: 'Debate da semana',
     },

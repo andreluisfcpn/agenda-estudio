@@ -44,6 +44,7 @@ export default function FinalizeRecordingModal({ isOpen, booking, onClose, onSav
     const [links, setLinks] = useState<Record<string, string>>({});
     const [metrics, setMetrics] = useState<Record<string, Record<string, string>>>({});
     const [audienceOrigin, setAudienceOrigin] = useState('');
+    const [recordingUrl, setRecordingUrl] = useState(''); // link de acesso quando NÃO é ao vivo
     const [adminNotes, setAdminNotes] = useState('');
     const [clientNotes, setClientNotes] = useState('');
     const [saving, setSaving] = useState(false);
@@ -65,6 +66,7 @@ export default function FinalizeRecordingModal({ isOpen, booking, onClose, onSav
         }
         setMetrics(m);
         setAudienceOrigin(booking.audienceOrigin || '');
+        setRecordingUrl(parsePlatformLinks(booking.platformLinks).GRAVACAO || '');
         setAdminNotes(booking.adminNotes || '');
         setClientNotes(booking.clientNotes || '');
         setError('');
@@ -87,21 +89,20 @@ export default function FinalizeRecordingModal({ isOpen, booking, onClose, onSav
             const linksObj: Record<string, string> = {};
             for (const k of usePlatforms) {
                 const mk = metrics[k] || {};
-                streamMetricsObj[k] = {
-                    views: Number(mk.views) || 0,
-                    peak: Number(mk.peak) || 0,
-                    likes: Number(mk.likes) || 0,
-                    comments: Number(mk.comments) || 0,
-                };
+                const m: PlatformMetric = {};
+                for (const f of METRIC_FIELDS) m[f.key] = Number(mk[f.key]) || 0;
+                streamMetricsObj[k] = m;
                 if (links[k]?.trim()) linksObj[k] = links[k].trim();
             }
+            // Gravado (não ao vivo): só duração + 1 link de acesso à gravação.
+            if (!isLive && recordingUrl.trim()) linksObj.GRAVACAO = recordingUrl.trim();
             await bookingsApi.complete(booking.id, {
                 durationMinutes: duration === '' ? null : Number(duration),
                 isLivestream: isLive,
                 platforms: JSON.stringify(usePlatforms),
                 platformLinks: JSON.stringify(linksObj),
                 streamMetrics: isLive && usePlatforms.length > 0 ? JSON.stringify(streamMetricsObj) : JSON.stringify({}),
-                audienceOrigin: audienceOrigin.trim() || null,
+                audienceOrigin: isLive ? (audienceOrigin.trim() || null) : null,
                 adminNotes: adminNotes.trim() || null,
                 clientNotes: clientNotes.trim() || null,
             });
@@ -122,18 +123,11 @@ export default function FinalizeRecordingModal({ isOpen, booking, onClose, onSav
 
                 {error && <div style={{ marginBottom: 14, padding: '10px 14px', borderRadius: 10, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)', color: '#ef4444', fontSize: '0.8125rem', fontWeight: 600 }}>{error}</div>}
 
-                {/* Duration + origin */}
-                <div className="admin-grid-2" style={{ marginBottom: 16 }}>
-                    <div>
-                        <label style={labelCss}>⏱️ Duração (min)</label>
-                        <input type="text" inputMode="numeric" value={duration} placeholder="Ex: 120" style={inputCss}
-                            onChange={e => setDuration(e.target.value.replace(/[^\d]/g, ''))} />
-                    </div>
-                    <div>
-                        <label style={labelCss}>🌎 Origem do público</label>
-                        <input type="text" value={audienceOrigin} placeholder="Ex: SP Capital" style={inputCss}
-                            onChange={e => setAudienceOrigin(e.target.value)} />
-                    </div>
+                {/* Duração total (sempre) */}
+                <div style={{ marginBottom: 16 }}>
+                    <label style={labelCss}>⏱️ Duração total (min)</label>
+                    <input type="text" inputMode="numeric" value={duration} placeholder="Ex: 120" style={inputCss}
+                        onChange={e => setDuration(e.target.value.replace(/[^\d]/g, ''))} />
                 </div>
 
                 {/* Livestream toggle */}
@@ -141,12 +135,29 @@ export default function FinalizeRecordingModal({ isOpen, booking, onClose, onSav
                     <input type="checkbox" checked={isLive} onChange={e => setIsLive(e.target.checked)} style={{ width: 18, height: 18, accentColor: '#ef4444', cursor: 'pointer' }} />
                     <div>
                         <div style={{ fontSize: '0.8125rem', fontWeight: 700 }}>🔴 Foi transmissão ao vivo?</div>
-                        <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', marginTop: 2 }}>Marque para registrar redes, links e métricas por plataforma.</div>
+                        <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', marginTop: 2 }}>Ao vivo: registre redes, links e métricas do encerramento. Gravado: só duração + link.</div>
                     </div>
                 </label>
 
+                {/* Gravado (não ao vivo): só link de acesso à gravação */}
+                {!isLive && (
+                    <div style={{ marginBottom: 14, padding: 14, borderRadius: 12, background: 'var(--bg-card)', border: '1px solid var(--border-default)' }}>
+                        <label style={labelCss}>🔗 Link de acesso à gravação</label>
+                        <input type="url" value={recordingUrl} placeholder="https://..." style={inputCss}
+                            onChange={e => setRecordingUrl(e.target.value)} />
+                        <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', marginTop: 6 }}>Gravação fechada: informe só a duração total e o link de acesso.</div>
+                    </div>
+                )}
+
                 {isLive && (
                     <>
+                        {/* Origem do público */}
+                        <div style={{ marginBottom: 14 }}>
+                            <label style={labelCss}>🌎 Origem do público</label>
+                            <input type="text" value={audienceOrigin} placeholder="Ex: SP Capital" style={inputCss}
+                                onChange={e => setAudienceOrigin(e.target.value)} />
+                        </div>
+
                         {/* Platform multiselect */}
                         <label style={labelCss}>Redes da transmissão</label>
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>

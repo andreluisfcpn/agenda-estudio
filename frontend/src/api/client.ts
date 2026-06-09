@@ -128,12 +128,12 @@ export const bookingsApi = {
 // Client analytics ("Resultados") — overall timeline + per-contract breakdown.
 export interface ResultsContract {
     contractId: string; contractName: string; sessions: number;
-    views: number; likes: number; comments: number; avgPeak: number;
+    views: number; likes: number; comments: number; subscribers: number; avgPeak: number;
     series: { date: string; views: number; peak: number }[];
 }
 export interface BookingResults {
     overall: {
-        sessions: number; live: number; views: number; likes: number; comments: number; avgPeak: number;
+        sessions: number; live: number; views: number; likes: number; comments: number; subscribers: number; avgPeak: number;
         timeline: { date: string; views: number; peak: number; likes: number; comments: number }[];
     };
     byContract: ResultsContract[];

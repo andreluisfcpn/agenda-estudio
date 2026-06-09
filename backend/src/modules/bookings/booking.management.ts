@@ -53,7 +53,7 @@ function coverUploadMw(req: Request, res: Response, next: () => void) {
 }
 
 // Minimal per-network metrics parse (backend mirror of the frontend helper).
-function parseMetrics(json: string | null | undefined): Record<string, { views?: number; peak?: number; likes?: number; comments?: number }> {
+function parseMetrics(json: string | null | undefined): Record<string, { views?: number; peak?: number; likes?: number; comments?: number; subscribers?: number }> {
     if (!json) return {};
     try { const v = JSON.parse(json); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
 }
@@ -214,17 +214,26 @@ router.get('/my/results', authenticate, async (req: Request, res: Response) => {
     });
 
     const totals = { sessions: 0, live: 0, views: 0, likes: 0, comments: 0, peakSum: 0, peakCount: 0 };
+    // "subscribers" é snapshot acumulado (total de inscritos do canal), NÃO aditivo entre
+    // sessões. Guardamos o valor MAIS RECENTE por rede (bookings vêm em ordem asc) e somamos
+    // as redes uma vez → "inscritos atuais" (alcance combinado), sem inflar.
+    const latestSubs = new Map<string, number>();
     const timelineMap = new Map<string, { date: string; views: number; peak: number; likes: number; comments: number }>();
-    const contractMap = new Map<string, { contractId: string; contractName: string; sessions: number; views: number; likes: number; comments: number; peakSum: number; peakCount: number; series: { date: string; views: number; peak: number }[] }>();
+    const contractMap = new Map<string, { contractId: string; contractName: string; sessions: number; views: number; likes: number; comments: number; latestSubs: Map<string, number>; peakSum: number; peakCount: number; series: { date: string; views: number; peak: number }[] }>();
 
     for (const b of bookings) {
         const m = parseMetrics(b.streamMetrics);
+        const cid = b.contract?.id || 'avulso';
+        const c = contractMap.get(cid) || { contractId: cid, contractName: b.contract?.name || 'Avulso', sessions: 0, views: 0, likes: 0, comments: 0, latestSubs: new Map<string, number>(), peakSum: 0, peakCount: 0, series: [] };
+
         let views = 0, likes = 0, comments = 0, peak = 0;
-        for (const pm of Object.values(m)) {
+        for (const [net, pm] of Object.entries(m)) {
             views += Number(pm.views) || 0;
             likes += Number(pm.likes) || 0;
             comments += Number(pm.comments) || 0;
             peak = Math.max(peak, Number(pm.peak) || 0);
+            const subs = Number(pm.subscribers) || 0;
+            if (subs > 0) { latestSubs.set(net, subs); c.latestSubs.set(net, subs); } // asc → último vence
         }
         const dateStr = b.date.toISOString().split('T')[0];
         totals.sessions++; totals.views += views; totals.likes += likes; totals.comments += comments;
@@ -235,23 +244,23 @@ router.get('/my/results', authenticate, async (req: Request, res: Response) => {
         t.views += views; t.peak = Math.max(t.peak, peak); t.likes += likes; t.comments += comments;
         timelineMap.set(dateStr, t);
 
-        const cid = b.contract?.id || 'avulso';
-        const c = contractMap.get(cid) || { contractId: cid, contractName: b.contract?.name || 'Avulso', sessions: 0, views: 0, likes: 0, comments: 0, peakSum: 0, peakCount: 0, series: [] };
         c.sessions++; c.views += views; c.likes += likes; c.comments += comments;
         if (peak > 0) { c.peakSum += peak; c.peakCount++; }
         c.series.push({ date: dateStr, views, peak });
         contractMap.set(cid, c);
     }
 
+    const sumMap = (mp: Map<string, number>) => Array.from(mp.values()).reduce((s, v) => s + v, 0);
+
     res.json({
         overall: {
-            sessions: totals.sessions, live: totals.live, views: totals.views, likes: totals.likes, comments: totals.comments,
+            sessions: totals.sessions, live: totals.live, views: totals.views, likes: totals.likes, comments: totals.comments, subscribers: sumMap(latestSubs),
             avgPeak: totals.peakCount ? Math.round(totals.peakSum / totals.peakCount) : 0,
             timeline: Array.from(timelineMap.values()).sort((a, b) => a.date.localeCompare(b.date)),
         },
         byContract: Array.from(contractMap.values()).map(c => ({
             contractId: c.contractId, contractName: c.contractName, sessions: c.sessions,
-            views: c.views, likes: c.likes, comments: c.comments,
+            views: c.views, likes: c.likes, comments: c.comments, subscribers: sumMap(c.latestSubs),
             avgPeak: c.peakCount ? Math.round(c.peakSum / c.peakCount) : 0, series: c.series,
         })),
     });

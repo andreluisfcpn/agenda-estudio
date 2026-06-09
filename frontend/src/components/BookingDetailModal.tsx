@@ -6,8 +6,7 @@ import { useUI } from '../context/UIContext';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import BottomSheetModal from './BottomSheetModal';
 import PaymentModal from './PaymentModal';
-import StreamMetricsChart from './client/StreamMetricsChart';
-import { PLATFORMS, parsePlatforms, parsePlatformLinks, parseStreamMetrics } from '../constants/platforms';
+import { PLATFORMS, PLATFORM_BY_KEY, METRIC_FIELDS, parsePlatforms, parsePlatformLinks, parseStreamMetrics } from '../constants/platforms';
 import {
     CalendarDays, Clock, Tag, FileText, Sparkles, Plus, Check, ChevronLeft, RefreshCw,
     ImageIcon, Upload, Youtube, Instagram, Facebook, Music2, FolderOpen, Radio, ExternalLink,
@@ -239,7 +238,22 @@ export default function BookingDetailModal({
     // Platforms shown: admin-enabled ∪ already-selected.
     const visiblePlatforms = PLATFORMS.filter(p => getBool(PLATFORM_CFG[p.key], true) || platforms.includes(p.key));
     const liveLinks = parsePlatformLinks(src.platformLinks);
-    const liveLinkKeys = Object.keys(liveLinks).filter(k => liveLinks[k]);
+
+    // Snapshot do encerramento (calculado do streamMetrics por rede).
+    const isLive = !!src.isLivestream;
+    const sm = parseStreamMetrics(src.streamMetrics);
+    const networks = Object.keys(sm);
+    const totals = networks.reduce((a, k) => {
+        const m = sm[k] || {};
+        a.views += Number(m.views) || 0;
+        a.peak = Math.max(a.peak, Number(m.peak) || 0);
+        a.subscribers += Number(m.subscribers) || 0;
+        a.likes += Number(m.likes) || 0;
+        a.comments += Number(m.comments) || 0;
+        return a;
+    }, { views: 0, peak: 0, subscribers: 0, likes: 0, comments: 0 });
+    const recordingLink = liveLinks.GRAVACAO || '';
+    const fmtN = (n: number) => n.toLocaleString('pt-BR');
 
     if (!isOpen) return null;
 
@@ -348,25 +362,56 @@ export default function BookingDetailModal({
                     </div>
 
                     {/* Metrics (completed) — read-only */}
-                    {isCompleted && (
+                    {isCompleted && isLive && (
                         <div className="bdm-section">
                             <div className="bdm-section__title"><Radio size={14} style={{ color: '#ef4444' }} /> Resultados da transmissão</div>
+                            <p className="bdm-snapshot-note">Números registrados no encerramento da transmissão.</p>
+                            {/* Totais */}
                             <div className="metrics-grid">
                                 <div className="metric-card"><div className="metric-card__label">Duração</div><div className="metric-card__value">{src.durationMinutes ? `${src.durationMinutes} min` : '--'}</div></div>
-                                <div className="metric-card"><div className="metric-card__label">Pico ao vivo</div><div className="metric-card__value">{src.peakViewers ? src.peakViewers.toLocaleString('pt-BR') : '--'}</div></div>
-                                <div className="metric-card"><div className="metric-card__label">Chat</div><div className="metric-card__value">{src.chatMessages ? src.chatMessages.toLocaleString('pt-BR') : '--'}</div></div>
-                                <div className="metric-card"><div className="metric-card__label">Origem</div><div className="metric-card__value" style={{ fontSize: '1rem' }}>{src.audienceOrigin || '--'}</div></div>
+                                <div className="metric-card"><div className="metric-card__label">Visualizações</div><div className="metric-card__value">{totals.views ? fmtN(totals.views) : '--'}</div></div>
+                                <div className="metric-card"><div className="metric-card__label">Pico ao vivo</div><div className="metric-card__value">{totals.peak ? fmtN(totals.peak) : '--'}</div></div>
+                                <div className="metric-card"><div className="metric-card__label">Inscritos</div><div className="metric-card__value">{totals.subscribers ? fmtN(totals.subscribers) : '--'}</div></div>
+                                <div className="metric-card"><div className="metric-card__label">Curtidas</div><div className="metric-card__value">{totals.likes ? fmtN(totals.likes) : '--'}</div></div>
+                                <div className="metric-card"><div className="metric-card__label">Comentários</div><div className="metric-card__value">{totals.comments ? fmtN(totals.comments) : '--'}</div></div>
                             </div>
-                            {liveLinkKeys.length > 0 && (
-                                <div className="bdm-platforms" style={{ marginTop: 10 }}>
-                                    {liveLinkKeys.map(k => {
-                                        const Icon = PLATFORM_ICON[k] || ExternalLink;
-                                        return <a key={k} className="bdm-plat bdm-plat--link" href={liveLinks[k]} target="_blank" rel="noopener noreferrer"><Icon size={15} /> {k} <ExternalLink size={12} /></a>;
+                            {/* Detalhe por rede (sem gráfico) */}
+                            {networks.length > 0 && (
+                                <div className="bdm-net-list">
+                                    {networks.map(k => {
+                                        const Icon = PLATFORM_ICON[k] || Radio;
+                                        const m = sm[k] || {};
+                                        const link = liveLinks[k];
+                                        return (
+                                            <div key={k} className="bdm-net">
+                                                <div className="bdm-net__head">
+                                                    <span className="bdm-net__name"><Icon size={14} style={{ color: PLATFORM_BY_KEY[k]?.color }} /> {PLATFORM_BY_KEY[k]?.label || k}</span>
+                                                    {link && <a href={link} target="_blank" rel="noopener noreferrer" className="bdm-net__link" aria-label="Abrir"><ExternalLink size={13} /></a>}
+                                                </div>
+                                                <div className="bdm-net__stats">
+                                                    {METRIC_FIELDS.map(f => (
+                                                        <span key={f.key} className="bdm-net__stat"><b>{fmtN(Number(m[f.key]) || 0)}</b>{f.short}</span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
                                     })}
                                 </div>
                             )}
-                            {Object.keys(parseStreamMetrics(src.streamMetrics)).length > 0 && (
-                                <div style={{ marginTop: 12 }}><StreamMetricsChart streamMetrics={src.streamMetrics} /></div>
+                            {src.audienceOrigin && <div className="bdm-origin">Origem do público: <strong>{src.audienceOrigin}</strong></div>}
+                        </div>
+                    )}
+
+                    {isCompleted && !isLive && (
+                        <div className="bdm-section">
+                            <div className="bdm-section__title"><Radio size={14} /> Gravação</div>
+                            <div className="metrics-grid">
+                                <div className="metric-card"><div className="metric-card__label">Duração</div><div className="metric-card__value">{src.durationMinutes ? `${src.durationMinutes} min` : '--'}</div></div>
+                            </div>
+                            {recordingLink && (
+                                <a href={recordingLink} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ marginTop: 10 }}>
+                                    <ExternalLink size={15} /> Assistir gravação
+                                </a>
                             )}
                         </div>
                     )}

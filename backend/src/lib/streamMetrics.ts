@@ -1,12 +1,13 @@
 // ─── Stream metrics (per-platform livestream analytics) ─────────────────────
 // Bookings store livestream analytics per network in Booking.streamMetrics as JSON:
-//   { "YOUTUBE": { views, peak, likes, comments }, "TIKTOK": { ... }, ... }
+//   { "YOUTUBE": { views, peak, subscribers, likes, comments }, "TIKTOK": { ... }, ... }
 // The flat Booking.peakViewers / chatMessages columns are kept as derived aggregates
 // (max peak / total comments) so legacy displays (Relatórios, metric cards) keep working.
 
 export interface PlatformMetric {
     views?: number;
     peak?: number;
+    subscribers?: number;
     likes?: number;
     comments?: number;
 }
