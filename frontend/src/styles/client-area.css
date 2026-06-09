@@ -521,48 +521,6 @@
   padding: 30px 26px;
 }
 
-/* ── Agenda: card de agendamento em formato fotografia (vertical) — mobile ─── */
-.client-scroll-section > .agenda-poster { width: min(62vw, 230px); }
-.agenda-poster {
-  position: relative;
-  flex: 0 0 auto;
-  aspect-ratio: 3 / 4;
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-card);
-  cursor: pointer;
-  color: #fff;
-  font: inherit;
-  text-align: left;
-  padding: 0;
-  scroll-snap-align: start;
-  -webkit-tap-highlight-color: transparent;
-  transition: transform 0.15s ease, border-color 0.2s ease;
-}
-.agenda-poster:active { transform: scale(0.98); }
-.agenda-poster--today { border-color: rgba(17, 129, 155, 0.6); box-shadow: 0 0 0 1px rgba(17, 129, 155, 0.4); }
-.agenda-poster__media {
-  position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(150deg, rgba(17, 129, 155, 0.35), rgba(16, 185, 129, 0.12) 55%, rgba(2, 46, 56, 0.65));
-}
-.agenda-poster__media img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.agenda-poster__mic { color: rgba(255, 255, 255, 0.22); }
-.agenda-poster__grad { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0, 0, 0, 0.82) 0%, rgba(0, 0, 0, 0.30) 42%, transparent 70%); }
-.agenda-poster__badge {
-  position: absolute; top: 10px; left: 10px;
-  font-size: 0.625rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;
-  padding: 3px 9px; border-radius: 999px; background: rgba(17, 129, 155, 0.92); color: #fff;
-}
-.agenda-poster__info { position: absolute; left: 0; right: 0; bottom: 0; padding: 14px 14px 16px; display: flex; flex-direction: column; gap: 3px; }
-.agenda-poster__date { font-size: 0.6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255, 255, 255, 0.8); }
-.agenda-poster__title {
-  font-size: 1.05rem; font-weight: 800; line-height: 1.2; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
-  overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-}
-.agenda-poster__time { font-size: 0.8125rem; font-weight: 600; color: rgba(255, 255, 255, 0.9); }
-
 .client-scroll-section .client-booking-card--scroll:active {
   transform: scale(0.975);
 }

@@ -9,6 +9,8 @@ import BookingModal from '../components/BookingModal';
 import ContractWizard from '../components/ContractWizard';
 import CustomContractWizard from '../components/CustomContractWizard';
 import BottomSheetModal from '../components/BottomSheetModal';
+import { PosterGallery, PosterCard } from '../components/client/PosterGallery';
+import Skeleton from '../components/ui/SkeletonLoader';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import { studioSlotDate, todayStrSaoPaulo } from '../utils/time';
 import { CalendarDays, ChevronLeft, ChevronRight, Mic, Clock, List } from 'lucide-react';
@@ -272,33 +274,8 @@ export default function CalendarPage() {
         pillsDragDelta.current = 0;
     };
 
-    // ─── Carousel refs (same momentum pattern as dashboard) ───
-    const carouselRef = useRef<HTMLDivElement>(null);
-    const carouselDragging = useRef(false);
-    const carouselStartX = useRef(0);
-    const carouselScrollLeft = useRef(0);
-    const carouselVelocity = useRef(0);
-    const carouselLastX = useRef(0);
-    const carouselAnimRef = useRef<number | null>(null);
     const bookingsSectionRef = useRef<HTMLDivElement>(null);
     const calendarSectionRef = useRef<HTMLDivElement>(null);
-
-    const stopCarouselMomentum = () => {
-        if (carouselAnimRef.current !== null) {
-            cancelAnimationFrame(carouselAnimRef.current);
-            carouselAnimRef.current = null;
-        }
-    };
-    const applyCarouselMomentum = () => {
-        if (!carouselRef.current) return;
-        carouselVelocity.current *= 0.92;
-        if (Math.abs(carouselVelocity.current) < 0.5) {
-            carouselRef.current.style.scrollSnapType = 'x mandatory';
-            return;
-        }
-        carouselRef.current.scrollLeft += carouselVelocity.current;
-        carouselAnimRef.current = requestAnimationFrame(applyCarouselMomentum);
-    };
 
 
     // Load addons and contracts once on mount so the detail modal has full context
@@ -540,22 +517,6 @@ export default function CalendarPage() {
         return list;
     }, [myBookingsMap, allMyBookings]);
 
-    const nextBooking = upcomingBookings.length > 0 ? upcomingBookings[0] : null;
-
-    // Bounce hint for carousel on load
-    useEffect(() => {
-        if (!loading && upcomingBookings.length > 0 && carouselRef.current) {
-            const t1 = setTimeout(() => {
-                if (carouselRef.current) carouselRef.current.scrollBy({ left: 40, behavior: 'smooth' });
-                const t2 = setTimeout(() => {
-                    if (carouselRef.current) carouselRef.current.scrollBy({ left: -40, behavior: 'smooth' });
-                }, 400);
-                return () => clearTimeout(t2);
-            }, 1200);
-            return () => clearTimeout(t1);
-        }
-    }, [loading, upcomingBookings.length]);
-
     return (
         <div>
             {/* ─── CLIENT HERO ─── */}
@@ -634,7 +595,12 @@ export default function CalendarPage() {
                 {(!isAdmin && activeTab === 'agendados') ? (
                     // ─── UPCOMING BOOKINGS TAB (client only) ───
                     <div key="agendados" className="fade-in-view">
-                        {upcomingBookings.length > 0 ? (
+                        {!loading && upcomingBookings.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
+                                <CalendarDays size={48} style={{ opacity: 0.2, margin: '0 auto 16px' }} />
+                                <p>Você não possui agendamentos futuros.</p>
+                            </div>
+                        ) : (
                             <div ref={bookingsSectionRef} className="client-section" style={{ marginBottom: '20px' }}>
                                 <div className="client-section__header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                                     <h3 className="client-section__heading" style={{ marginBottom: 0 }}>
@@ -644,96 +610,41 @@ export default function CalendarPage() {
                                         Seus Agendamentos
                                     </h3>
                                 </div>
-                                <div
-                                    ref={carouselRef}
-                                    className="client-scroll-section stagger-enter"
-                                    onMouseDown={(e) => {
-                                        if (!carouselRef.current) return;
-                                        stopCarouselMomentum();
-                                        carouselDragging.current = true;
-                                        carouselStartX.current = e.pageX;
-                                        carouselScrollLeft.current = carouselRef.current.scrollLeft;
-                                        carouselLastX.current = e.pageX;
-                                        carouselVelocity.current = 0;
-                                        carouselRef.current.style.cursor = 'grabbing';
-                                        carouselRef.current.style.scrollSnapType = 'none';
-                                        carouselRef.current.style.userSelect = 'none';
-                                    }}
-                                    onMouseMove={(e) => {
-                                        if (!carouselDragging.current || !carouselRef.current) return;
-                                        const dx = e.pageX - carouselStartX.current;
-                                        carouselRef.current.scrollLeft = carouselScrollLeft.current - dx;
-                                        carouselVelocity.current = (e.pageX - carouselLastX.current) * -1;
-                                        carouselLastX.current = e.pageX;
-                                    }}
-                                    onMouseUp={() => {
-                                        if (!carouselDragging.current || !carouselRef.current) return;
-                                        carouselDragging.current = false;
-                                        carouselRef.current.style.cursor = 'grab';
-                                        carouselRef.current.style.userSelect = '';
-                                        carouselAnimRef.current = requestAnimationFrame(applyCarouselMomentum);
-                                    }}
-                                    onMouseLeave={() => {
-                                        if (!carouselDragging.current || !carouselRef.current) return;
-                                        carouselDragging.current = false;
-                                        carouselRef.current.style.cursor = 'grab';
-                                        carouselRef.current.style.userSelect = '';
-                                        carouselAnimRef.current = requestAnimationFrame(applyCarouselMomentum);
-                                    }}
-                                    style={{ cursor: 'grab' }}
+                                <PosterGallery
+                                    revision={loading ? 'loading' : upcomingBookings.length}
+                                    busy={loading}
+                                    label="Seus agendamentos"
                                 >
-                                    {upcomingBookings.map((item, i) => {
-                                        const dayLabel = DAY_NAMES_FULL[item.dateObj.getUTCDay()];
-                                        const dateLabel = item.dateObj.toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit' });
-                                        const isToday = item.date === todayStrSaoPaulo();
-                                        const b = item.booking as { coverImageUrl?: string | null; episodeTitle?: string | null; contract?: { name?: string } | null; tierApplied: string; startTime: string; endTime: string };
-                                        const title = b.episodeTitle || b.contract?.name || b.tierApplied;
-                                        const open = () => setDetailBooking({ booking: item.booking, date: item.date });
-                                        // Mobile: card em formato fotografia (vertical) com capa; desktop: card compacto em lista.
-                                        if (isMobile) {
-                                            return (
-                                                <button key={`${item.date}-${item.booking.startTime}`}
-                                                    className={`agenda-poster animate-card-enter ${isToday ? 'agenda-poster--today' : ''}`}
-                                                    style={{ '--i': i } as React.CSSProperties} onClick={open}>
-                                                    <div className="agenda-poster__media">
-                                                        <span className="agenda-poster__mic" aria-hidden="true"><Mic size={52} strokeWidth={1.25} /></span>
-                                                        {b.coverImageUrl && <img src={b.coverImageUrl} alt="" loading="lazy" onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />}
-                                                    </div>
-                                                    <div className="agenda-poster__grad" />
-                                                    {isToday && <span className="agenda-poster__badge">Hoje</span>}
-                                                    <div className="agenda-poster__info">
-                                                        <div className="agenda-poster__date">{dayLabel}, {dateLabel}</div>
-                                                        <div className="agenda-poster__title">{title}</div>
-                                                        <div className="agenda-poster__time">{b.startTime} — {b.endTime}</div>
-                                                    </div>
-                                                </button>
-                                            );
-                                        }
-                                        return (
-                                            <div key={`${item.date}-${item.booking.startTime}`}
-                                                className={`client-booking-card client-booking-card--scroll animate-card-enter ${isToday ? 'client-booking-card--today' : ''}`}
-                                                style={{ '--i': i } as React.CSSProperties}
-                                                onClick={open}>
-                                                <span className="client-booking-card__watermark" aria-hidden="true">
-                                                    <Mic size={96} strokeWidth={1.25} />
-                                                </span>
-                                                <div className="client-booking-card__date-badge">
-                                                    <div className="client-booking-card__day-name">{dayLabel}</div>
-                                                    <div className={`client-booking-card__day-number ${isToday ? 'client-booking-card__day-number--today' : ''}`}>{dateLabel}</div>
-                                                </div>
-                                                <div className="client-booking-card__info">
-                                                    <div className="client-booking-card__contract-name">{title}</div>
-                                                    <div className="client-booking-card__time">{item.booking.startTime} — {item.booking.endTime}</div>
-                                                </div>
+                                    {loading
+                                        ? [0, 1, 2].map(i => (
+                                            <div key={i} className="poster-card poster-card--skel">
+                                                <Skeleton variant="rounded" width="100%" height="100%" />
                                             </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        ) : (
-                            <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
-                                <CalendarDays size={48} style={{ opacity: 0.2, margin: '0 auto 16px' }} />
-                                <p>Você não possui agendamentos futuros.</p>
+                                        ))
+                                        : upcomingBookings.map((item, i) => {
+                                            const dayLabel = DAY_NAMES_FULL[item.dateObj.getUTCDay()];
+                                            const dateLabel = item.dateObj.toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit' });
+                                            const isToday = item.date === todayStrSaoPaulo();
+                                            const b = item.booking as { coverImageUrl?: string | null; episodeTitle?: string | null; contract?: { name?: string } | null; tierApplied: string; startTime: string; endTime: string };
+                                            const title = b.episodeTitle || b.contract?.name || b.tierApplied;
+                                            return (
+                                                <PosterCard
+                                                    key={`${item.date}-${item.booking.startTime}`}
+                                                    index={i}
+                                                    tone="teal"
+                                                    highlight={isToday}
+                                                    coverUrl={b.coverImageUrl}
+                                                    placeholder={<Mic size={46} strokeWidth={1.25} />}
+                                                    badgeTopRight={isToday ? <span className="poster-chip poster-chip--today">Hoje</span> : undefined}
+                                                    eyebrow={`${dayLabel}, ${dateLabel}`}
+                                                    title={title}
+                                                    footer={<span className="poster-card__time">{b.startTime} — {b.endTime}</span>}
+                                                    ariaLabel={`${title}, ${isToday ? 'hoje, ' : ''}${dayLabel} ${dateLabel}, ${b.startTime} às ${b.endTime}`}
+                                                    onClick={() => setDetailBooking({ booking: item.booking, date: item.date })}
+                                                />
+                                            );
+                                        })}
+                                </PosterGallery>
                             </div>
                         )}
                     </div>
