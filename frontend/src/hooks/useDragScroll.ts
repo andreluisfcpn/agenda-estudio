@@ -1,21 +1,27 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 /**
- * Hook for horizontally-scrollable rows (BottomTabBar, settings rail).
- * Adds: mouse drag-to-scroll, visibility flags for left/right "more content"
- * indicators, and a smooth scrollByPage helper for the side arrows.
+ * Hook for horizontally-scrollable rows (BottomTabBar, settings rail, recordings
+ * gallery). Adds: mouse drag-to-scroll, visibility flags for left/right "more
+ * content" indicators, and a smooth scrollByPage helper for the side arrows.
  *
  * Touch scrolling stays native (overflow-x:auto). The hook only adds mouse
  * support and dynamic arrow visibility based on scrollLeft/clientWidth.
+ *
+ * The tracked node is held in STATE via a callback ref (not useRef) so the
+ * effects (re)attach whenever the element mounts/unmounts. This is required for
+ * elements rendered conditionally — e.g. a gallery that only appears AFTER a
+ * loading state, where a plain useRef would be null at mount and the listeners
+ * (with [] deps) would never attach.
  */
 export function useDragScroll<T extends HTMLElement>() {
-    const ref = useRef<T>(null);
+    const [el, setEl] = useState<T | null>(null);
+    const ref = useCallback((node: T | null) => setEl(node), []);
     const [showLeft, setShowLeft] = useState(false);
     const [showRight, setShowRight] = useState(false);
     const [dragging, setDragging] = useState(false);
 
     const updateArrows = useCallback(() => {
-        const el = ref.current;
         if (!el) return;
         const overflow = el.scrollWidth - el.clientWidth;
         if (overflow <= 1) {
@@ -25,12 +31,11 @@ export function useDragScroll<T extends HTMLElement>() {
         }
         setShowLeft(el.scrollLeft > 4);
         setShowRight(el.scrollLeft < overflow - 4);
-    }, []);
+    }, [el]);
 
     // Mouse drag-to-scroll. Touch is native; this is for desktops/tablets w/
     // a mouse. The "is-dragging" class disables scroll-snap during the drag.
     useEffect(() => {
-        const el = ref.current;
         if (!el) return;
         let isDown = false;
         let didDrag = false;
@@ -82,11 +87,10 @@ export function useDragScroll<T extends HTMLElement>() {
             window.removeEventListener('mousemove', onMove);
             window.removeEventListener('mouseup', onUp);
         };
-    }, []);
+    }, [el]);
 
     // Update arrow visibility on scroll, resize, content changes.
     useEffect(() => {
-        const el = ref.current;
         if (!el) return;
         updateArrows();
         const onScroll = () => updateArrows();
@@ -105,13 +109,12 @@ export function useDragScroll<T extends HTMLElement>() {
             window.removeEventListener('resize', updateArrows);
             clearTimeout(t);
         };
-    }, [updateArrows]);
+    }, [el, updateArrows]);
 
     const scrollByPage = useCallback((dir: 1 | -1) => {
-        const el = ref.current;
         if (!el) return;
         el.scrollBy({ left: dir * Math.max(180, el.clientWidth * 0.7), behavior: 'smooth' });
-    }, []);
+    }, [el]);
 
     return { ref, showLeft, showRight, dragging, scrollByPage, updateArrows };
 }

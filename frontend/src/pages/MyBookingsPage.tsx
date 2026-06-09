@@ -2,10 +2,11 @@ import HeroAmbient from '../components/client/HeroAmbient';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { bookingsApi, pricingApi, Booking, AddOnConfig } from '../api/client';
-import { Clapperboard, Radio, BarChart3, Eye, TrendingUp, Heart, Youtube, Instagram, Facebook, Music2, type LucideIcon } from 'lucide-react';
+import { Clapperboard, Radio, BarChart3, Eye, TrendingUp, Heart, Youtube, Instagram, Facebook, Music2, ChevronLeft, ChevronRight, type LucideIcon } from 'lucide-react';
 import StatCard from '../components/ui/StatCard';
 import Skeleton from '../components/ui/SkeletonLoader';
 import BookingDetailModal from '../components/BookingDetailModal';
+import { useDragScroll } from '../hooks/useDragScroll';
 import { studioSlotDate } from '../utils/time';
 import { PLATFORM_BY_KEY, parseStreamMetrics, parsePlatforms } from '../constants/platforms';
 
@@ -20,11 +21,14 @@ export default function MyBookingsPage() {
     const [loading, setLoading] = useState(true);
     const [detail, setDetail] = useState<Booking | null>(null);
     const [failedCovers, setFailedCovers] = useState<Set<string>>(new Set());
+    const { ref: galleryRef, showLeft, showRight, scrollByPage, updateArrows } = useDragScroll<HTMLDivElement>();
 
     useEffect(() => { loadBookings(); }, []);
     useEffect(() => {
         pricingApi.getAddons().then(r => setAddons(r.addons)).catch(() => {});
     }, []);
+    // Recompute the gallery arrows once the cards (and their covers) settle.
+    useEffect(() => { const t = setTimeout(updateArrows, 80); return () => clearTimeout(t); }, [bookings, loading, updateArrows]);
 
     const loadBookings = async () => {
         setLoading(true);
@@ -95,16 +99,12 @@ export default function MyBookingsPage() {
                 </div>
             )}
 
-            {/* List of recordings (mobile carousel · desktop list) */}
+            {/* Recordings — draggable poster gallery (finger + mouse) */}
             {loading ? (
-                <div className="client-scroll-section">
+                <div className="rec-gallery" aria-busy="true" aria-label="Carregando gravações">
                     {[0, 1, 2].map(i => (
-                        <div key={i} className="rec-card">
-                            <Skeleton variant="rounded" width="100%" height={150} />
-                            <div style={{ padding: 14 }}>
-                                <Skeleton width={160} height={14} style={{ marginBottom: 8 }} />
-                                <Skeleton width={110} height={12} />
-                            </div>
+                        <div key={i} className="rec-poster rec-poster--skel">
+                            <Skeleton variant="rounded" width="100%" height="100%" />
                         </div>
                     ))}
                 </div>
@@ -117,42 +117,73 @@ export default function MyBookingsPage() {
                     </p>
                 </div>
             ) : (
-                <div className="client-scroll-section stagger-enter">
-                    {finalized.map((b, i) => {
-                        const recPlatforms = parsePlatforms(b.platforms);
-                        const title = b.episodeTitle || b.contract?.name || 'Gravação';
-                        const dateLabel = new Date(b.date).toLocaleDateString('pt-BR', { timeZone: 'UTC', weekday: 'short', day: '2-digit', month: 'short' });
-                        return (
-                            <button key={b.id} className="rec-card animate-card-enter" style={{ '--i': i } as React.CSSProperties} onClick={() => setDetail(b)}>
-                                <div className="rec-card__cover">
-                                    {b.coverImageUrl && !failedCovers.has(b.id)
-                                        ? <img src={b.coverImageUrl} alt={title} loading="lazy" onError={() => setFailedCovers(s => new Set(s).add(b.id))} />
-                                        : <div className="rec-card__cover-ph"><Clapperboard size={30} /></div>}
-                                    {b.isLivestream && <span className="rec-card__live"><Radio size={11} /> AO VIVO</span>}
-                                    <span className="rec-card__status" style={{ color: b.status === 'COMPLETED' ? '#10b981' : 'var(--text-muted)' }}>{statusLabel(b.status)}</span>
-                                </div>
-                                <div className="rec-card__body">
-                                    <div className="rec-card__title">{title}</div>
-                                    <div className="rec-card__meta">
-                                        <span style={{ textTransform: 'capitalize' }}>{dateLabel}</span> · {b.startTime} · <span className={`badge badge-${b.tierApplied.toLowerCase()}`}>{b.tierApplied}</span>
+                <div className="rec-gallery-wrap scrollrow-wrap">
+                    {showLeft && (
+                        <button type="button" className="scrollrow-arrow scrollrow-arrow--left" aria-label="Anterior" tabIndex={-1} onClick={() => scrollByPage(-1)}>
+                            <ChevronLeft size={16} />
+                        </button>
+                    )}
+                    <div ref={galleryRef} className="rec-gallery scrollrow-track stagger-enter">
+                        {finalized.map((b, i) => {
+                            const recPlatforms = parsePlatforms(b.platforms);
+                            const title = b.episodeTitle || b.contract?.name || 'Gravação';
+                            const dateLabel = new Date(b.date)
+                                .toLocaleDateString('pt-BR', { timeZone: 'UTC', weekday: 'short', day: '2-digit', month: 'short' })
+                                .replace(/\./g, '');
+                            const m = parseStreamMetrics(b.streamMetrics);
+                            let views = 0, likes = 0, peak = 0;
+                            for (const pm of Object.values(m)) {
+                                views += Number(pm.views) || 0;
+                                likes += Number(pm.likes) || 0;
+                                peak = Math.max(peak, Number(pm.peak) || 0);
+                            }
+                            const hasCover = !!b.coverImageUrl && !failedCovers.has(b.id);
+                            const hasStats = views > 0 || likes > 0 || peak > 0 || recPlatforms.length > 0;
+                            const a11yLabel = `${title}, ${b.isLivestream ? 'ao vivo, ' : ''}${statusLabel(b.status)}, ${dateLabel} às ${b.startTime}`
+                                + (views > 0 ? `, ${fmtNum(views)} visualizações` : '')
+                                + (likes > 0 ? `, ${fmtNum(likes)} curtidas` : peak > 0 ? `, pico de ${fmtNum(peak)} ao vivo` : '')
+                                + (recPlatforms.length > 0 ? `, em ${recPlatforms.map(k => PLATFORM_BY_KEY[k]?.label || k).join(', ')}` : '');
+                            return (
+                                <button key={b.id} className="rec-poster animate-card-enter" style={{ '--i': i } as React.CSSProperties} aria-label={a11yLabel} onClick={() => setDetail(b)}>
+                                    <div className="rec-poster__media">
+                                        <span className="rec-poster__ph" aria-hidden="true"><Clapperboard size={46} strokeWidth={1.25} /></span>
+                                        {hasCover && (
+                                            <img src={b.coverImageUrl!} alt="" draggable={false} loading="lazy"
+                                                onError={() => setFailedCovers(s => new Set(s).add(b.id))} />
+                                        )}
                                     </div>
-                                    {recPlatforms.length > 0 && (
-                                        <div className="rec-chips">
-                                            {recPlatforms.map(k => {
-                                                const Icon = PLATFORM_ICON[k];
-                                                return (
-                                                    <span key={k} className="rec-chip rec-chip--platform">
-                                                        {Icon && <Icon size={12} style={{ color: PLATFORM_BY_KEY[k]?.color }} />}
-                                                        {PLATFORM_BY_KEY[k]?.label || k}
+                                    <div className="rec-poster__grad" />
+                                    {b.isLivestream && <span className="rec-poster__live"><Radio size={10} /> AO VIVO</span>}
+                                    <span className="rec-poster__status" style={{ color: b.status === 'COMPLETED' ? '#34d399' : '#fca5a5' }}>{statusLabel(b.status)}</span>
+                                    <div className="rec-poster__info">
+                                        <div className="rec-poster__date"><span style={{ textTransform: 'capitalize' }}>{dateLabel}</span> · {b.startTime}</div>
+                                        <div className="rec-poster__title">{title}</div>
+                                        {hasStats && (
+                                            <div className="rec-poster__stats">
+                                                {views > 0 && <span className="rec-poster__stat"><Eye size={13} /> {fmtNum(views)}</span>}
+                                                {likes > 0
+                                                    ? <span className="rec-poster__stat"><Heart size={13} /> {fmtNum(likes)}</span>
+                                                    : peak > 0 ? <span className="rec-poster__stat"><TrendingUp size={13} /> {fmtNum(peak)}</span> : null}
+                                                {recPlatforms.length > 0 && (
+                                                    <span className="rec-poster__nets">
+                                                        {recPlatforms.slice(0, 4).map(k => {
+                                                            const Icon = PLATFORM_ICON[k];
+                                                            return Icon ? <Icon key={k} size={14} /> : null;
+                                                        })}
                                                     </span>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-                                </div>
-                            </button>
-                        );
-                    })}
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
+                    {showRight && (
+                        <button type="button" className="scrollrow-arrow scrollrow-arrow--right" aria-label="Próximo" tabIndex={-1} onClick={() => scrollByPage(1)}>
+                            <ChevronRight size={16} />
+                        </button>
+                    )}
                 </div>
             )}
 
