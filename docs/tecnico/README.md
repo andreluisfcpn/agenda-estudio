@@ -13,6 +13,7 @@ Referência para desenvolvedores que vão rodar, manter ou estender o sistema.
 7. **[Notificações](notificacoes.md)** — notificações computadas e persistidas, Web Push.
 8. **[Jobs e tarefas agendadas](jobs-e-crons.md)** — os cronjobs e os locks distribuídos no Redis.
 9. **[Deploy](deploy.md)** — build Docker multi-stage, Railway, variáveis de produção e limpeza de dados de teste.
+10. **[Design system](design-system.md)** — tokens, paleta, modais (BottomSheetModal + size), utilities admin, regras de animação/acessibilidade e o checklist de padronização.
 
 ## Resumo da stack
 
