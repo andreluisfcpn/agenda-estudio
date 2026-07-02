@@ -43,108 +43,7 @@ function getInitials(name: string): string {
     return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
-// --- CSS Keyframes (injected once) ----------------------
-const styleId = 'admin-today-styles';
-if (typeof document !== 'undefined' && !document.getElementById(styleId)) {
-    const style = document.createElement('style');
-    style.id = styleId;
-    style.textContent = `
-        @keyframes today-pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.4; }
-        }
-        @keyframes today-glow {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
-            50% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
-        }
-        @keyframes today-slide-down {
-            from { opacity: 0; max-height: 0; }
-            to { opacity: 1; max-height: 700px; }
-        }
-        .today-slot-card {
-            transition: all 0.25s ease;
-        }
-        .today-slot-card:hover {
-            border-color: rgba(16,185,129,0.3) !important;
-            transform: translateX(2px);
-        }
-        .today-action-btn {
-            border: none; padding: 6px 14px; border-radius: 8px;
-            font-weight: 600; font-size: 0.8rem; cursor: pointer;
-            display: inline-flex; align-items: center; gap: 6px;
-            transition: all 0.2s ease; font-family: inherit;
-        }
-        .today-action-btn:hover { transform: translateY(-1px); filter: brightness(1.15); }
-        .today-action-btn:active { transform: translateY(0); }
-
-        /* --- Live hero clock --- */
-        .today-hero {
-            position: relative;
-            overflow: hidden;
-            border-radius: var(--radius-xl);
-            padding: 26px 28px;
-            margin-bottom: 24px;
-            background:
-                radial-gradient(circle at 0% 0%, rgba(17,129,155,0.20), transparent 55%),
-                radial-gradient(circle at 100% 100%, rgba(16,185,129,0.10), transparent 50%),
-                linear-gradient(135deg, var(--bg-card), var(--bg-secondary));
-            border: 1px solid rgba(17,129,155,0.22);
-        }
-        .today-live-badge {
-            display: inline-flex; align-items: center; gap: 7px;
-            font-size: 0.6875rem; font-weight: 800; letter-spacing: 0.14em;
-            text-transform: uppercase; color: #10b981;
-            margin-bottom: 12px;
-        }
-        .today-live-dot {
-            width: 8px; height: 8px; border-radius: 50%; background: #10b981;
-            animation: today-livedot 1.6s infinite;
-        }
-        @keyframes today-livedot {
-            0% { box-shadow: 0 0 0 0 rgba(16,185,129,0.5); }
-            70% { box-shadow: 0 0 0 7px rgba(16,185,129,0); }
-            100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
-        }
-        .today-clock {
-            display: flex; align-items: baseline; gap: 8px;
-            font-family: 'JetBrains Mono', 'Fira Code', monospace;
-            line-height: 1;
-        }
-        .today-clock-time {
-            font-size: clamp(2.75rem, 10vw, 4rem); font-weight: 800;
-            color: var(--text-primary); letter-spacing: -0.02em;
-            font-variant-numeric: tabular-nums;
-        }
-        .today-clock-colon { animation: today-blink 1s step-end infinite; color: var(--accent-primary); }
-        @keyframes today-blink { 50% { opacity: 0.25; } }
-        .today-clock-secs {
-            font-size: clamp(1.1rem, 3.5vw, 1.5rem); font-weight: 700;
-            color: var(--accent-primary); font-variant-numeric: tabular-nums;
-        }
-        .today-date {
-            font-size: 0.9375rem; color: var(--text-secondary);
-            margin-top: 8px; text-transform: capitalize;
-        }
-        .today-summary {
-            display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: center;
-            margin-top: 18px; padding-top: 16px;
-            border-top: 1px solid var(--border-color);
-        }
-        .today-summary-item { display: flex; align-items: center; gap: 8px; font-size: 0.8125rem; color: var(--text-muted); }
-        .today-summary-num { font-size: 1.125rem; font-weight: 800; color: var(--text-primary); }
-        .today-next {
-            margin-left: auto; display: inline-flex; align-items: center; gap: 10px;
-            padding: 8px 14px; border-radius: 10px;
-            background: rgba(17,129,155,0.10); border: 1px solid rgba(17,129,155,0.22);
-            font-size: 0.8125rem; color: var(--text-secondary); max-width: 100%;
-        }
-        .today-next--now { background: rgba(16,185,129,0.12); border-color: rgba(16,185,129,0.3); }
-        @media (max-width: 600px) {
-            .today-next { margin-left: 0; width: 100%; }
-        }
-    `;
-    document.head.appendChild(style);
-}
+// Estilos .today-* vivem em styles/admin-area.css (seção AdminTodayPage).
 
 export default function AdminTodayPage() {
     const navigate = useNavigate();
@@ -373,7 +272,7 @@ export default function AdminTodayPage() {
                                     display: 'flex', flexDirection: 'column', alignItems: 'center',
                                     minWidth: 44, paddingTop: '18px',
                                 }}>
-                                    <div style={{
+                                    <div className={`today-dot${isNow ? ' today-dot--now' : ''}`} style={{
                                         width: isNow ? 18 : 12, height: isNow ? 18 : 12,
                                         borderRadius: '50%',
                                         border: `2px solid ${
@@ -384,8 +283,7 @@ export default function AdminTodayPage() {
                                         background: booking
                                             ? (booking.status === 'COMPLETED' ? '#10b981' : booking.status === 'FALTA' ? '#ef4444' : booking.status === 'CONFIRMED' ? '#3b82f6' : 'transparent')
                                             : 'transparent',
-                                        transition: 'all 0.3s ease',
-                                        animation: isNow ? 'today-glow 2s infinite' : 'none',
+                                        transition: 'border-color 0.3s ease, background 0.3s ease',
                                         flexShrink: 0,
                                     }} />
 

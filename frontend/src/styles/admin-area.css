@@ -277,3 +277,451 @@
     .admin-table--cards td.admin-card-title::before { content: none; }
     .admin-table--cards td.admin-card-title + td { border-top: none; }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   Admin UI utilities (Fase 0 da padronização) — substituem os inline
+   styles estruturais repetidos em páginas e modais do admin.
+   Regra: inline style só para valor verdadeiramente dinâmico
+   (cor vinda de adminMeta, width %). Ver docs/tecnico/design-system.md.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Estrutura interna padrão dos modais admin (head / body / foot) ── */
+.admin-modal-head {
+    padding: 28px 32px 0;
+}
+.admin-modal-body {
+    padding: 20px 32px 28px;
+}
+.admin-modal-foot {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: var(--space-3);
+    padding: 0 32px 28px;
+}
+@media (max-width: 640px) {
+    .admin-modal-head { padding: 16px 20px 0; }
+    .admin-modal-body { padding: 16px 20px 24px; }
+    .admin-modal-foot { padding: 0 20px 24px; }
+}
+
+/* Título de modal com ícone-badge (substitui o span 36×36 inline). */
+.admin-modal-title {
+    font-size: 1.25rem;
+    font-weight: 800;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.admin-modal-title__icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--accent-gradient-go);
+    color: #fff;
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+/* ── Form primitives ── */
+.admin-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+/* Campos lado a lado que quebram sozinhos no mobile (sem media query). */
+.admin-form-row {
+    display: flex;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+}
+.admin-form-row > * {
+    flex: 1;
+    min-width: 140px;
+}
+
+/* Grid de 3 colunas que colapsa no mobile (totais/KPIs em detalhe). */
+.admin-grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-4);
+}
+@media (max-width: 640px) {
+    .admin-grid-3 { grid-template-columns: 1fr; }
+}
+
+/* ── Barra de filtros de página (busca + selects + pills) ── */
+.admin-filter-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    margin-bottom: var(--space-4);
+}
+.admin-filter-bar__search {
+    flex: 1;
+    min-width: 200px;
+    max-width: 360px;
+}
+
+/* Pills de filtro/segmento (Finance, Reports, Coupons…). */
+.admin-pills {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.admin-pill {
+    padding: 8px 14px;
+    min-height: 36px;
+    border: 1px solid var(--border-default);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+@media (hover: hover) {
+    .admin-pill:not(.admin-pill--active):hover {
+        background: var(--bg-elevated);
+        color: var(--text-primary);
+    }
+}
+.admin-pill--active {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: #fff;
+}
+.admin-pill:focus-visible {
+    outline: 2px solid var(--accent-text);
+    outline-offset: 2px;
+}
+@media (max-width: 768px) {
+    .admin-pill { min-height: 44px; }
+}
+
+/* ── Linha de ações (rodapé de card/modal/form) ── */
+.admin-actions-row {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: var(--space-3);
+    margin-top: var(--space-5);
+}
+@media (max-width: 640px) {
+    .admin-actions-row { flex-direction: column-reverse; }
+    .admin-actions-row > button { width: 100%; }
+}
+
+/* ── Botões padrão do admin ── */
+/* CTA primário (gradiente verde→teal — substitui os botões gradiente inline). */
+.btn-admin-go {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 10px 24px;
+    border: none;
+    border-radius: 10px;
+    background: var(--accent-gradient-go);
+    color: #fff;
+    font-size: 0.875rem;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    transition: opacity var(--transition-base), transform var(--transition-fast);
+}
+.btn-admin-go:disabled {
+    background: var(--bg-elevated);
+    color: var(--text-muted);
+    cursor: not-allowed;
+}
+@media (hover: hover) {
+    .btn-admin-go:not(:disabled):hover { transform: translateY(-1px); }
+}
+.btn-admin-go:not(:disabled):active { transform: scale(0.98); }
+.btn-admin-go:focus-visible {
+    outline: 2px solid var(--accent-text);
+    outline-offset: 2px;
+}
+
+/* Secundário/ghost (Voltar, Cancelar…). */
+.btn-admin-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 10px 20px;
+    border: 1px solid var(--border-default);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+.btn-admin-ghost:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+@media (hover: hover) {
+    .btn-admin-ghost:not(:disabled):hover {
+        background: var(--bg-elevated);
+        color: var(--text-primary);
+    }
+}
+.btn-admin-ghost:focus-visible {
+    outline: 2px solid var(--accent-text);
+    outline-offset: 2px;
+}
+
+/* Botão de ação ícone-só (✏️/🗑️ das tabelas) — touch target garantido. */
+.admin-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+@media (hover: hover) {
+    .admin-icon-btn:hover {
+        background: var(--bg-elevated);
+        color: var(--text-primary);
+    }
+    .admin-icon-btn--danger:hover {
+        background: var(--danger-bg);
+        border-color: var(--danger);
+        color: var(--danger);
+    }
+}
+.admin-icon-btn:focus-visible {
+    outline: 2px solid var(--accent-text);
+    outline-offset: 2px;
+}
+@media (max-width: 768px) {
+    .admin-icon-btn { width: 44px; height: 44px; }
+}
+
+/* Select compacto de status inline em linhas de tabela. */
+.admin-status-select {
+    appearance: none;
+    -webkit-appearance: none;
+    padding: 6px 28px 6px 10px;
+    min-height: 36px;
+    background-color: var(--bg-elevated);
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: 0.75rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: border-color var(--transition-fast);
+}
+.admin-status-select:focus-visible {
+    outline: 2px solid var(--accent-text);
+    outline-offset: 2px;
+}
+@media (max-width: 768px) {
+    .admin-status-select { min-height: 44px; }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   AdminTodayPage — migrado do <style> injetado via JS (era um bug
+   latente: SettingsSaveBar usa today-pulse, que só existia se a
+   página Hoje já tivesse sido carregada). Animações corrigidas para
+   transform/opacity (antes animavam box-shadow e max-height).
+   ═══════════════════════════════════════════════════════════════ */
+@keyframes today-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+@keyframes today-blink {
+    50% { opacity: 0.25; }
+}
+/* Ripple de "agora" — scale/opacity num ::after em vez de box-shadow. */
+@keyframes today-ripple {
+    0% { transform: scale(1); opacity: 0.9; }
+    70%, 100% { transform: scale(1.9); opacity: 0; }
+}
+/* Painel expandido — antes animava max-height (layout thrash). */
+@keyframes today-slide-down {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.today-slot-card {
+    transition: border-color 0.25s ease, transform 0.25s ease;
+}
+@media (hover: hover) {
+    .today-slot-card:hover {
+        /* !important: vence o border inline dinâmico (limpo no loop da página). */
+        border-color: rgba(16, 185, 129, 0.3) !important;
+        transform: translateX(2px);
+    }
+}
+
+.today-action-btn {
+    border: none;
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.8rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: transform var(--transition-base), filter var(--transition-base), opacity var(--transition-base);
+    font-family: inherit;
+}
+@media (hover: hover) {
+    .today-action-btn:hover { transform: translateY(-1px); filter: brightness(1.15); }
+}
+.today-action-btn:active { transform: translateY(0); }
+.today-action-btn:focus-visible {
+    outline: 2px solid var(--accent-text);
+    outline-offset: 2px;
+}
+
+/* Dot da timeline — o estado "agora" ganha ripple via ::after. */
+.today-dot { position: relative; }
+.today-dot--now::after {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 50%;
+    border: 2px solid rgba(16, 185, 129, 0.45);
+    animation: today-ripple 2s ease-out infinite;
+}
+
+/* --- Live hero clock --- */
+.today-hero {
+    position: relative;
+    overflow: hidden;
+    border-radius: var(--radius-xl);
+    padding: 26px 28px;
+    margin-bottom: 24px;
+    background:
+        radial-gradient(circle at 0% 0%, rgba(17, 129, 155, 0.20), transparent 55%),
+        radial-gradient(circle at 100% 100%, rgba(16, 185, 129, 0.10), transparent 50%),
+        linear-gradient(135deg, var(--bg-card), var(--bg-secondary));
+    border: 1px solid rgba(17, 129, 155, 0.22);
+}
+.today-live-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.6875rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--success);
+    margin-bottom: 12px;
+}
+.today-live-dot {
+    position: relative;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--success);
+}
+.today-live-dot::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: rgba(16, 185, 129, 0.5);
+    animation: today-ripple 1.6s ease-out infinite;
+}
+.today-clock {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    line-height: 1;
+}
+.today-clock-time {
+    font-size: clamp(2.75rem, 10vw, 4rem);
+    font-weight: 800;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+}
+.today-clock-colon {
+    animation: today-blink 1s step-end infinite;
+    color: var(--accent-primary);
+}
+.today-clock-secs {
+    font-size: clamp(1.1rem, 3.5vw, 1.5rem);
+    font-weight: 700;
+    color: var(--accent-primary);
+    font-variant-numeric: tabular-nums;
+}
+.today-date {
+    font-size: 0.9375rem;
+    color: var(--text-secondary);
+    margin-top: 8px;
+    text-transform: capitalize;
+}
+.today-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px 22px;
+    align-items: center;
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-color);
+}
+.today-summary-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+}
+.today-summary-num {
+    font-size: 1.125rem;
+    font-weight: 800;
+    color: var(--text-primary);
+}
+.today-next {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    border-radius: 10px;
+    background: rgba(17, 129, 155, 0.10);
+    border: 1px solid rgba(17, 129, 155, 0.22);
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    max-width: 100%;
+}
+.today-next--now {
+    background: var(--success-bg);
+    border-color: rgba(16, 185, 129, 0.3);
+}
+@media (max-width: 600px) {
+    .today-next { margin-left: 0; width: 100%; }
+}
