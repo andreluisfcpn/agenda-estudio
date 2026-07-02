@@ -91,6 +91,40 @@
   /* Standard height for ALL form controls (inputs, selects, steppers,
      segmented, color, time) so they line up at the same height everywhere. */
   --control-h: 42px;
+
+  /* ── Semantic feedback (canonical — same hex as constants/adminMeta.ts).
+     Admin uses these for success/warning/danger/info; --status-* remains the
+     slot-calendar vocabulary and must not be repurposed as generic urgency. */
+  --success: #10b981;
+  --success-bg: rgba(16, 185, 129, 0.12);
+  --warning: #f59e0b;
+  --warning-bg: rgba(245, 158, 11, 0.12);
+  --danger: #ef4444;
+  --danger-bg: rgba(239, 68, 68, 0.12);
+  --info: #3b82f6;
+  --info-bg: rgba(59, 130, 246, 0.12);
+  --neutral: #6b7280;
+  --neutral-bg: rgba(107, 114, 128, 0.12);
+
+  /* Teal readable as SMALL text on dark surfaces (accent-primary is 3.9:1 —
+     fails WCAG AA for body text; use this for teal links/labels instead). */
+  --accent-text: #2FA8C2;
+
+  /* Inputs: normal on page surfaces, raised inside sheets/cards. */
+  --input-bg: var(--bg-secondary);
+  --input-bg-raised: var(--bg-elevated);
+
+  /* Overlay / modal */
+  --overlay-bg: rgba(4, 12, 14, 0.75);
+  --overlay-blur: 8px;
+  --sheet-bg: #091E24;
+  --modal-w-sm: 480px;
+  --modal-w-md: 640px;
+  --modal-w-lg: 820px;
+  --modal-w-xl: 1000px;
+
+  /* Admin CTA gradient (green→teal signature; replaces off-palette indigo). */
+  --accent-gradient-go: linear-gradient(135deg, #10b981, #11819B);
 }
 
 /* â”€â”€â”€ Reset & Base â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
@@ -350,6 +384,13 @@ a:hover {
 }
 /* Textareas opt out of the fixed control height (they grow with content). */
 textarea.form-input { min-height: 80px; }
+
+/* Inputs rendered inside sheets/cards sit on a darker surface and need the
+   elevated background for depth contrast. */
+.form-input--raised,
+.form-select--raised {
+  background: var(--input-bg-raised);
+}
 
 .form-input:focus,
 .form-select:focus {
@@ -1329,6 +1370,24 @@ tr:hover td {
 .animate-card-enter {
   /* Entry animation removed: page transition loader already provides visual feedback.
      Class kept in markup for future use if needed. */
+}
+
+/* Canonical keyframes — transform/opacity only. New code reuses these two
+   instead of declaring per-page keyframes. */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Hover (desktop only — no hover on touch devices) */
