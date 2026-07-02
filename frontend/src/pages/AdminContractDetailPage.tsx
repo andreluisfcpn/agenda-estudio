@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { contractsApi, pricingApi, paymentsApi, bookingsApi, ContractDetail, PaymentSummary, AddOnConfig, Booking } from '../api/client';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import { useUI } from '../context/UIContext';
-import LoadingSpinner from '../components/ui/LoadingSpinner';
+import { HeroSkeleton, TableSkeleton } from '../components/ui/SkeletonLoader';
 import StatusBadge from '../components/ui/StatusBadge';
 import ServiceLineItem from '../components/ui/ServiceLineItem';
 import ServiceContractPanel from '../components/client/ServiceContractPanel';
@@ -49,7 +49,7 @@ export default function AdminContractDetailPage() {
     useEffect(() => { load(); }, [load]);
     useEffect(() => { paymentsApi.getSandboxMode().then(s => setSandbox(s.pix || s.card)).catch(() => {}); }, []);
 
-    if (loading) return <div style={{ padding: 40 }}><LoadingSpinner /></div>;
+    if (loading) return <div><HeroSkeleton /><TableSkeleton rows={4} cols={3} /></div>;
     if (!contract) return (
         <div style={{ padding: 24 }}>
             <button className="btn btn-ghost btn-sm" onClick={() => navigate('/admin/contracts')}><ArrowLeft size={14} /> Voltar</button>
@@ -149,10 +149,10 @@ export default function AdminContractDetailPage() {
             </div>
 
             {/* ── Totals strip ── */}
-            <div className="admin-grid-2" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
+            <div className="admin-grid-3" style={{ gap: 12, marginBottom: 16 }}>
                 <TotalCard label="Valor do contrato" value={contractValue} color="var(--text-primary)" />
-                <TotalCard label="Pago" value={paidValue} color="#10b981" />
-                <TotalCard label="Pendente" value={pendingValue} color={pendingValue > 0 ? '#f59e0b' : 'var(--text-muted)'} />
+                <TotalCard label="Pago" value={paidValue} color="var(--success)" />
+                <TotalCard label="Pendente" value={pendingValue} color={pendingValue > 0 ? 'var(--warning)' : 'var(--text-muted)'} />
             </div>
 
             {/* ── Contract services (editable for FIXO/FLEX active) ── */}
@@ -315,7 +315,7 @@ export default function AdminContractDetailPage() {
 
             {/* ── Charge-now modal (reuses the client InlineCheckout, role-aware) ── */}
             {charge && (
-                <BottomSheetModal isOpen onClose={() => setCharge(null)} hideHeader maxWidth="460px" className="admin-sheet" title="Cobrar parcela">
+                <BottomSheetModal isOpen onClose={() => setCharge(null)} hideHeader size="sm" className="admin-sheet" title="Cobrar parcela">
                     <div style={{ padding: '24px 28px' }}>
                         <h3 style={{ fontSize: '1.0625rem', fontWeight: 800, margin: '0 0 4px' }}>Cobrar {formatBRL(charge.amount)}</h3>
                         <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0 0 16px' }}>

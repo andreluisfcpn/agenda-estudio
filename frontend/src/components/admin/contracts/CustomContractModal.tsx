@@ -217,7 +217,7 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
     // (payment.userId) — o backend resolve o pagador a partir do payment, não do admin.
     if (chargePaymentId) {
         return (
-            <BottomSheetModal isOpen onClose={() => { setChargePaymentId(null); onClose(); }} hideHeader maxWidth="460px" className="admin-sheet" title="Cobrar 1ª cobrança">
+            <BottomSheetModal isOpen onClose={() => { setChargePaymentId(null); onClose(); }} hideHeader size="sm" className="admin-sheet" title="Cobrar 1ª cobrança">
                 <div style={{ padding: '24px 28px' }}>
                     <h3 style={{ fontSize: '1.0625rem', fontWeight: 800, margin: '0 0 4px' }}>Cobrar 1ª cobrança</h3>
                     <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0 0 16px' }}>
@@ -246,11 +246,11 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
     }
 
     return (
-        <BottomSheetModal isOpen onClose={onClose} hideHeader maxWidth="580px" className="admin-sheet" title="Contrato Personalizado">
+        <BottomSheetModal isOpen onClose={onClose} hideHeader size="xl" className="admin-sheet" title="Contrato Personalizado">
                 {/* Header */}
                 <div style={{ padding: '28px 32px 0', borderBottom: 'none' }}>
                     <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #2dd4bf, #3b82f6)', fontSize: '1rem' }}>✨</span>
+                        <span style={{ width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-gradient-go)', fontSize: '1rem' }}>✨</span>
                         Contrato Personalizado
                     </h2>
                     <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px', marginBottom: 0 }}>
@@ -364,7 +364,7 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
                                 <button onClick={() => { if (canStep1) setCustomStep(2); }} disabled={!canStep1}
                                     style={{
                                         padding: '10px 28px', borderRadius: '10px', border: 'none', fontSize: '0.875rem', fontWeight: 700, cursor: 'pointer',
-                                        background: canStep1 ? 'linear-gradient(135deg, #2dd4bf, #3b82f6)' : 'var(--bg-elevated)',
+                                        background: canStep1 ? 'var(--accent-gradient-go)' : 'var(--bg-elevated)',
                                         color: canStep1 ? '#fff' : 'var(--text-muted)', opacity: canStep1 ? 1 : 0.5,
                                         display: 'flex', alignItems: 'center', gap: '8px',
                                     }}>
@@ -601,7 +601,7 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
                                 <button onClick={() => { if (canStep2) setCustomStep(3); }} disabled={!canStep2}
                                     style={{
                                         padding: '10px 28px', borderRadius: '10px', border: 'none', fontSize: '0.875rem', fontWeight: 700, cursor: 'pointer',
-                                        background: canStep2 ? 'linear-gradient(135deg, #2dd4bf, #3b82f6)' : 'var(--bg-elevated)',
+                                        background: canStep2 ? 'var(--accent-gradient-go)' : 'var(--bg-elevated)',
                                         color: canStep2 ? '#fff' : 'var(--text-muted)', opacity: canStep2 ? 1 : 0.5,
                                         display: 'flex', alignItems: 'center', gap: '8px',
                                     }}>
@@ -734,7 +734,7 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
                                 <button onClick={() => setCustomStep(4)}
                                     style={{
                                         padding: '10px 28px', borderRadius: '10px', border: 'none', fontSize: '0.875rem', fontWeight: 700, cursor: 'pointer',
-                                        background: 'linear-gradient(135deg, #2dd4bf, #3b82f6)',
+                                        background: 'var(--accent-gradient-go)',
                                         color: '#fff',
                                         display: 'flex', alignItems: 'center', gap: '8px',
                                     }}>

@@ -177,11 +177,11 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
 
     return (
         <>
-            <BottomSheetModal isOpen onClose={onClose} hideHeader maxWidth="580px" className="admin-sheet" title="Novo Contrato">
+            <BottomSheetModal isOpen onClose={onClose} hideHeader size="lg" className="admin-sheet" title="Novo Contrato">
                     {/* --- HEADER --- */}
                     <div style={{ padding: '28px 32px 0' }}>
                         <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <span style={{ width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #818cf8, #6366f1)', fontSize: '1rem' }}>📄</span>
+                            <span style={{ width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-gradient-go)', fontSize: '1rem' }}>📄</span>
                             Novo Contrato
                         </h2>
                         <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px', marginBottom: 0 }}>
@@ -246,7 +246,7 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
 
                         {/* --- SECTION 2: Configuração --- */}
                         <div style={{ marginBottom: '20px' }}>
-                            {sectionHeader(2, 'Configuração do Contrato', '#818cf8')}
+                            {sectionHeader(2, 'Configuração do Contrato', 'var(--accent-text)')}
 
                             {/* Type selector cards */}
                             <div style={{ marginBottom: '14px' }}>
@@ -263,7 +263,7 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                                                 border: `1.5px solid ${createForm.type === t.key ? (t.key === 'FIXO' ? 'rgba(99,102,241,0.3)' : 'rgba(16,185,129,0.3)') : 'var(--border-default)'}`,
                                                 transition: 'all 0.15s',
                                             }}>
-                                            <div style={{ fontSize: '0.875rem', fontWeight: 700, color: createForm.type === t.key ? (t.key === 'FIXO' ? '#818cf8' : '#10b981') : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>{t.icon} {t.label}</div>
+                                            <div style={{ fontSize: '0.875rem', fontWeight: 700, color: createForm.type === t.key ? (t.key === 'FIXO' ? 'var(--accent-text)' : '#10b981') : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>{t.icon} {t.label}</div>
                                             <div style={{ fontSize: '0.5625rem', color: 'var(--text-muted)', marginTop: '3px' }}>{t.desc}</div>
                                         </button>
                                     ))}
@@ -326,7 +326,7 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                                         <input type="date" value={createForm.startDate}
                                             onChange={e => setCreateForm({ ...createForm, startDate: e.target.value })}
                                             style={inputStyle()}
-                                            onFocus={e => (e.currentTarget.style.borderColor = '#818cf8')}
+                                            onFocus={e => (e.currentTarget.style.borderColor = 'var(--accent-primary)')}
                                             onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-default)')} />
                                     </div>
                                 </div>
@@ -338,7 +338,7 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                                             onChange={e => setCreateForm({ ...createForm, contractUrl: e.target.value })}
                                             placeholder="https://contrato.digital/..."
                                             style={inputStyle()}
-                                            onFocus={e => (e.currentTarget.style.borderColor = '#818cf8')}
+                                            onFocus={e => (e.currentTarget.style.borderColor = 'var(--accent-primary)')}
                                             onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-default)')} />
                                     </div>
                                 </div>
@@ -347,7 +347,7 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                             {/* FIXO-specific fields */}
                             {createForm.type === 'FIXO' && (
                                 <div style={{ padding: '14px', borderRadius: '10px', background: 'rgba(99,102,241,0.04)', border: '1px solid rgba(99,102,241,0.1)', marginBottom: '14px' }}>
-                                    <div style={{ fontSize: '0.625rem', fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '10px' }}>🔁 Configuração Recorrente</div>
+                                    <div style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--accent-text)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '10px' }}>🔁 Configuração Recorrente</div>
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '12px', alignItems: 'end' }}>
                                         <div>
                                             <label style={labelStyle}>Dia da Semana</label>
@@ -358,7 +358,7 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                                                             flex: 1, padding: '8px 2px', borderRadius: '8px', fontSize: '0.625rem', fontWeight: 700, cursor: 'pointer',
                                                             background: (createForm.fixedDayOfWeek || 1) === i + 1 ? 'rgba(99,102,241,0.15)' : 'var(--bg-elevated)',
                                                             border: `1px solid ${(createForm.fixedDayOfWeek || 1) === i + 1 ? 'rgba(99,102,241,0.35)' : 'var(--border-default)'}`,
-                                                            color: (createForm.fixedDayOfWeek || 1) === i + 1 ? '#818cf8' : 'var(--text-muted)',
+                                                            color: (createForm.fixedDayOfWeek || 1) === i + 1 ? 'var(--accent-text)' : 'var(--text-muted)',
                                                         }}>
                                                         {d}
                                                     </button>
@@ -370,7 +370,7 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                                             <input type="time" value={createForm.fixedTime || '14:00'}
                                                 onChange={e => setCreateForm({ ...createForm, fixedTime: e.target.value })}
                                                 style={{ ...inputStyle(), paddingLeft: '14px', width: '100px' }}
-                                                onFocus={e => (e.currentTarget.style.borderColor = '#818cf8')}
+                                                onFocus={e => (e.currentTarget.style.borderColor = 'var(--accent-primary)')}
                                                 onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-default)')} />
                                         </div>
                                     </div>
@@ -405,7 +405,7 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                                                     border: `1.5px solid ${active ? 'rgba(99,102,241,0.3)' : 'var(--border-default)'}`,
                                                     transition: 'all 0.15s',
                                                 }}>
-                                                <div style={{ fontSize: '0.875rem', fontWeight: 700, color: active ? '#818cf8' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>{p.icon} {p.label}</div>
+                                                <div style={{ fontSize: '0.875rem', fontWeight: 700, color: active ? 'var(--accent-text)' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>{p.icon} {p.label}</div>
                                                 <div style={{ fontSize: '0.5625rem', color: 'var(--text-muted)', marginTop: '3px' }}>{p.desc}</div>
                                             </button>
                                         );
@@ -431,7 +431,7 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                                                     transition: 'all 0.15s',
                                                 }}>
                                                 <div style={{ fontSize: '1rem' }}>{m.icon}</div>
-                                                <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: active ? '#818cf8' : 'var(--text-primary)', marginTop: '2px' }}>{m.label}</div>
+                                                <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: active ? 'var(--accent-text)' : 'var(--text-primary)', marginTop: '2px' }}>{m.label}</div>
                                             </button>
                                         );
                                     })}
@@ -550,7 +550,7 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                             <button onClick={handleCreate} disabled={!canCreate}
                                 style={{
                                     padding: '10px 28px', borderRadius: '10px', border: 'none', fontSize: '0.875rem', fontWeight: 700, cursor: 'pointer',
-                                    background: canCreate ? 'linear-gradient(135deg, #818cf8, #6366f1)' : 'var(--bg-elevated)',
+                                    background: canCreate ? 'var(--accent-gradient-go)' : 'var(--bg-elevated)',
                                     color: canCreate ? '#fff' : 'var(--text-muted)',
                                     opacity: canCreate ? 1 : 0.5,
                                     display: 'flex', alignItems: 'center', gap: '8px',
@@ -563,7 +563,7 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
 
             {/* Conflict Resolution Modal */}
             {showConflictModal && (
-                <BottomSheetModal isOpen onClose={() => setShowConflictModal(false)} hideHeader maxWidth="600px" title="Conflitos de Agenda">
+                <BottomSheetModal isOpen onClose={() => setShowConflictModal(false)} hideHeader size="md" title="Conflitos de Agenda">
                         <div style={{ textAlign: 'center', marginBottom: '20px' }}>
                             <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>⚠️</div>
                             <h3 style={{ fontSize: '1.25rem', color: '#ef4444' }}>Conflitos de Agenda</h3>
@@ -621,7 +621,7 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                 cartão uses Stripe Elements with the client's card present. Charges the CLIENT
                 (payment.userId) — the backend resolves the payer from the payment, not the admin. */}
             {chargePaymentId && (
-                <BottomSheetModal isOpen onClose={() => { onCreated(); onClose(); }} hideHeader maxWidth="460px" className="admin-sheet" title="Cobrar 1ª parcela">
+                <BottomSheetModal isOpen onClose={() => { onCreated(); onClose(); }} hideHeader size="sm" className="admin-sheet" title="Cobrar 1ª parcela">
                         <div style={{ padding: '24px 28px' }}>
                             <h3 style={{ fontSize: '1.0625rem', fontWeight: 800, margin: '0 0 4px' }}>Cobrar 1ª parcela</h3>
                             <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0 0 16px' }}>

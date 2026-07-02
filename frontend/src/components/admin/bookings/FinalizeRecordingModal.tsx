@@ -114,7 +114,7 @@ export default function FinalizeRecordingModal({ isOpen, booking, onClose, onSav
     };
 
     return (
-        <BottomSheetModal isOpen onClose={onClose} hideHeader maxWidth="560px" className="admin-sheet" title="Finalizar gravação">
+        <BottomSheetModal isOpen onClose={onClose} hideHeader size="md" className="admin-sheet" title="Finalizar gravação">
             <div style={{ padding: '24px 28px 28px' }}>
                 <h2 style={{ fontSize: '1.125rem', fontWeight: 800, margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 8 }}>🏁 Finalizar gravação</h2>
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0 0 18px' }}>
