@@ -96,7 +96,7 @@ export default function AdminReportsPage() {
                 actions={
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         {/* Period pills */}
-                        <div style={{ display: 'flex', gap: '2px', padding: '3px', background: 'var(--bg-elevated)', borderRadius: '10px' }}>
+                        <div className="admin-segmented" role="group" aria-label="Período do relatório">
                             {([
                                 { key: '7d' as Period, label: '7 dias' },
                                 { key: '30d' as Period, label: '30 dias' },
@@ -105,29 +105,14 @@ export default function AdminReportsPage() {
                             ]).map(p => (
                                 <button key={p.key}
                                     onClick={() => setPeriod(p.key)}
-                                    style={{
-                                        padding: '5px 12px', borderRadius: '8px', fontSize: '0.6875rem',
-                                        fontWeight: period === p.key ? 700 : 500, border: 'none', cursor: 'pointer',
-                                        background: period === p.key ? 'var(--bg-secondary)' : 'transparent',
-                                        color: period === p.key ? 'var(--text-primary)' : 'var(--text-muted)',
-                                        boxShadow: period === p.key ? '0 1px 3px rgba(0,0,0,0.2)' : 'none',
-                                        transition: 'all 0.2s'
-                                    }}
+                                    aria-pressed={period === p.key}
+                                    className={`admin-segmented__btn${period === p.key ? ' admin-segmented__btn--active' : ''}`}
                                 >
                                     {p.label}
                                 </button>
                             ))}
                         </div>
-                        <button onClick={handleExportCSV}
-                            style={{
-                                display: 'flex', alignItems: 'center', gap: '6px',
-                                background: 'var(--bg-elevated)', border: '1px solid var(--border-color)',
-                                color: 'var(--text-secondary)', padding: '6px 14px', borderRadius: '8px',
-                                cursor: 'pointer', fontSize: '0.6875rem', fontWeight: 600, transition: 'all 0.2s'
-                            }}
-                            onMouseEnter={e => { e.currentTarget.style.borderColor = '#10b981'; e.currentTarget.style.color = '#10b981'; }}
-                            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-color)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
-                        >
+                        <button onClick={handleExportCSV} className="btn-admin-ghost" style={{ fontSize: '0.6875rem', padding: '6px 14px' }}>
                             📥 Exportar CSV
                         </button>
                     </div>
@@ -136,48 +121,30 @@ export default function AdminReportsPage() {
 
             {/* ─── KPI CARDS ─── */}
             <div className="admin-kpi-grid" style={{ marginBottom: '24px' }}>
-                <div style={{
-                    padding: '20px', borderRadius: '14px',
-                    background: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(67,56,202,0.04))',
-                    border: '1px solid rgba(99,102,241,0.2)',
-                }}>
-                    <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Sessões</div>
-                    <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)' }}>{summary.totalBookings}</div>
-                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>no período</div>
+                <div className="admin-kpi-card admin-kpi-card--accent">
+                    <div className="admin-kpi-card__label">Sessões</div>
+                    <div className="admin-kpi-card__value">{summary.totalBookings}</div>
+                    <div className="admin-kpi-card__caption">no período</div>
                 </div>
-                <div style={{
-                    padding: '20px', borderRadius: '14px',
-                    background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
-                }}>
-                    <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Concluídas</div>
-                    <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)' }}>{summary.completedBookings}</div>
-                    <div style={{ fontSize: '0.6875rem', color: '#10b981', marginTop: '4px', fontWeight: 600 }}>{summary.attendanceRate}% presença</div>
+                <div className="admin-kpi-card">
+                    <div className="admin-kpi-card__label" style={{ color: 'var(--success)' }}>Concluídas</div>
+                    <div className="admin-kpi-card__value">{summary.completedBookings}</div>
+                    <div className="admin-kpi-card__caption" style={{ color: 'var(--success)', fontWeight: 600 }}>{summary.attendanceRate}% presença</div>
                 </div>
-                <div style={{
-                    padding: '20px', borderRadius: '14px',
-                    background: summary.faltaBookings > 0 ? 'linear-gradient(135deg, rgba(239,68,68,0.06), rgba(220,38,38,0.04))' : 'var(--bg-secondary)',
-                    border: summary.faltaBookings > 0 ? '1px solid rgba(239,68,68,0.2)' : '1px solid var(--border-color)',
-                }}>
-                    <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Faltas</div>
-                    <div style={{ fontSize: '2rem', fontWeight: 800, color: summary.faltaBookings > 0 ? '#ef4444' : 'var(--text-primary)' }}>{summary.faltaBookings}</div>
-                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>{summary.faltaBookings > 0 ? `${100 - summary.attendanceRate}%` : '0%'}</div>
+                <div className={`admin-kpi-card${summary.faltaBookings > 0 ? ' admin-kpi-card--danger' : ''}`}>
+                    <div className="admin-kpi-card__label" style={{ color: 'var(--danger)' }}>Faltas</div>
+                    <div className="admin-kpi-card__value" style={summary.faltaBookings > 0 ? { color: 'var(--danger)' } : undefined}>{summary.faltaBookings}</div>
+                    <div className="admin-kpi-card__caption">{summary.faltaBookings > 0 ? `${100 - summary.attendanceRate}%` : '0%'}</div>
                 </div>
-                <div style={{
-                    padding: '20px', borderRadius: '14px',
-                    background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
-                }}>
-                    <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Cancelamentos</div>
-                    <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)' }}>{summary.cancelledBookings}</div>
-                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>{summary.cancellationRate}%</div>
+                <div className="admin-kpi-card">
+                    <div className="admin-kpi-card__label" style={{ color: 'var(--warning)' }}>Cancelamentos</div>
+                    <div className="admin-kpi-card__value">{summary.cancelledBookings}</div>
+                    <div className="admin-kpi-card__caption">{summary.cancellationRate}%</div>
                 </div>
-                <div style={{
-                    padding: '20px', borderRadius: '14px',
-                    background: 'linear-gradient(135deg, rgba(16,185,129,0.10), rgba(6,78,59,0.06))',
-                    border: '1px solid rgba(16,185,129,0.25)',
-                }}>
-                    <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Receita</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#10b981' }}>{formatBRLCompact(summary.totalRevenue)}</div>
-                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>total acumulado</div>
+                <div className="admin-kpi-card admin-kpi-card--success">
+                    <div className="admin-kpi-card__label" style={{ color: 'var(--success)' }}>Receita</div>
+                    <div className="admin-kpi-card__value admin-kpi-card__value--sm" style={{ color: 'var(--success)' }}>{formatBRLCompact(summary.totalRevenue)}</div>
+                    <div className="admin-kpi-card__caption">total acumulado</div>
                 </div>
             </div>
 
@@ -186,10 +153,11 @@ export default function AdminReportsPage() {
                 {/* By Slot */}
                 <div style={{ padding: '24px', borderRadius: '16px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
                     <h3 style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ width: 16, height: 2, background: '#3b82f6', borderRadius: 1 }} />
+                        <span style={{ width: 16, height: 2, background: 'var(--info)', borderRadius: 1 }} />
                         Ocupação por Horário
                     </h3>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }} role="img"
+                        aria-label={`Ocupação por horário: ${slotOccupancy.map(s => `${s.label} ${s.pct}%`).join(', ')}`}>
                         {slotOccupancy.map(s => (
                             <div key={s.slot} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                 <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', minWidth: 50, fontFamily: "'JetBrains Mono', monospace" }}>{s.label}</span>
@@ -197,10 +165,10 @@ export default function AdminReportsPage() {
                                     <div style={{
                                         height: '100%', borderRadius: 4, width: `${s.pct}%`,
                                         background: s.pct >= 70 ? 'linear-gradient(90deg, #10b981, #34d399)' : s.pct >= 40 ? 'linear-gradient(90deg, #3b82f6, #60a5fa)' : 'rgba(107,114,128,0.3)',
-                                        transition: 'width 0.5s ease',
+                                        transition: 'width 0.3s ease',
                                     }} />
                                 </div>
-                                <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: s.pct >= 70 ? '#10b981' : s.pct >= 40 ? '#3b82f6' : 'var(--text-muted)', minWidth: 36, textAlign: 'right' }}>{s.pct}%</span>
+                                <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: s.pct >= 70 ? 'var(--success)' : s.pct >= 40 ? 'var(--info)' : 'var(--text-muted)', minWidth: 36, textAlign: 'right' }}>{s.pct}%</span>
                             </div>
                         ))}
                     </div>
@@ -209,20 +177,21 @@ export default function AdminReportsPage() {
                 {/* By Day */}
                 <div style={{ padding: '24px', borderRadius: '16px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
                     <h3 style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ width: 16, height: 2, background: '#10b981', borderRadius: 1 }} />
+                        <span style={{ width: 16, height: 2, background: 'var(--success)', borderRadius: 1 }} />
                         Ocupação por Dia da Semana
                     </h3>
-                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '10px', height: 130, paddingTop: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '10px', height: 130, paddingTop: '10px' }} role="img"
+                        aria-label={`Ocupação por dia da semana: ${dayOccupancy.map(d => `${d.day} ${d.pct}%`).join(', ')}`}>
                         {dayOccupancy.map(d => (
                             <div key={d.day} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
                                 <div style={{ width: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: 90 }}>
                                     <div style={{
                                         height: `${Math.max(d.pct, 4)}%`, borderRadius: '6px 6px 0 0',
                                         background: d.pct >= 70 ? 'linear-gradient(180deg, #10b981, #059669)' : d.pct >= 40 ? 'linear-gradient(180deg, #3b82f6, #2563eb)' : 'rgba(107,114,128,0.25)',
-                                        transition: 'height 0.5s ease', minHeight: 4,
+                                        transition: 'height 0.3s ease', minHeight: 4,
                                     }} />
                                 </div>
-                                <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: d.pct >= 70 ? '#10b981' : d.pct >= 40 ? '#3b82f6' : 'var(--text-muted)' }}>{d.pct}%</div>
+                                <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: d.pct >= 70 ? 'var(--success)' : d.pct >= 40 ? 'var(--info)' : 'var(--text-muted)' }}>{d.pct}%</div>
                                 <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', fontWeight: 600 }}>{d.day}</div>
                             </div>
                         ))}
@@ -235,7 +204,7 @@ export default function AdminReportsPage() {
                 {/* Tier Breakdown */}
                 <div style={{ padding: '24px', borderRadius: '16px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
                     <h3 style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ width: 16, height: 2, background: '#f59e0b', borderRadius: 1 }} />
+                        <span style={{ width: 16, height: 2, background: 'var(--warning)', borderRadius: 1 }} />
                         Distribuição por Faixa
                     </h3>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -257,7 +226,7 @@ export default function AdminReportsPage() {
                                             <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>{t.count} sessões · {formatBRLCompact(t.revenue)}</span>
                                         </div>
                                         <div style={{ height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.04)', overflow: 'hidden' }}>
-                                            <div style={{ height: '100%', borderRadius: 3, width: `${t.pct}%`, background: meta.color, transition: 'width 0.5s ease' }} />
+                                            <div style={{ height: '100%', borderRadius: 3, width: `${t.pct}%`, background: meta.color, transition: 'width 0.3s ease' }} />
                                         </div>
                                     </div>
                                     <span style={{ fontSize: '0.8125rem', fontWeight: 800, color: meta.color, minWidth: 36, textAlign: 'right' }}>{t.pct}%</span>
@@ -270,7 +239,7 @@ export default function AdminReportsPage() {
                 {/* Audience Metrics */}
                 <div style={{ padding: '24px', borderRadius: '16px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
                     <h3 style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ width: 16, height: 2, background: '#2dd4bf', borderRadius: 1 }} />
+                        <span style={{ width: 16, height: 2, background: 'var(--accent-text)', borderRadius: 1 }} />
                         Métricas de Audiência
                     </h3>
                     {!audienceMetrics || audienceMetrics.totalCompleted === 0 ? (
@@ -282,10 +251,10 @@ export default function AdminReportsPage() {
                     ) : (
                         <div className="admin-grid-2" style={{ gap: '12px' }}>
                             {[
-                                { icon: '👁️', label: 'Média de Viewers', value: audienceMetrics.avgViewers.toLocaleString('pt-BR'), color: '#2dd4bf' },
-                                { icon: '🏆', label: 'Pico Máximo', value: audienceMetrics.maxViewers.toLocaleString('pt-BR'), color: '#fbbf24' },
-                                { icon: '💬', label: 'Média de Chat', value: audienceMetrics.avgChat.toLocaleString('pt-BR'), color: '#10b981' },
-                                { icon: '⏱️', label: 'Duração Média', value: audienceMetrics.avgDuration > 0 ? `${audienceMetrics.avgDuration}min` : '—', color: '#3b82f6' },
+                                { icon: '👁️', label: 'Média de Viewers', value: audienceMetrics.avgViewers.toLocaleString('pt-BR'), color: 'var(--accent-text)' },
+                                { icon: '🏆', label: 'Pico Máximo', value: audienceMetrics.maxViewers.toLocaleString('pt-BR'), color: 'var(--warning)' },
+                                { icon: '💬', label: 'Média de Chat', value: audienceMetrics.avgChat.toLocaleString('pt-BR'), color: 'var(--success)' },
+                                { icon: '⏱️', label: 'Duração Média', value: audienceMetrics.avgDuration > 0 ? `${audienceMetrics.avgDuration}min` : '—', color: 'var(--info)' },
                             ].map(m => (
                                 <div key={m.label} style={{
                                     padding: '16px', borderRadius: '12px', textAlign: 'center',
@@ -305,7 +274,7 @@ export default function AdminReportsPage() {
             <div style={{ borderRadius: '16px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', overflow: 'hidden', marginBottom: '24px' }}>
                 <div style={{ padding: '20px 24px 0', marginBottom: '16px' }}>
                     <h3 style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ width: 16, height: 2, background: '#fbbf24', borderRadius: 1 }} />
+                        <span style={{ width: 16, height: 2, background: 'var(--warning)', borderRadius: 1 }} />
                         🏆 Ranking de Clientes — Top 10 por Receita
                     </h3>
                 </div>
@@ -317,7 +286,7 @@ export default function AdminReportsPage() {
                 ) : (
                     <div className="table-container" style={{ margin: 0 }}>
                       <div className="admin-table-wrap">
-                        <table>
+                        <table className="admin-table--cards">
                             <thead>
                                 <tr>
                                     <th style={{ width: 50, paddingLeft: '24px' }}>#</th>
@@ -331,15 +300,8 @@ export default function AdminReportsPage() {
                             </thead>
                             <tbody>
                                 {clientRanking.map((c, i) => (
-                                    <tr key={c.id}
-                                        style={{
-                                            background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
-                                            transition: 'background 0.15s'
-                                        }}
-                                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(16,185,129,0.04)')}
-                                        onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)')}
-                                    >
-                                        <td style={{ textAlign: 'center', paddingLeft: '24px' }}>
+                                    <tr key={c.id} className="admin-zebra-row">
+                                        <td data-label="Posição" style={{ textAlign: 'center', paddingLeft: '24px' }}>
                                             <span style={{
                                                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                                                 width: 28, height: 28, borderRadius: '8px',
@@ -350,7 +312,7 @@ export default function AdminReportsPage() {
                                                 {i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}
                                             </span>
                                         </td>
-                                        <td>
+                                        <td className="admin-card-title">
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                                 <div style={{
                                                     width: 34, height: 34, borderRadius: '10px',
@@ -361,17 +323,18 @@ export default function AdminReportsPage() {
                                                 }}>
                                                     {c.name.charAt(0).toUpperCase()}
                                                 </div>
-                                                <span style={{ fontWeight: 600, cursor: 'pointer', color: 'var(--accent-primary)', fontSize: '0.875rem' }}
+                                                <button style={{ fontWeight: 600, cursor: 'pointer', color: 'var(--accent-text)', fontSize: '0.875rem', background: 'none', border: 'none', padding: 0, fontFamily: 'inherit', textAlign: 'left' }}
+                                                    title={`Abrir perfil de ${c.name}`}
                                                     onClick={() => navigate(`/admin/clients/${c.id}`)}>
                                                     {c.name}
-                                                </span>
+                                                </button>
                                             </div>
                                         </td>
-                                        <td style={{ textAlign: 'center', fontSize: '0.875rem', fontWeight: 600 }}>{c.sessions}</td>
-                                        <td style={{ textAlign: 'center' }}><span style={{ color: '#10b981', fontWeight: 700, fontSize: '0.875rem' }}>{c.completed}</span></td>
-                                        <td style={{ textAlign: 'center' }}><span style={{ color: c.falta > 0 ? '#ef4444' : 'var(--text-muted)', fontWeight: 700, fontSize: '0.875rem' }}>{c.falta}</span></td>
-                                        <td style={{ textAlign: 'right', fontWeight: 800, fontSize: '0.9375rem', fontVariantNumeric: 'tabular-nums' }}>{formatBRL(c.revenue)}</td>
-                                        <td style={{ textAlign: 'center', color: c.avgViewers > 0 ? '#2dd4bf' : 'var(--text-muted)', fontSize: '0.875rem', fontWeight: 600 }}>
+                                        <td data-label="Sessões" style={{ textAlign: 'center', fontSize: '0.875rem', fontWeight: 600 }}>{c.sessions}</td>
+                                        <td data-label="Concluídas" style={{ textAlign: 'center' }}><span style={{ color: 'var(--success)', fontWeight: 700, fontSize: '0.875rem' }}>{c.completed}</span></td>
+                                        <td data-label="Faltas" style={{ textAlign: 'center' }}><span style={{ color: c.falta > 0 ? 'var(--danger)' : 'var(--text-muted)', fontWeight: 700, fontSize: '0.875rem' }}>{c.falta}</span></td>
+                                        <td data-label="Receita" style={{ textAlign: 'right', fontWeight: 800, fontSize: '0.9375rem', fontVariantNumeric: 'tabular-nums' }}>{formatBRL(c.revenue)}</td>
+                                        <td data-label="Média viewers" style={{ textAlign: 'center', color: c.avgViewers > 0 ? 'var(--accent-text)' : 'var(--text-muted)', fontSize: '0.875rem', fontWeight: 600 }}>
                                             {c.avgViewers > 0 ? c.avgViewers.toLocaleString('pt-BR') : '—'}
                                         </td>
                                     </tr>
