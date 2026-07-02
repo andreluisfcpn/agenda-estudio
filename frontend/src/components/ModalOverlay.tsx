@@ -2,6 +2,10 @@ import React, { useRef, useCallback, useEffect } from 'react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 
 /**
+ * @deprecated Não usar em código novo — use BottomSheetModal (sheet no mobile,
+ * dialog no desktop, prop `size`). Mantido apenas até a remoção após a Fase 1
+ * da padronização do admin (ver docs/tecnico/design-system.md).
+ *
  * ModalOverlay – wraps modal content and closes when:
  *  1. BOTH mousedown AND mouseup happen on the overlay (outside the modal)
  *  2. User presses Escape key

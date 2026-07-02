@@ -5,7 +5,7 @@ import { contractsApi, Contract } from '../api/client';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import { useUI } from '../context/UIContext';
 import { FileText } from 'lucide-react';
-import ModalOverlay from '../components/ModalOverlay';
+import BottomSheetModal from '../components/BottomSheetModal';
 import AdminPageHeader from '../components/admin/AdminPageHeader';
 import { HeroSkeleton, TableSkeleton } from '../components/ui/SkeletonLoader';
 import StatusBadge from '../components/ui/StatusBadge';
@@ -465,9 +465,8 @@ export default function AdminContractsPage() {
 
             {/* Edit Modal */}
             {editContract && (
-                <ModalOverlay onClose={() => setEditContract(null)}>
-                    <div className="modal">
-                        <h2 className="modal-title">Editar Contrato</h2>
+                <BottomSheetModal isOpen onClose={() => setEditContract(null)} title="Editar Contrato" size="md">
+                    <div>
                         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '16px' }}>
                             {editContract.type} · {editContract.tier} · {editContract.user?.name} · {episodeCount(editContract.durationMonths)} gravações
                         </p>
@@ -512,12 +511,12 @@ export default function AdminContractsPage() {
                                 O cliente poderá pagar as parcelas deste contrato via boleto. Desligado por padrão.
                             </p>
                         </div>
-                        <div className="modal-actions">
+                        <div className="admin-actions-row">
                             <button className="btn btn-secondary" onClick={() => setEditContract(null)}>Cancelar</button>
                             <button className="btn btn-primary" onClick={handleEdit}>💾 Salvar</button>
                         </div>
                     </div>
-                </ModalOverlay>
+                </BottomSheetModal>
             )}
 
             {/* Cancel (Force) Modal */}
