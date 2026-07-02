@@ -134,8 +134,6 @@ CMD ["sh", "-c", "\
   echo \"JWT_SECRET set: $([ -n \"$JWT_SECRET\" ] && echo YES || echo NO)\" && \
   cd backend && \
   if [ -n \"$DATABASE_URL\" ]; then \
-    echo 'Resolving any failed migrations...' && \
-    npx prisma migrate resolve --applied 20260422110702_sync_notifications_and_indexes 2>/dev/null || true && \
     echo 'Running prisma migrate deploy...' && \
     npx prisma migrate deploy && \
     echo 'Migrations applied successfully.' || \
