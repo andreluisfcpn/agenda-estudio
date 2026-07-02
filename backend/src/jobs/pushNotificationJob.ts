@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma.js';
+import { saoPauloParts, spDaysFromToday, spDdMm } from '../lib/spTime.js';
 import { createNotification } from '../modules/notifications/notificationService.js';
 import { NotificationType } from '../generated/prisma/client.js';
 
@@ -9,7 +10,10 @@ import { NotificationType } from '../generated/prisma/client.js';
  */
 export async function runPushNotificationJob(): Promise<void> {
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    // São Paulo calendar day as 00:00Z (matches @db.Date + keeps day windows/labels correct
+    // after 21:00 SP, when the UTC date has already rolled over to tomorrow).
+    const sp = saoPauloParts(now);
+    const today = new Date(Date.UTC(sp.y, sp.m - 1, sp.day));
 
     // Get all users with active push subscriptions
     const usersWithSubs = await prisma.pushSubscription.findMany({
@@ -101,28 +105,31 @@ async function computeUserNotifications(
         });
     }
 
-    // Unconfirmed bookings (today or tomorrow)
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    // Unconfirmed bookings (today or tomorrow) — ON THE SÃO PAULO CALENDAR. The old
+    // UTC-date comparison flipped to "tomorrow" at 21:00 SP, mislabeling HOJE/Amanhã.
+    const sp = saoPauloParts(now);
+    const spTodayUtc = new Date(Date.UTC(sp.y, sp.m - 1, sp.day));
+    const spTomorrowUtc = new Date(spTodayUtc.getTime() + 86_400_000);
 
     const unconfirmedBookings = await prisma.booking.findMany({
-        where: { status: 'RESERVED', date: { gte: today, lte: tomorrow }, ...(!isAdmin ? { userId } : {}) },
+        where: { status: 'RESERVED', date: { gte: spTodayUtc, lte: spTomorrowUtc }, ...(!isAdmin ? { userId } : {}) },
         include: { user: { select: { name: true } } },
         take: 5,
     });
 
     for (const b of unconfirmedBookings) {
-        const isToday = new Date(b.date).toISOString().split('T')[0] === today.toISOString().split('T')[0];
+        const isToday = spDaysFromToday(new Date(b.date), now) === 0;
         // For clients, today's session signal is owned by the 7am dailyConfirmationJob
         // (paid-aware). Avoid the 5-min job pre-empting that push and shadowing it.
         if (isToday && !isAdmin) continue;
+        const dayLabel = isToday ? 'HOJE' : `amanhã (${spDdMm(new Date(b.date))})`;
         notifications.push({
             type: 'BOOKING_UNCONFIRMED',
             severity: isToday ? 'critical' : 'warning',
             title: '⏳ Sessão Não Confirmada',
             message: isAdmin
-                ? `${b.user.name} — ${isToday ? 'HOJE' : 'Amanhã'} às ${b.startTime}`
-                : `Sua sessão de ${isToday ? 'HOJE' : 'Amanhã'} às ${b.startTime} precisa ser confirmada`,
+                ? `${b.user.name} — ${dayLabel} às ${b.startTime}`
+                : `Sua sessão de ${dayLabel} às ${b.startTime} precisa ser confirmada`,
             entityType: 'BOOKING',
             entityId: b.id,
             actionUrl: isAdmin ? '/admin/today' : '/dashboard',

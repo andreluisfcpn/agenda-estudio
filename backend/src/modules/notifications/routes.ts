@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../../lib/prisma.js';
+import { redis } from '../../lib/redis.js';
 import { authenticate } from '../../middleware/auth.js';
+import { saoPauloParts } from '../../lib/spTime.js';
 import {
     markAsRead,
     markAllAsRead,
@@ -24,20 +26,39 @@ interface ComputedNotification {
     source: 'computed' | 'persisted';
 }
 
-// ─── GET /api/notifications ─────────────────────────────
-// Returns a mix of computed (real-time) and persisted (DB) notifications.
+// ─── Computed-notification read state ────────────────────
+// Computed notifications are re-generated on every GET (they mirror live data:
+// pending cancellation, overdue payment, …), so a plain DB markAllAsRead never
+// touches them and they resurrect unread on the next poll. We remember which
+// computed IDs the user has read in a per-user Redis set. The IDs are stable
+// (`cancellation-pending-<contractId>` etc.), and once the underlying condition
+// resolves the entry simply expires.
+const COMPUTED_READ_TTL = 30 * 24 * 3600; // 30 days, refreshed on every write
+const computedReadKey = (userId: string) => `notif:computed-read:${userId}`;
+const COMPUTED_ID_RE = /^(contract-expiring|payment-overdue|payment-failed|booking-unconfirmed|cancellation-pending|contract-awaiting)-/;
 
-router.get('/', authenticate, async (req: Request, res: Response) => {
-    try {
-        const notifications: ComputedNotification[] = [];
-        const userRole = req.user!.role;
-        const userId = req.user!.userId;
-        const now = new Date();
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+const COMPUTED_READ_MAX = 500; // hard cap so a client can't grow the per-user set unbounded
 
-        // ── Computed Notifications (real-time from data) ──
+async function markComputedRead(userId: string, ids: string[]): Promise<void> {
+    // Length cap rejects forged long ids; real computed ids are `<prefix>-<uuid>` (~50 chars).
+    const valid = ids.filter(id => id.length <= 80 && COMPUTED_ID_RE.test(id));
+    if (valid.length === 0) return;
+    const key = computedReadKey(userId);
+    try { if ((await redis.scard(key)) >= COMPUTED_READ_MAX) return; } catch { /* best-effort */ }
+    await redis.sadd(key, ...valid);
+    await redis.expire(key, COMPUTED_READ_TTL);
+}
 
-        // 1. Contracts expiring within threshold
+/** Builds the real-time (computed) notifications for a user/role. Shared by GET and read-all. */
+async function buildComputedNotifications(userId: string, userRole: string): Promise<ComputedNotification[]> {
+    const notifications: ComputedNotification[] = [];
+    const now = new Date();
+    // São Paulo calendar day as 00:00Z — matches Booking.date (@db.Date) and keeps
+    // day-based windows/labels correct after 21:00 SP (when the UTC date already flipped).
+    const sp = saoPauloParts(now);
+    const today = new Date(Date.UTC(sp.y, sp.m - 1, sp.day));
+
+    // 1. Contracts expiring within threshold
         const thresholdDays = userRole === 'ADMIN' ? 7 : 15;
         const targetDateFromNow = new Date(today);
         targetDateFromNow.setDate(targetDateFromNow.getDate() + thresholdDays);
@@ -196,10 +217,33 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
             });
         }
 
-        // NOTE (notification pruning, jun/2026): the noisy "info" FLEX_CREDITS_LOW (≤2 credits)
-        // and the admin-only CLIENT_INACTIVE computed notifications were removed — they fired on
-        // every poll and added little value. The meaningful FLEX signals (crédito perdido =
-        // critical, "grave esta semana" = warning) still come from the jobs as persisted rows.
+    // NOTE (notification pruning, jun/2026): the noisy "info" FLEX_CREDITS_LOW (≤2 credits)
+    // and the admin-only CLIENT_INACTIVE computed notifications were removed — they fired on
+    // every poll and added little value. The meaningful FLEX signals (crédito perdido =
+    // critical, "grave esta semana" = warning) still come from the jobs as persisted rows.
+
+    return notifications;
+}
+
+// ─── GET /api/notifications ─────────────────────────────
+// Returns a mix of computed (real-time) and persisted (DB) notifications.
+
+router.get('/', authenticate, async (req: Request, res: Response) => {
+    try {
+        const userRole = req.user!.role;
+        const userId = req.user!.userId;
+
+        const notifications = await buildComputedNotifications(userId, userRole);
+
+        // Apply the computed-read state: read items stay visible (grey) but leave the counters.
+        try {
+            const readIds = new Set(await redis.smembers(computedReadKey(userId)));
+            if (readIds.size > 0) {
+                for (const n of notifications) {
+                    if (readIds.has(n.id)) n.read = true;
+                }
+            }
+        } catch { /* redis best-effort — worst case they show unread */ }
 
         // ── Persisted Notifications (from DB) ──
         const persistedNotifs = await getUserNotifications(userId, 30);
@@ -259,6 +303,12 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
 router.patch('/read-all', authenticate, async (req: Request, res: Response) => {
     try {
         const count = await markAllAsRead(req.user!.userId);
+        // Also remember the CURRENT computed notifications as read — otherwise they
+        // resurrect unread on the next poll (e.g. "Cancelamento Pendente").
+        try {
+            const computed = await buildComputedNotifications(req.user!.userId, req.user!.role);
+            await markComputedRead(req.user!.userId, computed.map(n => n.id));
+        } catch (err) { console.error('[NOTIF] computed read-all falhou (best-effort):', err); }
         res.json({ message: `${count} notificação(ões) marcada(s) como lida(s).`, count });
     } catch (err) {
         console.error('Erro ao marcar notificações:', err);
@@ -269,7 +319,14 @@ router.patch('/read-all', authenticate, async (req: Request, res: Response) => {
 // ─── PATCH /api/notifications/:id/read ──────────────────
 router.patch('/:id/read', authenticate, async (req: Request, res: Response) => {
     try {
-        const success = await markAsRead(req.user!.userId, req.params.id as string);
+        const id = req.params.id as string;
+        // Computed notifications don't live in the DB — record the read in Redis.
+        if (COMPUTED_ID_RE.test(id)) {
+            await markComputedRead(req.user!.userId, [id]);
+            res.json({ message: 'Marcada como lida.' });
+            return;
+        }
+        const success = await markAsRead(req.user!.userId, id);
         if (!success) return res.status(404).json({ error: 'Notificação não encontrada.' });
         res.json({ message: 'Marcada como lida.' });
     } catch (err) {

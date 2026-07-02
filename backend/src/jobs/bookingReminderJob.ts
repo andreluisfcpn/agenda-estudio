@@ -1,9 +1,18 @@
 import { prisma } from '../lib/prisma.js';
 import { createNotification } from '../modules/notifications/notificationService.js';
+import { spDaysFromToday, spDdMm } from '../lib/spTime.js';
 
 /**
  * Booking Reminder Job — runs every 30 minutes.
  * Sends reminders 24h and 2h before confirmed/reserved sessions.
+ *
+ * Copy rules (bugfix jun/2026):
+ *  - The day label ("hoje"/"amanhã") is derived from the SP CALENDAR at creation
+ *    time, never assumed from the window — and the explicit date (DD/MM) is always
+ *    included, so a reminder read hours later (e.g. next morning, in the bell) can't
+ *    claim "amanhã" for a session that is already today.
+ *  - Each window has its OWN dedup key: the default type+entity key made the 24h
+ *    reminder (warning, 24h dedup TTL) swallow the day-of 2h reminder entirely.
  */
 export async function runBookingReminderJob(): Promise<void> {
     const now = new Date();
@@ -43,17 +52,18 @@ export async function runBookingReminderJob(): Promise<void> {
             if (startDateTime < rangeStart || startDateTime > rangeEnd) continue;
 
             try {
-                const dateStr = booking.date.toISOString().split('T')[0];
-                const [day, month] = [dateStr.slice(8, 10), dateStr.slice(5, 7)];
-                const formattedDate = `${day}/${month}`;
+                const ddmm = spDdMm(booking.date);
+                const daysAhead = spDaysFromToday(booking.date, now);
+                // SP-calendar label at creation time; date always explicit.
+                const dayLabel = daysAhead === 0 ? 'hoje' : daysAhead === 1 ? 'amanhã' : `em ${ddmm}`;
 
                 const title = window.label === '2h'
                     ? '🎙️ Sessão em 2 horas!'
-                    : '📅 Sessão amanhã';
+                    : daysAhead === 1 ? `📅 Sessão amanhã (${ddmm})` : `📅 Lembrete de sessão (${ddmm})`;
 
                 const message = window.label === '2h'
                     ? `Sua gravação começa às ${booking.startTime} — prepare-se!`
-                    : `Lembrete: você tem sessão amanhã (${formattedDate}) às ${booking.startTime}`;
+                    : `Lembrete: você tem sessão ${dayLabel === 'em ' + ddmm ? dayLabel : `${dayLabel} (${ddmm})`} às ${booking.startTime}`;
 
                 await createNotification({
                     userId: booking.user.id,
@@ -65,6 +75,9 @@ export async function runBookingReminderJob(): Promise<void> {
                     entityId: booking.id,
                     actionUrl: '/my-bookings',
                     sendPush: true,
+                    // Per-window identity — without it the 24h reminder's dedup (TTL 24h)
+                    // suppressed the 2h reminder (same type+entity default key).
+                    dedupKey: `reminder:${window.label}:${booking.id}:${booking.date.toISOString().slice(0, 10)}`,
                 });
 
                 totalSent++;

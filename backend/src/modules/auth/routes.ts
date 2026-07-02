@@ -3,12 +3,6 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import multer from 'multer';
-import path from 'node:path';
-import fs from 'node:fs';
-import { fileURLToPath } from 'node:url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 import sharp from 'sharp';
 import { prisma } from '../../lib/prisma.js';
 import { config } from '../../config/index.js';
@@ -33,10 +27,6 @@ const upload = multer({
         else cb(new Error('Apenas imagens são permitidas.'));
     },
 });
-
-// Uploads directory — resolve from project root
-const UPLOADS_DIR = path.resolve(__dirname, '../../../uploads');
-if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 // ─── Validation Schemas ─────────────────────────────────
 
@@ -97,6 +87,26 @@ function setTokenCookies(res: Response, accessToken: string, refreshToken: strin
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days (VULN-06 fix: was 365 days)
         path: '/api/auth/refresh',
     });
+}
+
+// ─── Helper: client-facing user shape ────────────────────
+// MUST match GET /me and PATCH /profile. Every auth response returns this full
+// shape because the frontend does updateUser(res.user) — a partial object here
+// would WIPE fields (e.g. cpfCnpj) from the AuthContext, making the contract
+// wizards re-ask for data the user already saved.
+interface AuthUserRecord {
+    id: string; email: string | null; name: string; phone: string | null;
+    photoUrl: string | null; role: string; cpfCnpj: string | null;
+    address: string | null; city: string | null; state: string | null;
+    socialLinks: string | null; essentialNotificationsOnly: boolean;
+}
+
+function toAuthUser(u: AuthUserRecord) {
+    return {
+        id: u.id, email: u.email, name: u.name, phone: u.phone, photoUrl: u.photoUrl, role: u.role,
+        cpfCnpj: u.cpfCnpj, address: u.address, city: u.city, state: u.state,
+        socialLinks: u.socialLinks, essentialNotificationsOnly: u.essentialNotificationsOnly,
+    };
 }
 
 // ─── POST /api/auth/register/send-code ──────────────────
@@ -187,16 +197,7 @@ router.post('/register', async (req: Request, res: Response) => {
 
         setTokenCookies(res, tokens.accessToken, tokens.refreshToken);
 
-        res.status(201).json({
-            user: {
-                id: user.id,
-                email: user.email,
-                name: user.name,
-                phone: user.phone,
-                photoUrl: null,
-                role: user.role,
-            },
-        });
+        res.status(201).json({ user: toAuthUser(user) });
     } catch (err) {
         console.error('Registration error details:', err);
         if (err instanceof z.ZodError) {
@@ -241,16 +242,7 @@ router.post('/login', async (req: Request, res: Response) => {
 
         setTokenCookies(res, tokens.accessToken, tokens.refreshToken);
 
-        res.json({
-            user: {
-                id: user.id,
-                email: user.email,
-                name: user.name,
-                phone: user.phone,
-                photoUrl: user.photoUrl,
-                role: user.role,
-            },
-        });
+        res.json({ user: toAuthUser(user) });
     } catch (err) {
         if (err instanceof z.ZodError) {
             res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
@@ -324,11 +316,7 @@ router.post('/login/verify-code', async (req: Request, res: Response) => {
         const tokens = generateTokens({ userId: user.id, email: user.email || '', role: user.role });
         setTokenCookies(res, tokens.accessToken, tokens.refreshToken);
 
-        res.json({
-            user: {
-                id: user.id, email: user.email, name: user.name, phone: user.phone, photoUrl: user.photoUrl, role: user.role,
-            },
-        });
+        res.json({ user: toAuthUser(user) });
     } catch (err) {
         if (err instanceof z.ZodError) {
             res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
@@ -440,11 +428,7 @@ router.post('/google', async (req: Request, res: Response) => {
         const tokens = generateTokens({ userId: user.id, email: user.email || '', role: user.role });
         setTokenCookies(res, tokens.accessToken, tokens.refreshToken);
 
-        res.json({
-            user: {
-                id: user.id, email: user.email, name: user.name, phone: user.phone, photoUrl: user.photoUrl, role: user.role
-            }
-        });
+        res.json({ user: toAuthUser(user) });
     } catch (err) {
         // AUTH-M3 FIX: Don't expose internal error object to client
         console.error('[AUTH:Google] Authentication error:', err);
@@ -579,7 +563,23 @@ router.patch('/profile', authenticate, async (req: Request, res: Response) => {
 
 // ─── POST /api/auth/profile/photo ───────────────────────
 
-router.post('/profile/photo', authenticate, upload.single('photo'), async (req: Request, res: Response) => {
+// Multer errors (file too large, unexpected field, filter rejection) surface in
+// English by default. Wrap the middleware so the client always gets pt-BR.
+const photoUploadMw = (req: Request, res: Response, next: (err?: unknown) => void) => {
+    upload.single('photo')(req, res, (err: unknown) => {
+        if (!err) return next();
+        console.error('[PHOTO] multer error:', err);
+        const code = (err as { code?: string }).code;
+        if (code === 'LIMIT_FILE_SIZE') {
+            res.status(413).json({ error: 'Imagem muito grande (máx. 10MB).' });
+            return;
+        }
+        const msg = getErrorMessage(err);
+        res.status(400).json({ error: msg === 'Apenas imagens são permitidas.' ? msg : 'Não foi possível receber a imagem. Tente novamente.' });
+    });
+};
+
+router.post('/profile/photo', authenticate, photoUploadMw, async (req: Request, res: Response) => {
     try {
         const file = req.file;
         if (!file) {
@@ -587,29 +587,26 @@ router.post('/profile/photo', authenticate, upload.single('photo'), async (req: 
             return;
         }
 
-        // Process image: resize to 256x256 square, JPEG output
-        // AUTH-H3 FIX: Sanitize userId to prevent theoretical path traversal
-        const safeUserId = req.user!.userId.replace(/[^a-zA-Z0-9\-_]/g, '');
-        const filename = `photo_${safeUserId}_${Date.now()}.jpg`;
-        const outputPath = path.join(UPLOADS_DIR, filename);
-
-        await sharp(file.buffer)
+        // Process image: resize to 256x256 square JPEG and store it as a data-URL in
+        // the DB. Railway's filesystem is ephemeral — files under /uploads vanish on
+        // every redeploy, which used to leave avatars 404 (empty gradient circle).
+        // At 256px/q80 the data-URL is ~15-25KB, fine for a text column.
+        const buffer = await sharp(file.buffer)
             .resize(256, 256, { fit: 'cover', position: 'centre' })
-            .jpeg({ quality: 85 })
-            .toFile(outputPath);
-
-        const photoUrl = `/uploads/${filename}`;
+            .jpeg({ quality: 80 })
+            .toBuffer();
+        const photoUrl = `data:image/jpeg;base64,${buffer.toString('base64')}`;
 
         const user = await prisma.user.update({
             where: { id: req.user!.userId },
             data: { photoUrl },
-            select: { id: true, email: true, name: true, phone: true, photoUrl: true, role: true },
         });
 
-        res.json({ user, message: 'Foto atualizada com sucesso.' });
+        res.json({ user: toAuthUser(user), message: 'Foto atualizada com sucesso.' });
     } catch (err: unknown) {
+        // Sharp/Prisma details stay in the server log — the client gets pt-BR.
         console.error('Photo upload error:', err);
-        res.status(500).json({ error: 'Erro ao processar foto: ' + getErrorMessage(err) });
+        res.status(500).json({ error: 'Não foi possível processar a imagem. Tente novamente.' });
     }
 });
 

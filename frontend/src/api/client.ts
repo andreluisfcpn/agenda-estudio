@@ -73,12 +73,37 @@ export const authApi = {
     logout: () => request<{ message: string }>('/auth/logout', { method: 'POST' }),
     updateProfile: (data: { name?: string; phone?: string; password?: string; cpfCnpj?: string; address?: string; city?: string; state?: string; socialLinks?: any; essentialNotificationsOnly?: boolean }) => request<{ user: User; message: string }>('/auth/profile', { method: 'PATCH', body: JSON.stringify(data) }),
     uploadPhoto: async (file: File): Promise<{ user: User; message: string }> => {
-        const formData = new FormData();
-        formData.append('photo', file);
-        const res = await fetch(`${API_BASE}/auth/profile/photo`, {
-            method: 'POST', credentials: 'include', body: formData,
-        });
-        if (!res.ok) { const body = await res.json().catch(() => ({ error: 'Erro' })); throw new Error(body.error); }
+        // Falhas de rede transitórias ("Failed to fetch") apareciam cruas em inglês no
+        // 1º envio. Timeout de 30s + 1 retry automático + mensagens sempre em pt-BR.
+        const attempt = async (): Promise<Response> => {
+            const formData = new FormData();
+            formData.append('photo', file);
+            const ctrl = new AbortController();
+            const t = setTimeout(() => ctrl.abort(), 30_000);
+            try {
+                return await fetch(`${API_BASE}/auth/profile/photo`, {
+                    method: 'POST', credentials: 'include', body: formData, signal: ctrl.signal,
+                });
+            } finally {
+                clearTimeout(t);
+            }
+        };
+        let res: Response;
+        try {
+            res = await attempt();
+        } catch {
+            // Erro de rede/timeout — espera breve e tenta 1 vez de novo.
+            await new Promise(r => setTimeout(r, 1500));
+            try {
+                res = await attempt();
+            } catch {
+                throw new Error('Falha de conexão ao enviar a foto. Verifique sua internet e tente novamente.');
+            }
+        }
+        if (!res.ok) {
+            const body = await res.json().catch(() => ({ error: 'Não foi possível enviar a foto. Tente novamente.' }));
+            throw new Error(body.error || 'Não foi possível enviar a foto. Tente novamente.');
+        }
         return res.json();
     },
 };

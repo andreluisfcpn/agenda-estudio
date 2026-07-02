@@ -16,6 +16,23 @@ export default function ImageCropper({ imageSrc, onConfirm, onCancel }: ImageCro
 
     const SIZE = 256;
 
+    // Zoom mínimo = "cover": a imagem nunca pode ficar menor que o círculo —
+    // senão o export (JPEG, sem alfa) ganha margens pretas e a foto não preenche
+    // o círculo do avatar.
+    const coverZoom = img ? SIZE / Math.min(img.width, img.height) : 1;
+
+    // Mantém a imagem sempre cobrindo o canvas: o deslocamento não pode passar
+    // da metade da sobra em cada eixo.
+    const clampOffset = useCallback((o: { x: number; y: number }, z: number, image: HTMLImageElement | null) => {
+        if (!image) return o;
+        const maxX = Math.max(0, (image.width * z - SIZE) / 2);
+        const maxY = Math.max(0, (image.height * z - SIZE) / 2);
+        return {
+            x: Math.min(maxX, Math.max(-maxX, o.x)),
+            y: Math.min(maxY, Math.max(-maxY, o.y)),
+        };
+    }, []);
+
     useEffect(() => {
         const image = new Image();
         image.onload = () => {
@@ -61,10 +78,10 @@ export default function ImageCropper({ imageSrc, onConfirm, onCancel }: ImageCro
 
     const handleMouseMove = (e: React.MouseEvent) => {
         if (!dragging) return;
-        setOffset({
+        setOffset(clampOffset({
             x: dragStart.current.ox + (e.clientX - dragStart.current.x),
             y: dragStart.current.oy + (e.clientY - dragStart.current.y),
-        });
+        }, zoom, img));
     };
 
     const handleMouseUp = () => setDragging(false);
@@ -78,10 +95,10 @@ export default function ImageCropper({ imageSrc, onConfirm, onCancel }: ImageCro
     const handleTouchMove = (e: React.TouchEvent) => {
         if (!dragging) return;
         const t = e.touches[0];
-        setOffset({
+        setOffset(clampOffset({
             x: dragStart.current.ox + (t.clientX - dragStart.current.x),
             y: dragStart.current.oy + (t.clientY - dragStart.current.y),
-        });
+        }, zoom, img));
     };
 
     const handleConfirm = () => {
@@ -89,11 +106,15 @@ export default function ImageCropper({ imageSrc, onConfirm, onCancel }: ImageCro
         if (!canvas) return;
         if (img) {
             const ctx = canvas.getContext('2d')!;
-            ctx.clearRect(0, 0, SIZE, SIZE);
+            // Fundo antes do draw (belt): JPEG não tem alfa — qualquer área não
+            // coberta viraria preto no export.
+            ctx.fillStyle = '#0b1620';
+            ctx.fillRect(0, 0, SIZE, SIZE);
+            const safe = clampOffset(offset, zoom, img);
             const w = img.width * zoom;
             const h = img.height * zoom;
-            const x = (SIZE - w) / 2 + offset.x;
-            const y = (SIZE - h) / 2 + offset.y;
+            const x = (SIZE - w) / 2 + safe.x;
+            const y = (SIZE - h) / 2 + safe.y;
             ctx.drawImage(img, x, y, w, h);
         }
         canvas.toBlob((blob) => {
@@ -101,8 +122,8 @@ export default function ImageCropper({ imageSrc, onConfirm, onCancel }: ImageCro
         }, 'image/jpeg', 0.9);
     };
 
-    const minZoom = img ? SIZE / Math.max(img.width, img.height) * 0.5 : 0.1;
-    const maxZoom = img ? SIZE / Math.min(img.width, img.height) * 3 : 5;
+    const minZoom = coverZoom;              // nunca menor que "cobrir o círculo"
+    const maxZoom = coverZoom * 3;
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
@@ -140,7 +161,12 @@ export default function ImageCropper({ imageSrc, onConfirm, onCancel }: ImageCro
                     max={maxZoom}
                     step={0.01}
                     value={zoom}
-                    onChange={e => setZoom(parseFloat(e.target.value))}
+                    onChange={e => {
+                        const z = parseFloat(e.target.value);
+                        setZoom(z);
+                        // Ao reduzir o zoom, o deslocamento anterior pode estourar os novos limites.
+                        setOffset(o => clampOffset(o, z, img));
+                    }}
                     style={{ flex: 1, accentColor: 'var(--accent-primary)' }}
                 />
                 <span style={{ fontSize: '0.75rem' }}>🔍+</span>

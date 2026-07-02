@@ -11,6 +11,7 @@ import {
   CustomContractData,
   CustomConflict,
   stripeApi,
+  authApi,
 } from "../api/client";
 import { useBusinessConfig } from "../hooks/useBusinessConfig";
 import { getClientPaymentMethods } from "../constants/paymentMethods";
@@ -89,7 +90,7 @@ export default function CustomContractWizard({
   onClose,
   onComplete,
 }: CustomContractWizardProps) {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const [step, setStep] = useState<WizardStep>(1);
   // PIX needs a CPF/CNPJ — gate the contract creation when it's missing.
   const [showCpfPrompt, setShowCpfPrompt] = useState(false);
@@ -247,6 +248,15 @@ export default function CustomContractWizard({
   const executeCreation = async (resolutions: any[] = [], cpfChecked = false) => {
     // PIX is emitted as a Cora invoice in the user's name → requires a CPF/CNPJ.
     if (!cpfChecked && paymentMethod === "PIX" && !isValidCpfCnpj(user?.cpfCnpj)) {
+      // Belt-and-braces: o contexto pode estar com um user parcial (ex.: sessão
+      // antiga) — confere no servidor antes de pedir o CPF de novo.
+      try {
+        const { user: fresh } = await authApi.me();
+        updateUser(fresh);
+        if (isValidCpfCnpj(fresh?.cpfCnpj)) {
+          return executeCreation(resolutions, true);
+        }
+      } catch { /* offline/expirado — cai no prompt normalmente */ }
       pendingResolutions.current = resolutions;
       setShowCpfPrompt(true);
       return;

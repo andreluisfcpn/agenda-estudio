@@ -97,18 +97,15 @@ export default function NotificationBell() {
         return () => document.removeEventListener('mousedown', handleClick);
     }, [open, isMobile]);
 
-    const handleMarkRead = async (id: string, source: string, e: React.MouseEvent) => {
+    // Backend agora registra leitura também das computadas (Redis) — sem branch por source,
+    // senão elas ressuscitavam não-lidas no próximo poll.
+    const handleMarkRead = async (id: string, _source: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        if (source === 'persisted') {
-            try {
-                await notificationsApi.markAsRead(id);
-                setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-                setSummary(prev => ({ ...prev, unread: Math.max(0, prev.unread - 1) }));
-            } catch { }
-        } else {
-            setNotifications(prev => prev.filter(n => n.id !== id));
-            setSummary(prev => ({ ...prev, total: prev.total - 1, unread: Math.max(0, prev.unread - 1) }));
-        }
+        try {
+            await notificationsApi.markAsRead(id);
+            setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+            setSummary(prev => ({ ...prev, unread: Math.max(0, prev.unread - 1) }));
+        } catch { }
     };
 
     const handleMarkAllRead = async () => {

@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import { redis } from '../lib/redis.js';
+import { saoPauloParts } from '../lib/spTime.js';
 import { createNotification } from '../modules/notifications/notificationService.js';
 
 /**
@@ -26,24 +27,6 @@ import { createNotification } from '../modules/notifications/notificationService
  */
 
 const TARGET_HOUR_SP = 7;
-
-interface SpParts { y: number; m: number; day: number; hour: number; dateStr: string; }
-
-// Calendar parts of an instant in America/Sao_Paulo (UTC-3, no DST since 2019).
-function saoPauloParts(d: Date): SpParts {
-    const fmt = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'America/Sao_Paulo',
-        year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false,
-    });
-    const parts: Record<string, string> = {};
-    for (const p of fmt.formatToParts(d)) parts[p.type] = p.value;
-    // en-CA gives 24h; "24" can appear at midnight on some engines → normalize to "00".
-    const hour = parts.hour === '24' ? 0 : Number(parts.hour);
-    return {
-        y: Number(parts.year), m: Number(parts.month), day: Number(parts.day),
-        hour, dateStr: `${parts.year}-${parts.month}-${parts.day}`,
-    };
-}
 
 type PaymentLite = { status: string; dueDate: Date | null; bookingId: string | null };
 type BookingForConfirm = {

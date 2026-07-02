@@ -1,7 +1,7 @@
 import { getErrorMessage } from '../utils/errors';
 import React, { useState, useEffect, useRef } from 'react';
 import BottomSheetModal from './BottomSheetModal';
-import { PricingConfig, AddOnConfig, bookingsApi, contractsApi, Slot, pricingApi, stripeApi } from '../api/client';
+import { PricingConfig, AddOnConfig, bookingsApi, contractsApi, Slot, pricingApi, stripeApi, authApi } from '../api/client';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import { getClientPaymentMethods, type PaymentMethodKey } from '../constants/paymentMethods';
 import InlineCheckout from './InlineCheckout';
@@ -32,7 +32,7 @@ const DAY_NAMES_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const MONTH_NAMES_SHORT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
 export default function ContractWizard({ pricing, onClose, onComplete, onOpenCustom }: ContractWizardProps) {
-    const { user } = useAuth();
+    const { user, updateUser } = useAuth();
     const [step, setStep] = useState<WizardStep>(1);
     // PIX needs a CPF/CNPJ — gate the contract creation when it's missing.
     const [showCpfPrompt, setShowCpfPrompt] = useState(false);
@@ -150,6 +150,16 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
     const executeCreation = async (resolutions: any[] = [], cpfChecked = false) => {
         // PIX is emitted as a Cora invoice in the user's name → requires a CPF/CNPJ.
         if (!cpfChecked && paymentMethod === 'PIX' && !isValidCpfCnpj(user?.cpfCnpj)) {
+            // Belt-and-braces: o contexto pode estar com um user parcial (ex.: sessão
+            // antiga) — confere no servidor antes de pedir o CPF de novo.
+            try {
+                const { user: fresh } = await authApi.me();
+                updateUser(fresh);
+                if (isValidCpfCnpj(fresh?.cpfCnpj)) {
+                    // CPF já está salvo no perfil — segue sem perguntar.
+                    return executeCreation(resolutions, true);
+                }
+            } catch { /* offline/expirado — cai no prompt normalmente */ }
             pendingResolutions.current = resolutions;
             setShowCpfPrompt(true);
             return;
