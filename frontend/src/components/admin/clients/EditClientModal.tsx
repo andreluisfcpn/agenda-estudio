@@ -106,17 +106,17 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
     };
 
     const editFieldErrorStyle = {
-        fontSize: '0.6875rem', color: '#ef4444', fontWeight: 600, marginTop: '4px', paddingLeft: '4px',
+        fontSize: '0.6875rem', color: 'var(--danger)', fontWeight: 600, marginTop: '4px', paddingLeft: '4px',
     };
 
     return (
-        <BottomSheetModal isOpen onClose={onClose} hideHeader maxWidth="520px" className="admin-sheet" title="Editar Cliente">
+        <BottomSheetModal isOpen onClose={onClose} hideHeader size="md" className="admin-sheet" title="Editar Cliente">
                 {/* --- HEADER --- */}
                 <div style={{ padding: '28px 32px 0', borderBottom: 'none' }}>
                     <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <span style={{
                             width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            background: 'linear-gradient(135deg, #10b981, #11819B)', fontSize: '1rem'
+                            background: 'var(--accent-gradient-go)', fontSize: '1rem'
                         }}>✏️</span>
                         Editar Cliente
                     </h2>
@@ -126,7 +126,7 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                 </div>
 
                 {editError && Object.keys(editFieldErrors).length === 0 && (
-                    <div style={{ margin: '16px 32px 0', padding: '10px 14px', borderRadius: '10px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)', color: '#ef4444', fontSize: '0.8125rem', fontWeight: 600 }}>{editError}</div>
+                    <div style={{ margin: '16px 32px 0', padding: '10px 14px', borderRadius: '10px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)', color: 'var(--danger)', fontSize: '0.8125rem', fontWeight: 600 }}>{editError}</div>
                 )}
 
                 {editFetching ? (
@@ -144,7 +144,7 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                         </div>
 
                         {/* Name + CPF row */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                        <div className="admin-grid-2" style={{ gap: '12px', marginBottom: '12px' }}>
                             <div>
                                 <label style={editLabelStyle}>Nome *</label>
                                 <div style={{ position: 'relative' }}>
@@ -153,7 +153,6 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                                         value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })}
                                         placeholder="Nome completo"
                                         style={editInputStyle(!!editFieldErrors.name)}
-                                        onFocus={e => (e.currentTarget.style.borderColor = '#10b981')}
                                         onBlur={e => (e.currentTarget.style.borderColor = editFieldErrors.name ? 'rgba(239,68,68,0.5)' : 'var(--border-default)')}
                                     />
                                 </div>
@@ -167,7 +166,6 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                                         value={editForm.cpfCnpj} onChange={e => setEditForm({ ...editForm, cpfCnpj: maskCpfCnpj(e.target.value) })}
                                         placeholder="000.000.000-00"
                                         style={editInputStyle(false)}
-                                        onFocus={e => (e.currentTarget.style.borderColor = '#10b981')}
                                         onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-default)')}
                                     />
                                 </div>
@@ -178,7 +176,7 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                         <div>
                             <label style={editLabelStyle}>Status</label>
                             <div style={{ display: 'flex', gap: '4px' }}>
-                                {[{ key: 'ACTIVE', label: 'Ativo', color: '#10b981' }, { key: 'INACTIVE', label: 'Inativo', color: '#6b7280' }, { key: 'BLOCKED', label: 'Bloqueado', color: '#ef4444' }].map(s => (
+                                {[{ key: 'ACTIVE', label: 'Ativo', color: 'var(--success)' }, { key: 'INACTIVE', label: 'Inativo', color: '#6b7280' }, { key: 'BLOCKED', label: 'Bloqueado', color: 'var(--danger)' }].map(s => (
                                     <button key={s.key}
                                         onClick={() => setEditForm({ ...editForm, clientStatus: s.key })}
                                         style={{
@@ -222,7 +220,7 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                         </div>
 
                         {/* Email + Phone */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                        <div className="admin-grid-2" style={{ gap: '12px', marginBottom: '12px' }}>
                             <div>
                                 <label style={editLabelStyle}>E-mail *</label>
                                 <div style={{ position: 'relative' }}>
@@ -232,7 +230,6 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                                         onChange={e => setEditForm({ ...editForm, email: maskEmail(e.target.value) })}
                                         placeholder="email@exemplo.com"
                                         style={editInputStyle(!!editFieldErrors.email)}
-                                        onFocus={e => (e.currentTarget.style.borderColor = '#3b82f6')}
                                         onBlur={e => (e.currentTarget.style.borderColor = editFieldErrors.email ? 'rgba(239,68,68,0.5)' : 'var(--border-default)')}
                                     />
                                 </div>
@@ -247,7 +244,6 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                                         onChange={e => setEditForm({ ...editForm, phone: maskPhone(e.target.value) })}
                                         placeholder="(21) 99999-9999"
                                         style={editInputStyle(!!editFieldErrors.phone)}
-                                        onFocus={e => (e.currentTarget.style.borderColor = '#3b82f6')}
                                         onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-default)')}
                                     />
                                 </div>
@@ -265,7 +261,6 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                                     onChange={e => setEditForm({ ...editForm, socialLinks: e.target.value })}
                                     placeholder="Instagram, YouTube, TikTok..."
                                     style={editInputStyle(false)}
-                                    onFocus={e => (e.currentTarget.style.borderColor = '#3b82f6')}
                                     onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-default)')}
                                 />
                             </div>
@@ -281,7 +276,6 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                                     onChange={e => setEditForm({ ...editForm, address: e.target.value })}
                                     placeholder="Rua, número, complemento"
                                     style={editInputStyle(false)}
-                                    onFocus={e => (e.currentTarget.style.borderColor = '#3b82f6')}
                                     onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-default)')}
                                 />
                             </div>
@@ -298,7 +292,6 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                                         onChange={e => setEditForm({ ...editForm, city: e.target.value })}
                                         placeholder="Rio de Janeiro"
                                         style={editInputStyle(false)}
-                                        onFocus={e => (e.currentTarget.style.borderColor = '#3b82f6')}
                                         onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-default)')}
                                     />
                                 </div>
@@ -312,7 +305,6 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                                         onChange={e => setEditForm({ ...editForm, state: e.target.value })}
                                         placeholder="RJ" maxLength={2}
                                         style={{ ...editInputStyle(false), textTransform: 'uppercase' as any }}
-                                        onFocus={e => (e.currentTarget.style.borderColor = '#3b82f6')}
                                         onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-default)')}
                                     />
                                 </div>
@@ -323,7 +315,7 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                     {/* --- SECTION 3: Segurança & Notas --- */}
                     <div style={{ marginBottom: '18px' }}>
                         <div style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ width: 18, height: 18, borderRadius: '50%', background: 'rgba(45,212,191,0.15)', color: '#2dd4bf', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.5rem', fontWeight: 800 }}>3</span>
+                            <span style={{ width: 18, height: 18, borderRadius: '50%', background: 'rgba(45,212,191,0.15)', color: 'var(--accent-text)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.5rem', fontWeight: 800 }}>3</span>
                             <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Segurança & Notas</span>
                             <span style={{ fontSize: '0.5625rem', color: 'var(--text-muted)', fontWeight: 500, textTransform: 'none', letterSpacing: '0' }}>(opcional)</span>
                         </div>
@@ -339,7 +331,6 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                                         onChange={e => setEditForm({ ...editForm, password: e.target.value })}
                                         placeholder="Mínimo 6 caracteres"
                                         style={editInputStyle(!!editFieldErrors.password)}
-                                        onFocus={e => (e.currentTarget.style.borderColor = '#2dd4bf')}
                                         onBlur={e => (e.currentTarget.style.borderColor = editFieldErrors.password ? 'rgba(239,68,68,0.5)' : 'var(--border-default)')}
                                     />
                                 </div>

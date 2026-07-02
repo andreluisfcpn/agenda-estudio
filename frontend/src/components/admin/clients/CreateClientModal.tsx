@@ -63,32 +63,25 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
 
     if (!isOpen) return null;
 
-    const inputStyle = (hasError: boolean) => ({
-        width: '100%', padding: '10px 14px 10px 36px', borderRadius: '10px', fontSize: '0.8125rem',
-        background: 'var(--bg-elevated)', border: `1px solid ${hasError ? 'rgba(239,68,68,0.5)' : 'var(--border-default)'}`,
-        color: 'var(--text-primary)', outline: 'none', fontFamily: 'inherit',
-        transition: 'border-color 0.2s',
-    } as React.CSSProperties);
-
     const labelStyle = {
         fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)',
         textTransform: 'uppercase' as const, letterSpacing: '0.1em', marginBottom: '6px', display: 'block',
     };
 
     const fieldErrorStyle = {
-        fontSize: '0.6875rem', color: '#ef4444', fontWeight: 600, marginTop: '4px', paddingLeft: '4px',
+        fontSize: '0.6875rem', color: 'var(--danger)', fontWeight: 600, marginTop: '4px', paddingLeft: '4px',
     };
 
     const canCreate = createForm.name.length >= 2 && createForm.email.includes('@') && createForm.password.length >= 6;
 
     return (
-        <BottomSheetModal isOpen onClose={resetCreateModal} hideHeader maxWidth="520px" className="admin-sheet" title="Novo Cliente">
+        <BottomSheetModal isOpen onClose={resetCreateModal} hideHeader size="md" className="admin-sheet" title="Novo Cliente">
                 {/* --- HEADER --- */}
                 <div style={{ padding: '28px 32px 0', borderBottom: 'none' }}>
                     <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <span style={{
                             width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            background: 'linear-gradient(135deg, #10b981, #11819B)', fontSize: '1rem'
+                            background: 'var(--accent-gradient-go)', fontSize: '1rem'
                         }}>➕</span>
                         Novo Cliente
                     </h2>
@@ -99,7 +92,7 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
 
                 <div style={{ padding: '20px 32px 28px' }}>
                     {createError && Object.keys(createFieldErrors).length === 0 && (
-                        <div style={{ marginBottom: '16px', padding: '10px 14px', borderRadius: '10px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)', color: '#ef4444', fontSize: '0.8125rem', fontWeight: 600 }}>{createError}</div>
+                        <div style={{ marginBottom: '16px', padding: '10px 14px', borderRadius: '10px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)', color: 'var(--danger)', fontSize: '0.8125rem', fontWeight: 600 }}>{createError}</div>
                     )}
 
                     {/* --- SECTION 1: Dados Essenciais --- */}
@@ -110,7 +103,7 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                         </div>
 
                         {/* Name + Email row */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                        <div className="admin-grid-2" style={{ gap: '12px', marginBottom: '12px' }}>
                             <div>
                                 <label style={labelStyle}>Nome *</label>
                                 <div style={{ position: 'relative' }}>
@@ -118,8 +111,7 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                                     <input
                                         value={createForm.name} onChange={e => setCreateForm({ ...createForm, name: e.target.value })}
                                         placeholder="Nome completo" autoFocus
-                                        style={inputStyle(!!createFieldErrors.name)}
-                                        onFocus={e => (e.currentTarget.style.borderColor = '#10b981')}
+                                        className={`form-input form-input--raised${(!!createFieldErrors.name) ? ' error' : ''}`} style={{ paddingLeft: 36, fontSize: '0.8125rem' }}
                                         onBlur={e => (e.currentTarget.style.borderColor = createFieldErrors.name ? 'rgba(239,68,68,0.5)' : 'var(--border-default)')}
                                     />
                                 </div>
@@ -133,8 +125,7 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                                         type="email" value={createForm.email}
                                         onChange={e => setCreateForm({ ...createForm, email: maskEmail(e.target.value) })}
                                         placeholder="email@exemplo.com"
-                                        style={inputStyle(!!createFieldErrors.email)}
-                                        onFocus={e => (e.currentTarget.style.borderColor = '#10b981')}
+                                        className={`form-input form-input--raised${(!!createFieldErrors.email) ? ' error' : ''}`} style={{ paddingLeft: 36, fontSize: '0.8125rem' }}
                                         onBlur={e => (e.currentTarget.style.borderColor = createFieldErrors.email ? 'rgba(239,68,68,0.5)' : 'var(--border-default)')}
                                     />
                                 </div>
@@ -143,7 +134,7 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                         </div>
 
                         {/* Password + Phone row */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div className="admin-grid-2" style={{ gap: '12px' }}>
                             <div>
                                 <label style={labelStyle}>Senha *</label>
                                 <div style={{ position: 'relative' }}>
@@ -152,8 +143,7 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                                         type="password" value={createForm.password}
                                         onChange={e => setCreateForm({ ...createForm, password: e.target.value })}
                                         placeholder="Mínimo 6 caracteres"
-                                        style={inputStyle(!!createFieldErrors.password)}
-                                        onFocus={e => (e.currentTarget.style.borderColor = '#10b981')}
+                                        className={`form-input form-input--raised${(!!createFieldErrors.password) ? ' error' : ''}`} style={{ paddingLeft: 36, fontSize: '0.8125rem' }}
                                         onBlur={e => (e.currentTarget.style.borderColor = createFieldErrors.password ? 'rgba(239,68,68,0.5)' : 'var(--border-default)')}
                                     />
                                 </div>
@@ -167,8 +157,7 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                                         value={createForm.phone}
                                         onChange={e => setCreateForm({ ...createForm, phone: maskPhone(e.target.value) })}
                                         placeholder="(21) 99999-9999"
-                                        style={inputStyle(!!createFieldErrors.phone)}
-                                        onFocus={e => (e.currentTarget.style.borderColor = '#10b981')}
+                                        className={`form-input form-input--raised${(!!createFieldErrors.phone) ? ' error' : ''}`} style={{ paddingLeft: 36, fontSize: '0.8125rem' }}
                                         onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-default)')}
                                     />
                                 </div>
@@ -209,7 +198,7 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                                 transition: 'all 0.2s',
                             }}>
                             <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ width: 18, height: 18, borderRadius: '50%', background: 'rgba(45,212,191,0.15)', color: '#2dd4bf', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.5rem', fontWeight: 800 }}>2</span>
+                                <span style={{ width: 18, height: 18, borderRadius: '50%', background: 'rgba(45,212,191,0.15)', color: 'var(--accent-text)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.5rem', fontWeight: 800 }}>2</span>
                                 <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Dados Adicionais</span>
                                 <span style={{ fontSize: '0.5625rem', color: 'var(--text-muted)', fontWeight: 500, textTransform: 'none', letterSpacing: '0' }}>(opcional)</span>
                             </span>
@@ -219,7 +208,7 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                         {showAdvanced && (
                             <div style={{ marginTop: '12px', padding: '16px', borderRadius: '10px', background: 'rgba(45,212,191,0.03)', border: '1px solid rgba(45,212,191,0.08)' }}>
                                 {/* CPF/CNPJ + Status */}
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                                <div className="admin-grid-2" style={{ gap: '12px', marginBottom: '12px' }}>
                                     <div>
                                         <label style={labelStyle}>CPF/CNPJ</label>
                                         <div style={{ position: 'relative' }}>
@@ -228,8 +217,7 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                                                 value={createForm.cpfCnpj}
                                                 onChange={e => setCreateForm({ ...createForm, cpfCnpj: maskCpfCnpj(e.target.value) })}
                                                 placeholder="000.000.000-00"
-                                                style={inputStyle(false)}
-                                                onFocus={e => (e.currentTarget.style.borderColor = '#2dd4bf')}
+                                                className={`form-input form-input--raised${(false) ? ' error' : ''}`} style={{ paddingLeft: 36, fontSize: '0.8125rem' }}
                                                 onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-default)')}
                                             />
                                         </div>
@@ -237,7 +225,7 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                                     <div>
                                         <label style={labelStyle}>Status</label>
                                         <div style={{ display: 'flex', gap: '4px' }}>
-                                            {[{ key: 'ACTIVE', label: 'Ativo', color: '#10b981' }, { key: 'INACTIVE', label: 'Inativo', color: '#6b7280' }, { key: 'BLOCKED', label: 'Bloqueado', color: '#ef4444' }].map(s => (
+                                            {[{ key: 'ACTIVE', label: 'Ativo', color: 'var(--success)' }, { key: 'INACTIVE', label: 'Inativo', color: '#6b7280' }, { key: 'BLOCKED', label: 'Bloqueado', color: 'var(--danger)' }].map(s => (
                                                 <button key={s.key}
                                                     onClick={() => setCreateForm({ ...createForm, clientStatus: s.key })}
                                                     style={{
@@ -262,8 +250,7 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                                             value={createForm.socialLinks}
                                             onChange={e => setCreateForm({ ...createForm, socialLinks: e.target.value })}
                                             placeholder="Instagram, YouTube, TikTok..."
-                                            style={inputStyle(false)}
-                                            onFocus={e => (e.currentTarget.style.borderColor = '#2dd4bf')}
+                                            className={`form-input form-input--raised${(false) ? ' error' : ''}`} style={{ paddingLeft: 36, fontSize: '0.8125rem' }}
                                             onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-default)')}
                                         />
                                     </div>

@@ -88,17 +88,16 @@ export default function AdminClientsPage() {
                 title="Clientes"
                 subtitle="Diretório de clientes e contratos"
                 actions={
-                    <button className="btn btn-primary" onClick={() => { setShowCreate(true); }}
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 24px', borderRadius: '12px', fontWeight: 700 }}>
-                        <span style={{ fontSize: '1.1rem' }}>+</span> Novo Cliente
+                    <button className="btn-admin-go" onClick={() => { setShowCreate(true); }}>
+                        <span style={{ fontSize: '1.1rem' }} aria-hidden="true">+</span> Novo Cliente
                     </button>
                 }
             />
 
-            {/* --- KPI CARDS --- */}
+            {/* --- KPI CARDS (clicáveis = filtro) --- */}
             <div className="admin-kpi-grid" style={{ marginBottom: '24px' }}>
                 {([
-                    { key: 'ALL' as const, label: 'Total', count: clientUsers.length, desc: 'clientes cadastrados', icon: '👥', color: '#6366f1', gradient: 'rgba(99,102,241,0.08)' },
+                    { key: 'ALL' as const, label: 'Total', count: clientUsers.length, desc: 'clientes cadastrados', icon: '👥', color: '#11819B', gradient: 'rgba(17,129,155,0.10)' },
                     { key: 'ACTIVE' as const, label: 'Ativos', count: activeCount, desc: 'com contrato ativo', icon: '✅', color: '#10b981', gradient: 'rgba(16,185,129,0.08)' },
                     { key: 'EX_CLIENT' as const, label: 'Ex-clientes', count: exClientCount, desc: 'contrato expirado', icon: '👋', color: '#f59e0b', gradient: 'rgba(245,158,11,0.08)' },
                     { key: 'NO_CONTRACT' as const, label: 'Sem Contrato', count: noContractCount, desc: 'nunca contrataram', icon: '📭', color: '#94a3b8', gradient: 'rgba(148,163,184,0.08)' },
@@ -106,21 +105,20 @@ export default function AdminClientsPage() {
                 ] as const).map(card => {
                     const isActive = typeFilter === card.key;
                     return (
-                        <div key={card.key}
+                        <button key={card.key} type="button"
+                            className="admin-kpi-card"
+                            aria-pressed={isActive}
                             onClick={() => setTypeFilter(isActive ? 'ALL' : card.key)}
                             style={{
-                                padding: '18px 16px', borderRadius: '14px', cursor: 'pointer',
-                                background: isActive ? `linear-gradient(135deg, ${card.gradient}, ${card.gradient.replace('0.08', '0.02')})` : 'var(--bg-secondary)',
-                                border: `1px solid ${isActive ? card.color + '44' : 'var(--border-color)'}`,
-                                transition: 'all 0.25s ease',
+                                padding: '18px 16px',
+                                background: isActive ? `linear-gradient(135deg, ${card.gradient}, ${card.gradient.replace(/0\.(08|10)/, '0.02')})` : undefined,
+                                borderColor: isActive ? card.color + '44' : undefined,
                                 position: 'relative', overflow: 'hidden',
                             }}
-                            onMouseEnter={e => { if (!isActive) e.currentTarget.style.borderColor = card.color + '33'; }}
-                            onMouseLeave={e => { if (!isActive) e.currentTarget.style.borderColor = 'var(--border-color)'; }}
                         >
                             {/* Top row: icon + label */}
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
-                                <span style={{ fontSize: '0.9rem' }}>{card.icon}</span>
+                                <span style={{ fontSize: '0.9rem' }} aria-hidden="true">{card.icon}</span>
                                 <span style={{
                                     fontSize: '0.6875rem', fontWeight: 700, color: isActive ? card.color : 'var(--text-muted)',
                                     textTransform: 'uppercase', letterSpacing: '0.08em',
@@ -142,45 +140,35 @@ export default function AdminClientsPage() {
                                     borderRadius: '2px',
                                 }} />
                             )}
-                        </div>
+                        </button>
                     );
                 })}
             </div>
 
             {/* --- SEARCH BAR --- */}
-            <div style={{
-                padding: '12px 16px', borderRadius: '12px', marginBottom: '16px',
-                background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
-                display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap'
-            }}>
-                <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
+            <div className="admin-filter-bar admin-filter-bar--panel">
+                <div className="admin-search">
                     <input
                         type="text" placeholder="Buscar por nome, e-mail ou telefone..."
+                        aria-label="Buscar por nome, e-mail ou telefone"
                         value={search} onChange={e => setSearch(e.target.value)}
-                        style={{
-                            width: '100%', padding: '8px 12px 8px 32px', borderRadius: '8px', fontSize: '0.8125rem',
-                            background: 'var(--bg-elevated)', border: '1px solid var(--border-color)',
-                            color: 'var(--text-primary)', outline: 'none', transition: 'border-color 0.2s'
-                        }}
-                        onFocus={e => (e.currentTarget.style.borderColor = '#10b981')}
-                        onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
                     />
-                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5, pointerEvents: 'none' }}>🔎</span>
+                    <span className="admin-search__icon" aria-hidden="true">🔎</span>
                 </div>
-                {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem' }}>✖️</button>}
+                {search && (
+                    <button onClick={() => setSearch('')} aria-label="Limpar busca"
+                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem', minWidth: 36, minHeight: 36 }}>
+                        ✖️
+                    </button>
+                )}
 
                 {typeFilter !== 'ALL' && (
-                    <button onClick={() => setTypeFilter('ALL')} style={{
-                        display: 'flex', alignItems: 'center', gap: '6px',
-                        padding: '5px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 600,
-                        background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)',
-                        color: '#ef4444', cursor: 'pointer', transition: 'all 0.2s'
-                    }}>
+                    <button className="admin-filter-clear" onClick={() => setTypeFilter('ALL')}>
                         🗑️ Limpar filtro
                     </button>
                 )}
 
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', padding: '4px 10px', background: 'var(--bg-elevated)', borderRadius: '8px' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', padding: '4px 10px', background: 'var(--bg-elevated)', borderRadius: '8px' }} aria-live="polite">
                     {filtered.length} resultado{filtered.length !== 1 ? 's' : ''}
                 </span>
             </div>
@@ -209,19 +197,12 @@ export default function AdminClientsPage() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {filtered.map((u, i) => {
+                                {filtered.map((u) => {
                                     const hasActive = u.contracts?.some(c => c.status === 'ACTIVE');
                                     const avatarColor = hasActive ? '#10b981' : u.role === 'ADMIN' ? '#f59e0b' : '#64748b';
                                     const avatarBg = hasActive ? 'rgba(16,185,129,0.12)' : u.role === 'ADMIN' ? 'rgba(245,158,11,0.12)' : 'rgba(100,116,139,0.12)';
                                     return (
-                                        <tr key={u.id}
-                                            style={{
-                                                background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
-                                                transition: 'background 0.15s'
-                                            }}
-                                            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(16,185,129,0.04)')}
-                                            onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)')}
-                                        >
+                                        <tr key={u.id} className="admin-zebra-row">
                                             {/* Client info merged: Name + Email + Phone */}
                                             <td className="admin-card-title" style={{ paddingLeft: '20px' }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -238,10 +219,12 @@ export default function AdminClientsPage() {
                                                     </div>
                                                     <div>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                                            <div style={{ fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', color: 'var(--accent-primary)' }}
+                                                            <button
+                                                                style={{ fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', color: 'var(--accent-text)', background: 'none', border: 'none', padding: 0, fontFamily: 'inherit', textAlign: 'left' }}
+                                                                title={`Abrir perfil de ${u.name}`}
                                                                 onClick={() => navigate(`/admin/clients/${u.id}`)}>
                                                                 {u.name}
-                                                            </div>
+                                                            </button>
                                                             <StatusBadge meta={getMeta(USER_TYPE_META, getUserType(u))} />
                                                         </div>
                                                         <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -272,7 +255,7 @@ export default function AdminClientsPage() {
                                             {/* Valor Pago */}
                                             <td data-label="Pago" style={{ textAlign: 'right' }}>
                                                 {u.totalPaid > 0 ? (
-                                                    <span style={{ fontWeight: 700, fontSize: '0.8125rem', color: '#10b981', fontVariantNumeric: 'tabular-nums' }}>
+                                                    <span style={{ fontWeight: 700, fontSize: '0.8125rem', color: 'var(--success)', fontVariantNumeric: 'tabular-nums' }}>
                                                         {formatBRL(u.totalPaid)}
                                                     </span>
                                                 ) : (
@@ -283,7 +266,7 @@ export default function AdminClientsPage() {
                                             {/* A Receber */}
                                             <td data-label="A Receber" style={{ textAlign: 'right' }}>
                                                 {u.totalPending > 0 ? (
-                                                    <span style={{ fontWeight: 700, fontSize: '0.8125rem', color: '#f59e0b', fontVariantNumeric: 'tabular-nums' }}>
+                                                    <span style={{ fontWeight: 700, fontSize: '0.8125rem', color: 'var(--warning)', fontVariantNumeric: 'tabular-nums' }}>
                                                         {formatBRL(u.totalPending)}
                                                     </span>
                                                 ) : (
@@ -301,26 +284,14 @@ export default function AdminClientsPage() {
                                             {/* Actions */}
                                             <td data-label="" style={{ textAlign: 'center' }}>
                                                 <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                                                    <button style={{
-                                                        background: 'var(--bg-elevated)', border: '1px solid var(--border-color)',
-                                                        color: 'var(--text-secondary)', padding: '6px 10px', borderRadius: '8px',
-                                                        cursor: 'pointer', fontSize: '0.8125rem', transition: 'all 0.2s'
-                                                    }}
-                                                    onMouseEnter={e => { e.currentTarget.style.borderColor = '#10b981'; e.currentTarget.style.color = '#10b981'; }}
-                                                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-color)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
-                                                    title="Editar"
-                                                    onClick={() => setEditUser(u)}>✏️</button>
+                                                    <button className="admin-icon-btn admin-icon-btn--success"
+                                                        aria-label={`Editar ${u.name}`}
+                                                        onClick={() => setEditUser(u)}>✏️</button>
 
                                                     {u.role !== 'ADMIN' && (
-                                                        <button style={{
-                                                            background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)',
-                                                            color: '#ef4444', padding: '6px 10px', borderRadius: '8px',
-                                                            cursor: 'pointer', fontSize: '0.8125rem', transition: 'all 0.2s', opacity: 0.7
-                                                        }}
-                                                        onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
-                                                        onMouseLeave={e => (e.currentTarget.style.opacity = '0.7')}
-                                                        title="Excluir"
-                                                        onClick={() => confirmDelete(u)}>🗑️</button>
+                                                        <button className="admin-icon-btn admin-icon-btn--danger"
+                                                            aria-label={`Excluir ${u.name}`}
+                                                            onClick={() => confirmDelete(u)}>🗑️</button>
                                                     )}
                                                 </div>
                                             </td>
