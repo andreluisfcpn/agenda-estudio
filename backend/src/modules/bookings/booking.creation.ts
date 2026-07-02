@@ -20,6 +20,7 @@ import { BookingStatus, Prisma } from '../../generated/prisma/client.js';
 import { getConfig } from '../../lib/businessConfig.js';
 import { getErrorMessage } from '../../utils/errors.js';
 import { createBookingSchema, bulkBookingSchema, adminCreateBookingSchema } from './validators.js';
+import { CouponError, validateCoupon, reserveCouponUse, repointCouponRedemption, type CouponQuote } from '../../lib/couponService.js';
 
 export function registerCreationRoutes(router: Router) {
 
@@ -142,6 +143,19 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
             }
         }
 
+        // Coupon (avulso only — plan-linked bookings have no charge at booking time).
+        // Booking.price stays FULL; only the Payment.amount is discounted (reports/retries
+        // keep the real session price). Validated here (fail fast, before locks); the
+        // atomic reservation happens in the payment-creation transaction below.
+        let couponQuote: CouponQuote | null = null;
+        if (data.couponCode) {
+            if (contractId) {
+                res.status(400).json({ error: 'Cupom só está disponível para gravações avulsas.' });
+                return;
+            }
+            couponQuote = await validateCoupon({ code: data.couponCode, userId, baseAmount: price });
+        }
+
         // Get all slots covered by the 2h package
         const packageSlots = getPackageSlots(data.startTime);
         const endTime = calculateEndTime(data.startTime);
@@ -206,6 +220,9 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
 
                 let clientSecret: string | null = null;
                 let paymentId = existingPayment?.id || null;
+                // Charge what the pending payment says (coupon discount already baked in);
+                // only a hold with NO pending payment falls back to the full booking price.
+                let retryAmount = existingPayment?.amount ?? existingHold.price;
 
                 // If switching to CARTAO and no Stripe intent exists, create one
                 if (data.paymentMethod === 'CARTAO' && (await isStripeEnabled())) {
@@ -224,27 +241,39 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                             },
                         });
                         paymentId = payment.id;
+                        retryAmount = payment.amount;
                     } else if (existingPayment && existingPayment.provider !== 'STRIPE') {
-                        // Previous payment was PIX/CORA, create a new Stripe payment
-                        const payment = await prisma.payment.create({
-                            data: {
-                                userId,
-                                contractId: existingHold.contractId,
-                                bookingId: existingHold.id,
-                                provider: 'STRIPE',
-                                amount: existingHold.price,
-                                status: 'PENDING',
-                                dueDate: dateObj,
-                                installments: data.installments || 1,
-                                paymentType: data.paymentType || 'CREDIT',
-                            },
+                        // Previous payment was PIX/CORA → create a new Stripe payment carrying
+                        // over the discounted amount + coupon audit fields, and RE-POINT the
+                        // coupon redemption (paymentId is unique) in the same transaction so
+                        // the use is neither lost nor double-counted.
+                        const payment = await prisma.$transaction(async (tx) => {
+                            const p = await tx.payment.create({
+                                data: {
+                                    userId,
+                                    contractId: existingHold.contractId,
+                                    bookingId: existingHold.id,
+                                    provider: 'STRIPE',
+                                    amount: existingPayment.amount,
+                                    status: 'PENDING',
+                                    dueDate: dateObj,
+                                    installments: data.installments || 1,
+                                    paymentType: data.paymentType || 'CREDIT',
+                                    couponId: existingPayment.couponId,
+                                    couponCode: existingPayment.couponCode,
+                                    discountAmount: existingPayment.discountAmount,
+                                },
+                            });
+                            await repointCouponRedemption(tx, existingPayment.id, p.id);
+                            return p;
                         });
                         paymentId = payment.id;
+                        retryAmount = payment.amount;
                     }
 
                     const customerId = await stripeGetOrCreateCustomer(userId);
                     const piResult = await stripeCreatePaymentIntent({
-                        amount: existingHold.price,
+                        amount: retryAmount,
                         customerId,
                         description: `Avulso ${data.date} ${data.startTime} (retry)`,
                         paymentId: paymentId!,
@@ -280,6 +309,7 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                         holdExpiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
                     },
                     paymentId,
+                    paymentAmount: retryAmount,
                     clientSecret,
                     creditWarning: false,
                     lockExpiresIn: 600,
@@ -385,29 +415,83 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
             const pixString: string | null = null;
             const qrCodeBase64: string | null = null;
             if (isAvulso) {
+                const chargeAmount = couponQuote ? couponQuote.finalAmount : price;
                 try {
-                    // Create pending Payment record
-                    const payment = await prisma.payment.create({
-                        data: {
-                            userId,
-                            contractId: finalContractId,
-                            bookingId: booking.id,
-                            provider: data.paymentMethod === 'CARTAO' ? 'STRIPE' : 'CORA',
-                            amount: price,
-                            status: 'PENDING',
-                            dueDate: dateObj,
-                            installments: data.installments || 1,
-                            paymentType: data.paymentType || (data.paymentMethod === 'CARTAO' ? 'CREDIT' : null),
-                        },
+                    // Create pending Payment record + reserve the coupon use in the SAME
+                    // transaction (atomic maxUses guard).
+                    const payment = await prisma.$transaction(async (tx) => {
+                        const p = await tx.payment.create({
+                            data: {
+                                userId,
+                                contractId: finalContractId,
+                                bookingId: booking.id,
+                                provider: data.paymentMethod === 'CARTAO' ? 'STRIPE' : 'CORA',
+                                amount: chargeAmount,
+                                status: 'PENDING',
+                                dueDate: dateObj,
+                                installments: data.installments || 1,
+                                paymentType: data.paymentType || (data.paymentMethod === 'CARTAO' ? 'CREDIT' : null),
+                                ...(couponQuote ? {
+                                    couponId: couponQuote.coupon.id,
+                                    couponCode: couponQuote.coupon.code,
+                                    discountAmount: couponQuote.discountAmount,
+                                } : {}),
+                            },
+                        });
+                        if (couponQuote) {
+                            await reserveCouponUse(tx, {
+                                couponId: couponQuote.coupon.id,
+                                userId,
+                                paymentId: p.id,
+                                originalAmount: price,
+                                discountAmount: couponQuote.discountAmount,
+                                maxUsesPerUser: couponQuote.coupon.maxUsesPerUser,
+                            });
+                        }
+                        return p;
                     });
                     createdPaymentId = payment.id;
+
+                    // 100% coupon → zero charge: skip the gateway and confirm right away
+                    // (confirms the booking + activates the avulso contract like a webhook).
+                    if (chargeAmount === 0) {
+                        await prisma.payment.updateMany({
+                            where: { id: payment.id, status: 'PENDING' },
+                            data: { status: 'PAID', paidAt: new Date() },
+                        });
+                        const { onPaymentConfirmed } = await import('../../lib/paymentEffects.js');
+                        await onPaymentConfirmed(payment.id);
+                        res.status(201).json({
+                            booking: {
+                                id: booking.id,
+                                date: data.date,
+                                startTime: booking.startTime,
+                                endTime: booking.endTime,
+                                tier: booking.tierApplied,
+                                tierApplied: booking.tierApplied,
+                                price: booking.price,
+                                status: 'CONFIRMED',
+                                contractId: booking.contractId,
+                                holdExpiresAt: null,
+                            },
+                            paymentId: payment.id,
+                            paymentAmount: 0,
+                            couponDiscount: couponQuote?.discountAmount,
+                            alreadyPaid: true,
+                            clientSecret: null,
+                            creditWarning: false,
+                            lockExpiresIn: 0,
+                            message: 'Cupom aplicado — gravação confirmada sem cobrança!',
+                        });
+                        return;
+                    }
 
                     // For Card: create Stripe PaymentIntent
                     if (data.paymentMethod === 'CARTAO' && (await isStripeEnabled())) {
                         const customerId = await stripeGetOrCreateCustomer(userId);
                         const addOnDesc = data.addOns && data.addOns.length > 0 ? ` + ${data.addOns.length} extras` : '';
                         const piResult = await stripeCreatePaymentIntent({
-                            amount: price,
+                            amount: chargeAmount,
                             customerId,
                             description: `Avulso ${data.date} ${data.startTime}${addOnDesc}`,
                             paymentId: payment.id,
@@ -431,6 +515,14 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                     // pixString that no caller reads. The payment row is left as CORA/PENDING and is
                     // enriched with providerRef + pixString by that call.
                 } catch (payErr: unknown) {
+                    if (payErr instanceof CouponError) {
+                        // Lost the maxUses race between validate and reserve. Don't strand the
+                        // booking — surface the coupon error so the client re-decides (the hold
+                        // stays for 10 min; retrying without/with another coupon reuses it).
+                        await releaseMultiSlotLock(data.date, packageSlots, userId);
+                        res.status(payErr.httpStatus).json({ error: payErr.message, code: payErr.code });
+                        return;
+                    }
                     console.error('[BOOKING] Payment creation failed:', getErrorMessage(payErr));
                     // Still return the booking — client can retry payment
                 }
@@ -450,6 +542,10 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                     holdExpiresAt: booking.holdExpiresAt?.toISOString() || null,
                 },
                 paymentId: createdPaymentId,
+                ...(createdPaymentId && couponQuote ? {
+                    paymentAmount: couponQuote.finalAmount,
+                    couponDiscount: couponQuote.discountAmount,
+                } : createdPaymentId ? { paymentAmount: price } : {}),
                 clientSecret,
                 // PIX QR is generated by POST /stripe/create-payment, not here — so no
                 // pixString/qrCodeBase64 in this response (nothing reads them from create).
@@ -467,6 +563,10 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
     } catch (err) {
         if (err instanceof z.ZodError) {
             res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
+            return;
+        }
+        if (err instanceof CouponError) {
+            res.status(err.httpStatus).json({ error: err.message, code: err.code });
             return;
         }
         res.status(500).json({ error: 'Erro interno ao criar agendamento' });
@@ -631,6 +731,17 @@ router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res
             price += applyDiscount(addonsTotal, contractDiscountPct);
         }
 
+        // Coupon (admin applies on behalf of the client — eligibility is the CLIENT's).
+        // Same avulso-only rule as the client path: plan-linked bookings have no charge.
+        let adminCouponQuote: CouponQuote | null = null;
+        if (data.couponCode) {
+            if (data.contractId) {
+                res.status(400).json({ error: 'Cupom só está disponível para gravações avulsas.' });
+                return;
+            }
+            adminCouponQuote = await validateCoupon({ code: data.couponCode, userId: data.userId, baseAmount: price });
+        }
+
         // Check for conflicts
         const packageSlots = getPackageSlots(data.startTime);
         const conflicting = await prisma.booking.findFirst({
@@ -695,18 +806,45 @@ router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res
         let boletoError: string | null = null;
         try {
             const paymentProvider = data.paymentMethod === 'BOLETO' ? 'CORA' : (data.paymentMethod === 'PIX' ? 'CORA' : 'STRIPE');
-            const paymentRecord = await prisma.payment.create({
-                data: {
-                    userId: data.userId,
-                    contractId: finalContractId,
-                    bookingId: booking.id,
-                    provider: paymentProvider as any,
-                    amount: price,
-                    status: data.status === 'CONFIRMED' ? 'PAID' : 'PENDING',
-                    dueDate: dateObj,
-                    installments: 1,
-                    ...(data.status === 'CONFIRMED' ? { paidAt: new Date() } : {}),
-                },
+            const adminChargeAmount = adminCouponQuote ? adminCouponQuote.finalAmount : price;
+            const paymentRecord = await prisma.$transaction(async (tx) => {
+                const p = await tx.payment.create({
+                    data: {
+                        userId: data.userId,
+                        contractId: finalContractId,
+                        bookingId: booking.id,
+                        provider: paymentProvider as any,
+                        amount: adminChargeAmount,
+                        status: data.status === 'CONFIRMED' ? 'PAID' : 'PENDING',
+                        dueDate: dateObj,
+                        installments: 1,
+                        ...(data.status === 'CONFIRMED' ? { paidAt: new Date() } : {}),
+                        ...(adminCouponQuote ? {
+                            couponId: adminCouponQuote.coupon.id,
+                            couponCode: adminCouponQuote.coupon.code,
+                            discountAmount: adminCouponQuote.discountAmount,
+                        } : {}),
+                    },
+                });
+                if (adminCouponQuote) {
+                    await reserveCouponUse(tx, {
+                        couponId: adminCouponQuote.coupon.id,
+                        userId: data.userId,
+                        paymentId: p.id,
+                        originalAmount: price,
+                        discountAmount: adminCouponQuote.discountAmount,
+                        maxUsesPerUser: adminCouponQuote.coupon.maxUsesPerUser,
+                    });
+                    // Booking created directly as CONFIRMED+PAID → confirm the use
+                    // ATOMICALLY with the payment (same tx) so it can't be left RESERVED.
+                    if (data.status === 'CONFIRMED') {
+                        await tx.couponRedemption.updateMany({
+                            where: { paymentId: p.id, status: 'RESERVED' },
+                            data: { status: 'CONFIRMED', confirmedAt: new Date() },
+                        });
+                    }
+                }
+                return p;
             });
             createdPaymentId = paymentRecord.id;
 
@@ -716,7 +854,7 @@ router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res
                     const { createCoraPayment } = await import('../../lib/coraPaymentHelper.js');
                     const coraRes = await createCoraPayment({
                         userId: data.userId,
-                        amount: price,
+                        amount: adminChargeAmount,
                         description: `Boleto - ${data.startTime} ${data.date}`,
                         withPixQrCode: false,
                         dueDays: 3,
@@ -755,6 +893,10 @@ router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res
                 status: booking.status,
             },
             paymentId: createdPaymentId,
+            ...(createdPaymentId ? {
+                paymentAmount: adminCouponQuote ? adminCouponQuote.finalAmount : price,
+                ...(adminCouponQuote && { couponDiscount: adminCouponQuote.discountAmount }),
+            } : {}),
             boletoUrl,
             barcode,
             ...(boletoError && { boletoError }),
@@ -765,6 +907,10 @@ router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res
     } catch (err) {
         if (err instanceof z.ZodError) {
             res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
+            return;
+        }
+        if (err instanceof CouponError) {
+            res.status(err.httpStatus).json({ error: err.message, code: err.code });
             return;
         }
         throw err;

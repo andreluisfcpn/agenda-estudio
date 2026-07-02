@@ -1,9 +1,10 @@
 import { getErrorMessage } from '../../../utils/errors';
 import React, { useState, useCallback, useEffect } from 'react';
-import { bookingsApi, contractsApi, pricingApi, UserSummary, Contract, Slot, AddOnConfig } from '../../../api/client';
+import { bookingsApi, contractsApi, pricingApi, UserSummary, Contract, Slot, AddOnConfig, CouponValidation } from '../../../api/client';
 import { useUI } from '../../../context/UIContext';
 import BottomSheetModal from '../../BottomSheetModal';
 import InlineCheckout from '../../InlineCheckout';
+import CouponField from '../../CouponField';
 import ServiceLineItem from '../../ui/ServiceLineItem';
 import { formatBRL } from '../../../utils/format';
 import { TIER_META } from '../../../constants/adminMeta';
@@ -41,6 +42,9 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
     const [chargeNow, setChargeNow] = useState(false);
     const [chargeMethod, setChargeMethod] = useState<'CARTAO' | 'PIX'>('CARTAO');
     const [chargePaymentId, setChargePaymentId] = useState<string | null>(null);
+    // Cupom (só avulso — elegibilidade é do CLIENTE selecionado) + valor já descontado retornado pelo backend.
+    const [appliedCoupon, setAppliedCoupon] = useState<CouponValidation | null>(null);
+    const [chargeAmountApi, setChargeAmountApi] = useState<number | null>(null);
 
     const resetCreateModal = () => {
         onClose();
@@ -56,6 +60,8 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
         setChargeNow(false);
         setChargeMethod('CARTAO');
         setChargePaymentId(null);
+        setAppliedCoupon(null);
+        setChargeAmountApi(null);
     };
 
     const handleCreate = async () => {
@@ -73,10 +79,14 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
             if (!createForm.contractId && customPrice != null) payload.customPrice = customPrice;
             if (selectedAddons.length > 0) payload.addOns = selectedAddons;
             if (isAvulsoCharge) payload.paymentMethod = chargeMethod;
+            // Cupom só vale para avulso (contrato tem fluxo próprio).
+            if (!createForm.contractId && appliedCoupon) payload.couponCode = appliedCoupon.code;
             const res = await bookingsApi.adminCreate(payload);
             onCreated();
             if (isAvulsoCharge && res.paymentId) {
                 // Open the same InlineCheckout the client uses — charges the CLIENT (payment.userId).
+                // O backend retorna o valor JÁ com o cupom descontado (paymentAmount).
+                setChargeAmountApi(res.paymentAmount ?? null);
                 setChargePaymentId(res.paymentId);
             } else {
                 resetCreateModal();
@@ -134,7 +144,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                             {chargeMethod === 'PIX' ? 'Mostre o QR Code PIX ao cliente.' : 'Use o cartão do cliente (presente).'} A reserva confirma ao pagar.
                         </p>
                         <InlineCheckout
-                            amount={(customPrice || 0) + servicesValue}
+                            amount={chargeAmountApi ?? ((customPrice || 0) + servicesValue)}
                             paymentId={chargePaymentId}
                             description="Agendamento avulso"
                             allowedMethods={[chargeMethod]}
@@ -620,6 +630,13 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                             </div>
                                         </div>
                                     )}
+                                    {/* Linha do cupom aplicado (só avulso) */}
+                                    {!createForm.contractId && appliedCoupon && (
+                                        <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8125rem', fontWeight: 700, color: '#10b981' }}>
+                                            <span>🎟️ Cupom {appliedCoupon.code}</span>
+                                            <span>−{formatBRL(appliedCoupon.discountAmount)}</span>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -653,6 +670,20 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                             +{formatBRL(servicesValue)} em serviços {createForm.contractId ? '(somados a esta gravação)' : '(somados ao valor)'}
                                         </div>
                                     )}
+                                </div>
+                            )}
+
+                            {/* Cupom de desconto (só avulso — elegibilidade validada para o CLIENTE selecionado) */}
+                            {!createForm.contractId && (
+                                <div style={{ marginBottom: '14px' }}>
+                                    <CouponField
+                                        amount={(customPrice || 0) + servicesValue}
+                                        userId={createForm.userId || undefined}
+                                        applied={appliedCoupon}
+                                        onApply={setAppliedCoupon}
+                                        onRemove={() => setAppliedCoupon(null)}
+                                        disabled={creating}
+                                    />
                                 </div>
                             )}
 

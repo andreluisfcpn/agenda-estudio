@@ -7,6 +7,7 @@ import { getConfig } from '../../lib/businessConfig.js';
 import { computeAddonsCost, serviceMonthlyBase } from '../../lib/contractPricing.js';
 import { validatePaymentMethod, PaymentMethodDisabledError } from '../../lib/paymentGateway.js';
 import { contractPaySchema, subscribeSchema, clientRenewSchema } from './validators.js';
+import { CouponError, validateCoupon, reserveCouponUse, releaseAndPurgeCouponsForPayments, type CouponQuote } from '../../lib/couponService.js';
 
 export function registerPaymentRoutes(router: Router) {
 
@@ -58,6 +59,52 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
             orderBy: { createdAt: 'desc' },
         });
 
+        // Coupon: only when a NEW pending payment is being created — an existing pending
+        // (possibly with a Cora/Stripe artifact already issued) is never repriced.
+        let payCoupon: CouponQuote | null = null;
+        if (data.couponCode) {
+            const willReuse = existingPending && (
+                (data.paymentMethod === 'PIX' && existingPending.provider === 'CORA' && existingPending.pixString) ||
+                (data.paymentMethod === 'CARTAO' && existingPending.provider === 'STRIPE' && existingPending.providerRef)
+            );
+            if (!willReuse) {
+                payCoupon = await validateCoupon({ code: data.couponCode, userId, baseAmount: monthlyAmount });
+            }
+        }
+        const payChargeAmount = payCoupon ? payCoupon.finalAmount : monthlyAmount;
+        const payCouponFields = payCoupon ? {
+            couponId: payCoupon.coupon.id,
+            couponCode: payCoupon.coupon.code,
+            discountAmount: payCoupon.discountAmount,
+        } : {};
+
+        // 100% coupon → zero charge: no gateway; confirm immediately (activates the contract).
+        if (payCoupon && payChargeAmount === 0) {
+            const payment = await prisma.$transaction(async (tx) => {
+                const p = await tx.payment.create({
+                    data: {
+                        userId, contractId, provider: 'CORA', amount: 0,
+                        status: 'PENDING', dueDate: new Date(), installments: 1, ...payCouponFields,
+                    },
+                });
+                await reserveCouponUse(tx, {
+                    couponId: payCoupon!.coupon.id, userId, paymentId: p.id,
+                    originalAmount: monthlyAmount, discountAmount: payCoupon!.discountAmount,
+                    maxUsesPerUser: payCoupon!.coupon.maxUsesPerUser,
+                });
+                return p;
+            });
+            await prisma.payment.updateMany({ where: { id: payment.id, status: 'PENDING' }, data: { status: 'PAID', paidAt: new Date() } });
+            const { onPaymentConfirmed } = await import('../../lib/paymentEffects.js');
+            await onPaymentConfirmed(payment.id);
+            res.json({
+                provider: 'CORA', paymentId: payment.id, amount: 0, alreadyPaid: true,
+                couponDiscount: payCoupon.discountAmount,
+                message: 'Cupom aplicado — contrato ativado sem cobrança!',
+            });
+            return;
+        }
+
         // ─── PIX: Cora ───────────────────────────────────────
         if (data.paymentMethod === 'PIX') {
             // If we already have a pending PIX payment with a pixString, return it
@@ -74,23 +121,34 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
 
             const { createCoraPayment } = await import('../../lib/coraPaymentHelper.js');
 
-            // Create Payment record
-            const payment = await prisma.payment.create({
-                data: {
-                    userId,
-                    contractId,
-                    provider: 'CORA',
-                    amount: monthlyAmount,
-                    status: 'PENDING',
-                    dueDate: new Date(),
-                    installments: 1,
-                },
+            // Create Payment record (+ atomic coupon reservation when present)
+            const payment = await prisma.$transaction(async (tx) => {
+                const p = await tx.payment.create({
+                    data: {
+                        userId,
+                        contractId,
+                        provider: 'CORA',
+                        amount: payChargeAmount,
+                        status: 'PENDING',
+                        dueDate: new Date(),
+                        installments: 1,
+                        ...payCouponFields,
+                    },
+                });
+                if (payCoupon) {
+                    await reserveCouponUse(tx, {
+                        couponId: payCoupon.coupon.id, userId, paymentId: p.id,
+                        originalAmount: monthlyAmount, discountAmount: payCoupon.discountAmount,
+                        maxUsesPerUser: payCoupon.coupon.maxUsesPerUser,
+                    });
+                }
+                return p;
             });
 
             try {
                 const coraRes = await createCoraPayment({
                     userId,
-                    amount: monthlyAmount,
+                    amount: payChargeAmount,
                     description: `PIX - Contrato "${contract.name}" - ${contract.tier}`,
                     withPixQrCode: true,
                     idempotencyKey: payment.id,
@@ -109,10 +167,14 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
                     paymentId: payment.id,
                     pixString: coraRes.pixString,
                     qrCodeBase64: coraRes.qrCodeBase64,
-                    amount: monthlyAmount,
+                    amount: payChargeAmount,
+                    ...(payCoupon && { couponDiscount: payCoupon.discountAmount }),
                     message: 'QR Code PIX gerado. Escaneie para ativar o contrato.',
                 });
             } catch (e: unknown) {
+                // Cora failed — give the coupon use back and drop the unpayable row.
+                await releaseAndPurgeCouponsForPayments([payment.id]);
+                await prisma.payment.delete({ where: { id: payment.id } }).catch(() => {});
                 const msg = e instanceof Error ? e.message : 'Erro ao gerar PIX.';
                 res.status(400).json({ error: msg });
             }
@@ -125,7 +187,7 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
         // (à-vista) plan, which is paid at contract creation — never through /pay.
         const installments = 1;
         const maxInstallments = 1;
-        const chargeAmount = monthlyAmount;
+        const chargeAmount = payChargeAmount;
 
         const { stripeCreatePaymentIntent, stripeGetOrCreateCustomer, isStripeEnabled } = await import('../../lib/stripeService.js');
 
@@ -155,18 +217,29 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
             } catch { /* PI expired or invalid — create new one below */ }
         }
 
-        // Create Payment record
-        const payment = await prisma.payment.create({
-            data: {
-                userId,
-                contractId,
-                provider: 'STRIPE',
-                amount: chargeAmount,
-                status: 'PENDING',
-                dueDate: new Date(),
-                installments,
-                paymentType: data.paymentType || 'CREDIT',
-            },
+        // Create Payment record (+ atomic coupon reservation when present)
+        const payment = await prisma.$transaction(async (tx) => {
+            const p = await tx.payment.create({
+                data: {
+                    userId,
+                    contractId,
+                    provider: 'STRIPE',
+                    amount: chargeAmount,
+                    status: 'PENDING',
+                    dueDate: new Date(),
+                    installments,
+                    paymentType: data.paymentType || 'CREDIT',
+                    ...payCouponFields,
+                },
+            });
+            if (payCoupon) {
+                await reserveCouponUse(tx, {
+                    couponId: payCoupon.coupon.id, userId, paymentId: p.id,
+                    originalAmount: monthlyAmount, discountAmount: payCoupon.discountAmount,
+                    maxUsesPerUser: payCoupon.coupon.maxUsesPerUser,
+                });
+            }
+            return p;
         });
 
         let piResult;
@@ -181,8 +254,9 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
                 installmentsEnabled: false,
             });
         } catch (err) {
-            // Stripe failed — delete the just-created PENDING row so retries don't
-            // accrue orphan payments (the reuse branch skips rows with no providerRef).
+            // Stripe failed — release the coupon use, then delete the just-created PENDING
+            // row so retries don't accrue orphan payments.
+            await releaseAndPurgeCouponsForPayments([payment.id]);
             await prisma.payment.delete({ where: { id: payment.id } }).catch(() => {});
             const msg = err instanceof Error ? err.message : 'Erro ao iniciar o pagamento com cartão. Tente novamente.';
             res.status(502).json({ error: msg });
@@ -199,6 +273,7 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
             clientSecret: piResult.clientSecret,
             paymentId: payment.id,
             amount: chargeAmount,
+            ...(payCoupon && { couponDiscount: payCoupon.discountAmount }),
             maxInstallments,
             message: 'PaymentIntent criado. Complete o pagamento para ativar o contrato.',
         });
@@ -206,6 +281,10 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
         console.error('[CONTRACT-PAY]', err);
         if (err instanceof z.ZodError) {
             res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
+            return;
+        }
+        if (err instanceof CouponError) {
+            res.status(err.httpStatus).json({ error: err.message, code: err.code });
             return;
         }
         res.status(500).json({ error: 'Erro ao processar pagamento.' });

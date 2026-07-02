@@ -231,6 +231,17 @@ export function registerPaymentAdminRoutes(router: Router) {
                 }
             }
 
+            // Admin killed a pending charge → give back any reserved coupon use.
+            // (REFUNDED keeps the redemption CONFIRMED — the use is not returned.)
+            if ((data.status === 'FAILED' || data.status === 'CANCELLED') && existing.status === 'PENDING') {
+                try {
+                    const { releaseCouponForPayment } = await import('../../lib/couponService.js');
+                    await releaseCouponForPayment(id);
+                } catch (e) {
+                    console.error('[PAYMENT-ADMIN] coupon release failed:', e instanceof Error ? e.message : e);
+                }
+            }
+
             // Audit log for financial state changes — persisted (compliance), not just console.
             if (data.status && data.status !== existing.status) {
                 console.log(`[PAYMENT-ADMIN] ${req.user!.userId} changed payment ${id}: ${existing.status} → ${data.status}`);

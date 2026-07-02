@@ -9,6 +9,22 @@ import { createPayment as gatewayCreatePayment, updatePaymentWithGatewayResult, 
 import { createContractSchema, selfContractSchema, customContractSchema } from './validators.js';
 import { computeAddonsCost } from '../../lib/contractPricing.js';
 import { resolvePlanAmounts } from '../../lib/paymentPolicy.js';
+import { CouponError, validateCoupon, reserveCouponUse, computeCouponDiscount, releaseAndPurgeCouponsForPayments, type CouponQuote } from '../../lib/couponService.js';
+
+/**
+ * Apply a coupon quote to a schedule of installment amounts.
+ * FIRST_PAYMENT → only installment 0 is discounted; ALL_INSTALLMENTS → each
+ * installment gets the coupon's discount computed on its own base amount.
+ * Returns per-installment {amount, discountAmount} pairs.
+ */
+function discountSchedule(quote: CouponQuote | null, amounts: number[]): { amount: number; discountAmount: number }[] {
+    return amounts.map((base, i) => {
+        if (!quote) return { amount: base, discountAmount: 0 };
+        if (quote.coupon.scope === 'FIRST_PAYMENT' && i > 0) return { amount: base, discountAmount: 0 };
+        const d = i === 0 ? quote.discountAmount : computeCouponDiscount(quote.coupon, base);
+        return { amount: base - d, discountAmount: d };
+    });
+}
 
 export function registerCreationRoutes(router: Router) {
 
@@ -143,17 +159,65 @@ router.post('/', authenticate, authorize('ADMIN'), async (req: Request, res: Res
             paymentMethod: data.paymentMethod,
             startDate,
         });
-        const payments = adminPlan.scheduleDueDates.map((dueDate) => ({
+        // Coupon (admin applies on behalf of the client — eligibility is the CLIENT's).
+        // The contract/bookings were already created above, so a coupon rejection or an
+        // exhausted-cap race must roll them back — never leave an ACTIVE contract with
+        // no installments.
+        const perInstallmentBase = adminIsFull ? adminPlan.fullAmount : adminPlan.monthlyAmount;
+        let adminCoupon: CouponQuote | null = null;
+        if (data.couponCode) {
+            try {
+                adminCoupon = await validateCoupon({ code: data.couponCode, userId: data.userId, baseAmount: perInstallmentBase });
+            } catch (err) {
+                await prisma.booking.deleteMany({ where: { contractId: contract.id } }).catch(() => {});
+                await prisma.contract.delete({ where: { id: contract.id } }).catch(() => {});
+                throw err;
+            }
+        }
+        const schedule = discountSchedule(adminCoupon, adminPlan.scheduleDueDates.map(() => perInstallmentBase));
+        const payments = adminPlan.scheduleDueDates.map((dueDate, i) => ({
             userId: data.userId,
             contractId: contract.id,
             provider: adminProvider,
-            amount: adminIsFull ? adminPlan.fullAmount : adminPlan.monthlyAmount,
+            amount: schedule[i]!.amount,
             status: 'PENDING' as const,
             dueDate,
+            ...(adminCoupon && schedule[i]!.discountAmount > 0 ? {
+                couponId: adminCoupon.coupon.id,
+                couponCode: adminCoupon.coupon.code,
+                discountAmount: schedule[i]!.discountAmount,
+            } : {}),
         }));
 
         if (payments.length > 0) {
-            await prisma.payment.createMany({ data: payments });
+            if (adminCoupon) {
+                // Atomic: create the first payment individually (the redemption anchors on
+                // its id), reserve the coupon use, then bulk-create the rest — all-or-nothing.
+                const quote = adminCoupon;
+                try {
+                    await prisma.$transaction(async (tx) => {
+                        const first = await tx.payment.create({ data: payments[0]! });
+                        await reserveCouponUse(tx, {
+                            couponId: quote.coupon.id,
+                            userId: data.userId,
+                            paymentId: first.id,
+                            originalAmount: perInstallmentBase,
+                            discountAmount: quote.discountAmount,
+                            maxUsesPerUser: quote.coupon.maxUsesPerUser,
+                        });
+                        if (payments.length > 1) {
+                            await tx.payment.createMany({ data: payments.slice(1) });
+                        }
+                    });
+                } catch (err) {
+                    // Lost the maxUses race (or tx failure) — roll the contract back.
+                    await prisma.booking.deleteMany({ where: { contractId: contract.id } }).catch(() => {});
+                    await prisma.contract.delete({ where: { id: contract.id } }).catch(() => {});
+                    throw err;
+                }
+            } else {
+                await prisma.payment.createMany({ data: payments });
+            }
         }
 
         const createdPayments = await prisma.payment.findMany({
@@ -186,6 +250,10 @@ router.post('/', authenticate, authorize('ADMIN'), async (req: Request, res: Res
     } catch (err) {
         if (err instanceof z.ZodError) {
             res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
+            return;
+        }
+        if (err instanceof CouponError) {
+            res.status(err.httpStatus).json({ error: err.message, code: err.code });
             return;
         }
         console.error('Erro ao criar contrato (Admin):', err);
@@ -265,6 +333,15 @@ router.post('/self', authenticate, async (req: Request, res: Response) => {
         const monthlyAmount = planAmounts.monthlyAmount;
         const firstAmount = planAmounts.firstAmount;
 
+        // Coupon: discount the FIRST charge here; months 2..N are materialized by
+        // contractFulfillment, which applies the per-installment discount itself when
+        // the coupon's scope is ALL_INSTALLMENTS (couponForInstallments below).
+        let couponQuote: CouponQuote | null = null;
+        if (data.couponCode) {
+            couponQuote = await validateCoupon({ code: data.couponCode, userId, baseAmount: firstAmount });
+        }
+        const chargeAmount = couponQuote ? couponQuote.finalAmount : firstAmount;
+
         // Store contract creation data in payment metadata
         const contractData = {
             name: data.name,
@@ -281,20 +358,70 @@ router.post('/self', authenticate, async (req: Request, res: Response) => {
             resolvedConflicts: data.resolvedConflicts,
             // Persist the resolved per-month amount so fulfillment of months 2..N uses the
             // SAME figure even if the surcharge config changes before the payment confirms.
+            // NOTE: intentionally WITHOUT the coupon discount — FIRST_PAYMENT coupons must
+            // not leak into later installments; ALL scope is handled via couponForInstallments.
             monthlyAmountResolved: monthlyAmount,
+            ...(couponQuote && couponQuote.coupon.scope === 'ALL_INSTALLMENTS' ? {
+                couponForInstallments: {
+                    couponId: couponQuote.coupon.id,
+                    couponCode: couponQuote.coupon.code,
+                    discountType: couponQuote.coupon.discountType,
+                    discountValue: couponQuote.coupon.discountValue,
+                },
+            } : {}),
         };
 
-        // Create ONLY the first payment (no contract yet)
-        const firstPayment = await prisma.payment.create({
-            data: {
-                userId,
-                provider: getProviderForMethod(data.paymentMethod),
-                amount: firstAmount,
-                status: 'PENDING',
-                dueDate: firstDate,
-                metadata: { contractData },
-            },
+        // Create ONLY the first payment (no contract yet) + reserve the coupon use
+        // in the SAME transaction (atomic maxUses guard).
+        const firstPayment = await prisma.$transaction(async (tx) => {
+            const p = await tx.payment.create({
+                data: {
+                    userId,
+                    provider: getProviderForMethod(data.paymentMethod),
+                    amount: chargeAmount,
+                    status: 'PENDING',
+                    dueDate: firstDate,
+                    metadata: { contractData },
+                    ...(couponQuote ? {
+                        couponId: couponQuote.coupon.id,
+                        couponCode: couponQuote.coupon.code,
+                        discountAmount: couponQuote.discountAmount,
+                    } : {}),
+                },
+            });
+            if (couponQuote) {
+                await reserveCouponUse(tx, {
+                    couponId: couponQuote.coupon.id,
+                    userId,
+                    paymentId: p.id,
+                    originalAmount: firstAmount,
+                    discountAmount: couponQuote.discountAmount,
+                    maxUsesPerUser: couponQuote.coupon.maxUsesPerUser,
+                });
+            }
+            return p;
         });
+
+        // 100% coupon → zero charge: skip the gateway entirely (Stripe rejects <R$0,50
+        // PaymentIntents and Cora can't issue a zero invoice). Flip to PAID atomically
+        // and run the exact same confirmation effects as a webhook would.
+        if (chargeAmount === 0) {
+            await prisma.payment.updateMany({
+                where: { id: firstPayment.id, status: 'PENDING' },
+                data: { status: 'PAID', paidAt: new Date() },
+            });
+            const { onPaymentConfirmed } = await import('../../lib/paymentEffects.js');
+            await onPaymentConfirmed(firstPayment.id);
+            res.status(201).json({
+                message: 'Cupom aplicado — contrato ativado sem cobrança!',
+                firstPaymentId: firstPayment.id,
+                amount: 0,
+                duration: data.durationMonths,
+                alreadyPaid: true,
+                ...(couponQuote && { couponDiscount: couponQuote.discountAmount }),
+            });
+            return;
+        }
 
         // Enrich with gateway data. PIX/BOLETO generate the QR/boleto up-front so the client
         // can pay immediately. CARTÃO does NOT pre-create the PaymentIntent here — the inline
@@ -308,7 +435,7 @@ router.post('/self', authenticate, async (req: Request, res: Response) => {
             try {
                 const result = await gatewayCreatePayment({
                     paymentMethod: data.paymentMethod as 'PIX' | 'BOLETO' | 'CARTAO',
-                    amount: firstAmount,
+                    amount: chargeAmount,
                     description: `${data.name} - 1ª Parcela`,
                     customer: { name: user?.name || 'Cliente', email: user?.email || '', cpf: user?.cpfCnpj?.replace(/\D/g, '') || undefined },
                     dueDate: firstDate,
@@ -322,8 +449,9 @@ router.post('/self', authenticate, async (req: Request, res: Response) => {
             } catch (err) {
                 // Gateway failed (e.g. invalid CPF, Cora down). Do NOT return a misleading
                 // 201 — the payment would linger as PENDING with no QR/secret to pay it.
-                // Delete the orphan pre-contract payment and surface a clear error.
+                // Give the coupon use back, then delete the orphan pre-contract payment.
                 console.error(`[Contract:Self] Failed to create gateway payment:`, err);
+                await releaseAndPurgeCouponsForPayments([firstPayment.id]);
                 await prisma.payment.delete({ where: { id: firstPayment.id } }).catch(() => {});
                 const msg = err instanceof Error ? err.message : 'Erro ao gerar o pagamento. Tente novamente ou use outro método.';
                 res.status(502).json({ error: msg });
@@ -332,21 +460,26 @@ router.post('/self', authenticate, async (req: Request, res: Response) => {
         }
 
         const duration = data.durationMonths;
-        console.log(`CONTRACT PAYMENT ${firstPayment.id} created for user ${userId}, amount: ${firstAmount}, plan: ${data.paymentPlan}, method: ${data.paymentMethod}`);
+        console.log(`CONTRACT PAYMENT ${firstPayment.id} created for user ${userId}, amount: ${chargeAmount}, plan: ${data.paymentPlan}, method: ${data.paymentMethod}`);
 
         res.status(201).json({
             message: data.paymentPlan === 'FULL'
                 ? `Pagamento integral gerado. Efetue o pagamento para ativar seu contrato.`
                 : `Pagamento da 1ª parcela gerado. Efetue o pagamento para ativar seu contrato.`,
             firstPaymentId: firstPayment.id,
-            amount: firstAmount,
+            amount: chargeAmount,
             duration,
+            ...(couponQuote && { couponDiscount: couponQuote.discountAmount }),
             ...(clientSecret && { clientSecret }),
             ...(pixString && { firstPixString: pixString }),
         });
     } catch (err) {
         if (err instanceof z.ZodError) {
             res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
+            return;
+        }
+        if (err instanceof CouponError) {
+            res.status(err.httpStatus).json({ error: err.message, code: err.code });
             return;
         }
         console.error('Erro ao criar pagamento do contrato (Cliente):', err);
@@ -569,17 +702,61 @@ router.post('/custom', authenticate, async (req: Request, res: Response) => {
             startDate,
         });
         const customProvider = getProviderForMethod(data.paymentMethod);
-        const payments: any[] = customPlan.scheduleDueDates.map((dueDate) => ({
+
+        // Coupon (client self-serve or admin on behalf — eligibility is the target user's).
+        // Contract + bookings already exist above, so any coupon failure rolls them back.
+        const customBase = customIsFull ? customPlan.fullAmount : customPlan.monthlyAmount;
+        let customCoupon: CouponQuote | null = null;
+        if (data.couponCode) {
+            try {
+                customCoupon = await validateCoupon({ code: data.couponCode, userId, baseAmount: customBase });
+            } catch (err) {
+                await prisma.booking.deleteMany({ where: { contractId: contract.id } }).catch(() => {});
+                await prisma.contract.delete({ where: { id: contract.id } }).catch(() => {});
+                throw err;
+            }
+        }
+        const customSchedule2 = discountSchedule(customCoupon, customPlan.scheduleDueDates.map(() => customBase));
+        const payments: any[] = customPlan.scheduleDueDates.map((dueDate, i) => ({
             userId,
             contractId: contract.id,
             provider: customProvider,
-            amount: customIsFull ? customPlan.fullAmount : customPlan.monthlyAmount,
+            amount: customSchedule2[i]!.amount,
             status: 'PENDING' as const,
             dueDate,
+            ...(customCoupon && customSchedule2[i]!.discountAmount > 0 ? {
+                couponId: customCoupon.coupon.id,
+                couponCode: customCoupon.coupon.code,
+                discountAmount: customSchedule2[i]!.discountAmount,
+            } : {}),
         }));
 
         if (payments.length > 0) {
-            await prisma.payment.createMany({ data: payments });
+            if (customCoupon) {
+                const quote = customCoupon;
+                try {
+                    await prisma.$transaction(async (tx) => {
+                        const first = await tx.payment.create({ data: payments[0]! });
+                        await reserveCouponUse(tx, {
+                            couponId: quote.coupon.id,
+                            userId,
+                            paymentId: first.id,
+                            originalAmount: customBase,
+                            discountAmount: quote.discountAmount,
+                            maxUsesPerUser: quote.coupon.maxUsesPerUser,
+                        });
+                        if (payments.length > 1) {
+                            await tx.payment.createMany({ data: payments.slice(1) });
+                        }
+                    });
+                } catch (err) {
+                    await prisma.booking.deleteMany({ where: { contractId: contract.id } }).catch(() => {});
+                    await prisma.contract.delete({ where: { id: contract.id } }).catch(() => {});
+                    throw err;
+                }
+            } else {
+                await prisma.payment.createMany({ data: payments });
+            }
         }
 
         // Enrich payments with gateway (Cora/Stripe) data
@@ -598,8 +775,33 @@ router.post('/custom', authenticate, async (req: Request, res: Response) => {
         // one with the chosen installments (matching idempotency key + juros policy), and the
         // remaining installments are charged later (Meus Pagamentos / auto-charge). Pre-creating
         // would collide with that call. PIX/BOLETO still generate their QR/boleto up-front.
+        // 100% coupon → zero first charge: skip the gateway (it can't process R$0) and
+        // confirm immediately with the same effects a webhook would run.
+        if (allPayments.length > 0 && allPayments[0]!.amount === 0) {
+            await prisma.payment.updateMany({
+                where: { id: allPayments[0]!.id, status: 'PENDING' },
+                data: { status: 'PAID', paidAt: new Date() },
+            });
+            const { onPaymentConfirmed } = await import('../../lib/paymentEffects.js');
+            await onPaymentConfirmed(allPayments[0]!.id);
+        }
+
+        // Remaining zero-amount installments (100% ALL-scope coupon): the contract is
+        // already active and its bookings already exist, so settle them as PAID directly
+        // (no gateway, no separate redemption — the use was reserved on the first payment)
+        // instead of leaving them PENDING forever.
+        const otherZeroIds = allPayments.filter((p, i) => i > 0 && p.amount === 0).map(p => p.id);
+        if (otherZeroIds.length > 0) {
+            await prisma.payment.updateMany({
+                where: { id: { in: otherZeroIds }, status: 'PENDING' },
+                data: { status: 'PAID', paidAt: new Date() },
+            });
+        }
+
         let isFirst = true;
         for (const p of (data.paymentMethod === 'CARTAO' ? [] : allPayments)) {
+            // Zero-amount installments (100% ALL-scope coupon) have no gateway artifact.
+            if (p.amount === 0) { isFirst = false; continue; }
             try {
                 const result = await gatewayCreatePayment({
                     paymentMethod: data.paymentMethod as 'PIX' | 'BOLETO' | 'CARTAO',
@@ -626,7 +828,10 @@ router.post('/custom', authenticate, async (req: Request, res: Response) => {
                     // The first installment is what the client pays NOW. If its gateway
                     // dispatch fails we must NOT leave a phantom ACTIVE contract with
                     // reserved slots and an unpayable payment while reporting success.
-                    // Roll back contract + bookings + payments (FK-safe) and return 502.
+                    // Roll back contract + bookings + payments (FK-safe: coupon redemptions
+                    // are purged first, or the payment delete would hit the FK RESTRICT).
+                    const doomed = await prisma.payment.findMany({ where: { contractId: contract.id }, select: { id: true } });
+                    await releaseAndPurgeCouponsForPayments(doomed.map(d => d.id));
                     await prisma.payment.deleteMany({ where: { contractId: contract.id } }).catch(() => {});
                     await prisma.booking.deleteMany({ where: { contractId: contract.id } }).catch(() => {});
                     await prisma.contract.delete({ where: { id: contract.id } }).catch(() => {});
@@ -672,6 +877,10 @@ router.post('/custom', authenticate, async (req: Request, res: Response) => {
     } catch (err) {
         if (err instanceof z.ZodError) {
             res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
+            return;
+        }
+        if (err instanceof CouponError) {
+            res.status(err.httpStatus).json({ error: err.message, code: err.code });
             return;
         }
         console.error('Erro ao criar contrato custom:', err);

@@ -9,6 +9,7 @@ import { decryptConfigSafe } from '../../utils/crypto.js';
 import crypto from 'node:crypto';
 import { createNotification } from '../notifications/notificationService.js';
 import { onPaymentConfirmed } from '../../lib/paymentEffects.js';
+import { releaseCouponForPayment, releaseCouponForPayments } from '../../lib/couponService.js';
 
 const router = Router();
 
@@ -203,11 +204,12 @@ router.post('/stripe', async (req: Request, res: Response) => {
                 if (payment) {
                     // PAY-05 FIX: Atomic update — only mark as FAILED if still PENDING
                     // Prevents overwriting PAID status if a retry succeeded before this webhook
-                    await prisma.payment.updateMany({
+                    const failed = await prisma.payment.updateMany({
                         where: { id: paymentId, status: 'PENDING' },
                         data: { status: 'FAILED' },
                     });
                     console.log(`[Webhook:Stripe] Payment ${paymentId} marked as FAILED`);
+                    if (failed.count > 0) await releaseCouponForPayment(paymentId);
 
                     // Instant push: payment failed
                     createNotification({
@@ -425,11 +427,12 @@ router.post('/stripe', async (req: Request, res: Response) => {
                 if (payment) {
                     // PAY-06 FIX: Atomic update — only mark FAILED if still PENDING
                     // Prevents overwriting PAID if a retry succeeded before this webhook
-                    await prisma.payment.updateMany({
+                    const failed = await prisma.payment.updateMany({
                         where: { id: payment.id, status: 'PENDING' },
                         data: { status: 'FAILED' },
                     });
                     console.log(`[Webhook:Stripe] Subscription payment ${payment.id} marked as FAILED`);
+                    if (failed.count > 0) await releaseCouponForPayment(payment.id);
                 }
             }
         }
@@ -439,14 +442,20 @@ router.post('/stripe', async (req: Request, res: Response) => {
             const subscription = event.data.object;
             console.log(`[Webhook:Stripe] Subscription ${subscription.id} cancelled`);
 
-            // Mark remaining pending payments as FAILED
-            await prisma.payment.updateMany({
+            // Mark remaining pending payments as FAILED (snapshot ids first so any
+            // reserved coupon uses on them can be given back).
+            const subPending = await prisma.payment.findMany({
+                where: { stripeSubscriptionId: subscription.id, status: 'PENDING' },
+                select: { id: true },
+            });
+            const subFailed = await prisma.payment.updateMany({
                 where: {
                     stripeSubscriptionId: subscription.id,
                     status: 'PENDING',
                 },
                 data: { status: 'FAILED' },
             });
+            if (subFailed.count > 0) await releaseCouponForPayments(subPending.map(p => p.id));
         }
 
         res.status(200).json({ received: true });

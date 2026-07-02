@@ -9,6 +9,26 @@ import { getConfig } from './businessConfig.js';
 import { createPayment as gatewayCreatePayment, updatePaymentWithGatewayResult, getProviderForMethod } from './paymentGateway.js';
 import { computeAddonsCost, filterPerEpisodeAddons } from './contractPricing.js';
 import { createNotification } from '../modules/notifications/notificationService.js';
+import { computeCouponDiscount } from './couponService.js';
+
+/** Coupon info persisted in the contract draft when the coupon's scope is
+ *  ALL_INSTALLMENTS — months 2..N apply this discount at materialization. */
+interface CouponForInstallments {
+    couponId: string;
+    couponCode: string;
+    discountType: 'VALOR' | 'PERCENTUAL';
+    discountValue: number;
+}
+
+/** Per-installment discount for months 2..N (base amount in cents). */
+function installmentWithCoupon(base: number, coupon: CouponForInstallments | undefined) {
+    if (!coupon) return { amount: base, couponFields: {} };
+    const d = computeCouponDiscount(coupon, base);
+    return {
+        amount: base - d,
+        couponFields: { couponId: coupon.couponId, couponCode: coupon.couponCode, discountAmount: d },
+    };
+}
 
 interface ContractData {
     name: string;
@@ -26,6 +46,7 @@ interface ContractData {
     // Per-month amount resolved at creation (incl. add-ons + card surcharge). When present,
     // months 2..N reuse it verbatim so they can't drift if the surcharge config changes.
     monthlyAmountResolved?: number;
+    couponForInstallments?: CouponForInstallments;
 }
 
 /**
@@ -45,6 +66,7 @@ interface ServiceContractData {
     billingCadence: 'BILLING_CYCLE_28' | 'CALENDAR_MONTH';
     /** Per-month base resolved at creation — months 2..N reuse it verbatim. */
     monthlyAmountResolved: number;
+    couponForInstallments?: CouponForInstallments;
 }
 
 type FulfillablePayment = {
@@ -97,13 +119,16 @@ async function fulfillServiceFromPayment(payment: FulfillablePayment, data: Serv
 
         const remaining = [];
         for (let i = 1; i < data.durationMonths; i++) {
+            // ALL_INSTALLMENTS coupon: each later installment gets the same discount rule.
+            const { amount, couponFields } = installmentWithCoupon(data.monthlyAmountResolved, data.couponForInstallments);
             remaining.push({
                 userId,
                 contractId: contract.id,
                 provider: getProviderForMethod(data.paymentMethod),
-                amount: data.monthlyAmountResolved,
+                amount,
                 status: 'PENDING' as const,
                 dueDate: advance(i),
+                ...couponFields,
             });
         }
 
@@ -114,6 +139,12 @@ async function fulfillServiceFromPayment(payment: FulfillablePayment, data: Serv
                 orderBy: { dueDate: 'asc' },
             });
             for (const p of createdRemaining) {
+                // Free installment (100% ALL-scope coupon): the gateway can't process R$0,
+                // so settle it as PAID instead of leaving it stuck PENDING.
+                if (p.amount === 0) {
+                    await prisma.payment.updateMany({ where: { id: p.id, status: 'PENDING' }, data: { status: 'PAID', paidAt: new Date() } }).catch(() => {});
+                    continue;
+                }
                 try {
                     const result = await gatewayCreatePayment({
                         paymentMethod: data.paymentMethod as 'PIX' | 'BOLETO' | 'CARTAO',
@@ -330,13 +361,16 @@ export async function fulfillContractFromPayment(paymentId: string): Promise<voi
         // to the contract start (fixed cadence, no calendar-month drift).
         const dueDate = addBillingCycles(startDate, i);
 
+        // ALL_INSTALLMENTS coupon: each later installment gets the same discount rule.
+        const { amount, couponFields } = installmentWithCoupon(monthlyAmount, data.couponForInstallments);
         remainingPayments.push({
             userId,
             contractId: contract.id,
             provider: getProviderForMethod(data.paymentMethod),
-            amount: monthlyAmount,
+            amount,
             status: 'PENDING' as const,
             dueDate,
+            ...couponFields,
         });
     }
 
@@ -350,6 +384,12 @@ export async function fulfillContractFromPayment(paymentId: string): Promise<voi
         });
 
         for (const p of createdRemaining) {
+            // Free installment (100% ALL-scope coupon): the gateway can't process R$0,
+            // so settle it as PAID instead of leaving it stuck PENDING.
+            if (p.amount === 0) {
+                await prisma.payment.updateMany({ where: { id: p.id, status: 'PENDING' }, data: { status: 'PAID', paidAt: new Date() } }).catch(() => {});
+                continue;
+            }
             try {
                 const result = await gatewayCreatePayment({
                     paymentMethod: data.paymentMethod as 'PIX' | 'BOLETO' | 'CARTAO',

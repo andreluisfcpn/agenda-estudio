@@ -67,6 +67,21 @@ export type Booking = Prisma.BookingModel
  */
 export type Payment = Prisma.PaymentModel
 /**
+ * Model Coupon
+ * 
+ */
+export type Coupon = Prisma.CouponModel
+/**
+ * Model CouponEligibleUser
+ * 
+ */
+export type CouponEligibleUser = Prisma.CouponEligibleUserModel
+/**
+ * Model CouponRedemption
+ * 
+ */
+export type CouponRedemption = Prisma.CouponRedemptionModel
+/**
  * Model SavedPaymentMethod
  * 
  */

@@ -30,6 +30,7 @@ const AdminContractsPage = React.lazy(() => import('./pages/AdminContractsPage')
 const AdminContractDetailPage = React.lazy(() => import('./pages/AdminContractDetailPage'));
 const AdminTodayPage = React.lazy(() => import('./pages/AdminTodayPage'));
 const AdminFinancePage = React.lazy(() => import('./pages/AdminFinancePage'));
+const AdminCouponsPage = React.lazy(() => import('./pages/AdminCouponsPage'));
 const AdminReportsPage = React.lazy(() => import('./pages/AdminReportsPage'));
 const AdminSettingsPage = React.lazy(() => import('./pages/AdminSettingsPage'));
 const ClientProfilePage = React.lazy(() => import('./pages/ClientProfilePage'));
@@ -53,6 +54,7 @@ function preloadPages() {
         () => import('./pages/AdminContractsPage'),
         () => import('./pages/AdminContractDetailPage'),
         () => import('./pages/AdminFinancePage'),
+        () => import('./pages/AdminCouponsPage'),
         () => import('./pages/AdminReportsPage'),
         () => import('./pages/AdminSettingsPage'),
         () => import('./pages/ClientProfilePage'),
@@ -173,6 +175,7 @@ function AppRoutes() {
             <Route path="/admin/contracts" element={<ProtectedRoute><AdminRoute><AdminContractsPage /></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/contracts/:id" element={<ProtectedRoute><AdminRoute><AdminContractDetailPage /></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/finance" element={<ProtectedRoute><AdminRoute><AdminFinancePage /></AdminRoute></ProtectedRoute>} />
+            <Route path="/admin/cupons" element={<ProtectedRoute><AdminRoute><AdminCouponsPage /></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/reports" element={<ProtectedRoute><AdminRoute><AdminReportsPage /></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/configuracoes" element={<ProtectedRoute><AdminRoute><AdminSettingsPage /></AdminRoute></ProtectedRoute>} />
 

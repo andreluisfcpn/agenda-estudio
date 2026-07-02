@@ -11,6 +11,7 @@
 import { prisma } from './prisma.js';
 import { createNotification } from '../modules/notifications/notificationService.js';
 import { fulfillContractFromPayment } from './contractFulfillment.js';
+import { confirmCouponRedemption, releaseCouponForPayments } from './couponService.js';
 
 type PaymentLike = {
     id: string;
@@ -252,6 +253,8 @@ export async function voidContractPendingPayments(contractId: string): Promise<n
     });
     if (voided.count > 0) {
         console.log(`[PaymentEffects] Voided ${voided.count} pending installment(s) for cancelled contract ${contractId}`);
+        // Give back any coupon uses still reserved on the voided installments.
+        await releaseCouponForPayments(pending.map(p => p.id));
     }
 
     // Cancel any Stripe subscription tied to these installments so it stops billing. Best-effort:
@@ -313,8 +316,18 @@ export async function generateRemainingInstallmentsForRenewal(contractId: string
             const firstPaid = await prisma.payment.findFirst({
                 where: { contractId, status: 'PAID' },
                 orderBy: { createdAt: 'asc' },
+                include: { coupon: { select: { scope: true } } },
             });
             if (!firstPaid) return;
+
+            // Coupon parity: a FIRST_PAYMENT coupon discounts ONLY the confirmed first
+            // charge — months 2..N must revert to the pre-coupon amount, otherwise the
+            // discount would silently leak into every installment. ALL_INSTALLMENTS
+            // coupons keep the discounted figure (and stamp the audit fields).
+            const couponOnAll = firstPaid.couponId && firstPaid.coupon?.scope === 'ALL_INSTALLMENTS';
+            const perMonthAmount = couponOnAll
+                ? firstPaid.amount
+                : firstPaid.amount + (firstPaid.discountAmount ?? 0);
 
             const start = new Date(contract.startDate);
             const remaining = [];
@@ -331,9 +344,14 @@ export async function generateRemainingInstallmentsForRenewal(contractId: string
                     userId: contract.userId,
                     contractId,
                     provider: firstPaid.provider,
-                    amount: firstPaid.amount,   // exact parity with the confirmed first payment
+                    amount: perMonthAmount,   // parity with the first payment (pre-coupon unless scope=ALL)
                     status: 'PENDING' as const,
                     dueDate,
+                    ...(couponOnAll ? {
+                        couponId: firstPaid.couponId,
+                        couponCode: firstPaid.couponCode,
+                        discountAmount: firstPaid.discountAmount,
+                    } : {}),
                 });
             }
             if (remaining.length > 0) {
@@ -431,6 +449,9 @@ export async function onPaymentConfirmed(paymentId: string): Promise<void> {
         console.warn(`[PaymentEffects] onPaymentConfirmed skipped: payment ${paymentId} status=${payment.status} (expected PAID)`);
         return;
     }
+
+    // 0. Coupon bookkeeping: RESERVED → CONFIRMED (idempotent; no-op without coupon)
+    await confirmCouponRedemption(payment.id);
 
     // 1. Activate purchased add-on(s)
     await activateAddonIfNeeded(payment.id);

@@ -56,6 +56,9 @@ export const ModelName = {
   Contract: 'Contract',
   Booking: 'Booking',
   Payment: 'Payment',
+  Coupon: 'Coupon',
+  CouponEligibleUser: 'CouponEligibleUser',
+  CouponRedemption: 'CouponRedemption',
   SavedPaymentMethod: 'SavedPaymentMethod',
   BlockedSlot: 'BlockedSlot',
   PricingConfig: 'PricingConfig',
@@ -216,12 +219,60 @@ export const PaymentScalarFieldEnum = {
   paymentType: 'paymentType',
   stripeSubscriptionId: 'stripeSubscriptionId',
   metadata: 'metadata',
+  couponId: 'couponId',
+  couponCode: 'couponCode',
+  discountAmount: 'discountAmount',
   paidAt: 'paidAt',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
 
 export type PaymentScalarFieldEnum = (typeof PaymentScalarFieldEnum)[keyof typeof PaymentScalarFieldEnum]
+
+
+export const CouponScalarFieldEnum = {
+  id: 'id',
+  code: 'code',
+  description: 'description',
+  discountType: 'discountType',
+  discountValue: 'discountValue',
+  scope: 'scope',
+  expiresAt: 'expiresAt',
+  maxUses: 'maxUses',
+  usedCount: 'usedCount',
+  maxUsesPerUser: 'maxUsesPerUser',
+  minAmount: 'minAmount',
+  onlyNewClients: 'onlyNewClients',
+  active: 'active',
+  createdBy: 'createdBy',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type CouponScalarFieldEnum = (typeof CouponScalarFieldEnum)[keyof typeof CouponScalarFieldEnum]
+
+
+export const CouponEligibleUserScalarFieldEnum = {
+  couponId: 'couponId',
+  userId: 'userId'
+} as const
+
+export type CouponEligibleUserScalarFieldEnum = (typeof CouponEligibleUserScalarFieldEnum)[keyof typeof CouponEligibleUserScalarFieldEnum]
+
+
+export const CouponRedemptionScalarFieldEnum = {
+  id: 'id',
+  couponId: 'couponId',
+  userId: 'userId',
+  paymentId: 'paymentId',
+  status: 'status',
+  originalAmount: 'originalAmount',
+  discountAmount: 'discountAmount',
+  createdAt: 'createdAt',
+  confirmedAt: 'confirmedAt'
+} as const
+
+export type CouponRedemptionScalarFieldEnum = (typeof CouponRedemptionScalarFieldEnum)[keyof typeof CouponRedemptionScalarFieldEnum]
 
 
 export const SavedPaymentMethodScalarFieldEnum = {

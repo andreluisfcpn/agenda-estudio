@@ -6,6 +6,7 @@ import { getConfig } from '../../lib/businessConfig.js';
 import { createPayment as gatewayCreatePayment, updatePaymentWithGatewayResult, validatePaymentMethod, getProviderForMethod, PaymentMethodDisabledError } from '../../lib/paymentGateway.js';
 import { resolvePlanAmounts, type BillingCadence } from '../../lib/paymentPolicy.js';
 import { serviceContractSchema } from './validators.js';
+import { CouponError, validateCoupon, reserveCouponUse, releaseAndPurgeCouponsForPayments, type CouponQuote } from '../../lib/couponService.js';
 
 export function registerServiceRoutes(router: Router) {
 
@@ -81,6 +82,14 @@ router.post('/service', authenticate, async (req: Request, res: Response) => {
         });
         const firstAmount = servicePlan.firstAmount;
 
+        // Coupon: discounts the first charge; ALL_INSTALLMENTS scope propagates to
+        // months 2..N via couponForInstallments (applied at fulfillment).
+        let couponQuote: CouponQuote | null = null;
+        if (data.couponCode) {
+            couponQuote = await validateCoupon({ code: data.couponCode, userId, baseAmount: firstAmount });
+        }
+        const chargeAmount = couponQuote ? couponQuote.finalAmount : firstAmount;
+
         const contractData = {
             kind: 'SERVICE' as const,
             type: 'SERVICO' as const,
@@ -92,20 +101,67 @@ router.post('/service', authenticate, async (req: Request, res: Response) => {
             discountPct,
             billingCadence: cadence,
             // Persist the per-month base so installments 2..N never drift from month 1.
+            // Intentionally WITHOUT the coupon discount (FIRST_PAYMENT must not leak).
             monthlyAmountResolved: servicePlan.monthlyAmount,
+            ...(couponQuote && couponQuote.coupon.scope === 'ALL_INSTALLMENTS' ? {
+                couponForInstallments: {
+                    couponId: couponQuote.coupon.id,
+                    couponCode: couponQuote.coupon.code,
+                    discountType: couponQuote.coupon.discountType,
+                    discountValue: couponQuote.coupon.discountValue,
+                },
+            } : {}),
         };
 
-        // Create ONLY the first payment (no contract yet — materialized on confirmation).
-        const firstPayment = await prisma.payment.create({
-            data: {
-                userId,
-                provider: getProviderForMethod(data.paymentMethod),
-                amount: firstAmount,
-                status: 'PENDING',
-                dueDate: startDate,
-                metadata: { contractData },
-            },
+        // Create ONLY the first payment (no contract yet — materialized on confirmation),
+        // reserving the coupon use in the SAME transaction (atomic maxUses guard).
+        const firstPayment = await prisma.$transaction(async (tx) => {
+            const p = await tx.payment.create({
+                data: {
+                    userId,
+                    provider: getProviderForMethod(data.paymentMethod),
+                    amount: chargeAmount,
+                    status: 'PENDING',
+                    dueDate: startDate,
+                    metadata: { contractData },
+                    ...(couponQuote ? {
+                        couponId: couponQuote.coupon.id,
+                        couponCode: couponQuote.coupon.code,
+                        discountAmount: couponQuote.discountAmount,
+                    } : {}),
+                },
+            });
+            if (couponQuote) {
+                await reserveCouponUse(tx, {
+                    couponId: couponQuote.coupon.id,
+                    userId,
+                    paymentId: p.id,
+                    originalAmount: firstAmount,
+                    discountAmount: couponQuote.discountAmount,
+                    maxUsesPerUser: couponQuote.coupon.maxUsesPerUser,
+                });
+            }
+            return p;
         });
+
+        // 100% coupon → zero charge: skip the gateway and confirm immediately
+        // (materializes the SERVICO contract exactly like a webhook confirmation).
+        if (chargeAmount === 0) {
+            await prisma.payment.updateMany({
+                where: { id: firstPayment.id, status: 'PENDING' },
+                data: { status: 'PAID', paidAt: new Date() },
+            });
+            const { onPaymentConfirmed } = await import('../../lib/paymentEffects.js');
+            await onPaymentConfirmed(firstPayment.id);
+            res.status(201).json({
+                firstPaymentId: firstPayment.id,
+                amount: 0,
+                alreadyPaid: true,
+                couponDiscount: couponQuote?.discountAmount,
+                message: `Cupom aplicado — serviço ${addon.name} ativado sem cobrança!`,
+            });
+            return;
+        }
 
         // PIX/BOLETO generate the QR/boleto up-front so the client can pay immediately.
         // CARTÃO does NOT pre-create the PaymentIntent — the inline checkout creates it with
@@ -121,7 +177,7 @@ router.post('/service', authenticate, async (req: Request, res: Response) => {
             try {
                 const result = await gatewayCreatePayment({
                     paymentMethod: data.paymentMethod as 'PIX' | 'BOLETO' | 'CARTAO',
-                    amount: firstAmount,
+                    amount: chargeAmount,
                     description: plan === 'FULL' ? `Serviço ${addon.name}` : `Serviço ${addon.name} - 1ª Parcela`,
                     customer: {
                         name: userInfo?.name || 'Cliente',
@@ -137,8 +193,9 @@ router.post('/service', authenticate, async (req: Request, res: Response) => {
                 if (result.pixString) pixString = result.pixString;
             } catch (err) {
                 // Gateway failed (invalid CPF, Cora down, etc.). Don't leave an unpayable
-                // PENDING payment — delete it and surface a clear error (mirrors /self).
+                // PENDING payment — give the coupon use back, delete it, surface a clear error.
                 console.error(`[Contract:Service] Gateway payment failed:`, err);
+                await releaseAndPurgeCouponsForPayments([firstPayment.id]);
                 await prisma.payment.delete({ where: { id: firstPayment.id } }).catch(() => {});
                 const msg = err instanceof Error ? err.message : 'Erro ao gerar o pagamento. Tente novamente ou use outro método.';
                 res.status(502).json({ error: msg });
@@ -148,7 +205,8 @@ router.post('/service', authenticate, async (req: Request, res: Response) => {
 
         res.status(201).json({
             firstPaymentId: firstPayment.id,
-            amount: firstAmount,
+            amount: chargeAmount,
+            ...(couponQuote && { couponDiscount: couponQuote.discountAmount }),
             ...(clientSecret && { clientSecret }),
             ...(pixString && { pixString }),
             message: plan === 'FULL'
@@ -158,6 +216,10 @@ router.post('/service', authenticate, async (req: Request, res: Response) => {
     } catch (err) {
         if (err instanceof z.ZodError) {
             res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
+            return;
+        }
+        if (err instanceof CouponError) {
+            res.status(err.httpStatus).json({ error: err.message, code: err.code });
             return;
         }
         res.status(500).json({ error: 'Erro interno ao processar serviço.' });

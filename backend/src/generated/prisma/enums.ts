@@ -90,6 +90,31 @@ export const PaymentMethod = {
 export type PaymentMethod = (typeof PaymentMethod)[keyof typeof PaymentMethod]
 
 
+export const CouponDiscountType = {
+  VALOR: 'VALOR',
+  PERCENTUAL: 'PERCENTUAL'
+} as const
+
+export type CouponDiscountType = (typeof CouponDiscountType)[keyof typeof CouponDiscountType]
+
+
+export const CouponScope = {
+  FIRST_PAYMENT: 'FIRST_PAYMENT',
+  ALL_INSTALLMENTS: 'ALL_INSTALLMENTS'
+} as const
+
+export type CouponScope = (typeof CouponScope)[keyof typeof CouponScope]
+
+
+export const CouponRedemptionStatus = {
+  RESERVED: 'RESERVED',
+  CONFIRMED: 'CONFIRMED',
+  RELEASED: 'RELEASED'
+} as const
+
+export type CouponRedemptionStatus = (typeof CouponRedemptionStatus)[keyof typeof CouponRedemptionStatus]
+
+
 export const NotificationType = {
   CONTRACT_EXPIRING: 'CONTRACT_EXPIRING',
   PAYMENT_OVERDUE: 'PAYMENT_OVERDUE',

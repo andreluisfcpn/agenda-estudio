@@ -66,6 +66,22 @@ enum PaymentMethod {
   BOLETO
 }
 
+enum CouponDiscountType {
+  VALOR      // fixed discount in cents
+  PERCENTUAL // integer percentage 1–100
+}
+
+enum CouponScope {
+  FIRST_PAYMENT    // discount only the first charge of the contract/booking
+  ALL_INSTALLMENTS // discount every installment of the contract
+}
+
+enum CouponRedemptionStatus {
+  RESERVED  // use reserved when the Payment is created (counts toward usedCount)
+  CONFIRMED // payment confirmed (webhook / admin PAID)
+  RELEASED  // payment failed/cancelled/rolled back — use returned
+}
+
 enum NotificationType {
   CONTRACT_EXPIRING
   PAYMENT_OVERDUE
@@ -121,6 +137,8 @@ model User {
   savedPaymentMethods SavedPaymentMethod[]
   pushSubscriptions   PushSubscription[]
   notifications       Notification[]
+  couponEligibilities CouponEligibleUser[]
+  couponRedemptions   CouponRedemption[]
 
   @@map("users")
 }
@@ -281,6 +299,10 @@ model Payment {
   paymentType          String?   @map("payment_type")  // DEBIT | CREDIT
   stripeSubscriptionId String?   @map("stripe_subscription_id")
   metadata    Json?               // Pending contract data, addon keys, etc.
+  // ── Coupon audit trail (amount is stored ALREADY discounted; original = amount + discountAmount)
+  couponId       String? @map("coupon_id")
+  couponCode     String? @map("coupon_code")     // snapshot — survives coupon delete/rename
+  discountAmount Int?    @map("discount_amount") // cents taken off by the coupon
   paidAt      DateTime?       @map("paid_at")
   createdAt   DateTime        @default(now()) @map("created_at")
   updatedAt   DateTime        @updatedAt @map("updated_at")
@@ -288,6 +310,8 @@ model Payment {
   user     User      @relation(fields: [userId], references: [id])
   contract Contract? @relation(fields: [contractId], references: [id])
   booking  Booking?  @relation(fields: [bookingId], references: [id])
+  coupon   Coupon?   @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  couponRedemption CouponRedemption?
 
   @@index([userId])
   @@index([contractId])
@@ -296,7 +320,70 @@ model Payment {
   @@index([status])
   @@index([stripeSubscriptionId])
   @@index([dueDate])
+  @@index([couponId])
   @@map("payments")
+}
+
+model Coupon {
+  id            String             @id @default(uuid())
+  code          String             @unique // ALWAYS stored UPPERCASE (normalized in couponService)
+  description   String?            @db.Text
+  discountType  CouponDiscountType @map("discount_type")
+  discountValue Int                @map("discount_value") // cents (VALOR) or integer % 1–100 (PERCENTUAL)
+  scope         CouponScope        @default(FIRST_PAYMENT)
+  expiresAt     DateTime?          @map("expires_at") @db.Date // SP calendar date; valid through the END of that day in SP; null = never expires
+  maxUses       Int?               @map("max_uses") // null = unlimited (global cap)
+  usedCount     Int                @default(0) @map("used_count") // atomic counter (RESERVED + CONFIRMED)
+  maxUsesPerUser Int?              @map("max_uses_per_user") // null = unlimited per client
+  minAmount     Int?               @map("min_amount") // minimum charge amount in cents for the coupon to apply
+  onlyNewClients Boolean           @default(false) @map("only_new_clients") // client with zero PAID payments
+  active        Boolean            @default(true) // pause/soft-delete (same pattern as AddOnConfig.active)
+  createdBy     String             @map("created_by")
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+
+  eligibleUsers CouponEligibleUser[]
+  redemptions   CouponRedemption[]
+  payments      Payment[]
+
+  @@index([active, expiresAt])
+  @@map("coupons")
+}
+
+// Empty list = any client may use the coupon (still subject to onlyNewClients).
+model CouponEligibleUser {
+  couponId String @map("coupon_id")
+  userId   String @map("user_id")
+
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([couponId, userId])
+  @@index([userId])
+  @@map("coupon_eligible_users")
+}
+
+// One row per coupon USE. Reserved inside the same transaction that creates the Payment,
+// confirmed by onPaymentConfirmed, released on every failure path. For ALL_INSTALLMENTS
+// coupons the redemption is anchored to the contract's FIRST payment.
+model CouponRedemption {
+  id             String                 @id @default(uuid())
+  couponId       String                 @map("coupon_id")
+  userId         String                 @map("user_id")
+  paymentId      String                 @unique @map("payment_id")
+  status         CouponRedemptionStatus @default(RESERVED)
+  originalAmount Int                    @map("original_amount") // cents before the discount
+  discountAmount Int                    @map("discount_amount") // cents taken off
+  createdAt      DateTime               @default(now()) @map("created_at")
+  confirmedAt    DateTime?              @map("confirmed_at")
+
+  coupon  Coupon  @relation(fields: [couponId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+  payment Payment @relation(fields: [paymentId], references: [id])
+
+  @@index([couponId, status])
+  @@index([userId, couponId])
+  @@map("coupon_redemptions")
 }
 
 model SavedPaymentMethod {

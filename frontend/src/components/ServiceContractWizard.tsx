@@ -6,8 +6,9 @@ import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import { getClientPaymentMethods, methodInContext, type PaymentMethodKey } from '../constants/paymentMethods';
 import { formatBRL } from '../utils/format';
 import { renderServiceIcon } from '../utils/serviceIcons';
-import { contractsApi, type AddOnConfig } from '../api/client';
+import { contractsApi, type AddOnConfig, type CouponValidation } from '../api/client';
 import { getErrorMessage } from '../utils/errors';
+import CouponField from './CouponField';
 
 interface ServiceContractWizardProps {
     isOpen: boolean;
@@ -54,6 +55,8 @@ export default function ServiceContractWizard({ isOpen, addon, onClose, onSucces
     const [duration, setDuration] = useState<number>(durations[0]);
     const [plan, setPlan] = useState<Plan>(plans[0]);
     const [method, setMethod] = useState<PaymentMethodKey | null>(null);
+    // Cupom de desconto (preview no plano; o valor cobrado vem do backend em res.amount).
+    const [appliedCoupon, setAppliedCoupon] = useState<CouponValidation | null>(null);
 
     // Inline-payment state (created on the method → pay transition)
     const [firstPaymentId, setFirstPaymentId] = useState<string | null>(null);
@@ -78,6 +81,9 @@ export default function ServiceContractWizard({ isOpen, addon, onClose, onSucces
     // freeUpTo=duration), so the card preview must NOT add card_installment_surcharges here.
     const cardPerInstallment = Math.round(subtotal / duration);
 
+    // Total do plano ATUAL — base do cupom (MONTHLY: 1ª mensalidade; FULL: total no PIX).
+    const couponBaseAmount = plan === 'MONTHLY' ? monthlyDiscounted : pixTotal;
+
     const clientMethods = useMemo(
         () => getClientPaymentMethods().filter(m => m.key !== 'BOLETO' && methodInContext(m, 'contract')),
         [],
@@ -86,6 +92,7 @@ export default function ServiceContractWizard({ isOpen, addon, onClose, onSucces
     const reset = () => {
         setStep('overview'); setDuration(durations[0]); setPlan(plans[0]); setMethod(null);
         setFirstPaymentId(null); setCheckoutAmount(0); setPixString(undefined); setError('');
+        setAppliedCoupon(null);
     };
 
     const handleClose = () => { if (!creating) { reset(); onClose(); } };
@@ -103,10 +110,17 @@ export default function ServiceContractWizard({ isOpen, addon, onClose, onSucces
                 paymentMethod: chosen as 'CARTAO' | 'PIX' | 'BOLETO',
                 durationMonths: duration,
                 paymentPlan: plan,
+                couponCode: appliedCoupon?.code,
             });
             setFirstPaymentId(res.firstPaymentId);
+            // Fonte da verdade: o backend devolve o amount já com o cupom descontado.
             setCheckoutAmount(res.amount);
             setPixString(res.pixString);
+            // Cupom de 100% — pagamento já quitado no backend; vai direto ao sucesso.
+            if (res.alreadyPaid) {
+                setStep('success');
+                return;
+            }
             setStep('pay');
         } catch (err) {
             setError(getErrorMessage(err) || 'Erro ao iniciar o pagamento. Tente novamente.');
@@ -210,14 +224,34 @@ export default function ServiceContractWizard({ isOpen, addon, onClose, onSucces
                     )}
 
                     {/* Price summary */}
-                    <div style={{ padding: '14px 16px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', marginBottom: '20px' }}>
+                    <div style={{ padding: '14px 16px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', marginBottom: '12px', display: 'grid', gap: 6 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                            <span>{plan === 'MONTHLY' ? `Mensalidade (${duration}x)` : `Total à vista (${duration} meses)`}</span>
-                            <span style={{ fontWeight: 800, color: 'var(--text-primary)' }}>
+                            <span>{appliedCoupon ? 'Subtotal' : (plan === 'MONTHLY' ? `Mensalidade (${duration}x)` : `Total à vista (${duration} meses)`)}</span>
+                            <span style={{ fontWeight: appliedCoupon ? 600 : 800, color: 'var(--text-primary)' }}>
                                 {plan === 'MONTHLY' ? `${formatBRL(monthlyDiscounted)}/mês` : formatBRL(pixTotal)}
                             </span>
                         </div>
+                        {appliedCoupon && (
+                            <>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', color: '#10b981' }}>
+                                    <span>Cupom {appliedCoupon.code}</span>
+                                    <span style={{ fontWeight: 600 }}>−{formatBRL(appliedCoupon.discountAmount)}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', color: 'var(--text-secondary)', borderTop: '1px solid var(--border-subtle)', paddingTop: 6 }}>
+                                    <span>{plan === 'MONTHLY' ? 'Total da 1ª mensalidade' : 'Total à vista'}</span>
+                                    <span style={{ fontWeight: 800, color: 'var(--text-primary)' }}>{formatBRL(appliedCoupon.finalAmount)}</span>
+                                </div>
+                            </>
+                        )}
                     </div>
+
+                    {/* Cupom de desconto */}
+                    <CouponField
+                        amount={couponBaseAmount}
+                        applied={appliedCoupon}
+                        onApply={setAppliedCoupon}
+                        onRemove={() => setAppliedCoupon(null)}
+                    />
 
                     <div className="modal-actions">
                         <button className="btn btn-secondary" onClick={() => setStep('overview')} style={{ flex: 1 }}>

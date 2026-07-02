@@ -28,6 +28,7 @@ import integrationRoutes from './modules/integrations/routes.js';
 import webhookRoutes from './modules/webhooks/routes.js';
 import stripeRoutes from './modules/stripe/routes.js';
 import pushRoutes from './modules/push/routes.js';
+import couponRoutes from './modules/coupons/routes.js';
 
 import { prisma } from './lib/prisma.js';
 import { redis } from './lib/redis.js';
@@ -141,6 +142,16 @@ const refreshLimiter = rateLimit({
     legacyHeaders: false,
 });
 
+// Coupon validation limiter — blunts brute-forcing of coupon codes.
+const couponLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 15,
+    store: rlStore('rl:coupon:'),
+    message: { error: 'Muitas tentativas de cupom. Aguarde 15 minutos.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
 // ─── Body Parsing ───────────────────────────────────────
 
 // Stripe webhooks need the raw body for signature verification.
@@ -179,6 +190,7 @@ app.use('/api/contracts/:id/confirm-payment', paymentLimiter);
 app.use('/api/contracts/:id/subscribe', paymentLimiter);
 app.use('/api/contracts/:id/client-renew', paymentLimiter);
 app.use('/api/bookings/:id/complete-payment', paymentLimiter);
+app.use('/api/coupons/validate', couponLimiter);
 app.use('/api', apiLimiter);
 
 app.use('/api/auth', authRoutes);
@@ -196,6 +208,7 @@ app.use('/api/integrations', integrationRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/stripe', stripeRoutes);
 app.use('/api/push', pushRoutes);
+app.use('/api/coupons', couponRoutes);
 
 // ─── Serve Frontend (Production) ────────────────────────
 

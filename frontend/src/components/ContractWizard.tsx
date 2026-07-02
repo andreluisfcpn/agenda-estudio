@@ -1,7 +1,8 @@
 import { getErrorMessage } from '../utils/errors';
 import React, { useState, useEffect, useRef } from 'react';
 import BottomSheetModal from './BottomSheetModal';
-import { PricingConfig, AddOnConfig, bookingsApi, contractsApi, Slot, pricingApi, stripeApi, authApi } from '../api/client';
+import { PricingConfig, AddOnConfig, bookingsApi, contractsApi, Slot, pricingApi, stripeApi, authApi, ApiError, type CouponValidation } from '../api/client';
+import CouponField from './CouponField';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import { getClientPaymentMethods, type PaymentMethodKey } from '../constants/paymentMethods';
 import InlineCheckout from './InlineCheckout';
@@ -57,6 +58,8 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
     const [paymentPlan, setPaymentPlan] = useState<'MONTHLY' | 'FULL'>('MONTHLY');
     const [addons, setAddons] = useState<AddOnConfig[]>([]);
     const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
+    // Cupom de desconto aplicado no step 4 (preview; o valor autoritativo vem do backend).
+    const [appliedCoupon, setAppliedCoupon] = useState<CouponValidation | null>(null);
 
     useEffect(() => {
         pricingApi.getAddons().then(res => setAddons(res.addons)).catch(console.error);
@@ -125,6 +128,11 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
     const contractFullTotal = monthlyTotal * duration; // FULL on card (no extra discount)
     const pixFullTotal = Math.round(contractFullTotal * (1 - pixExtraDiscountPct / 100)); // FULL on PIX (à vista)
 
+    // Total corrente do plano/método escolhido — base do cupom (1ª cobrança).
+    const couponBaseAmount = paymentPlan === 'FULL'
+        ? (paymentMethod === 'PIX' ? pixFullTotal : contractFullTotal)
+        : monthlyTotal;
+
     // Generate 14 days ahead
     const now = new Date();
     const allowedDates = Array.from({ length: 14 }, (_, i) => {
@@ -183,8 +191,15 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                 paymentPlan,
                 addOns: selectedAddons,
                 resolvedConflicts: resolutions.length > 0 ? resolutions : undefined,
+                couponCode: appliedCoupon?.code,
                 ...(scheduleType === 'FIXO' ? { fixedDayOfWeek: dayOfWeek, fixedTime: firstTime } : {}),
             });
+
+            // Cupom de 100% — o backend já quitou a 1ª cobrança; pula o checkout.
+            if (res.alreadyPaid) {
+                setStep(6);
+                return;
+            }
 
             if (res.firstPaymentId) setFirstPaymentId(res.firstPaymentId);
             if (res.firstPixString) setFirstPixString(res.firstPixString);
@@ -200,7 +215,10 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
             setStep(8);
         } catch (err: unknown) {
             setError(getErrorMessage(err) || 'Erro ao processar criação do contrato');
-            setStep(conflicts.length > 0 ? 7 : 4);
+            // Erro de negócio (< 500, ex.: cupom inválido/expirado) volta ao resumo
+            // com a mensagem; demais erros mantêm o comportamento anterior.
+            if (err instanceof ApiError && err.status < 500) setStep(4);
+            else setStep(conflicts.length > 0 ? 7 : 4);
         } finally {
             setSubmitting(false);
         }
@@ -794,7 +812,33 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                                     <span>Contrato Completo ({duration}x)</span>
                                     <span className="wizard-receipt__grand-value">{formatBRL(monthlyTotal * duration)}</span>
                                 </div>
+                                {appliedCoupon && (
+                                    <>
+                                        <div className="wizard-receipt__total-row">
+                                            <span>Subtotal ({paymentPlan === 'FULL' ? 'à vista' : '1ª parcela'})</span>
+                                            <span className="wizard-receipt__total-value">{formatBRL(couponBaseAmount)}</span>
+                                        </div>
+                                        <div className="wizard-receipt__total-row" style={{ color: '#10b981' }}>
+                                            <span>Cupom {appliedCoupon.code}</span>
+                                            <span className="wizard-receipt__total-value" style={{ color: '#10b981' }}>−{formatBRL(appliedCoupon.discountAmount)}</span>
+                                        </div>
+                                        <div className="wizard-receipt__total-row wizard-receipt__total-row--grand">
+                                            <span>Total {paymentPlan === 'FULL' ? 'a pagar' : 'da 1ª parcela'}</span>
+                                            <span className="wizard-receipt__grand-value">{formatBRL(appliedCoupon.finalAmount)}</span>
+                                        </div>
+                                    </>
+                                )}
                             </div>
+                        </div>
+
+                        {/* ── Cupom de desconto ── */}
+                        <div style={{ margin: '12px 0 4px' }}>
+                            <CouponField
+                                amount={couponBaseAmount}
+                                applied={appliedCoupon}
+                                onApply={setAppliedCoupon}
+                                onRemove={() => setAppliedCoupon(null)}
+                            />
                         </div>
 
                         {/* ── Payment Plan Selector (Mensal / À vista PIX / À vista Cartão) ── */}

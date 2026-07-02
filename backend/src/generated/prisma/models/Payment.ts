@@ -29,11 +29,13 @@ export type AggregatePayment = {
 export type PaymentAvgAggregateOutputType = {
   amount: number | null
   installments: number | null
+  discountAmount: number | null
 }
 
 export type PaymentSumAggregateOutputType = {
   amount: number | null
   installments: number | null
+  discountAmount: number | null
 }
 
 export type PaymentMinAggregateOutputType = {
@@ -52,6 +54,9 @@ export type PaymentMinAggregateOutputType = {
   installments: number | null
   paymentType: string | null
   stripeSubscriptionId: string | null
+  couponId: string | null
+  couponCode: string | null
+  discountAmount: number | null
   paidAt: Date | null
   createdAt: Date | null
   updatedAt: Date | null
@@ -73,6 +78,9 @@ export type PaymentMaxAggregateOutputType = {
   installments: number | null
   paymentType: string | null
   stripeSubscriptionId: string | null
+  couponId: string | null
+  couponCode: string | null
+  discountAmount: number | null
   paidAt: Date | null
   createdAt: Date | null
   updatedAt: Date | null
@@ -95,6 +103,9 @@ export type PaymentCountAggregateOutputType = {
   paymentType: number
   stripeSubscriptionId: number
   metadata: number
+  couponId: number
+  couponCode: number
+  discountAmount: number
   paidAt: number
   createdAt: number
   updatedAt: number
@@ -105,11 +116,13 @@ export type PaymentCountAggregateOutputType = {
 export type PaymentAvgAggregateInputType = {
   amount?: true
   installments?: true
+  discountAmount?: true
 }
 
 export type PaymentSumAggregateInputType = {
   amount?: true
   installments?: true
+  discountAmount?: true
 }
 
 export type PaymentMinAggregateInputType = {
@@ -128,6 +141,9 @@ export type PaymentMinAggregateInputType = {
   installments?: true
   paymentType?: true
   stripeSubscriptionId?: true
+  couponId?: true
+  couponCode?: true
+  discountAmount?: true
   paidAt?: true
   createdAt?: true
   updatedAt?: true
@@ -149,6 +165,9 @@ export type PaymentMaxAggregateInputType = {
   installments?: true
   paymentType?: true
   stripeSubscriptionId?: true
+  couponId?: true
+  couponCode?: true
+  discountAmount?: true
   paidAt?: true
   createdAt?: true
   updatedAt?: true
@@ -171,6 +190,9 @@ export type PaymentCountAggregateInputType = {
   paymentType?: true
   stripeSubscriptionId?: true
   metadata?: true
+  couponId?: true
+  couponCode?: true
+  discountAmount?: true
   paidAt?: true
   createdAt?: true
   updatedAt?: true
@@ -280,6 +302,9 @@ export type PaymentGroupByOutputType = {
   paymentType: string | null
   stripeSubscriptionId: string | null
   metadata: runtime.JsonValue | null
+  couponId: string | null
+  couponCode: string | null
+  discountAmount: number | null
   paidAt: Date | null
   createdAt: Date
   updatedAt: Date
@@ -325,12 +350,17 @@ export type PaymentWhereInput = {
   paymentType?: Prisma.StringNullableFilter<"Payment"> | string | null
   stripeSubscriptionId?: Prisma.StringNullableFilter<"Payment"> | string | null
   metadata?: Prisma.JsonNullableFilter<"Payment">
+  couponId?: Prisma.StringNullableFilter<"Payment"> | string | null
+  couponCode?: Prisma.StringNullableFilter<"Payment"> | string | null
+  discountAmount?: Prisma.IntNullableFilter<"Payment"> | number | null
   paidAt?: Prisma.DateTimeNullableFilter<"Payment"> | Date | string | null
   createdAt?: Prisma.DateTimeFilter<"Payment"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Payment"> | Date | string
   user?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>
   contract?: Prisma.XOR<Prisma.ContractNullableScalarRelationFilter, Prisma.ContractWhereInput> | null
   booking?: Prisma.XOR<Prisma.BookingNullableScalarRelationFilter, Prisma.BookingWhereInput> | null
+  coupon?: Prisma.XOR<Prisma.CouponNullableScalarRelationFilter, Prisma.CouponWhereInput> | null
+  couponRedemption?: Prisma.XOR<Prisma.CouponRedemptionNullableScalarRelationFilter, Prisma.CouponRedemptionWhereInput> | null
 }
 
 export type PaymentOrderByWithRelationInput = {
@@ -350,12 +380,17 @@ export type PaymentOrderByWithRelationInput = {
   paymentType?: Prisma.SortOrderInput | Prisma.SortOrder
   stripeSubscriptionId?: Prisma.SortOrderInput | Prisma.SortOrder
   metadata?: Prisma.SortOrderInput | Prisma.SortOrder
+  couponId?: Prisma.SortOrderInput | Prisma.SortOrder
+  couponCode?: Prisma.SortOrderInput | Prisma.SortOrder
+  discountAmount?: Prisma.SortOrderInput | Prisma.SortOrder
   paidAt?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   user?: Prisma.UserOrderByWithRelationInput
   contract?: Prisma.ContractOrderByWithRelationInput
   booking?: Prisma.BookingOrderByWithRelationInput
+  coupon?: Prisma.CouponOrderByWithRelationInput
+  couponRedemption?: Prisma.CouponRedemptionOrderByWithRelationInput
 }
 
 export type PaymentWhereUniqueInput = Prisma.AtLeast<{
@@ -378,12 +413,17 @@ export type PaymentWhereUniqueInput = Prisma.AtLeast<{
   paymentType?: Prisma.StringNullableFilter<"Payment"> | string | null
   stripeSubscriptionId?: Prisma.StringNullableFilter<"Payment"> | string | null
   metadata?: Prisma.JsonNullableFilter<"Payment">
+  couponId?: Prisma.StringNullableFilter<"Payment"> | string | null
+  couponCode?: Prisma.StringNullableFilter<"Payment"> | string | null
+  discountAmount?: Prisma.IntNullableFilter<"Payment"> | number | null
   paidAt?: Prisma.DateTimeNullableFilter<"Payment"> | Date | string | null
   createdAt?: Prisma.DateTimeFilter<"Payment"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Payment"> | Date | string
   user?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>
   contract?: Prisma.XOR<Prisma.ContractNullableScalarRelationFilter, Prisma.ContractWhereInput> | null
   booking?: Prisma.XOR<Prisma.BookingNullableScalarRelationFilter, Prisma.BookingWhereInput> | null
+  coupon?: Prisma.XOR<Prisma.CouponNullableScalarRelationFilter, Prisma.CouponWhereInput> | null
+  couponRedemption?: Prisma.XOR<Prisma.CouponRedemptionNullableScalarRelationFilter, Prisma.CouponRedemptionWhereInput> | null
 }, "id">
 
 export type PaymentOrderByWithAggregationInput = {
@@ -403,6 +443,9 @@ export type PaymentOrderByWithAggregationInput = {
   paymentType?: Prisma.SortOrderInput | Prisma.SortOrder
   stripeSubscriptionId?: Prisma.SortOrderInput | Prisma.SortOrder
   metadata?: Prisma.SortOrderInput | Prisma.SortOrder
+  couponId?: Prisma.SortOrderInput | Prisma.SortOrder
+  couponCode?: Prisma.SortOrderInput | Prisma.SortOrder
+  discountAmount?: Prisma.SortOrderInput | Prisma.SortOrder
   paidAt?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
@@ -433,6 +476,9 @@ export type PaymentScalarWhereWithAggregatesInput = {
   paymentType?: Prisma.StringNullableWithAggregatesFilter<"Payment"> | string | null
   stripeSubscriptionId?: Prisma.StringNullableWithAggregatesFilter<"Payment"> | string | null
   metadata?: Prisma.JsonNullableWithAggregatesFilter<"Payment">
+  couponId?: Prisma.StringNullableWithAggregatesFilter<"Payment"> | string | null
+  couponCode?: Prisma.StringNullableWithAggregatesFilter<"Payment"> | string | null
+  discountAmount?: Prisma.IntNullableWithAggregatesFilter<"Payment"> | number | null
   paidAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Payment"> | Date | string | null
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"Payment"> | Date | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"Payment"> | Date | string
@@ -452,12 +498,16 @@ export type PaymentCreateInput = {
   paymentType?: string | null
   stripeSubscriptionId?: string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponCode?: string | null
+  discountAmount?: number | null
   paidAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   user: Prisma.UserCreateNestedOneWithoutPaymentsInput
   contract?: Prisma.ContractCreateNestedOneWithoutPaymentsInput
   booking?: Prisma.BookingCreateNestedOneWithoutPaymentsInput
+  coupon?: Prisma.CouponCreateNestedOneWithoutPaymentsInput
+  couponRedemption?: Prisma.CouponRedemptionCreateNestedOneWithoutPaymentInput
 }
 
 export type PaymentUncheckedCreateInput = {
@@ -477,9 +527,13 @@ export type PaymentUncheckedCreateInput = {
   paymentType?: string | null
   stripeSubscriptionId?: string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponId?: string | null
+  couponCode?: string | null
+  discountAmount?: number | null
   paidAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
+  couponRedemption?: Prisma.CouponRedemptionUncheckedCreateNestedOneWithoutPaymentInput
 }
 
 export type PaymentUpdateInput = {
@@ -496,12 +550,16 @@ export type PaymentUpdateInput = {
   paymentType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountAmount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   user?: Prisma.UserUpdateOneRequiredWithoutPaymentsNestedInput
   contract?: Prisma.ContractUpdateOneWithoutPaymentsNestedInput
   booking?: Prisma.BookingUpdateOneWithoutPaymentsNestedInput
+  coupon?: Prisma.CouponUpdateOneWithoutPaymentsNestedInput
+  couponRedemption?: Prisma.CouponRedemptionUpdateOneWithoutPaymentNestedInput
 }
 
 export type PaymentUncheckedUpdateInput = {
@@ -521,9 +579,13 @@ export type PaymentUncheckedUpdateInput = {
   paymentType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  couponCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountAmount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  couponRedemption?: Prisma.CouponRedemptionUncheckedUpdateOneWithoutPaymentNestedInput
 }
 
 export type PaymentCreateManyInput = {
@@ -543,6 +605,9 @@ export type PaymentCreateManyInput = {
   paymentType?: string | null
   stripeSubscriptionId?: string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponId?: string | null
+  couponCode?: string | null
+  discountAmount?: number | null
   paidAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -562,6 +627,8 @@ export type PaymentUpdateManyMutationInput = {
   paymentType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountAmount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -584,6 +651,9 @@ export type PaymentUncheckedUpdateManyInput = {
   paymentType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  couponCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountAmount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -616,6 +686,9 @@ export type PaymentCountOrderByAggregateInput = {
   paymentType?: Prisma.SortOrder
   stripeSubscriptionId?: Prisma.SortOrder
   metadata?: Prisma.SortOrder
+  couponId?: Prisma.SortOrder
+  couponCode?: Prisma.SortOrder
+  discountAmount?: Prisma.SortOrder
   paidAt?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
@@ -624,6 +697,7 @@ export type PaymentCountOrderByAggregateInput = {
 export type PaymentAvgOrderByAggregateInput = {
   amount?: Prisma.SortOrder
   installments?: Prisma.SortOrder
+  discountAmount?: Prisma.SortOrder
 }
 
 export type PaymentMaxOrderByAggregateInput = {
@@ -642,6 +716,9 @@ export type PaymentMaxOrderByAggregateInput = {
   installments?: Prisma.SortOrder
   paymentType?: Prisma.SortOrder
   stripeSubscriptionId?: Prisma.SortOrder
+  couponId?: Prisma.SortOrder
+  couponCode?: Prisma.SortOrder
+  discountAmount?: Prisma.SortOrder
   paidAt?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
@@ -663,6 +740,9 @@ export type PaymentMinOrderByAggregateInput = {
   installments?: Prisma.SortOrder
   paymentType?: Prisma.SortOrder
   stripeSubscriptionId?: Prisma.SortOrder
+  couponId?: Prisma.SortOrder
+  couponCode?: Prisma.SortOrder
+  discountAmount?: Prisma.SortOrder
   paidAt?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
@@ -671,6 +751,12 @@ export type PaymentMinOrderByAggregateInput = {
 export type PaymentSumOrderByAggregateInput = {
   amount?: Prisma.SortOrder
   installments?: Prisma.SortOrder
+  discountAmount?: Prisma.SortOrder
+}
+
+export type PaymentScalarRelationFilter = {
+  is?: Prisma.PaymentWhereInput
+  isNot?: Prisma.PaymentWhereInput
 }
 
 export type PaymentCreateNestedManyWithoutUserInput = {
@@ -807,6 +893,62 @@ export type EnumPaymentStatusFieldUpdateOperationsInput = {
   set?: $Enums.PaymentStatus
 }
 
+export type PaymentCreateNestedManyWithoutCouponInput = {
+  create?: Prisma.XOR<Prisma.PaymentCreateWithoutCouponInput, Prisma.PaymentUncheckedCreateWithoutCouponInput> | Prisma.PaymentCreateWithoutCouponInput[] | Prisma.PaymentUncheckedCreateWithoutCouponInput[]
+  connectOrCreate?: Prisma.PaymentCreateOrConnectWithoutCouponInput | Prisma.PaymentCreateOrConnectWithoutCouponInput[]
+  createMany?: Prisma.PaymentCreateManyCouponInputEnvelope
+  connect?: Prisma.PaymentWhereUniqueInput | Prisma.PaymentWhereUniqueInput[]
+}
+
+export type PaymentUncheckedCreateNestedManyWithoutCouponInput = {
+  create?: Prisma.XOR<Prisma.PaymentCreateWithoutCouponInput, Prisma.PaymentUncheckedCreateWithoutCouponInput> | Prisma.PaymentCreateWithoutCouponInput[] | Prisma.PaymentUncheckedCreateWithoutCouponInput[]
+  connectOrCreate?: Prisma.PaymentCreateOrConnectWithoutCouponInput | Prisma.PaymentCreateOrConnectWithoutCouponInput[]
+  createMany?: Prisma.PaymentCreateManyCouponInputEnvelope
+  connect?: Prisma.PaymentWhereUniqueInput | Prisma.PaymentWhereUniqueInput[]
+}
+
+export type PaymentUpdateManyWithoutCouponNestedInput = {
+  create?: Prisma.XOR<Prisma.PaymentCreateWithoutCouponInput, Prisma.PaymentUncheckedCreateWithoutCouponInput> | Prisma.PaymentCreateWithoutCouponInput[] | Prisma.PaymentUncheckedCreateWithoutCouponInput[]
+  connectOrCreate?: Prisma.PaymentCreateOrConnectWithoutCouponInput | Prisma.PaymentCreateOrConnectWithoutCouponInput[]
+  upsert?: Prisma.PaymentUpsertWithWhereUniqueWithoutCouponInput | Prisma.PaymentUpsertWithWhereUniqueWithoutCouponInput[]
+  createMany?: Prisma.PaymentCreateManyCouponInputEnvelope
+  set?: Prisma.PaymentWhereUniqueInput | Prisma.PaymentWhereUniqueInput[]
+  disconnect?: Prisma.PaymentWhereUniqueInput | Prisma.PaymentWhereUniqueInput[]
+  delete?: Prisma.PaymentWhereUniqueInput | Prisma.PaymentWhereUniqueInput[]
+  connect?: Prisma.PaymentWhereUniqueInput | Prisma.PaymentWhereUniqueInput[]
+  update?: Prisma.PaymentUpdateWithWhereUniqueWithoutCouponInput | Prisma.PaymentUpdateWithWhereUniqueWithoutCouponInput[]
+  updateMany?: Prisma.PaymentUpdateManyWithWhereWithoutCouponInput | Prisma.PaymentUpdateManyWithWhereWithoutCouponInput[]
+  deleteMany?: Prisma.PaymentScalarWhereInput | Prisma.PaymentScalarWhereInput[]
+}
+
+export type PaymentUncheckedUpdateManyWithoutCouponNestedInput = {
+  create?: Prisma.XOR<Prisma.PaymentCreateWithoutCouponInput, Prisma.PaymentUncheckedCreateWithoutCouponInput> | Prisma.PaymentCreateWithoutCouponInput[] | Prisma.PaymentUncheckedCreateWithoutCouponInput[]
+  connectOrCreate?: Prisma.PaymentCreateOrConnectWithoutCouponInput | Prisma.PaymentCreateOrConnectWithoutCouponInput[]
+  upsert?: Prisma.PaymentUpsertWithWhereUniqueWithoutCouponInput | Prisma.PaymentUpsertWithWhereUniqueWithoutCouponInput[]
+  createMany?: Prisma.PaymentCreateManyCouponInputEnvelope
+  set?: Prisma.PaymentWhereUniqueInput | Prisma.PaymentWhereUniqueInput[]
+  disconnect?: Prisma.PaymentWhereUniqueInput | Prisma.PaymentWhereUniqueInput[]
+  delete?: Prisma.PaymentWhereUniqueInput | Prisma.PaymentWhereUniqueInput[]
+  connect?: Prisma.PaymentWhereUniqueInput | Prisma.PaymentWhereUniqueInput[]
+  update?: Prisma.PaymentUpdateWithWhereUniqueWithoutCouponInput | Prisma.PaymentUpdateWithWhereUniqueWithoutCouponInput[]
+  updateMany?: Prisma.PaymentUpdateManyWithWhereWithoutCouponInput | Prisma.PaymentUpdateManyWithWhereWithoutCouponInput[]
+  deleteMany?: Prisma.PaymentScalarWhereInput | Prisma.PaymentScalarWhereInput[]
+}
+
+export type PaymentCreateNestedOneWithoutCouponRedemptionInput = {
+  create?: Prisma.XOR<Prisma.PaymentCreateWithoutCouponRedemptionInput, Prisma.PaymentUncheckedCreateWithoutCouponRedemptionInput>
+  connectOrCreate?: Prisma.PaymentCreateOrConnectWithoutCouponRedemptionInput
+  connect?: Prisma.PaymentWhereUniqueInput
+}
+
+export type PaymentUpdateOneRequiredWithoutCouponRedemptionNestedInput = {
+  create?: Prisma.XOR<Prisma.PaymentCreateWithoutCouponRedemptionInput, Prisma.PaymentUncheckedCreateWithoutCouponRedemptionInput>
+  connectOrCreate?: Prisma.PaymentCreateOrConnectWithoutCouponRedemptionInput
+  upsert?: Prisma.PaymentUpsertWithoutCouponRedemptionInput
+  connect?: Prisma.PaymentWhereUniqueInput
+  update?: Prisma.XOR<Prisma.XOR<Prisma.PaymentUpdateToOneWithWhereWithoutCouponRedemptionInput, Prisma.PaymentUpdateWithoutCouponRedemptionInput>, Prisma.PaymentUncheckedUpdateWithoutCouponRedemptionInput>
+}
+
 export type PaymentCreateWithoutUserInput = {
   id?: string
   provider: $Enums.PaymentProvider
@@ -821,11 +963,15 @@ export type PaymentCreateWithoutUserInput = {
   paymentType?: string | null
   stripeSubscriptionId?: string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponCode?: string | null
+  discountAmount?: number | null
   paidAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   contract?: Prisma.ContractCreateNestedOneWithoutPaymentsInput
   booking?: Prisma.BookingCreateNestedOneWithoutPaymentsInput
+  coupon?: Prisma.CouponCreateNestedOneWithoutPaymentsInput
+  couponRedemption?: Prisma.CouponRedemptionCreateNestedOneWithoutPaymentInput
 }
 
 export type PaymentUncheckedCreateWithoutUserInput = {
@@ -844,9 +990,13 @@ export type PaymentUncheckedCreateWithoutUserInput = {
   paymentType?: string | null
   stripeSubscriptionId?: string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponId?: string | null
+  couponCode?: string | null
+  discountAmount?: number | null
   paidAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
+  couponRedemption?: Prisma.CouponRedemptionUncheckedCreateNestedOneWithoutPaymentInput
 }
 
 export type PaymentCreateOrConnectWithoutUserInput = {
@@ -895,6 +1045,9 @@ export type PaymentScalarWhereInput = {
   paymentType?: Prisma.StringNullableFilter<"Payment"> | string | null
   stripeSubscriptionId?: Prisma.StringNullableFilter<"Payment"> | string | null
   metadata?: Prisma.JsonNullableFilter<"Payment">
+  couponId?: Prisma.StringNullableFilter<"Payment"> | string | null
+  couponCode?: Prisma.StringNullableFilter<"Payment"> | string | null
+  discountAmount?: Prisma.IntNullableFilter<"Payment"> | number | null
   paidAt?: Prisma.DateTimeNullableFilter<"Payment"> | Date | string | null
   createdAt?: Prisma.DateTimeFilter<"Payment"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Payment"> | Date | string
@@ -914,11 +1067,15 @@ export type PaymentCreateWithoutContractInput = {
   paymentType?: string | null
   stripeSubscriptionId?: string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponCode?: string | null
+  discountAmount?: number | null
   paidAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   user: Prisma.UserCreateNestedOneWithoutPaymentsInput
   booking?: Prisma.BookingCreateNestedOneWithoutPaymentsInput
+  coupon?: Prisma.CouponCreateNestedOneWithoutPaymentsInput
+  couponRedemption?: Prisma.CouponRedemptionCreateNestedOneWithoutPaymentInput
 }
 
 export type PaymentUncheckedCreateWithoutContractInput = {
@@ -937,9 +1094,13 @@ export type PaymentUncheckedCreateWithoutContractInput = {
   paymentType?: string | null
   stripeSubscriptionId?: string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponId?: string | null
+  couponCode?: string | null
+  discountAmount?: number | null
   paidAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
+  couponRedemption?: Prisma.CouponRedemptionUncheckedCreateNestedOneWithoutPaymentInput
 }
 
 export type PaymentCreateOrConnectWithoutContractInput = {
@@ -982,11 +1143,15 @@ export type PaymentCreateWithoutBookingInput = {
   paymentType?: string | null
   stripeSubscriptionId?: string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponCode?: string | null
+  discountAmount?: number | null
   paidAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   user: Prisma.UserCreateNestedOneWithoutPaymentsInput
   contract?: Prisma.ContractCreateNestedOneWithoutPaymentsInput
+  coupon?: Prisma.CouponCreateNestedOneWithoutPaymentsInput
+  couponRedemption?: Prisma.CouponRedemptionCreateNestedOneWithoutPaymentInput
 }
 
 export type PaymentUncheckedCreateWithoutBookingInput = {
@@ -1005,9 +1170,13 @@ export type PaymentUncheckedCreateWithoutBookingInput = {
   paymentType?: string | null
   stripeSubscriptionId?: string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponId?: string | null
+  couponCode?: string | null
+  discountAmount?: number | null
   paidAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
+  couponRedemption?: Prisma.CouponRedemptionUncheckedCreateNestedOneWithoutPaymentInput
 }
 
 export type PaymentCreateOrConnectWithoutBookingInput = {
@@ -1036,6 +1205,198 @@ export type PaymentUpdateManyWithWhereWithoutBookingInput = {
   data: Prisma.XOR<Prisma.PaymentUpdateManyMutationInput, Prisma.PaymentUncheckedUpdateManyWithoutBookingInput>
 }
 
+export type PaymentCreateWithoutCouponInput = {
+  id?: string
+  provider: $Enums.PaymentProvider
+  providerRef?: string | null
+  amount: number
+  status?: $Enums.PaymentStatus
+  dueDate?: Date | string | null
+  pixString?: string | null
+  boletoUrl?: string | null
+  paymentUrl?: string | null
+  installments?: number | null
+  paymentType?: string | null
+  stripeSubscriptionId?: string | null
+  metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponCode?: string | null
+  discountAmount?: number | null
+  paidAt?: Date | string | null
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  user: Prisma.UserCreateNestedOneWithoutPaymentsInput
+  contract?: Prisma.ContractCreateNestedOneWithoutPaymentsInput
+  booking?: Prisma.BookingCreateNestedOneWithoutPaymentsInput
+  couponRedemption?: Prisma.CouponRedemptionCreateNestedOneWithoutPaymentInput
+}
+
+export type PaymentUncheckedCreateWithoutCouponInput = {
+  id?: string
+  userId: string
+  contractId?: string | null
+  bookingId?: string | null
+  provider: $Enums.PaymentProvider
+  providerRef?: string | null
+  amount: number
+  status?: $Enums.PaymentStatus
+  dueDate?: Date | string | null
+  pixString?: string | null
+  boletoUrl?: string | null
+  paymentUrl?: string | null
+  installments?: number | null
+  paymentType?: string | null
+  stripeSubscriptionId?: string | null
+  metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponCode?: string | null
+  discountAmount?: number | null
+  paidAt?: Date | string | null
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  couponRedemption?: Prisma.CouponRedemptionUncheckedCreateNestedOneWithoutPaymentInput
+}
+
+export type PaymentCreateOrConnectWithoutCouponInput = {
+  where: Prisma.PaymentWhereUniqueInput
+  create: Prisma.XOR<Prisma.PaymentCreateWithoutCouponInput, Prisma.PaymentUncheckedCreateWithoutCouponInput>
+}
+
+export type PaymentCreateManyCouponInputEnvelope = {
+  data: Prisma.PaymentCreateManyCouponInput | Prisma.PaymentCreateManyCouponInput[]
+  skipDuplicates?: boolean
+}
+
+export type PaymentUpsertWithWhereUniqueWithoutCouponInput = {
+  where: Prisma.PaymentWhereUniqueInput
+  update: Prisma.XOR<Prisma.PaymentUpdateWithoutCouponInput, Prisma.PaymentUncheckedUpdateWithoutCouponInput>
+  create: Prisma.XOR<Prisma.PaymentCreateWithoutCouponInput, Prisma.PaymentUncheckedCreateWithoutCouponInput>
+}
+
+export type PaymentUpdateWithWhereUniqueWithoutCouponInput = {
+  where: Prisma.PaymentWhereUniqueInput
+  data: Prisma.XOR<Prisma.PaymentUpdateWithoutCouponInput, Prisma.PaymentUncheckedUpdateWithoutCouponInput>
+}
+
+export type PaymentUpdateManyWithWhereWithoutCouponInput = {
+  where: Prisma.PaymentScalarWhereInput
+  data: Prisma.XOR<Prisma.PaymentUpdateManyMutationInput, Prisma.PaymentUncheckedUpdateManyWithoutCouponInput>
+}
+
+export type PaymentCreateWithoutCouponRedemptionInput = {
+  id?: string
+  provider: $Enums.PaymentProvider
+  providerRef?: string | null
+  amount: number
+  status?: $Enums.PaymentStatus
+  dueDate?: Date | string | null
+  pixString?: string | null
+  boletoUrl?: string | null
+  paymentUrl?: string | null
+  installments?: number | null
+  paymentType?: string | null
+  stripeSubscriptionId?: string | null
+  metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponCode?: string | null
+  discountAmount?: number | null
+  paidAt?: Date | string | null
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  user: Prisma.UserCreateNestedOneWithoutPaymentsInput
+  contract?: Prisma.ContractCreateNestedOneWithoutPaymentsInput
+  booking?: Prisma.BookingCreateNestedOneWithoutPaymentsInput
+  coupon?: Prisma.CouponCreateNestedOneWithoutPaymentsInput
+}
+
+export type PaymentUncheckedCreateWithoutCouponRedemptionInput = {
+  id?: string
+  userId: string
+  contractId?: string | null
+  bookingId?: string | null
+  provider: $Enums.PaymentProvider
+  providerRef?: string | null
+  amount: number
+  status?: $Enums.PaymentStatus
+  dueDate?: Date | string | null
+  pixString?: string | null
+  boletoUrl?: string | null
+  paymentUrl?: string | null
+  installments?: number | null
+  paymentType?: string | null
+  stripeSubscriptionId?: string | null
+  metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponId?: string | null
+  couponCode?: string | null
+  discountAmount?: number | null
+  paidAt?: Date | string | null
+  createdAt?: Date | string
+  updatedAt?: Date | string
+}
+
+export type PaymentCreateOrConnectWithoutCouponRedemptionInput = {
+  where: Prisma.PaymentWhereUniqueInput
+  create: Prisma.XOR<Prisma.PaymentCreateWithoutCouponRedemptionInput, Prisma.PaymentUncheckedCreateWithoutCouponRedemptionInput>
+}
+
+export type PaymentUpsertWithoutCouponRedemptionInput = {
+  update: Prisma.XOR<Prisma.PaymentUpdateWithoutCouponRedemptionInput, Prisma.PaymentUncheckedUpdateWithoutCouponRedemptionInput>
+  create: Prisma.XOR<Prisma.PaymentCreateWithoutCouponRedemptionInput, Prisma.PaymentUncheckedCreateWithoutCouponRedemptionInput>
+  where?: Prisma.PaymentWhereInput
+}
+
+export type PaymentUpdateToOneWithWhereWithoutCouponRedemptionInput = {
+  where?: Prisma.PaymentWhereInput
+  data: Prisma.XOR<Prisma.PaymentUpdateWithoutCouponRedemptionInput, Prisma.PaymentUncheckedUpdateWithoutCouponRedemptionInput>
+}
+
+export type PaymentUpdateWithoutCouponRedemptionInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
+  providerRef?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  amount?: Prisma.IntFieldUpdateOperationsInput | number
+  status?: Prisma.EnumPaymentStatusFieldUpdateOperationsInput | $Enums.PaymentStatus
+  dueDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  pixString?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  boletoUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  paymentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  installments?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  paymentType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountAmount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  user?: Prisma.UserUpdateOneRequiredWithoutPaymentsNestedInput
+  contract?: Prisma.ContractUpdateOneWithoutPaymentsNestedInput
+  booking?: Prisma.BookingUpdateOneWithoutPaymentsNestedInput
+  coupon?: Prisma.CouponUpdateOneWithoutPaymentsNestedInput
+}
+
+export type PaymentUncheckedUpdateWithoutCouponRedemptionInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  userId?: Prisma.StringFieldUpdateOperationsInput | string
+  contractId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  bookingId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
+  providerRef?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  amount?: Prisma.IntFieldUpdateOperationsInput | number
+  status?: Prisma.EnumPaymentStatusFieldUpdateOperationsInput | $Enums.PaymentStatus
+  dueDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  pixString?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  boletoUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  paymentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  installments?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  paymentType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  couponCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountAmount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+}
+
 export type PaymentCreateManyUserInput = {
   id?: string
   contractId?: string | null
@@ -1052,6 +1413,9 @@ export type PaymentCreateManyUserInput = {
   paymentType?: string | null
   stripeSubscriptionId?: string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponId?: string | null
+  couponCode?: string | null
+  discountAmount?: number | null
   paidAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -1071,11 +1435,15 @@ export type PaymentUpdateWithoutUserInput = {
   paymentType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountAmount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   contract?: Prisma.ContractUpdateOneWithoutPaymentsNestedInput
   booking?: Prisma.BookingUpdateOneWithoutPaymentsNestedInput
+  coupon?: Prisma.CouponUpdateOneWithoutPaymentsNestedInput
+  couponRedemption?: Prisma.CouponRedemptionUpdateOneWithoutPaymentNestedInput
 }
 
 export type PaymentUncheckedUpdateWithoutUserInput = {
@@ -1094,9 +1462,13 @@ export type PaymentUncheckedUpdateWithoutUserInput = {
   paymentType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  couponCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountAmount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  couponRedemption?: Prisma.CouponRedemptionUncheckedUpdateOneWithoutPaymentNestedInput
 }
 
 export type PaymentUncheckedUpdateManyWithoutUserInput = {
@@ -1115,6 +1487,9 @@ export type PaymentUncheckedUpdateManyWithoutUserInput = {
   paymentType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  couponCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountAmount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -1136,6 +1511,9 @@ export type PaymentCreateManyContractInput = {
   paymentType?: string | null
   stripeSubscriptionId?: string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponId?: string | null
+  couponCode?: string | null
+  discountAmount?: number | null
   paidAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -1155,11 +1533,15 @@ export type PaymentUpdateWithoutContractInput = {
   paymentType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountAmount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   user?: Prisma.UserUpdateOneRequiredWithoutPaymentsNestedInput
   booking?: Prisma.BookingUpdateOneWithoutPaymentsNestedInput
+  coupon?: Prisma.CouponUpdateOneWithoutPaymentsNestedInput
+  couponRedemption?: Prisma.CouponRedemptionUpdateOneWithoutPaymentNestedInput
 }
 
 export type PaymentUncheckedUpdateWithoutContractInput = {
@@ -1178,9 +1560,13 @@ export type PaymentUncheckedUpdateWithoutContractInput = {
   paymentType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  couponCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountAmount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  couponRedemption?: Prisma.CouponRedemptionUncheckedUpdateOneWithoutPaymentNestedInput
 }
 
 export type PaymentUncheckedUpdateManyWithoutContractInput = {
@@ -1199,6 +1585,9 @@ export type PaymentUncheckedUpdateManyWithoutContractInput = {
   paymentType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  couponCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountAmount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -1220,6 +1609,9 @@ export type PaymentCreateManyBookingInput = {
   paymentType?: string | null
   stripeSubscriptionId?: string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponId?: string | null
+  couponCode?: string | null
+  discountAmount?: number | null
   paidAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -1239,11 +1631,15 @@ export type PaymentUpdateWithoutBookingInput = {
   paymentType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountAmount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   user?: Prisma.UserUpdateOneRequiredWithoutPaymentsNestedInput
   contract?: Prisma.ContractUpdateOneWithoutPaymentsNestedInput
+  coupon?: Prisma.CouponUpdateOneWithoutPaymentsNestedInput
+  couponRedemption?: Prisma.CouponRedemptionUpdateOneWithoutPaymentNestedInput
 }
 
 export type PaymentUncheckedUpdateWithoutBookingInput = {
@@ -1262,9 +1658,13 @@ export type PaymentUncheckedUpdateWithoutBookingInput = {
   paymentType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  couponCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountAmount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  couponRedemption?: Prisma.CouponRedemptionUncheckedUpdateOneWithoutPaymentNestedInput
 }
 
 export type PaymentUncheckedUpdateManyWithoutBookingInput = {
@@ -1283,6 +1683,107 @@ export type PaymentUncheckedUpdateManyWithoutBookingInput = {
   paymentType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  couponCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountAmount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+}
+
+export type PaymentCreateManyCouponInput = {
+  id?: string
+  userId: string
+  contractId?: string | null
+  bookingId?: string | null
+  provider: $Enums.PaymentProvider
+  providerRef?: string | null
+  amount: number
+  status?: $Enums.PaymentStatus
+  dueDate?: Date | string | null
+  pixString?: string | null
+  boletoUrl?: string | null
+  paymentUrl?: string | null
+  installments?: number | null
+  paymentType?: string | null
+  stripeSubscriptionId?: string | null
+  metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponCode?: string | null
+  discountAmount?: number | null
+  paidAt?: Date | string | null
+  createdAt?: Date | string
+  updatedAt?: Date | string
+}
+
+export type PaymentUpdateWithoutCouponInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
+  providerRef?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  amount?: Prisma.IntFieldUpdateOperationsInput | number
+  status?: Prisma.EnumPaymentStatusFieldUpdateOperationsInput | $Enums.PaymentStatus
+  dueDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  pixString?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  boletoUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  paymentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  installments?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  paymentType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountAmount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  user?: Prisma.UserUpdateOneRequiredWithoutPaymentsNestedInput
+  contract?: Prisma.ContractUpdateOneWithoutPaymentsNestedInput
+  booking?: Prisma.BookingUpdateOneWithoutPaymentsNestedInput
+  couponRedemption?: Prisma.CouponRedemptionUpdateOneWithoutPaymentNestedInput
+}
+
+export type PaymentUncheckedUpdateWithoutCouponInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  userId?: Prisma.StringFieldUpdateOperationsInput | string
+  contractId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  bookingId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
+  providerRef?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  amount?: Prisma.IntFieldUpdateOperationsInput | number
+  status?: Prisma.EnumPaymentStatusFieldUpdateOperationsInput | $Enums.PaymentStatus
+  dueDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  pixString?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  boletoUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  paymentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  installments?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  paymentType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountAmount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  couponRedemption?: Prisma.CouponRedemptionUncheckedUpdateOneWithoutPaymentNestedInput
+}
+
+export type PaymentUncheckedUpdateManyWithoutCouponInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  userId?: Prisma.StringFieldUpdateOperationsInput | string
+  contractId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  bookingId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  provider?: Prisma.EnumPaymentProviderFieldUpdateOperationsInput | $Enums.PaymentProvider
+  providerRef?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  amount?: Prisma.IntFieldUpdateOperationsInput | number
+  status?: Prisma.EnumPaymentStatusFieldUpdateOperationsInput | $Enums.PaymentStatus
+  dueDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  pixString?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  boletoUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  paymentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  installments?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  paymentType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  stripeSubscriptionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  couponCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  discountAmount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -1307,12 +1808,17 @@ export type PaymentSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs 
   paymentType?: boolean
   stripeSubscriptionId?: boolean
   metadata?: boolean
+  couponId?: boolean
+  couponCode?: boolean
+  discountAmount?: boolean
   paidAt?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
   contract?: boolean | Prisma.Payment$contractArgs<ExtArgs>
   booking?: boolean | Prisma.Payment$bookingArgs<ExtArgs>
+  coupon?: boolean | Prisma.Payment$couponArgs<ExtArgs>
+  couponRedemption?: boolean | Prisma.Payment$couponRedemptionArgs<ExtArgs>
 }, ExtArgs["result"]["payment"]>
 
 export type PaymentSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -1332,12 +1838,16 @@ export type PaymentSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exten
   paymentType?: boolean
   stripeSubscriptionId?: boolean
   metadata?: boolean
+  couponId?: boolean
+  couponCode?: boolean
+  discountAmount?: boolean
   paidAt?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
   contract?: boolean | Prisma.Payment$contractArgs<ExtArgs>
   booking?: boolean | Prisma.Payment$bookingArgs<ExtArgs>
+  coupon?: boolean | Prisma.Payment$couponArgs<ExtArgs>
 }, ExtArgs["result"]["payment"]>
 
 export type PaymentSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -1357,12 +1867,16 @@ export type PaymentSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exten
   paymentType?: boolean
   stripeSubscriptionId?: boolean
   metadata?: boolean
+  couponId?: boolean
+  couponCode?: boolean
+  discountAmount?: boolean
   paidAt?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
   contract?: boolean | Prisma.Payment$contractArgs<ExtArgs>
   booking?: boolean | Prisma.Payment$bookingArgs<ExtArgs>
+  coupon?: boolean | Prisma.Payment$couponArgs<ExtArgs>
 }, ExtArgs["result"]["payment"]>
 
 export type PaymentSelectScalar = {
@@ -1382,26 +1896,33 @@ export type PaymentSelectScalar = {
   paymentType?: boolean
   stripeSubscriptionId?: boolean
   metadata?: boolean
+  couponId?: boolean
+  couponCode?: boolean
+  discountAmount?: boolean
   paidAt?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }
 
-export type PaymentOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "userId" | "contractId" | "bookingId" | "provider" | "providerRef" | "amount" | "status" | "dueDate" | "pixString" | "boletoUrl" | "paymentUrl" | "installments" | "paymentType" | "stripeSubscriptionId" | "metadata" | "paidAt" | "createdAt" | "updatedAt", ExtArgs["result"]["payment"]>
+export type PaymentOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "userId" | "contractId" | "bookingId" | "provider" | "providerRef" | "amount" | "status" | "dueDate" | "pixString" | "boletoUrl" | "paymentUrl" | "installments" | "paymentType" | "stripeSubscriptionId" | "metadata" | "couponId" | "couponCode" | "discountAmount" | "paidAt" | "createdAt" | "updatedAt", ExtArgs["result"]["payment"]>
 export type PaymentInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
   contract?: boolean | Prisma.Payment$contractArgs<ExtArgs>
   booking?: boolean | Prisma.Payment$bookingArgs<ExtArgs>
+  coupon?: boolean | Prisma.Payment$couponArgs<ExtArgs>
+  couponRedemption?: boolean | Prisma.Payment$couponRedemptionArgs<ExtArgs>
 }
 export type PaymentIncludeCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
   contract?: boolean | Prisma.Payment$contractArgs<ExtArgs>
   booking?: boolean | Prisma.Payment$bookingArgs<ExtArgs>
+  coupon?: boolean | Prisma.Payment$couponArgs<ExtArgs>
 }
 export type PaymentIncludeUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
   contract?: boolean | Prisma.Payment$contractArgs<ExtArgs>
   booking?: boolean | Prisma.Payment$bookingArgs<ExtArgs>
+  coupon?: boolean | Prisma.Payment$couponArgs<ExtArgs>
 }
 
 export type $PaymentPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
@@ -1410,6 +1931,8 @@ export type $PaymentPayload<ExtArgs extends runtime.Types.Extensions.InternalArg
     user: Prisma.$UserPayload<ExtArgs>
     contract: Prisma.$ContractPayload<ExtArgs> | null
     booking: Prisma.$BookingPayload<ExtArgs> | null
+    coupon: Prisma.$CouponPayload<ExtArgs> | null
+    couponRedemption: Prisma.$CouponRedemptionPayload<ExtArgs> | null
   }
   scalars: runtime.Types.Extensions.GetPayloadResult<{
     id: string
@@ -1428,6 +1951,9 @@ export type $PaymentPayload<ExtArgs extends runtime.Types.Extensions.InternalArg
     paymentType: string | null
     stripeSubscriptionId: string | null
     metadata: runtime.JsonValue | null
+    couponId: string | null
+    couponCode: string | null
+    discountAmount: number | null
     paidAt: Date | null
     createdAt: Date
     updatedAt: Date
@@ -1828,6 +2354,8 @@ export interface Prisma__PaymentClient<T, Null = never, ExtArgs extends runtime.
   user<T extends Prisma.UserDefaultArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.UserDefaultArgs<ExtArgs>>): Prisma.Prisma__UserClient<runtime.Types.Result.GetResult<Prisma.$UserPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | Null, Null, ExtArgs, GlobalOmitOptions>
   contract<T extends Prisma.Payment$contractArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Payment$contractArgs<ExtArgs>>): Prisma.Prisma__ContractClient<runtime.Types.Result.GetResult<Prisma.$ContractPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
   booking<T extends Prisma.Payment$bookingArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Payment$bookingArgs<ExtArgs>>): Prisma.Prisma__BookingClient<runtime.Types.Result.GetResult<Prisma.$BookingPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
+  coupon<T extends Prisma.Payment$couponArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Payment$couponArgs<ExtArgs>>): Prisma.Prisma__CouponClient<runtime.Types.Result.GetResult<Prisma.$CouponPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
+  couponRedemption<T extends Prisma.Payment$couponRedemptionArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Payment$couponRedemptionArgs<ExtArgs>>): Prisma.Prisma__CouponRedemptionClient<runtime.Types.Result.GetResult<Prisma.$CouponRedemptionPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
   /**
    * Attaches callbacks for the resolution and/or rejection of the Promise.
    * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -1873,6 +2401,9 @@ export interface PaymentFieldRefs {
   readonly paymentType: Prisma.FieldRef<"Payment", 'String'>
   readonly stripeSubscriptionId: Prisma.FieldRef<"Payment", 'String'>
   readonly metadata: Prisma.FieldRef<"Payment", 'Json'>
+  readonly couponId: Prisma.FieldRef<"Payment", 'String'>
+  readonly couponCode: Prisma.FieldRef<"Payment", 'String'>
+  readonly discountAmount: Prisma.FieldRef<"Payment", 'Int'>
   readonly paidAt: Prisma.FieldRef<"Payment", 'DateTime'>
   readonly createdAt: Prisma.FieldRef<"Payment", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"Payment", 'DateTime'>
@@ -2312,6 +2843,44 @@ export type Payment$bookingArgs<ExtArgs extends runtime.Types.Extensions.Interna
    */
   include?: Prisma.BookingInclude<ExtArgs> | null
   where?: Prisma.BookingWhereInput
+}
+
+/**
+ * Payment.coupon
+ */
+export type Payment$couponArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the Coupon
+   */
+  select?: Prisma.CouponSelect<ExtArgs> | null
+  /**
+   * Omit specific fields from the Coupon
+   */
+  omit?: Prisma.CouponOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.CouponInclude<ExtArgs> | null
+  where?: Prisma.CouponWhereInput
+}
+
+/**
+ * Payment.couponRedemption
+ */
+export type Payment$couponRedemptionArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the CouponRedemption
+   */
+  select?: Prisma.CouponRedemptionSelect<ExtArgs> | null
+  /**
+   * Omit specific fields from the CouponRedemption
+   */
+  omit?: Prisma.CouponRedemptionOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.CouponRedemptionInclude<ExtArgs> | null
+  where?: Prisma.CouponRedemptionWhereInput
 }
 
 /**

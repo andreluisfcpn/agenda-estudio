@@ -22,6 +22,7 @@ export const createBookingSchema = z.object({
     // Avulso ("paid now") may split the card into up to 12x (juros above 1x) — unified policy.
     installments: z.number().int().min(1).max(12).optional(),
     paymentType: z.enum(['CREDIT', 'DEBIT']).optional(),
+    couponCode: z.string().trim().min(1).max(64).optional(),
 });
 
 export const bulkBookingSchema = z.object({
@@ -42,6 +43,7 @@ export const adminCreateBookingSchema = z.object({
     adminNotes: z.string().optional(),
     customPrice: z.number().int().min(0).optional(),
     paymentMethod: z.enum(['CARTAO', 'PIX', 'BOLETO']).optional().default('CARTAO'),
+    couponCode: z.string().trim().min(1).max(64).optional(),
 });
 
 export const adminUpdateBookingSchema = z.object({

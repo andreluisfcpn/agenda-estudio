@@ -12,6 +12,7 @@ import {
     Users,
     FileSignature,
     CreditCard,
+    TicketPercent,
     BarChart3,
     LucideIcon,
     ChevronRight,
@@ -274,6 +275,7 @@ export default function Sidebar({ collapsed }: SidebarProps) {
                         <SidebarSection label="Gestão" />
                         <NavItem to="/admin/contracts" icon={FileSignature} label="Contratos" collapsed={collapsed} />
                         <NavItem to="/admin/finance" icon={CreditCard} label="Financeiro" collapsed={collapsed} />
+                        <NavItem to="/admin/cupons" icon={TicketPercent} label="Cupons" collapsed={collapsed} />
                         <NavItem to="/admin/reports" icon={BarChart3} label="Relatórios" collapsed={collapsed} />
 
                         <SidebarSection label="Sistema" />

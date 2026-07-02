@@ -1,6 +1,17 @@
 import { prisma } from '../lib/prisma.js';
 import { getPackageSlots } from '../utils/pricing.js';
 import { releaseMultiSlotLock } from '../lib/redis.js';
+import { releaseAndPurgeCouponsForPayments, releaseCouponForPayments } from '../lib/couponService.js';
+
+/** Coupon uses must be given back (and redemption rows removed — FK RESTRICT)
+ *  before the payments they anchor are hard-deleted. */
+async function purgeCouponsForContract(contractId: string): Promise<void> {
+    const doomed = await prisma.payment.findMany({
+        where: { contractId, status: { not: 'PAID' } },
+        select: { id: true },
+    });
+    await releaseAndPurgeCouponsForPayments(doomed.map(p => p.id));
+}
 
 /**
  * Cron job: clean expired HELD/RESERVED bookings and AWAITING_PAYMENT contracts.
@@ -77,6 +88,7 @@ export async function cleanExpiredHolds() {
                     const paid = await prisma.payment.findFirst({ where: { contractId: c.id, status: 'PAID' }, select: { id: true } });
 
                     if (fresh?.status === 'AWAITING_PAYMENT' && !paid) {
+                        await purgeCouponsForContract(c.id);
                         await prisma.payment.deleteMany({ where: { contractId: c.id, status: { not: 'PAID' } } });
                         await prisma.booking.deleteMany({ where: { contractId: c.id } });
                         await prisma.contract.deleteMany({ where: { id: c.id, status: 'AWAITING_PAYMENT' } });
@@ -140,12 +152,46 @@ export async function cleanExpiredHolds() {
                 continue;
             }
 
+            await purgeCouponsForContract(c.id);
             await prisma.payment.deleteMany({ where: { contractId: c.id, status: { not: 'PAID' } } });
             await prisma.booking.deleteMany({ where: { contractId: c.id } });
             await prisma.contract.deleteMany({ where: { id: c.id, status: 'AWAITING_PAYMENT' } });
             console.log(`[HOLD-CLEANUP] Swept orphaned expired contract ${c.id}`);
         } catch (err) {
             console.error(`[HOLD-CLEANUP] Failed to sweep orphaned contract ${c.id}:`, err);
+        }
+    }
+
+    // 3. Abandoned PRE-CONTRACT checkout drafts holding a coupon reservation.
+    //    /self and /service create the first payment with the contract only in
+    //    metadata (no contractId, no bookingId). If the client never pays, nothing
+    //    else ever transitions that payment, so a reserved coupon use would leak
+    //    forever. After 24h we fail the draft (atomic PENDING guard) and give the
+    //    use back. Contract installments and avulso payments are excluded — their
+    //    own lifecycle (webhooks/void/sweeps above) handles their releases.
+    const staleDraftCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const staleDrafts = await prisma.payment.findMany({
+        where: {
+            status: 'PENDING',
+            couponId: { not: null },
+            contractId: null,
+            bookingId: null,
+            createdAt: { lt: staleDraftCutoff },
+        },
+        select: { id: true },
+    });
+    for (const draft of staleDrafts) {
+        try {
+            const failed = await prisma.payment.updateMany({
+                where: { id: draft.id, status: 'PENDING' },
+                data: { status: 'FAILED' },
+            });
+            if (failed.count > 0) {
+                await releaseCouponForPayments([draft.id]);
+                console.log(`[HOLD-CLEANUP] Failed stale coupon-reserved draft payment ${draft.id} (>24h) and released the coupon use`);
+            }
+        } catch (err) {
+            console.error(`[HOLD-CLEANUP] Failed to release stale draft ${draft.id}:`, err);
         }
     }
 }

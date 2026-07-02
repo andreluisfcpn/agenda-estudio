@@ -1,7 +1,9 @@
 import { getErrorMessage } from '../../../utils/errors';
 import { useState, useEffect } from 'react';
-import { contractsApi, pricingApi, UserSummary, PricingConfig, AddOnConfig } from '../../../api/client';
+import { contractsApi, pricingApi, UserSummary, PricingConfig, AddOnConfig, CouponValidation } from '../../../api/client';
 import BottomSheetModal from '../../BottomSheetModal';
+import InlineCheckout from '../../InlineCheckout';
+import CouponField from '../../CouponField';
 import { getPaymentMethods } from '../../../constants/paymentMethods';
 
 import { formatBRL } from '../../../utils/format';
@@ -31,6 +33,11 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
     const [customSubmitting, setCustomSubmitting] = useState(false);
     const [customSuccess, setCustomSuccess] = useState('');
     const [calMonth, setCalMonth] = useState({ year: new Date().getFullYear(), month: new Date().getMonth() });
+    // Cupom (elegibilidade validada para o CLIENTE selecionado) + "cobrar agora" com o valor
+    // da 1ª cobrança retornado pelo backend (JÁ descontado quando há cupom).
+    const [appliedCoupon, setAppliedCoupon] = useState<CouponValidation | null>(null);
+    const [chargePaymentId, setChargePaymentId] = useState<string | null>(null);
+    const [chargeAmountApi, setChargeAmountApi] = useState<number | null>(null);
 
     useEffect(() => {
         pricingApi.getAddons().then(res => setCustomAddons(res.addons)).catch(console.error);
@@ -144,7 +151,7 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
             for (const [key, config] of activeAddonEntries) {
                 addonConfigPayload[key] = { mode: config.mode as 'all' | 'credits', ...(config.mode === 'credits' ? { perCycle: config.perCycle } : {}) };
             }
-            await contractsApi.createCustom({
+            const res = await contractsApi.createCustom({
                 userId: customForm.userId,
                 name: customForm.name,
                 tier: customForm.tier as 'COMERCIAL' | 'AUDIENCIA' | 'SABADO',
@@ -157,10 +164,18 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
                 frequency: freq,
                 weekPattern: (freq === 'BIWEEKLY' || freq === 'MONTHLY') ? customForm.weekPattern : undefined,
                 customDates: freq === 'CUSTOM' ? customForm.customDates : undefined,
+                couponCode: appliedCoupon?.code || undefined,
             });
-            setCustomSuccess('Contrato personalizado criado com sucesso!');
             onCreated();
-            setTimeout(() => { onClose(); setCustomSuccess(''); }, 2000);
+            // Mesmo padrão do CreateContractModal: oferecer cobrança da 1ª parcela na hora,
+            // usando o valor retornado pelo backend (já com cupom descontado).
+            if (res.firstPaymentId) {
+                setChargeAmountApi(res.payments?.[0]?.amount ?? null);
+                setChargePaymentId(res.firstPaymentId);
+            } else {
+                setCustomSuccess('Contrato personalizado criado com sucesso!');
+                setTimeout(() => { onClose(); setCustomSuccess(''); }, 2000);
+            }
         } catch (err: unknown) { setCustomError(getErrorMessage(err) || 'Erro ao criar contrato'); }
         finally { setCustomSubmitting(false); }
     };
@@ -197,6 +212,38 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
     const prevMonth = () => setCalMonth(m => m.month === 0 ? { year: m.year - 1, month: 11 } : { ...m, month: m.month - 1 });
     const nextMonth = () => setCalMonth(m => m.month === 11 ? { year: m.year + 1, month: 0 } : { ...m, month: m.month + 1 });
     const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
+    // Charge-now step: mesmo InlineCheckout + política unificada do cliente. Cobra o CLIENTE
+    // (payment.userId) — o backend resolve o pagador a partir do payment, não do admin.
+    if (chargePaymentId) {
+        return (
+            <BottomSheetModal isOpen onClose={() => { setChargePaymentId(null); onClose(); }} hideHeader maxWidth="460px" className="admin-sheet" title="Cobrar 1ª cobrança">
+                <div style={{ padding: '24px 28px' }}>
+                    <h3 style={{ fontSize: '1.0625rem', fontWeight: 800, margin: '0 0 4px' }}>Cobrar 1ª cobrança</h3>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0 0 16px' }}>
+                        Cobre agora (PIX ou cartão do cliente presente) ou deixe pendente — o cliente paga depois / cobrança automática.
+                    </p>
+                    <InlineCheckout
+                        amount={chargeAmountApi ?? cycleAmount}
+                        paymentId={chargePaymentId}
+                        description={`${customForm.name || 'Contrato personalizado'} - 1ª cobrança`}
+                        allowedMethods={[customForm.paymentMethod as 'CARTAO' | 'PIX' | 'BOLETO']}
+                        isAdmin
+                        allowBoleto={customForm.paymentMethod === 'BOLETO'}
+                        context="contract"
+                        onSuccess={() => { setChargePaymentId(null); onClose(); }}
+                        onError={(msg) => setCustomError(msg)}
+                        onCancel={() => { setChargePaymentId(null); onClose(); }}
+                    />
+                    {customError && <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', color: '#ef4444', fontSize: '0.75rem' }}>{customError}</div>}
+                    <button onClick={() => { setChargePaymentId(null); onClose(); }}
+                        style={{ marginTop: 12, width: '100%', padding: '10px', borderRadius: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer' }}>
+                        Deixar pendente (cliente paga depois)
+                    </button>
+                </div>
+            </BottomSheetModal>
+        );
+    }
 
     return (
         <BottomSheetModal isOpen onClose={onClose} hideHeader maxWidth="580px" className="admin-sheet" title="Contrato Personalizado">
@@ -755,11 +802,29 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
                                         <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>Valor/ciclo</span>
                                         <span style={{ color: '#10b981', fontWeight: 800, fontSize: '1rem' }}>{formatBRL(cycleAmount)}</span>
                                     </div>
+                                    {appliedCoupon && (
+                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                            <span style={{ color: '#10b981', fontWeight: 700 }}>🎟️ Cupom {appliedCoupon.code}</span>
+                                            <span style={{ color: '#10b981', fontWeight: 700 }}>−{formatBRL(appliedCoupon.discountAmount)}</span>
+                                        </div>
+                                    )}
                                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                         <span style={{ color: 'var(--text-muted)' }}>Total ({customForm.durationMonths} ciclos)</span>
                                         <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{formatBRL(totalAmount)}</span>
                                     </div>
                                 </div>
+                            </div>
+
+                            {/* Cupom de desconto (aplica na 1ª cobrança; elegibilidade é do cliente-alvo) */}
+                            <div style={{ marginBottom: '16px' }}>
+                                <CouponField
+                                    amount={cycleAmount}
+                                    userId={customForm.userId || undefined}
+                                    applied={appliedCoupon}
+                                    onApply={setAppliedCoupon}
+                                    onRemove={() => setAppliedCoupon(null)}
+                                    disabled={customSubmitting}
+                                />
                             </div>
 
                             {/* Schedule summary */}

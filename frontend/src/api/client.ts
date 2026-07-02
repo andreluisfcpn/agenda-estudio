@@ -111,10 +111,10 @@ export const authApi = {
 // ─── Bookings ───────────────────────────────────────────
 export const bookingsApi = {
     getAvailability: (date: string) => request<{ date: string; dayOfWeek: number; closed: boolean; slots: Slot[]; myBookings: MyBookingSlot[] }>(`/bookings/availability?date=${date}`),
-    create: (data: { date: string; startTime: string; contractId?: string; addOns?: string[]; paymentMethod?: 'CARTAO' | 'PIX'; installments?: number; paymentType?: 'CREDIT' | 'DEBIT' }) => request<{ booking: Booking & { holdExpiresAt?: string | null }; paymentId?: string | null; clientSecret?: string | null; lockExpiresIn: number; message: string }>('/bookings', { method: 'POST', body: JSON.stringify(data) }),
+    create: (data: { date: string; startTime: string; contractId?: string; addOns?: string[]; paymentMethod?: 'CARTAO' | 'PIX'; installments?: number; paymentType?: 'CREDIT' | 'DEBIT'; couponCode?: string }) => request<{ booking: Booking & { holdExpiresAt?: string | null }; paymentId?: string | null; paymentAmount?: number; couponDiscount?: number; alreadyPaid?: boolean; clientSecret?: string | null; lockExpiresIn: number; message: string }>('/bookings', { method: 'POST', body: JSON.stringify(data) }),
     completePayment: (id: string, data: { paymentIntentId?: string }) => request<{ booking: Booking; message: string }>(`/bookings/${id}/complete-payment`, { method: 'POST', body: JSON.stringify(data) }),
     createBulk: (data: { contractId: string; slots: { date: string; startTime: string }[] }) => request<{ message: string }>('/bookings/bulk', { method: 'POST', body: JSON.stringify(data) }),
-    adminCreate: (data: { userId: string; date: string; startTime: string; status?: string; addOns?: string[]; adminNotes?: string; customPrice?: number; paymentMethod?: 'CARTAO' | 'PIX' | 'BOLETO' }) => request<{ booking: Booking; message: string; paymentId?: string; boletoUrl?: string; boletoError?: string }>('/bookings/admin', { method: 'POST', body: JSON.stringify(data) }),
+    adminCreate: (data: { userId: string; date: string; startTime: string; status?: string; addOns?: string[]; adminNotes?: string; customPrice?: number; paymentMethod?: 'CARTAO' | 'PIX' | 'BOLETO'; couponCode?: string }) => request<{ booking: Booking; message: string; paymentId?: string; paymentAmount?: number; couponDiscount?: number; boletoUrl?: string; boletoError?: string }>('/bookings/admin', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: { date?: string; startTime?: string; status?: string; adminNotes?: string; clientNotes?: string; platforms?: string; platformLinks?: string, durationMinutes?: number | null, peakViewers?: number | null, chatMessages?: number | null, audienceOrigin?: string | null, isLivestream?: boolean | null, streamMetrics?: string | null }) => request<{ booking: BookingWithUser; message: string }>(`/bookings/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     confirm: (id: string) => request<{ booking: Booking; message: string }>(`/bookings/${id}/confirm`, { method: 'PATCH' }),
     cancel: (id: string) => request<{ message: string }>(`/bookings/${id}`, { method: 'DELETE' }),
@@ -170,8 +170,8 @@ export const contractsApi = {
     checkFixo: (data: { tier: string; durationMonths: number; startDate: string; fixedDayOfWeek: number; fixedTime: string }) =>
         request<{ available: boolean; conflicts: { date: string; originalTime: string; suggestedReplacement?: { date: string; time: string }; alternatives?: { date: string; time: string }[] }[] }>('/contracts/check-fixo', { method: 'POST', body: JSON.stringify(data) }),
     create: (data: CreateContractData) => request<{ contract: Contract; payments: PaymentSummary[]; message: string; firstPaymentId?: string }>('/contracts', { method: 'POST', body: JSON.stringify(data) }),
-    createSelf: (data: SelfContractData) => request<{ message: string; firstPaymentId: string; amount: number; duration: number; clientSecret?: string; firstPixString?: string }>('/contracts/self', { method: 'POST', body: JSON.stringify(data) }),    // Standalone services (e.g. Social Media Management)
-    createService: (opts: { serviceKey: string, paymentMethod: 'CARTAO' | 'PIX' | 'BOLETO', durationMonths?: number, paymentPlan?: 'FULL' | 'MONTHLY' }) => request<{ contract?: Contract; firstPaymentId: string; amount: number; clientSecret?: string; pixString?: string; qrCodeBase64?: string; boletoUrl?: string; barcode?: string; checkoutUrl?: string; message: string }>('/contracts/service', { method: 'POST', body: JSON.stringify(opts) }),
+    createSelf: (data: SelfContractData) => request<{ message: string; firstPaymentId: string; amount: number; duration: number; alreadyPaid?: boolean; couponDiscount?: number; clientSecret?: string; firstPixString?: string }>('/contracts/self', { method: 'POST', body: JSON.stringify(data) }),    // Standalone services (e.g. Social Media Management)
+    createService: (opts: { serviceKey: string, paymentMethod: 'CARTAO' | 'PIX' | 'BOLETO', durationMonths?: number, paymentPlan?: 'FULL' | 'MONTHLY', couponCode?: string }) => request<{ contract?: Contract; firstPaymentId: string; amount: number; alreadyPaid?: boolean; couponDiscount?: number; clientSecret?: string; pixString?: string; qrCodeBase64?: string; boletoUrl?: string; barcode?: string; checkoutUrl?: string; message: string }>('/contracts/service', { method: 'POST', body: JSON.stringify(opts) }),
     createCustom: (data: CustomContractData) => request<{ contract: Contract; payments: PaymentSummary[]; summary: CustomContractSummary; message: string; clientSecret?: string; firstPaymentId?: string; firstPixString?: string }>('/contracts/custom', { method: 'POST', body: JSON.stringify(data) }),
     checkCustom: (data: { tier: string; durationMonths: number; schedule: { day: number; time: string }[]; startDate: string }) =>
         request<{ available: boolean; conflicts: CustomConflict[]; totalConflicts: number; totalSessions: number }>('/contracts/custom/check', { method: 'POST', body: JSON.stringify(data) }),
@@ -185,7 +185,7 @@ export const contractsApi = {
     renew: (id: string, data?: { durationMonths?: number; tier?: string; type?: string; startDate?: string }) => request<{ contract: Contract; message: string }>(`/contracts/${id}/renew`, { method: 'POST', body: JSON.stringify(data || {}) }),
     clientRenew: (id: string, data: { durationMonths: number; paymentMethod?: 'PIX' | 'CARTAO' | 'BOLETO'; installments?: number }) => request<{ contract: Contract; message: string }>(`/contracts/${id}/client-renew`, { method: 'POST', body: JSON.stringify(data) }),
     subscribe: (id: string, data: { paymentMethodId: string; durationMonths?: number }) => request<{ success: boolean; subscriptionId: string; status: string; message: string }>(`/contracts/${id}/subscribe`, { method: 'POST', body: JSON.stringify(data) }),
-    pay: (id: string, data?: { paymentMethod?: 'CARTAO' | 'PIX'; paymentType?: 'CREDIT' | 'DEBIT'; installments?: number }) => request<{ provider?: 'STRIPE' | 'CORA'; clientSecret?: string; paymentId: string; amount: number; maxInstallments?: number; pixString?: string; qrCodeBase64?: string; message: string }>(`/contracts/${id}/pay`, { method: 'POST', body: JSON.stringify(data || {}) }),
+    pay: (id: string, data?: { paymentMethod?: 'CARTAO' | 'PIX'; paymentType?: 'CREDIT' | 'DEBIT'; installments?: number; couponCode?: string }) => request<{ provider?: 'STRIPE' | 'CORA'; clientSecret?: string; paymentId: string; amount: number; alreadyPaid?: boolean; couponDiscount?: number; maxInstallments?: number; pixString?: string; qrCodeBase64?: string; message: string }>(`/contracts/${id}/pay`, { method: 'POST', body: JSON.stringify(data || {}) }),
     confirmPayment: (id: string, data: { paymentIntentId?: string }) => request<{ contract: { id: string; status: string }; message: string }>(`/contracts/${id}/confirm-payment`, { method: 'POST', body: JSON.stringify(data) }),
     pause: (id: string, data?: { reason?: string; resumeDate?: string }) => request<{ contract: Contract; message: string }>(`/contracts/${id}/pause`, { method: 'PATCH', body: JSON.stringify(data || {}) }),
     resume: (id: string) => request<{ contract: Contract; message: string }>(`/contracts/${id}/resume`, { method: 'PATCH' }),
@@ -204,6 +204,62 @@ export const usersApi = {
         duePayments: { id: string; amount: number; dueDate: string | null; overdue: boolean; contractName: string }[];
     }>(`/users/${id}/payment-overview`),
     setAutoCharge: (id: string, enabled: boolean) => request<{ autoChargeEnabled: boolean }>(`/users/${id}/auto-charge`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
+};
+
+// ─── Coupons ────────────────────────────────────────────
+export interface CouponUserRef { id: string; name: string; email: string | null }
+export interface Coupon {
+    id: string;
+    code: string;                        // sempre UPPERCASE
+    description: string | null;
+    discountType: 'VALOR' | 'PERCENTUAL';
+    discountValue: number;               // VALOR: centavos | PERCENTUAL: 1–100
+    scope: 'FIRST_PAYMENT' | 'ALL_INSTALLMENTS';
+    expiresAt: string | null;            // ISO (@db.Date — data-calendário SP)
+    maxUses: number | null;              // null = ilimitado
+    usedCount: number;                   // reservados + confirmados
+    maxUsesPerUser: number | null;       // null = ilimitado por cliente
+    minAmount: number | null;            // centavos
+    onlyNewClients: boolean;
+    active: boolean;
+    createdAt: string;
+    updatedAt: string;
+    eligibleUsers: CouponUserRef[];      // vazio = todos os clientes
+    confirmedUses?: number;
+    reservedUses?: number;
+}
+export interface CouponValidation {
+    valid: boolean;
+    code: string;
+    discountType: 'VALOR' | 'PERCENTUAL';
+    discountValue: number;
+    scope: 'FIRST_PAYMENT' | 'ALL_INSTALLMENTS';
+    discountAmount: number;              // desconto efetivo em centavos
+    finalAmount: number;                 // total após desconto (>= 0)
+}
+export interface CouponInput {
+    code: string;
+    description?: string | null;
+    discountType: 'VALOR' | 'PERCENTUAL';
+    discountValue: number;
+    scope?: 'FIRST_PAYMENT' | 'ALL_INSTALLMENTS';
+    expiresAt?: string | null;           // 'YYYY-MM-DD'
+    maxUses?: number | null;
+    maxUsesPerUser?: number | null;
+    minAmount?: number | null;
+    onlyNewClients?: boolean;
+    eligibleUserIds?: string[];
+    active?: boolean;
+}
+export const couponsApi = {
+    getAll: () => request<{ coupons: Coupon[] }>('/coupons'),
+    getById: (id: string) => request<{ coupon: Coupon & { redemptions: { id: string; status: string; discountAmount: number; createdAt: string; user: CouponUserRef; payment: { id: string; amount: number; status: string; createdAt: string } }[] } }>(`/coupons/${id}`),
+    create: (data: CouponInput) => request<{ coupon: Coupon; message: string }>('/coupons', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: Partial<Omit<CouponInput, 'code'>>) => request<{ coupon: Coupon; message: string }>(`/coupons/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    remove: (id: string) => request<{ message: string }>(`/coupons/${id}`, { method: 'DELETE' }),
+    // Preview do desconto (não consome uso). Admin pode passar userId do cliente-alvo.
+    validate: (data: { code: string; amount: number; userId?: string }) =>
+        request<CouponValidation>('/coupons/validate', { method: 'POST', body: JSON.stringify(data) }),
 };
 
 // ─── Blocked Slots ──────────────────────────────────────
@@ -367,6 +423,7 @@ export interface CreateContractData {
     paymentMethod?: 'CARTAO' | 'PIX' | 'BOLETO';
     addOns?: string[];
     resolvedConflicts?: { originalDate: string; originalTime: string; newDate: string; newTime: string }[];
+    couponCode?: string;
 }
 export interface SelfContractData {
     name: string; type: 'FIXO' | 'FLEX' | 'SERVICO'; tier: 'COMERCIAL' | 'AUDIENCIA' | 'SABADO';
@@ -377,6 +434,7 @@ export interface SelfContractData {
     paymentPlan?: 'MONTHLY' | 'FULL';
     addOns?: string[];
     resolvedConflicts?: { originalDate: string; originalTime: string; newDate: string; newTime: string }[];
+    couponCode?: string;
 }
 export interface CustomContractData {
     name: string;
@@ -393,6 +451,7 @@ export interface CustomContractData {
     frequency?: 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' | 'CUSTOM';
     weekPattern?: number[];
     customDates?: { date: string; time: string }[];
+    couponCode?: string;
 }
 export interface CustomContractSummary {
     sessionsPerWeek: number; sessionsPerCycle: number; totalSessions: number;

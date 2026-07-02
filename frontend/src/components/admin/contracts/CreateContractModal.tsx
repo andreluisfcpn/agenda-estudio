@@ -1,9 +1,10 @@
 import { getErrorMessage } from '../../../utils/errors';
 import React, { useState, useEffect } from 'react';
-import { contractsApi, pricingApi, UserSummary, CreateContractData, PricingConfig, InstallmentPlan, AddOnConfig, ServiceBreakdownItem } from '../../../api/client';
+import { contractsApi, pricingApi, UserSummary, CreateContractData, PricingConfig, InstallmentPlan, AddOnConfig, ServiceBreakdownItem, CouponValidation } from '../../../api/client';
 import { useBusinessConfig } from '../../../hooks/useBusinessConfig';
 import BottomSheetModal from '../../BottomSheetModal';
 import InlineCheckout from '../../InlineCheckout';
+import CouponField from '../../CouponField';
 import ServiceLineItem from '../../ui/ServiceLineItem';
 
 import { formatBRL } from '../../../utils/format';
@@ -42,6 +43,9 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
     // Authoritative pricing (same rules as the client) + optional "charge now" step.
     const [quote, setQuote] = useState<{ monthlyAmount: number; fullPix: number; fullCard: number; installmentPlans: InstallmentPlan[]; services: ServiceBreakdownItem[]; servicesPerRecordingCents: number } | null>(null);
     const [chargePaymentId, setChargePaymentId] = useState<string | null>(null);
+    // Cupom (elegibilidade validada para o CLIENTE selecionado) + 1ª cobrança já descontada retornada pelo backend.
+    const [appliedCoupon, setAppliedCoupon] = useState<CouponValidation | null>(null);
+    const [chargeAmountApi, setChargeAmountApi] = useState<number | null>(null);
 
     // Per-episode services (accompany every recording). GESTAO_SOCIAL (monthly) is excluded,
     // matching the client wizard; the per-recording value is shown via ServiceLineItem.
@@ -78,6 +82,7 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                 paymentMethod,
                 addOns: selectedAddons.length > 0 ? selectedAddons : undefined,
                 resolvedConflicts: resolutions.length > 0 ? resolutions : undefined,
+                couponCode: appliedCoupon?.code || undefined,
                 ...(createForm.type === 'FIXO' && { fixedDayOfWeek: createForm.fixedDayOfWeek || 1, fixedTime: createForm.fixedTime || '14:00' }),
             };
             const res = await contractsApi.create(data);
@@ -87,6 +92,8 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
             // using the SAME InlineCheckout + unified policy as the client. Otherwise it stays
             // PENDING and the client pays later (or via auto-charge).
             if (res.firstPaymentId) {
+                // O 1º payment retornado JÁ vem com o cupom descontado pelo backend.
+                setChargeAmountApi(res.payments?.[0]?.amount ?? null);
                 setChargePaymentId(res.firstPaymentId);
             } else {
                 setCreateSuccess(res.message);
@@ -510,10 +517,29 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                                                 <span style={{ textAlign: 'right', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{createForm.durationMonths || 3}× {formatBRL(quote ? quote.monthlyAmount : monthly)}/mês</span>
                                             </>
                                         )}
+
+                                        {appliedCoupon && (
+                                            <>
+                                                <span style={{ color: '#10b981', fontWeight: 700 }}>🎟️ Cupom {appliedCoupon.code}</span>
+                                                <span style={{ textAlign: 'right', color: '#10b981', fontWeight: 700 }}>−{formatBRL(appliedCoupon.discountAmount)}</span>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                             </div>
                         )}
+
+                        {/* --- Cupom de desconto (aplica na 1ª cobrança; elegibilidade é do cliente) --- */}
+                        <div style={{ marginBottom: '20px' }}>
+                            <CouponField
+                                amount={chargeAmount}
+                                userId={createForm.userId || undefined}
+                                applied={appliedCoupon}
+                                onApply={setAppliedCoupon}
+                                onRemove={() => setAppliedCoupon(null)}
+                                disabled={!createForm.userId}
+                            />
+                        </div>
 
                         {/* --- ACTIONS --- */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
@@ -602,7 +628,7 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                                 Cobre agora (PIX ou cartão do cliente presente) ou deixe pendente — o cliente paga depois / cobrança automática.
                             </p>
                             <InlineCheckout
-                                amount={chargeAmount}
+                                amount={chargeAmountApi ?? chargeAmount}
                                 paymentId={chargePaymentId}
                                 description={`${createForm.name || 'Contrato'} - 1ª cobrança`}
                                 contractDuration={planSel === 'FULL' ? (createForm.durationMonths || 3) : 1}

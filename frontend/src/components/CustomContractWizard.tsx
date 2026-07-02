@@ -12,7 +12,9 @@ import {
   CustomConflict,
   stripeApi,
   authApi,
+  type CouponValidation,
 } from "../api/client";
+import CouponField from "./CouponField";
 import { useBusinessConfig } from "../hooks/useBusinessConfig";
 import { getClientPaymentMethods } from "../constants/paymentMethods";
 import StripeCardForm from "./StripeCardForm";
@@ -118,6 +120,8 @@ export default function CustomContractWizard({
   // Payment plan: MONTHLY (per-cycle, current behavior) or FULL (whole contract upfront).
   const [paymentPlan, setPaymentPlan] = useState<"MONTHLY" | "FULL">("MONTHLY");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  // Cupom de desconto (preview; o valor cobrado vem do backend em res.amount).
+  const [appliedCoupon, setAppliedCoupon] = useState<CouponValidation | null>(null);
 
   // Step 7
   const [conflicts, setConflicts] = useState<CustomConflict[]>([]);
@@ -138,6 +142,8 @@ export default function CustomContractWizard({
   const [cardClientSecret, setCardClientSecret] = useState<string | null>(null);
   const [firstPaymentId, setFirstPaymentId] = useState<string | null>(null);
   const [firstPixString, setFirstPixString] = useState<string | null>(null);
+  // Valor autoritativo da 1ª cobrança retornado pelo backend (já com cupom).
+  const [checkoutAmount, setCheckoutAmount] = useState<number | null>(null);
 
   // Cancel confirmation modal
   const [showCancelModal, setShowCancelModal] = useState(false);

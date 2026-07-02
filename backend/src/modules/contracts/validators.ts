@@ -18,6 +18,7 @@ export const createContractSchema = z.object({
     boletoAllowed: z.boolean().optional(),
     paymentMethod: z.nativeEnum(PaymentMethod).optional(),
     paymentPlan: z.enum(['MONTHLY', 'FULL']).optional().default('MONTHLY'),
+    couponCode: z.string().trim().min(1).max(64).optional(),
     resolvedConflicts: z.array(z.object({
         originalDate: z.string(),
         originalTime: z.string(),
@@ -50,6 +51,7 @@ export const selfContractSchema = z.object({
     paymentMethod: z.nativeEnum(PaymentMethod),
     addOns: z.array(z.string()).optional(),
     paymentPlan: z.enum(['MONTHLY', 'FULL']).optional().default('MONTHLY'),
+    couponCode: z.string().trim().min(1).max(64).optional(),
     resolvedConflicts: z.array(z.object({
         originalDate: z.string(),
         originalTime: z.string(),
@@ -83,6 +85,7 @@ export const customContractSchema = z.object({
     paymentMethod: z.nativeEnum(PaymentMethod),
     addOns: z.array(z.string()).optional(),
     paymentPlan: z.enum(['MONTHLY', 'FULL']).optional().default('MONTHLY'),
+    couponCode: z.string().trim().min(1).max(64).optional(),
     addonConfig: z.record(z.string(), z.object({
         mode: z.enum(['all', 'credits']),
         perCycle: z.number().optional(),
@@ -132,6 +135,7 @@ export const serviceContractSchema = z.object({
     // Inline self-serve plan choice. Defaults to FULL (à vista) for back-compat with
     // any legacy caller; the route still validates it against the addon's plansAllowed.
     paymentPlan: z.enum(['FULL', 'MONTHLY']).optional(),
+    couponCode: z.string().trim().min(1).max(64).optional(),
 });
 
 // ─── PAY ────────────────────────────────────────────────
@@ -140,6 +144,7 @@ export const contractPaySchema = z.object({
     paymentMethod: z.enum(['CARTAO', 'PIX']).optional().default('CARTAO'),
     paymentType: z.enum(['CREDIT', 'DEBIT']).optional(),
     installments: z.number().int().min(1).max(12).optional(),
+    couponCode: z.string().trim().min(1).max(64).optional(),
 });
 
 // ─── SUBSCRIBE ──────────────────────────────────────────

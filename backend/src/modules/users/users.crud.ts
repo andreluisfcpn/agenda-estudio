@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '../../lib/prisma.js';
 import { authenticate, authorize } from '../../middleware/auth.js';
 import { cleanDocument, isValidCpfCnpj } from '../../utils/document.js';
+import { purgeCouponRedemptionsForUser } from '../../lib/couponService.js';
 
 /**
  * Normalizes a CPF/CNPJ to digits-only and validates the check digits.
@@ -184,7 +185,10 @@ export function registerUserCrudRoutes(router: Router) {
         }
 
         try {
-            // Delete related records to respect foreign key constraints
+            // Delete related records to respect foreign key constraints.
+            // Coupon redemptions FK to payments AND users with ON DELETE RESTRICT, so they
+            // must be purged (and their coupon usedCount decremented) before the payments.
+            await purgeCouponRedemptionsForUser(id);
             await prisma.payment.deleteMany({ where: { userId: id } });
             await prisma.booking.deleteMany({ where: { userId: id } });
             await prisma.contract.deleteMany({ where: { userId: id } });
