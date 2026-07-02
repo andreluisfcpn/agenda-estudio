@@ -99,9 +99,8 @@ export default function AdminCouponsPage() {
                 title="Cupons"
                 subtitle="Cupons de desconto para pagamentos"
                 actions={
-                    <button className="btn btn-primary" onClick={() => setShowCreate(true)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 24px', borderRadius: '12px', fontWeight: 700 }}>
-                        <span style={{ fontSize: '1.1rem' }}>+</span> Novo Cupom
+                    <button className="btn-admin-go" onClick={() => setShowCreate(true)}>
+                        <span style={{ fontSize: '1.1rem' }} aria-hidden="true">+</span> Novo Cupom
                     </button>
                 }
             />
@@ -109,25 +108,24 @@ export default function AdminCouponsPage() {
             {/* --- KPI CARDS --- */}
             <div className="admin-kpi-grid" style={{ marginBottom: '24px' }}>
                 {([
-                    { key: 'ALL' as CouponStatusFilter, label: 'Total', count: coupons.length, desc: 'cupons cadastrados', icon: '🎟️', color: '#6366f1', gradient: 'rgba(99,102,241,0.08)', clickable: true },
+                    { key: 'ALL' as CouponStatusFilter, label: 'Total', count: coupons.length, desc: 'cupons cadastrados', icon: '🎟️', color: '#11819B', gradient: 'rgba(17,129,155,0.10)', clickable: true },
                     { key: 'ACTIVE' as CouponStatusFilter, label: 'Ativos', count: activeCount, desc: 'prontos para uso', icon: '✅', color: '#10b981', gradient: 'rgba(16,185,129,0.08)', clickable: true },
                     { key: 'EXPIRED' as CouponStatusFilter, label: 'Expirados', count: expiredCount, desc: 'validade vencida', icon: '⏰', color: '#f59e0b', gradient: 'rgba(245,158,11,0.08)', clickable: true },
                     { key: 'EXHAUSTED' as CouponStatusFilter, label: 'Esgotados', count: exhaustedCount, desc: 'limite de usos atingido', icon: '🚫', color: '#94a3b8', gradient: 'rgba(148,163,184,0.08)', clickable: true },
                     { key: 'USES' as const, label: 'Usos', count: totalUses, desc: 'usos registrados', icon: '📈', color: '#2dd4bf', gradient: 'rgba(45,212,191,0.08)', clickable: false },
                 ]).map(card => {
                     const isSelected = card.clickable && statusFilter === card.key;
+                    const Tag = card.clickable ? 'button' : 'div';
                     return (
-                        <div key={card.key}
+                        <Tag key={card.key} {...(card.clickable ? { type: 'button' as const, 'aria-pressed': isSelected } : {})}
+                            className="admin-kpi-card"
                             onClick={card.clickable ? () => setStatusFilter(isSelected ? 'ALL' : card.key as CouponStatusFilter) : undefined}
                             style={{
-                                padding: '18px 16px', borderRadius: '14px', cursor: card.clickable ? 'pointer' : 'default',
-                                background: isSelected ? `linear-gradient(135deg, ${card.gradient}, ${card.gradient.replace('0.08', '0.02')})` : 'var(--bg-secondary)',
-                                border: `1px solid ${isSelected ? card.color + '44' : 'var(--border-color)'}`,
-                                transition: 'all 0.25s ease',
+                                padding: '18px 16px', cursor: card.clickable ? 'pointer' : 'default',
+                                background: isSelected ? `linear-gradient(135deg, ${card.gradient}, ${card.gradient.replace(/0\.(08|10)/, '0.02')})` : undefined,
+                                borderColor: isSelected ? card.color + '44' : undefined,
                                 position: 'relative', overflow: 'hidden',
                             }}
-                            onMouseEnter={e => { if (card.clickable && !isSelected) e.currentTarget.style.borderColor = card.color + '33'; }}
-                            onMouseLeave={e => { if (card.clickable && !isSelected) e.currentTarget.style.borderColor = 'var(--border-color)'; }}
                         >
                             {/* Top row: icon + label */}
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
@@ -153,7 +151,7 @@ export default function AdminCouponsPage() {
                                     borderRadius: '2px',
                                 }} />
                             )}
-                        </div>
+                        </Tag>
                     );
                 })}
             </div>
@@ -165,12 +163,7 @@ export default function AdminCouponsPage() {
                     background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
                     display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap'
                 }}>
-                    <button onClick={() => setStatusFilter('ALL')} style={{
-                        display: 'flex', alignItems: 'center', gap: '6px',
-                        padding: '5px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 600,
-                        background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)',
-                        color: '#ef4444', cursor: 'pointer', transition: 'all 0.2s'
-                    }}>
+                    <button className="admin-filter-clear" onClick={() => setStatusFilter('ALL')}>
                         🗑️ Limpar filtro
                     </button>
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', padding: '4px 10px', background: 'var(--bg-elevated)', borderRadius: '8px' }}>
@@ -205,19 +198,12 @@ export default function AdminCouponsPage() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {filtered.map((c, i) => {
+                                {filtered.map((c) => {
                                     const status = statusOf(c);
                                     const meta = COUPON_STATUS_META[status];
                                     const expired = isExpired(c);
                                     return (
-                                        <tr key={c.id}
-                                            style={{
-                                                background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
-                                                transition: 'background 0.15s'
-                                            }}
-                                            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(99,102,241,0.04)')}
-                                            onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)')}
-                                        >
+                                        <tr key={c.id} className="admin-zebra-row">
                                             {/* Código */}
                                             <td className="admin-card-title" style={{ paddingLeft: '20px' }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -244,13 +230,13 @@ export default function AdminCouponsPage() {
                                             {/* Desconto */}
                                             <td data-label="Desconto">
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                                    <span style={{ fontWeight: 700, fontSize: '0.875rem', color: '#818cf8', fontVariantNumeric: 'tabular-nums' }}>
+                                                    <span style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--accent-text)', fontVariantNumeric: 'tabular-nums' }}>
                                                         {c.discountType === 'VALOR' ? formatBRL(c.discountValue) : `${c.discountValue}%`}
                                                     </span>
                                                     {c.scope === 'ALL_INSTALLMENTS' && (
                                                         <span style={{
                                                             fontSize: '0.5625rem', fontWeight: 700, padding: '2px 8px', borderRadius: '999px',
-                                                            background: 'rgba(129,140,248,0.1)', border: '1px solid rgba(129,140,248,0.2)', color: '#818cf8',
+                                                            background: 'rgba(17,129,155,0.12)', border: '1px solid rgba(17,129,155,0.3)', color: 'var(--accent-text)',
                                                             textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap',
                                                         }}>
                                                             todas as parcelas
@@ -269,7 +255,7 @@ export default function AdminCouponsPage() {
                                                 {c.onlyNewClients ? (
                                                     <span style={{
                                                         fontSize: '0.6875rem', fontWeight: 600, padding: '3px 10px', borderRadius: '999px',
-                                                        background: 'rgba(236,72,153,0.1)', border: '1px solid rgba(236,72,153,0.2)', color: '#ec4899',
+                                                        background: 'var(--warning-bg)', border: '1px solid rgba(245,158,11,0.3)', color: 'var(--warning)',
                                                         whiteSpace: 'nowrap',
                                                     }}>
                                                         ✨ Só novos clientes
@@ -279,7 +265,7 @@ export default function AdminCouponsPage() {
                                                         title={c.eligibleUsers.map(u => u.name).join(', ')}
                                                         style={{
                                                             fontSize: '0.6875rem', fontWeight: 600, padding: '3px 10px', borderRadius: '999px',
-                                                            background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.2)', color: '#6366f1',
+                                                            background: 'var(--info-bg)', border: '1px solid rgba(59,130,246,0.3)', color: 'var(--info)',
                                                             whiteSpace: 'nowrap', cursor: 'help',
                                                         }}>
                                                         🎯 {c.eligibleUsers.length} cliente{c.eligibleUsers.length !== 1 ? 's' : ''}
@@ -298,7 +284,7 @@ export default function AdminCouponsPage() {
                                             {/* Validade */}
                                             <td data-label="Validade">
                                                 {c.expiresAt ? (
-                                                    <div style={{ fontSize: '0.75rem', fontWeight: expired ? 700 : 400, color: expired ? '#f59e0b' : 'var(--text-secondary)' }}>
+                                                    <div style={{ fontSize: '0.75rem', fontWeight: expired ? 700 : 400, color: expired ? 'var(--warning)' : 'var(--text-secondary)' }}>
                                                         {formatDateBR(c.expiresAt)}
                                                         {expired && <div style={{ fontSize: '0.625rem', fontWeight: 600 }}>vencido</div>}
                                                     </div>
@@ -327,34 +313,16 @@ export default function AdminCouponsPage() {
                                             {/* Ações */}
                                             <td data-label="" style={{ textAlign: 'center' }}>
                                                 <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                                                    <button style={{
-                                                        background: 'var(--bg-elevated)', border: '1px solid var(--border-color)',
-                                                        color: 'var(--text-secondary)', padding: '6px 10px', borderRadius: '8px',
-                                                        cursor: 'pointer', fontSize: '0.8125rem', transition: 'all 0.2s'
-                                                    }}
-                                                    onMouseEnter={e => { e.currentTarget.style.borderColor = '#6366f1'; e.currentTarget.style.color = '#6366f1'; }}
-                                                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-color)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
-                                                    title="Editar"
+                                                    <button className="admin-icon-btn admin-icon-btn--success"
+                                                    aria-label={`Editar cupom ${c.code}`}
                                                     onClick={() => setEditCoupon(c)}>✏️</button>
 
-                                                    <button style={{
-                                                        background: 'var(--bg-elevated)', border: '1px solid var(--border-color)',
-                                                        color: 'var(--text-secondary)', padding: '6px 10px', borderRadius: '8px',
-                                                        cursor: 'pointer', fontSize: '0.8125rem', transition: 'all 0.2s'
-                                                    }}
-                                                    onMouseEnter={e => { e.currentTarget.style.borderColor = c.active ? '#f59e0b' : '#10b981'; e.currentTarget.style.color = c.active ? '#f59e0b' : '#10b981'; }}
-                                                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-color)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
-                                                    title={c.active ? 'Desativar' : 'Ativar'}
+                                                    <button className="admin-icon-btn"
+                                                    aria-label={c.active ? `Desativar cupom ${c.code}` : `Ativar cupom ${c.code}`}
                                                     onClick={() => handleToggle(c)}>{c.active ? '⏸️' : '▶️'}</button>
 
-                                                    <button style={{
-                                                        background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)',
-                                                        color: '#ef4444', padding: '6px 10px', borderRadius: '8px',
-                                                        cursor: 'pointer', fontSize: '0.8125rem', transition: 'all 0.2s', opacity: 0.7
-                                                    }}
-                                                    onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
-                                                    onMouseLeave={e => (e.currentTarget.style.opacity = '0.7')}
-                                                    title="Excluir"
+                                                    <button className="admin-icon-btn admin-icon-btn--danger"
+                                                    aria-label={`Excluir cupom ${c.code}`}
                                                     onClick={() => confirmDelete(c)}>🗑️</button>
                                                 </div>
                                             </td>
