@@ -772,6 +772,26 @@ button.admin-kpi-card:focus-visible {
     .admin-segmented__btn { min-height: 40px; }
 }
 
+/* ── Totais no mobile (o <tfoot> some no modo cards) ── */
+.admin-mobile-totals { display: none; }
+@media (max-width: 768px) {
+    .admin-mobile-totals {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 14px 16px;
+        border-top: 2px solid var(--border-color);
+        background: rgba(16, 185, 129, 0.03);
+        font-size: 0.8125rem;
+    }
+    .admin-mobile-totals__row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-variant-numeric: tabular-nums;
+    }
+}
+
 /* ── Zebra + hover de linha de tabela (só desktop; no mobile viram cards) ── */
 @media (min-width: 769px) {
     .admin-zebra-row:nth-child(even) { background: rgba(255, 255, 255, 0.01); }

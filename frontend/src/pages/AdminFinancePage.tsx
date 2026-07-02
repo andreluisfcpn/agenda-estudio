@@ -7,7 +7,7 @@ import AdminPageHeader from '../components/admin/AdminPageHeader';
 import { HeroSkeleton, TableSkeleton } from '../components/ui/SkeletonLoader';
 import StatusBadge from '../components/ui/StatusBadge';
 import StatCard from '../components/ui/StatCard';
-import { PAYMENT_STATUS_META, getMeta } from '../constants/adminMeta';
+import { PAYMENT_STATUS_META, TIER_META, getMeta } from '../constants/adminMeta';
 
 import { formatBRL } from '../utils/format';
 
@@ -106,11 +106,10 @@ export default function AdminFinancePage() {
                         background: 'var(--bg-secondary)', borderRadius: '12px',
                         border: '1px solid var(--border-color)', overflow: 'hidden'
                     }}>
-                        <button onClick={() => goMonth(-1)} style={{
+                        <button onClick={() => goMonth(-1)} aria-label="Mês anterior" className="admin-hover-bg" style={{
                             background: 'none', border: 'none', color: 'var(--text-secondary)',
-                            padding: '10px 14px', cursor: 'pointer', fontSize: '1rem',
-                            transition: 'all 0.2s'
-                        }} onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-elevated)')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                            padding: '10px 14px', minWidth: 44, minHeight: 44, cursor: 'pointer', fontSize: '1rem',
+                        }}>
                             ‹
                         </button>
                         <div style={{
@@ -120,13 +119,12 @@ export default function AdminFinancePage() {
                             background: isCurrentMonth ? 'rgba(16,185,129,0.06)' : 'none'
                         }}>
                             {MONTHS[selectedMonth - 1]} {selectedYear}
-                            {isCurrentMonth && <span style={{ fontSize: '0.6875rem', color: '#10b981', display: 'block', fontWeight: 500 }}>Mês Atual</span>}
+                            {isCurrentMonth && <span style={{ fontSize: '0.6875rem', color: 'var(--success)', display: 'block', fontWeight: 500 }}>Mês Atual</span>}
                         </div>
-                        <button onClick={() => goMonth(1)} style={{
+                        <button onClick={() => goMonth(1)} aria-label="Próximo mês" className="admin-hover-bg" style={{
                             background: 'none', border: 'none', color: 'var(--text-secondary)',
-                            padding: '10px 14px', cursor: 'pointer', fontSize: '1rem',
-                            transition: 'all 0.2s'
-                        }} onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-elevated)')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                            padding: '10px 14px', minWidth: 44, minHeight: 44, cursor: 'pointer', fontSize: '1rem',
+                        }}>
                             ›
                         </button>
                     </div>
@@ -148,7 +146,7 @@ export default function AdminFinancePage() {
                             label="Repasse Líquido"
                             value={formatBRL(data.metrics.netRevenue)}
                             detail={`Na conta do Estúdio ${isCurrentMonth ? '(parcial)' : ''}`.trim()}
-                            accent="#10b981"
+                            accent="var(--success)"
                         />
 
                         {/* GROSS REVENUE / PAID */}
@@ -157,7 +155,7 @@ export default function AdminFinancePage() {
                             label="Faturamento Bruto"
                             value={formatBRL(data.metrics.grossRevenue)}
                             detail={`${data.metrics.paidCount} pagos`}
-                            accent="#10b981"
+                            accent="var(--success)"
                         />
 
                         {/* FEES */}
@@ -171,14 +169,14 @@ export default function AdminFinancePage() {
                                 </div>
                                 <span style={{ fontSize: '1.5rem', opacity: 0.6 }}>✂️</span>
                             </div>
-                            <div style={{ fontSize: '1.875rem', fontWeight: 800, color: '#ef4444', marginTop: '10px' }}>
+                            <div style={{ fontSize: '1.875rem', fontWeight: 800, color: 'var(--danger)', marginTop: '10px' }}>
                                 - {formatBRL(data.metrics.totalFees)}
                             </div>
                             <div style={{ marginTop: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                                 {data.metrics.breakdown.stripe > 0 && (
                                     <span style={{
                                         padding: '3px 8px', borderRadius: '6px', fontSize: '0.6875rem', fontWeight: 600,
-                                        background: 'rgba(99,102,241,0.1)', color: '#818cf8'
+                                        background: 'var(--info-bg)', color: 'var(--info)'
                                     }}>
                                         Stripe: {data.metrics.breakdown.stripe}
                                     </span>
@@ -186,7 +184,7 @@ export default function AdminFinancePage() {
                                 {data.metrics.breakdown.cora > 0 && (
                                     <span style={{
                                         padding: '3px 8px', borderRadius: '6px', fontSize: '0.6875rem', fontWeight: 600,
-                                        background: 'rgba(245,158,11,0.1)', color: '#f59e0b'
+                                        background: 'var(--warning-bg)', color: 'var(--warning)'
                                     }}>
                                         Cora: {data.metrics.breakdown.cora}
                                     </span>
@@ -200,7 +198,7 @@ export default function AdminFinancePage() {
                             label={isCurrentMonth ? 'A Receber' : 'Inadimplência'}
                             value={data.metrics.pendingRevenue > 0 ? formatBRL(data.metrics.pendingRevenue) : 'R$ 0,00'}
                             detail={`${data.metrics.unpaidCount} pendente${data.metrics.unpaidCount !== 1 ? 's' : ''}`}
-                            accent={data.metrics.pendingRevenue > 0 ? '#ea580c' : '#10b981'}
+                            accent={data.metrics.pendingRevenue > 0 ? 'var(--warning)' : 'var(--success)'}
                         />
                     </div>
 
@@ -227,7 +225,7 @@ export default function AdminFinancePage() {
                         </div>
                         <div style={{ 
                             fontSize: '0.9375rem', fontWeight: 800, minWidth: '45px', textAlign: 'right',
-                            color: collectionRate >= 80 ? '#10b981' : collectionRate >= 50 ? '#f59e0b' : '#ef4444'
+                            color: collectionRate >= 80 ? 'var(--success)' : collectionRate >= 50 ? 'var(--warning)' : 'var(--danger)'
                         }}>
                             {collectionRate}%
                         </div>
@@ -254,29 +252,19 @@ export default function AdminFinancePage() {
 
                             <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
                                 {/* Search */}
-                                <div style={{ position: 'relative' }}>
+                                <div className="admin-search" style={{ flex: 'none', minWidth: 180, maxWidth: 220 }}>
                                     <input
                                         type="text"
                                         placeholder="Buscar cliente..."
+                                        aria-label="Buscar cliente"
                                         value={searchTerm}
                                         onChange={e => setSearchTerm(e.target.value)}
-                                        style={{
-                                            padding: '6px 12px 6px 30px', borderRadius: '8px', fontSize: '0.8125rem',
-                                            background: 'var(--bg-elevated)', border: '1px solid var(--border-color)',
-                                            color: 'var(--text-primary)', width: '180px', outline: 'none',
-                                            transition: 'border-color 0.2s'
-                                        }}
-                                        onFocus={e => (e.currentTarget.style.borderColor = '#10b981')}
-                                        onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
                                     />
-                                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5, pointerEvents: 'none' }}>🔎</span>
+                                    <span className="admin-search__icon" aria-hidden="true">🔎</span>
                                 </div>
 
                                 {/* Status Filter Pills */}
-                                <div style={{
-                                    display: 'flex', gap: '2px', padding: '3px',
-                                    background: 'var(--bg-elevated)', borderRadius: '10px'
-                                }}>
+                                <div className="admin-segmented" role="group" aria-label="Filtrar por status">
                                     {[
                                         { key: 'ALL', label: 'Todas' },
                                         { key: 'PAID', label: 'Pagos' },
@@ -285,14 +273,8 @@ export default function AdminFinancePage() {
                                     ].map(s => (
                                         <button key={s.key}
                                             onClick={() => setStatusFilter(s.key)}
-                                            style={{
-                                                padding: '5px 12px', borderRadius: '8px', fontSize: '0.75rem',
-                                                fontWeight: statusFilter === s.key ? 700 : 500, border: 'none', cursor: 'pointer',
-                                                background: statusFilter === s.key ? 'var(--bg-secondary)' : 'transparent',
-                                                color: statusFilter === s.key ? 'var(--text-primary)' : 'var(--text-muted)',
-                                                boxShadow: statusFilter === s.key ? '0 1px 3px rgba(0,0,0,0.2)' : 'none',
-                                                transition: 'all 0.2s'
-                                            }}
+                                            aria-pressed={statusFilter === s.key}
+                                            className={`admin-segmented__btn${statusFilter === s.key ? ' admin-segmented__btn--active' : ''}`}
                                         >
                                             {s.label}
                                         </button>
@@ -319,21 +301,15 @@ export default function AdminFinancePage() {
                                                 <th>Vencimento</th>
                                                 <th>Canal</th>
                                                 <th style={{ textAlign: 'right' }}>Bruto</th>
-                                                <th style={{ textAlign: 'right', color: '#ef4444' }}>Taxa</th>
-                                                <th style={{ textAlign: 'right', color: '#10b981' }}>Líquido</th>
+                                                <th style={{ textAlign: 'right', color: 'var(--danger)' }}>Taxa</th>
+                                                <th style={{ textAlign: 'right', color: 'var(--success)' }}>Líquido</th>
                                                 <th style={{ textAlign: 'center' }}>Status</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {filteredPayments.map((p, i) => {
+                                            {filteredPayments.map((p) => {
                                                 return (
-                                                    <tr key={p.id} style={{
-                                                        background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
-                                                        transition: 'background 0.15s'
-                                                    }}
-                                                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(16,185,129,0.04)')}
-                                                    onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)')}
-                                                    >
+                                                    <tr key={p.id} className="admin-zebra-row">
                                                         <td className="admin-card-title" style={{ paddingLeft: '20px' }}>
                                                             <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{p.user?.name || 'Removido'}</div>
                                                             <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '2px' }}>{p.user?.email}</div>
@@ -345,8 +321,8 @@ export default function AdminFinancePage() {
                                                                     <span style={{
                                                                         display: 'inline-block', marginTop: '3px',
                                                                         padding: '1px 6px', borderRadius: '4px', fontSize: '0.625rem', fontWeight: 700,
-                                                                        background: p.contract.tier === 'AUDIENCIA' ? 'rgba(45,212,191,0.15)' : p.contract.tier === 'SABADO' ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.15)',
-                                                                        color: p.contract.tier === 'AUDIENCIA' ? '#2dd4bf' : p.contract.tier === 'SABADO' ? '#fbbf24' : '#34d399'
+                                                                        background: getMeta(TIER_META, p.contract.tier).bg,
+                                                                        color: getMeta(TIER_META, p.contract.tier).color
                                                                     }}>
                                                                         {p.contract.tier}
                                                                     </span>
@@ -372,10 +348,10 @@ export default function AdminFinancePage() {
                                                         <td data-label="Bruto" style={{ textAlign: 'right', fontWeight: 600, fontSize: '0.875rem', fontVariantNumeric: 'tabular-nums' }}>
                                                             {formatBRL(p.amount)}
                                                         </td>
-                                                        <td data-label="Taxa" style={{ textAlign: 'right', color: p.feeDeduced > 0 ? '#ef4444' : 'var(--text-muted)', fontSize: '0.8125rem', fontVariantNumeric: 'tabular-nums' }}>
+                                                        <td data-label="Taxa" style={{ textAlign: 'right', color: p.feeDeduced > 0 ? 'var(--danger)' : 'var(--text-muted)', fontSize: '0.8125rem', fontVariantNumeric: 'tabular-nums' }}>
                                                             {p.feeDeduced > 0 ? `- ${formatBRL(p.feeDeduced)}` : '—'}
                                                         </td>
-                                                        <td data-label="Líquido" style={{ textAlign: 'right', fontWeight: 700, fontSize: '0.875rem', color: p.status === 'PAID' ? '#10b981' : 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                                                        <td data-label="Líquido" style={{ textAlign: 'right', fontWeight: 700, fontSize: '0.875rem', color: p.status === 'PAID' ? 'var(--success)' : 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
                                                             {p.status === 'PAID' ? formatBRL(p.netAmount) : '—'}
                                                         </td>
                                                         <td data-label="Status" style={{ textAlign: 'center' }}>
@@ -396,10 +372,10 @@ export default function AdminFinancePage() {
                                                     <td style={{ textAlign: 'right', fontWeight: 800, fontSize: '0.9375rem', fontVariantNumeric: 'tabular-nums' }}>
                                                         {formatBRL(filteredTotals.gross)}
                                                     </td>
-                                                    <td style={{ textAlign: 'right', fontWeight: 700, color: '#ef4444', fontSize: '0.8125rem', fontVariantNumeric: 'tabular-nums' }}>
+                                                    <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--danger)', fontSize: '0.8125rem', fontVariantNumeric: 'tabular-nums' }}>
                                                         - {formatBRL(filteredTotals.fees)}
                                                     </td>
-                                                    <td style={{ textAlign: 'right', fontWeight: 800, color: '#10b981', fontSize: '0.9375rem', fontVariantNumeric: 'tabular-nums' }}>
+                                                    <td style={{ textAlign: 'right', fontWeight: 800, color: 'var(--success)', fontSize: '0.9375rem', fontVariantNumeric: 'tabular-nums' }}>
                                                         {formatBRL(filteredTotals.net)}
                                                     </td>
                                                     <td />
@@ -409,6 +385,23 @@ export default function AdminFinancePage() {
                                     </table>
                                   </div>
                                 </div>
+                                {/* tfoot some no modo cards (<768px) — resumo mobile */}
+                                {filteredTotals.gross > 0 && (
+                                    <div className="admin-mobile-totals">
+                                        <div className="admin-mobile-totals__row">
+                                            <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>TOTAL ({filteredPayments.filter(p => p.status === 'PAID').length} pagos)</span>
+                                            <span style={{ fontWeight: 800 }}>{formatBRL(filteredTotals.gross)}</span>
+                                        </div>
+                                        <div className="admin-mobile-totals__row">
+                                            <span style={{ color: 'var(--text-muted)' }}>Taxas</span>
+                                            <span style={{ fontWeight: 700, color: 'var(--danger)' }}>- {formatBRL(filteredTotals.fees)}</span>
+                                        </div>
+                                        <div className="admin-mobile-totals__row">
+                                            <span style={{ color: 'var(--text-muted)' }}>Líquido</span>
+                                            <span style={{ fontWeight: 800, color: 'var(--success)' }}>{formatBRL(filteredTotals.net)}</span>
+                                        </div>
+                                    </div>
+                                )}
                             </>
                         )}
                     </div>
