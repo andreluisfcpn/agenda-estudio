@@ -2,21 +2,25 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { usersApi, bookingsApi, UserDetail, Booking, Contract } from '../api/client';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
-import LoadingSpinner from '../components/ui/LoadingSpinner';
+import { useUI } from '../context/UIContext';
+import { HeroSkeleton, TableSkeleton } from '../components/ui/SkeletonLoader';
 import StatusBadge from '../components/ui/StatusBadge';
 import SavedCardItem from '../components/ui/SavedCardItem';
 import { TIER_META, BOOKING_STATUS_META, CONTRACT_STATUS_META, CONTRACT_TYPE_META, getMeta } from '../constants/adminMeta';
 
 import { formatBRL } from '../utils/format';
 
+const SAVE_ERROR = { message: 'Não foi possível salvar. Tente novamente.', type: 'error' as const };
+
 // ── Inline-edit field ───────────────────────────────
 function FieldItem({ label, value, field, userId, onSaved }: { label: string; value: string | null; field: string; userId: string; onSaved: () => void }) {
+    const { showToast } = useUI();
     const [editing, setEditing] = useState(false);
     const [val, setVal] = useState(value || '');
     useEffect(() => setVal(value || ''), [value]);
     const save = async () => {
         setEditing(false);
-        if (val !== (value || '')) { try { await usersApi.update(userId, { [field]: val || null } as any); onSaved(); } catch {} }
+        if (val !== (value || '')) { try { await usersApi.update(userId, { [field]: val || null } as any); onSaved(); } catch { showToast(SAVE_ERROR); } }
     };
     return (
         <div>
@@ -25,7 +29,10 @@ function FieldItem({ label, value, field, userId, onSaved }: { label: string; va
                 <input className="form-input" value={val} onChange={e => setVal(e.target.value)} onBlur={save} onKeyDown={e => e.key === 'Enter' && save()} autoFocus
                     style={{ fontSize: '0.8125rem', padding: '6px 8px' }} />
             ) : (
-                <div onClick={() => setEditing(true)} style={{ cursor: 'pointer', fontSize: '0.8125rem', padding: '6px 8px', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border-color)', minHeight: '32px', color: val ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                <div role="button" tabIndex={0} aria-label={`Editar ${label}`}
+                    onClick={() => setEditing(true)}
+                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditing(true); } }}
+                    style={{ cursor: 'pointer', fontSize: '0.8125rem', padding: '6px 8px', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border-color)', minHeight: '32px', color: val ? 'var(--text-primary)' : 'var(--text-muted)' }}>
                     {val || 'Clique para editar'}
                 </div>
             )}
@@ -35,26 +42,29 @@ function FieldItem({ label, value, field, userId, onSaved }: { label: string; va
 
 // ── Tags editor ─────────────────────────────────────
 function TagsEditor({ tags, userId, onSaved }: { tags: string[]; userId: string; onSaved: () => void }) {
+    const { showToast } = useUI();
     const [newTag, setNewTag] = useState('');
     const addTag = async () => {
         const t = newTag.trim().toLowerCase();
         if (!t || tags.includes(t)) { setNewTag(''); return; }
-        try { await usersApi.update(userId, { tags: [...tags, t] } as any); setNewTag(''); onSaved(); } catch {}
+        try { await usersApi.update(userId, { tags: [...tags, t] } as any); setNewTag(''); onSaved(); } catch { showToast(SAVE_ERROR); }
     };
     const removeTag = async (tag: string) => {
-        try { await usersApi.update(userId, { tags: tags.filter(t => t !== tag) } as any); onSaved(); } catch {}
+        try { await usersApi.update(userId, { tags: tags.filter(t => t !== tag) } as any); onSaved(); } catch { showToast(SAVE_ERROR); }
     };
     return (
         <div>
             <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '4px' }}>Tags</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
                 {tags.map(t => (
-                    <span key={t} style={{ fontSize: '0.6875rem', padding: '2px 8px', borderRadius: '999px', background: 'rgba(99,102,241,0.15)', color: '#818cf8', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        #{t} <span onClick={() => removeTag(t)} style={{ cursor: 'pointer', opacity: 0.6 }}>✕</span>
+                    <span key={t} style={{ fontSize: '0.6875rem', padding: '2px 8px', borderRadius: '999px', background: 'rgba(17,129,155,0.15)', color: 'var(--accent-text)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        #{t}
+                        <button onClick={() => removeTag(t)} aria-label={`Remover tag ${t}`}
+                            style={{ cursor: 'pointer', opacity: 0.6, background: 'none', border: 'none', color: 'inherit', padding: '2px 4px', fontSize: 'inherit', fontFamily: 'inherit' }}>✕</button>
                     </span>
                 ))}
-                <input placeholder="+ tag" value={newTag} onChange={e => setNewTag(e.target.value)} onKeyDown={e => e.key === 'Enter' && addTag()} onBlur={addTag}
-                    style={{ width: '70px', background: 'transparent', border: 'none', outline: 'none', color: 'var(--text-primary)', fontSize: '0.75rem' }} />
+                <input placeholder="+ tag" aria-label="Adicionar tag" value={newTag} onChange={e => setNewTag(e.target.value)} onKeyDown={e => e.key === 'Enter' && addTag()} onBlur={addTag}
+                    style={{ width: '70px', background: 'transparent', border: 'none', outline: 'none', color: 'var(--text-primary)', fontSize: '0.75rem', minHeight: 32 }} />
             </div>
         </div>
     );
@@ -66,10 +76,11 @@ function SocialLinksEditor({ socialLinks, userId, onSaved }: { socialLinks: stri
     const [editing, setEditing] = useState(false);
     const [links, setLinks] = useState(parsed);
     useEffect(() => { setLinks(socialLinks ? (function() { try { return JSON.parse(socialLinks); } catch { return {}; } })() : {}); }, [socialLinks]);
+    const { showToast } = useUI();
     const save = async () => {
         setEditing(false);
         const clean = Object.fromEntries(Object.entries(links).filter(([, v]) => v.trim()));
-        try { await usersApi.update(userId, { socialLinks: Object.keys(clean).length ? JSON.stringify(clean) : null } as any); onSaved(); } catch {}
+        try { await usersApi.update(userId, { socialLinks: Object.keys(clean).length ? JSON.stringify(clean) : null } as any); onSaved(); } catch { showToast(SAVE_ERROR); }
     };
     const socials = [{ key: 'youtube', label: 'YouTube', icon: '📺' }, { key: 'instagram', label: 'Instagram', icon: '📷' }, { key: 'spotify', label: 'Spotify', icon: '🎧' }, { key: 'website', label: 'Site', icon: '🌐' }];
     return (
@@ -88,9 +99,12 @@ function SocialLinksEditor({ socialLinks, userId, onSaved }: { socialLinks: stri
                     </div>
                 </div>
             ) : (
-                <div onClick={() => setEditing(true)} style={{ cursor: 'pointer', display: 'flex', flexWrap: 'wrap', gap: '8px', minHeight: '32px', alignItems: 'center', padding: '6px 8px', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border-color)' }}>
+                <div role="button" tabIndex={0} aria-label="Editar redes sociais"
+                    onClick={() => setEditing(true)}
+                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditing(true); } }}
+                    style={{ cursor: 'pointer', display: 'flex', flexWrap: 'wrap', gap: '8px', minHeight: '32px', alignItems: 'center', padding: '6px 8px', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border-color)' }}>
                     {Object.entries(parsed).length > 0 ? Object.entries(parsed).map(([k, v]) => (
-                        <a key={k} href={v} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: '0.75rem', color: 'var(--accent-primary)', textDecoration: 'underline' }}>
+                        <a key={k} href={v} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: '0.75rem', color: 'var(--accent-text)', textDecoration: 'underline' }}>
                             {socials.find(s => s.key === k)?.icon} {socials.find(s => s.key === k)?.label || k}
                         </a>
                     )) : <span style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>Clique para adicionar</span>}
@@ -125,6 +139,9 @@ export default function ClientProfilePage() {
     // Admin payment overview: auto-charge, saved cards, upcoming installments.
     const [payOverview, setPayOverview] = useState<Awaited<ReturnType<typeof usersApi.paymentOverview>> | null>(null);
     const [autoSaving, setAutoSaving] = useState(false);
+    // Foto de upload pode ter sumido do disco (uploads efêmeros) — cai nas iniciais.
+    const [photoError, setPhotoError] = useState(false);
+    useEffect(() => { setPhotoError(false); }, [user?.photoUrl]);
 
     useEffect(() => { if (id) loadUser(); }, [id]);
 
@@ -203,7 +220,7 @@ export default function ClientProfilePage() {
         finally { setBookingNotesSaving(false); }
     };
 
-    if (loading) return <LoadingSpinner />;
+    if (loading) return <div><HeroSkeleton /><TableSkeleton rows={4} cols={3} /></div>;
     if (!user) return <div className="card"><div className="empty-state"><div className="empty-state-text">Usuário não encontrado</div></div></div>;
 
     const contractBookings = user.bookings.filter(b => b.contractId);
@@ -213,17 +230,19 @@ export default function ClientProfilePage() {
 
     const renderBookingRow = (b: Booking) => (
         <React.Fragment key={b.id}>
-            <tr style={{ cursor: 'pointer' }} onClick={() => toggleBookingNotes(b)}>
-                <td>
+            <tr style={{ cursor: 'pointer' }} onClick={() => toggleBookingNotes(b)}
+                tabIndex={0} role="button" aria-expanded={expandedBookingId === b.id}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleBookingNotes(b); } }}>
+                <td className="admin-card-title">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '0.75rem', transform: expandedBookingId === b.id ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}>▶</span>
+                        <span aria-hidden="true" style={{ fontSize: '0.75rem', transform: expandedBookingId === b.id ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', display: 'inline-block' }}>▶</span>
                         {new Date(b.date).toLocaleDateString('pt-BR', { timeZone: 'UTC', weekday: 'short', day: '2-digit', month: '2-digit', year: '2-digit' })}
                     </div>
                 </td>
-                <td style={{ fontWeight: 600 }}>{b.startTime}–{b.endTime}</td>
-                <td><StatusBadge meta={getMeta(TIER_META, b.tierApplied)} /></td>
-                <td>{formatBRL(b.price)}</td>
-                <td>
+                <td data-label="Horário" style={{ fontWeight: 600 }}>{b.startTime}–{b.endTime}</td>
+                <td data-label="Faixa"><StatusBadge meta={getMeta(TIER_META, b.tierApplied)} /></td>
+                <td data-label="Valor">{formatBRL(b.price)}</td>
+                <td data-label="Status">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <StatusBadge meta={getMeta(BOOKING_STATUS_META, b.status)} />
                         {(b.adminNotes || b.clientNotes) && <span style={{ fontSize: '0.7rem' }} title="Possui observações">📝</span>}
@@ -237,9 +256,9 @@ export default function ClientProfilePage() {
                             padding: '16px', background: 'var(--bg-secondary)',
                             borderTop: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)',
                         }}>
-                            <div style={{ display: 'grid', gap: '12px', gridTemplateColumns: '1fr 1fr' }}>
+                            <div className="admin-grid-2" style={{ gap: '12px' }}>
                                 <div>
-                                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--tier-audiencia)', marginBottom: '6px' }}>
+                                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent-text)', marginBottom: '6px' }}>
                                         🔒 Observação do Admin (somente admin)
                                     </label>
                                     <textarea
@@ -311,11 +330,13 @@ export default function ClientProfilePage() {
             {/* Header */}
             <div className="card" style={{ padding: '24px', marginBottom: '16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-                    {user.photoUrl ? (
-                        <img src={user.photoUrl} alt={user.name} style={{
-                            width: 64, height: 64, borderRadius: '50%', objectFit: 'cover',
-                            border: '2px solid var(--accent-primary)',
-                        }} />
+                    {user.photoUrl && !photoError ? (
+                        <img src={user.photoUrl} alt={user.name}
+                            onError={() => setPhotoError(true)}
+                            style={{
+                                width: 64, height: 64, borderRadius: '50%', objectFit: 'cover',
+                                border: '2px solid var(--accent-primary)',
+                            }} />
                     ) : (
                     <div style={{
                         width: 64, height: 64, borderRadius: '50%',
@@ -338,14 +359,14 @@ export default function ClientProfilePage() {
                             </span>
                             <span className="badge" style={{
                                 background: user.clientStatus === 'ACTIVE' ? 'rgba(16,185,129,0.15)' : user.clientStatus === 'BLOCKED' ? 'rgba(220,38,38,0.15)' : 'rgba(107,114,128,0.15)',
-                                color: user.clientStatus === 'ACTIVE' ? '#10b981' : user.clientStatus === 'BLOCKED' ? '#dc2626' : '#6b7280',
+                                color: user.clientStatus === 'ACTIVE' ? 'var(--success)' : user.clientStatus === 'BLOCKED' ? 'var(--danger)' : 'var(--neutral)',
                             }}>
                                 {user.clientStatus === 'ACTIVE' ? '● Ativo' : user.clientStatus === 'BLOCKED' ? '● Bloqueado' : '● Inativo'}
                             </span>
                             {user.tags?.map((t: string) => (
                                 <span key={t} style={{
                                     fontSize: '0.6875rem', padding: '2px 8px', borderRadius: '999px',
-                                    background: 'rgba(99,102,241,0.15)', color: '#818cf8',
+                                    background: 'rgba(17,129,155,0.15)', color: 'var(--accent-text)',
                                 }}>#{t}</span>
                             ))}
                             <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
@@ -400,7 +421,7 @@ export default function ClientProfilePage() {
                 const daysSinceLast = lastBooking ? Math.floor((now.getTime() - new Date(lastBooking.date).getTime()) / 86400000) : 999;
                 const recencyScore = daysSinceLast <= 7 ? 100 : daysSinceLast <= 30 ? 70 : daysSinceLast <= 90 ? 40 : 10;
                 const healthScore = Math.round((attendanceRate * 0.3) + (paymentScore * 0.35) + (contractScore * 0.2) + (recencyScore * 0.15));
-                const healthColor = healthScore >= 80 ? '#10b981' : healthScore >= 50 ? '#d97706' : '#dc2626';
+                const healthColor = healthScore >= 80 ? '#10b981' : healthScore >= 50 ? '#f59e0b' : '#ef4444';
                 const healthLabel = healthScore >= 80 ? 'Excelente' : healthScore >= 60 ? 'Bom' : healthScore >= 40 ? 'Atenção' : 'Crítico';
 
                 return (
@@ -411,16 +432,16 @@ export default function ClientProfilePage() {
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                                 <div style={{ padding: '12px', background: 'rgba(16,185,129,0.08)', borderRadius: 'var(--radius-sm)', textAlign: 'center' }}>
                                     <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Total Pago</div>
-                                    <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#10b981', marginTop: '4px' }}>{formatBRL(paid)}</div>
+                                    <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--success)', marginTop: '4px' }}>{formatBRL(paid)}</div>
                                 </div>
                                 <div style={{ padding: '12px', background: 'rgba(217,119,6,0.08)', borderRadius: 'var(--radius-sm)', textAlign: 'center' }}>
                                     <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Pendente</div>
-                                    <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#d97706', marginTop: '4px' }}>{formatBRL(pending)}</div>
+                                    <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--warning)', marginTop: '4px' }}>{formatBRL(pending)}</div>
                                 </div>
                                 {overdue > 0 && (
                                     <div style={{ padding: '12px', background: 'rgba(220,38,38,0.08)', borderRadius: 'var(--radius-sm)', textAlign: 'center', gridColumn: 'span 2' }}>
                                         <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>⚠️ Vencido</div>
-                                        <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#dc2626', marginTop: '4px' }}>{formatBRL(overdue)}</div>
+                                        <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--danger)', marginTop: '4px' }}>{formatBRL(overdue)}</div>
                                     </div>
                                 )}
                             </div>
@@ -464,7 +485,7 @@ export default function ClientProfilePage() {
                                             <span style={{ color: 'var(--text-muted)' }}>Recência</span>
                                             <span style={{ fontWeight: 600 }}>{recencyScore}%</span>
                                         </div>
-                                        {faltas > 0 && <div style={{ color: '#dc2626', marginTop: '4px' }}>⚠ {faltas} falta{faltas > 1 ? 's' : ''}</div>}
+                                        {faltas > 0 && <div style={{ color: 'var(--danger)', marginTop: '4px' }}>⚠ {faltas} falta{faltas > 1 ? 's' : ''}</div>}
                                     </div>
                                 </div>
                             </div>
@@ -482,7 +503,7 @@ export default function ClientProfilePage() {
                             <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>🔁 Cobrança automática</div>
                             <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '2px' }}>{payOverview.hasSavedCard ? 'Cobra o cartão salvo na data de vencimento.' : 'Requer um cartão salvo do cliente.'}</div>
                         </div>
-                        <input type="checkbox" checked={payOverview.autoChargeEnabled} disabled={!payOverview.hasSavedCard || autoSaving} onChange={e => handleAutoCharge(e.target.checked)} style={{ width: 20, height: 20, accentColor: '#10b981', cursor: payOverview.hasSavedCard ? 'pointer' : 'not-allowed' }} />
+                        <input type="checkbox" checked={payOverview.autoChargeEnabled} disabled={!payOverview.hasSavedCard || autoSaving} onChange={e => handleAutoCharge(e.target.checked)} style={{ width: 20, height: 20, accentColor: 'var(--success)', cursor: payOverview.hasSavedCard ? 'pointer' : 'not-allowed' }} />
                     </label>
 
                     <div style={{ marginTop: '14px' }}>
@@ -506,9 +527,9 @@ export default function ClientProfilePage() {
                             <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '8px 12px', borderRadius: 'var(--radius-sm)', background: p.overdue ? 'rgba(220,38,38,0.06)' : 'var(--bg-elevated)', border: p.overdue ? '1px solid rgba(220,38,38,0.2)' : '1px solid transparent', marginBottom: '6px' }}>
                                 <div style={{ minWidth: 0 }}>
                                     <div style={{ fontSize: '0.8125rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.contractName}</div>
-                                    <div style={{ fontSize: '0.6875rem', color: p.overdue ? '#dc2626' : 'var(--text-muted)' }}>{p.overdue ? '⚠️ Vencida · ' : ''}{p.dueDate ? new Date(p.dueDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '—'}</div>
+                                    <div style={{ fontSize: '0.6875rem', color: p.overdue ? 'var(--danger)' : 'var(--text-muted)' }}>{p.overdue ? '⚠️ Vencida · ' : ''}{p.dueDate ? new Date(p.dueDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '—'}</div>
                                 </div>
-                                <span style={{ fontSize: '0.875rem', fontWeight: 700, color: p.overdue ? '#dc2626' : 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>{formatBRL(p.amount)}</span>
+                                <span style={{ fontSize: '0.875rem', fontWeight: 700, color: p.overdue ? 'var(--danger)' : 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>{formatBRL(p.amount)}</span>
                             </div>
                         ))}
                     </div>
@@ -545,12 +566,12 @@ export default function ClientProfilePage() {
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px', flexWrap: 'wrap' }}>
                                     <button onClick={() => navigate(`/admin/contracts/${c.id}`)}
-                                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--accent-primary)' }}>
+                                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--accent-text)' }}>
                                         📂 Abrir contrato →
                                     </button>
                                     {c.contractUrl && (
                                         <a href={c.contractUrl} target="_blank" rel="noopener noreferrer"
-                                            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.8125rem', color: 'var(--accent-primary)', textDecoration: 'none' }}>
+                                            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.8125rem', color: 'var(--accent-text)', textDecoration: 'none' }}>
                                             📄 Ver contrato digital ↗
                                         </a>
                                     )}
@@ -592,7 +613,7 @@ export default function ClientProfilePage() {
                         </div>
                         <div className="table-container">
                             <div className="admin-table-wrap">
-                                <table>
+                                <table className="admin-table--cards">
                                     <thead><tr><th>Data</th><th>Horário</th><th>Faixa</th><th>Valor</th><th>Status</th></tr></thead>
                                     <tbody>{contractBookings.map(renderBookingRow)}</tbody>
                                 </table>
@@ -609,7 +630,7 @@ export default function ClientProfilePage() {
                         </div>
                         <div className="table-container">
                             <div className="admin-table-wrap">
-                                <table>
+                                <table className="admin-table--cards">
                                     <thead><tr><th>Data</th><th>Horário</th><th>Faixa</th><th>Valor</th><th>Status</th></tr></thead>
                                     <tbody>{avulsoBookings.map(renderBookingRow)}</tbody>
                                 </table>
