@@ -50,14 +50,11 @@ export default function EditBookingModal({ booking, onClose, onSaved }: EditBook
     if (!booking) return null;
 
     return (
-        <BottomSheetModal isOpen onClose={onClose} hideHeader maxWidth="520px" className="admin-sheet" title="Editar Agendamento">
+        <BottomSheetModal isOpen onClose={onClose} hideHeader size="md" className="admin-sheet" title="Editar Agendamento">
                 {/* Header */}
-                <div style={{ padding: '24px 28px 0' }}>
-                    <h2 style={{ fontSize: '1.125rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{
-                            width: 34, height: 34, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            background: 'linear-gradient(135deg, #10b981, #11819B)', fontSize: '0.9rem'
-                        }}>✏️</span>
+                <div className="admin-modal-head">
+                    <h2 className="admin-modal-title">
+                        <span className="admin-modal-title__icon">✏️</span>
                         Editar Agendamento
                     </h2>
                     {/* Client info bar */}
@@ -68,7 +65,7 @@ export default function EditBookingModal({ booking, onClose, onSaved }: EditBook
                     }}>
                         <div style={{
                             width: 30, height: 30, borderRadius: '50%',
-                            background: 'linear-gradient(135deg, #10b981, #11819B)',
+                            background: 'var(--accent-gradient-go)',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             fontSize: '0.75rem', fontWeight: 700, color: '#fff', flexShrink: 0,
                         }}>{booking.user.name.charAt(0).toUpperCase()}</div>
@@ -90,50 +87,43 @@ export default function EditBookingModal({ booking, onClose, onSaved }: EditBook
                 </div>
 
                 {/* Form */}
-                <div style={{ padding: '20px 28px 24px' }}>
-                    {editError && <div style={{ marginBottom: '14px', padding: '10px 14px', borderRadius: '10px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)', color: '#ef4444', fontSize: '0.8125rem', fontWeight: 600 }}>{editError}</div>}
+                <div className="admin-modal-body">
+                    {editError && <div className="admin-alert admin-alert--danger" role="alert">{editError}</div>}
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '16px' }}>
+                    <div className="admin-grid-2" style={{ marginBottom: '16px' }}>
                         {/* Date */}
-                        <div>
-                            <label style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px', display: 'block' }}>📅 Data</label>
-                            <input type="date" value={editForm.date}
+                        <div className="admin-field">
+                            <label className="admin-field__label" htmlFor="edit-booking-date">📅 Data</label>
+                            <input id="edit-booking-date" type="date" value={editForm.date}
                                 min={new Date().toISOString().split('T')[0]}
                                 onChange={e => setEditForm({ ...editForm, date: e.target.value })}
-                                style={{
-                                    width: '100%', padding: '9px 12px', borderRadius: '10px', fontSize: '0.8125rem', fontWeight: 600,
-                                    background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
-                                    color: 'var(--text-primary)', outline: 'none',
-                                }}
+                                className="form-input form-input--raised"
                             />
                         </div>
                         {/* Time */}
-                        <div>
-                            <label style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px', display: 'block' }}>⏰ Horário</label>
-                            <input type="time" step="1800" value={editForm.startTime}
+                        <div className="admin-field">
+                            <label className="admin-field__label" htmlFor="edit-booking-time">⏰ Horário</label>
+                            <input id="edit-booking-time" type="time" step="1800" value={editForm.startTime}
                                 onChange={e => setEditForm({ ...editForm, startTime: e.target.value })}
-                                style={{
-                                    width: '100%', padding: '9px 12px', borderRadius: '10px', fontSize: '0.8125rem', fontWeight: 600,
-                                    background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
-                                    color: 'var(--text-primary)', outline: 'none',
-                                }}
+                                className="form-input form-input--raised"
                             />
                         </div>
                     </div>
 
                     {/* Status */}
-                    <div style={{ marginBottom: '16px' }}>
-                        <label style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px', display: 'block' }}>Status</label>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    <div className="admin-field" style={{ marginBottom: '16px' }}>
+                        <span className="admin-field__label">Status</span>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }} role="group" aria-label="Status do agendamento">
                             {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
                                 <button key={key}
                                     onClick={() => setEditForm({ ...editForm, status: key })}
+                                    aria-pressed={editForm.status === key}
                                     style={{
-                                        padding: '6px 12px', borderRadius: '8px', fontSize: '0.6875rem', fontWeight: 600, cursor: 'pointer',
+                                        padding: '8px 12px', borderRadius: '8px', fontSize: '0.6875rem', fontWeight: 600, cursor: 'pointer',
                                         background: editForm.status === key ? cfg.bg : 'var(--bg-elevated)',
                                         border: `1px solid ${editForm.status === key ? cfg.color + '44' : 'var(--border-default)'}`,
                                         color: editForm.status === key ? cfg.color : 'var(--text-muted)',
-                                        transition: 'all 0.15s',
+                                        transition: 'background 0.15s ease, color 0.15s ease, border-color 0.15s ease',
                                     }}
                                 >
                                     {cfg.icon} {cfg.label}
@@ -149,22 +139,16 @@ export default function EditBookingModal({ booking, onClose, onSaved }: EditBook
                         fontSize: '0.75rem', color: 'var(--text-muted)',
                         display: 'flex', justifyContent: 'space-between',
                     }}>
-                        <span>💰 Valor: <strong style={{ color: '#10b981' }}>{formatBRL(booking.price)}</strong></span>
+                        <span>💰 Valor: <strong style={{ color: 'var(--success)' }}>{formatBRL(booking.price)}</strong></span>
                         <span>{TIER_EMOJI[booking.tierApplied]} {booking.tierApplied}</span>
                     </div>
 
                     {/* Actions */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
-                        <button onClick={onClose}
-                            style={{ padding: '9px 18px', borderRadius: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer' }}>
+                    <div className="admin-actions-row">
+                        <button onClick={onClose} className="btn-admin-ghost">
                             Cancelar
                         </button>
-                        <button onClick={handleEdit}
-                            style={{
-                                padding: '10px 24px', borderRadius: '10px', border: 'none', fontSize: '0.875rem', fontWeight: 700, cursor: 'pointer',
-                                background: 'linear-gradient(135deg, #10b981, #11819B)', color: '#fff',
-                                display: 'flex', alignItems: 'center', gap: '8px',
-                            }}>
+                        <button onClick={handleEdit} className="btn-admin-go">
                             💾 Salvar Alterações
                         </button>
                     </div>

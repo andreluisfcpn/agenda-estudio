@@ -334,6 +334,33 @@
     gap: 6px;
     min-width: 0;
 }
+/* Label pequeno uppercase usado nos modais admin. */
+.admin-field__label {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+
+/* Caixa de alerta inline (erros de form em modais, avisos). */
+.admin-alert {
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    margin-bottom: 14px;
+}
+.admin-alert--danger {
+    background: var(--danger-bg);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    color: var(--danger);
+}
+.admin-alert--warning {
+    background: var(--warning-bg);
+    border: 1px solid rgba(245, 158, 11, 0.25);
+    color: var(--warning);
+}
 /* Campos lado a lado que quebram sozinhos no mobile (sem media query). */
 .admin-form-row {
     display: flex;

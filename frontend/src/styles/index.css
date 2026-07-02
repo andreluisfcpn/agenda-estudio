@@ -968,6 +968,9 @@ textarea.form-input { min-height: 80px; }
 
 
 /* â”€â”€â”€ Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* @deprecated (.modal-overlay + .modal como par overlay/card): não usar em
+   código novo — use o componente BottomSheetModal. Remoção prevista após a
+   Fase 1 da padronização do admin. */
 .modal-overlay {
   position: fixed;
   inset: 0;
