@@ -441,9 +441,40 @@
     gap: var(--space-3);
     margin-top: var(--space-5);
 }
+.admin-actions-row--between { justify-content: space-between; }
 @media (max-width: 640px) {
     .admin-actions-row { flex-direction: column-reverse; }
     .admin-actions-row > button { width: 100%; }
+}
+
+/* ── Linha selecionável de lista (cliente no wizard etc.) — <button> real ── */
+.admin-select-row {
+    padding: 10px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: transparent;
+    border: 1px solid transparent;
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
+    color: var(--text-primary);
+    transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+@media (hover: hover) {
+    .admin-select-row:not(.admin-select-row--active):hover {
+        background: rgba(255, 255, 255, 0.03);
+    }
+}
+.admin-select-row--active {
+    background: rgba(16, 185, 129, 0.08);
+    border-color: rgba(16, 185, 129, 0.3);
+}
+.admin-select-row:focus-visible {
+    outline: 2px solid var(--accent-text);
+    outline-offset: -2px;
 }
 
 /* ── Botões padrão do admin ── */
@@ -538,6 +569,11 @@
         border-color: var(--danger);
         color: var(--danger);
     }
+    .admin-icon-btn--success:hover {
+        background: var(--success-bg);
+        border-color: var(--success);
+        color: var(--success);
+    }
 }
 .admin-icon-btn:focus-visible {
     outline: 2px solid var(--accent-text);
@@ -547,24 +583,32 @@
     .admin-icon-btn { width: 44px; height: 44px; }
 }
 
-/* Select compacto de status inline em linhas de tabela. */
+/* Select compacto de status inline em linhas de tabela. A cor do status vem
+   via `color` inline (adminMeta); hover usa currentColor. */
 .admin-status-select {
     appearance: none;
     -webkit-appearance: none;
-    padding: 6px 28px 6px 10px;
+    padding: 6px 30px 6px 24px;
     min-height: 36px;
-    background-color: var(--bg-elevated);
-    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-color: rgba(255, 255, 255, 0.04);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M.7.7 4 4l3.3-3.3' stroke='rgba(255,255,255,0.3)' stroke-width='1.2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
-    background-position: right 8px center;
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-md);
+    background-position: right 10px center;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
     color: var(--text-primary);
     font-size: 0.75rem;
-    font-weight: 600;
+    font-weight: 700;
+    letter-spacing: 0.01em;
     font-family: inherit;
     cursor: pointer;
-    transition: border-color var(--transition-fast);
+    transition: background-color var(--transition-base), border-color var(--transition-base);
+}
+@media (hover: hover) {
+    .admin-status-select:hover {
+        background-color: rgba(255, 255, 255, 0.07);
+        border-color: color-mix(in srgb, currentColor 27%, transparent);
+    }
 }
 .admin-status-select:focus-visible {
     outline: 2px solid var(--accent-text);
@@ -572,6 +616,168 @@
 }
 @media (max-width: 768px) {
     .admin-status-select { min-height: 44px; }
+}
+
+/* ── KPI card (label uppercase + número grande + legenda) ── */
+.admin-kpi-card {
+    padding: 20px;
+    border-radius: 14px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    min-width: 0;
+}
+.admin-kpi-card__label {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 6px;
+}
+.admin-kpi-card__value {
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+.admin-kpi-card__value--sm { font-size: 1.5rem; }
+.admin-kpi-card__caption {
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+.admin-kpi-card--accent {
+    background: linear-gradient(135deg, rgba(17, 129, 155, 0.10), rgba(9, 110, 133, 0.04));
+    border-color: rgba(17, 129, 155, 0.25);
+}
+.admin-kpi-card--success {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(6, 78, 59, 0.04));
+    border-color: rgba(16, 185, 129, 0.2);
+}
+.admin-kpi-card--danger {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.06), rgba(220, 38, 38, 0.04));
+    border-color: rgba(239, 68, 68, 0.2);
+}
+/* Card-filtro clicável (teclado incluso — é um <button>). */
+button.admin-kpi-card {
+    text-align: left;
+    cursor: pointer;
+    font-family: inherit;
+    width: 100%;
+    transition: border-color var(--transition-base), transform var(--transition-fast);
+}
+@media (hover: hover) {
+    button.admin-kpi-card:hover { border-color: var(--border-hover); transform: translateY(-1px); }
+}
+button.admin-kpi-card:focus-visible {
+    outline: 2px solid var(--accent-text);
+    outline-offset: 2px;
+}
+
+/* ── Busca com ícone (dentro da filter bar) ── */
+.admin-search {
+    position: relative;
+    flex: 1;
+    min-width: 200px;
+}
+.admin-search > input {
+    width: 100%;
+    padding: 8px 12px 8px 32px;
+    min-height: 36px;
+    border-radius: 8px;
+    font-size: 0.8125rem;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    outline: none;
+    font-family: inherit;
+    transition: border-color var(--transition-base);
+}
+.admin-search > input:focus { border-color: var(--success); }
+.admin-search__icon {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.75rem;
+    opacity: 0.5;
+    pointer-events: none;
+}
+@media (max-width: 768px) {
+    .admin-search > input { min-height: 44px; }
+}
+
+/* Filter bar com visual de painel. */
+.admin-filter-bar--panel {
+    padding: 12px 16px;
+    border-radius: 12px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+}
+
+/* Botão "limpar filtros". */
+.admin-filter-clear {
+    background: var(--danger-bg);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    color: var(--danger);
+    padding: 6px 12px;
+    min-height: 36px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    font-family: inherit;
+}
+.admin-filter-clear:focus-visible {
+    outline: 2px solid var(--accent-text);
+    outline-offset: 2px;
+}
+@media (max-width: 768px) {
+    .admin-filter-clear { min-height: 44px; }
+}
+
+/* ── Segmented pills de filtro (Todos/Confirmados/…) ── */
+.admin-segmented {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    background: var(--bg-elevated);
+    border-radius: 10px;
+    flex-wrap: wrap;
+}
+.admin-segmented__btn {
+    padding: 5px 10px;
+    min-height: 32px;
+    border-radius: 8px;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+    background: transparent;
+    color: var(--text-muted);
+    font-family: inherit;
+    transition: background var(--transition-base), color var(--transition-base);
+}
+.admin-segmented__btn--active {
+    font-weight: 700;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+.admin-segmented__btn:focus-visible {
+    outline: 2px solid var(--accent-text);
+    outline-offset: 2px;
+}
+@media (max-width: 768px) {
+    .admin-segmented__btn { min-height: 40px; }
+}
+
+/* ── Zebra + hover de linha de tabela (só desktop; no mobile viram cards) ── */
+@media (min-width: 769px) {
+    .admin-zebra-row:nth-child(even) { background: rgba(255, 255, 255, 0.01); }
+    @media (hover: hover) {
+        .admin-zebra-row:hover { background: rgba(16, 185, 129, 0.04); }
+    }
 }
 
 /* ═══════════════════════════════════════════════════════════════

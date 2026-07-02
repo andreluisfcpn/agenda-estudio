@@ -137,7 +137,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
     // Charge-now step (avulso): same InlineCheckout + unified policy as the client.
     if (chargePaymentId) {
         return (
-            <BottomSheetModal isOpen onClose={() => { resetCreateModal(); showToast('Agendamento criado (pagamento pendente).'); }} hideHeader maxWidth="460px" className="admin-sheet" title="Cobrar agendamento">
+            <BottomSheetModal isOpen onClose={() => { resetCreateModal(); showToast('Agendamento criado (pagamento pendente).'); }} hideHeader size="sm" className="admin-sheet" title="Cobrar agendamento">
                     <div style={{ padding: '24px 28px' }}>
                         <h3 style={{ fontSize: '1.0625rem', fontWeight: 800, margin: '0 0 4px' }}>Cobrar agendamento</h3>
                         <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0 0 16px' }}>
@@ -154,9 +154,9 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                             onError={(msg) => setCreateError(msg)}
                             onCancel={() => { resetCreateModal(); showToast('Agendamento criado (pagamento pendente).'); }}
                         />
-                        {createError && <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', color: '#ef4444', fontSize: '0.75rem' }}>{createError}</div>}
+                        {createError && <div className="admin-alert admin-alert--danger" role="alert" style={{ marginTop: 10, marginBottom: 0 }}>{createError}</div>}
                         <button onClick={() => { resetCreateModal(); showToast('Agendamento criado (pagamento pendente).'); }}
-                            style={{ marginTop: 12, width: '100%', padding: '10px', borderRadius: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer' }}>
+                            className="btn-admin-ghost" style={{ marginTop: 12, width: '100%' }}>
                             Fechar (deixar pendente)
                         </button>
                     </div>
@@ -165,14 +165,11 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
     }
 
     return (
-        <BottomSheetModal isOpen onClose={resetCreateModal} hideHeader maxWidth="580px" className="admin-sheet" title="Novo Agendamento">
+        <BottomSheetModal isOpen onClose={resetCreateModal} hideHeader size="lg" className="admin-sheet" title="Novo Agendamento">
                 {/* --- HEADER --- */}
-                <div style={{ padding: '28px 32px 0', borderBottom: 'none' }}>
-                    <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{
-                            width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            background: 'linear-gradient(135deg, #10b981, #11819B)', fontSize: '1rem'
-                        }}>➕</span>
+                <div className="admin-modal-head">
+                    <h2 className="admin-modal-title">
+                        <span className="admin-modal-title__icon">➕</span>
                         Novo Agendamento
                     </h2>
 
@@ -184,50 +181,48 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                             const isDone = createStep > step;
                             return (
                                 <React.Fragment key={step}>
-                                    {i > 0 && <div style={{ flex: 1, height: 2, background: isDone ? '#10b981' : 'var(--border-default)', borderRadius: 1, transition: 'background 0.3s' }} />}
-                                    <div style={{
-                                        display: 'flex', alignItems: 'center', gap: '6px', cursor: isDone ? 'pointer' : 'default',
-                                    }} onClick={() => isDone && setCreateStep(step)}>
-                                        <div style={{
+                                    {i > 0 && <div style={{ flex: 1, height: 2, background: isDone ? 'var(--success)' : 'var(--border-default)', borderRadius: 1, transition: 'background 0.3s' }} />}
+                                    <button type="button" disabled={!isDone}
+                                        aria-label={isDone ? `Voltar ao passo ${step}: ${label}` : `Passo ${step}: ${label}`}
+                                        aria-current={isActive ? 'step' : undefined}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: '6px', cursor: isDone ? 'pointer' : 'default',
+                                            background: 'none', border: 'none', padding: 0, fontFamily: 'inherit',
+                                        }} onClick={() => isDone && setCreateStep(step)}>
+                                        <span style={{
                                             width: 26, height: 26, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
                                             fontSize: '0.6875rem', fontWeight: 700,
-                                            background: isActive ? '#10b981' : isDone ? 'rgba(16,185,129,0.15)' : 'var(--bg-elevated)',
-                                            color: isActive ? '#fff' : isDone ? '#10b981' : 'var(--text-muted)',
-                                            border: `2px solid ${isActive ? '#10b981' : isDone ? 'rgba(16,185,129,0.3)' : 'var(--border-default)'}`,
-                                            transition: 'all 0.3s',
+                                            background: isActive ? 'var(--success)' : isDone ? 'rgba(16,185,129,0.15)' : 'var(--bg-elevated)',
+                                            color: isActive ? '#fff' : isDone ? 'var(--success)' : 'var(--text-muted)',
+                                            border: `2px solid ${isActive ? 'var(--success)' : isDone ? 'rgba(16,185,129,0.3)' : 'var(--border-default)'}`,
+                                            transition: 'background 0.3s ease, color 0.3s ease, border-color 0.3s ease',
                                         }}>
                                             {isDone ? '✓' : step}
-                                        </div>
+                                        </span>
                                         <span style={{
                                             fontSize: '0.6875rem', fontWeight: isActive ? 700 : 500,
                                             color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
                                         }}>{label}</span>
-                                    </div>
+                                    </button>
                                 </React.Fragment>
                             );
                         })}
                     </div>
                 </div>
 
-                <div style={{ padding: '20px 32px 28px' }}>
-                    {createError && <div className="error-message" style={{ marginBottom: '16px', padding: '10px 14px', borderRadius: '10px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)', color: '#ef4444', fontSize: '0.8125rem', fontWeight: 600 }}>{createError}</div>}
+                <div className="admin-modal-body">
+                    {createError && <div className="admin-alert admin-alert--danger" role="alert" style={{ marginBottom: '16px' }}>{createError}</div>}
 
                     {/* -------- STEP 1: Select Client -------- */}
                     {createStep === 1 && (
                         <div>
-                            <div style={{ position: 'relative', marginBottom: '14px' }}>
+                            <div className="admin-search" style={{ marginBottom: '14px' }}>
                                 <input
                                     type="text" placeholder="Buscar cliente por nome ou e-mail..."
+                                    aria-label="Buscar cliente por nome ou e-mail"
                                     value={createSearch} onChange={e => setCreateSearch(e.target.value)} autoFocus
-                                    style={{
-                                        width: '100%', padding: '10px 14px 10px 36px', borderRadius: '10px', fontSize: '0.8125rem',
-                                        background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
-                                        color: 'var(--text-primary)', outline: 'none',
-                                    }}
-                                    onFocus={e => (e.currentTarget.style.borderColor = '#10b981')}
-                                    onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-default)')}
                                 />
-                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.8125rem', opacity: 0.5 }}>🔎</span>
+                                <span className="admin-search__icon" aria-hidden="true">🔎</span>
                             </div>
 
                             <div style={{ maxHeight: '340px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -238,24 +233,17 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                 ) : filteredClients.map(u => {
                                     const isSelected = createForm.userId === u.id;
                                     return (
-                                        <div key={u.id}
+                                        <button type="button" key={u.id}
+                                            className={`admin-select-row${isSelected ? ' admin-select-row--active' : ''}`}
+                                            aria-pressed={isSelected}
                                             onClick={() => {
                                                 setCreateForm({ ...createForm, userId: u.id, contractId: '' });
                                                 loadClientContracts(u.id);
                                             }}
-                                            style={{
-                                                padding: '10px 14px', borderRadius: '10px', cursor: 'pointer',
-                                                display: 'flex', alignItems: 'center', gap: '12px',
-                                                background: isSelected ? 'rgba(16,185,129,0.08)' : 'transparent',
-                                                border: `1px solid ${isSelected ? 'rgba(16,185,129,0.3)' : 'transparent'}`,
-                                                transition: 'all 0.15s',
-                                            }}
-                                            onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
-                                            onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
                                         >
                                             <div style={{
                                                 width: 36, height: 36, borderRadius: '50%',
-                                                background: isSelected ? 'linear-gradient(135deg, #10b981, #11819B)' : 'var(--bg-elevated)',
+                                                background: isSelected ? 'var(--accent-gradient-go)' : 'var(--bg-elevated)',
                                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                 fontSize: '0.8125rem', fontWeight: 700, color: isSelected ? '#fff' : 'var(--text-muted)',
                                                 flexShrink: 0,
@@ -263,36 +251,30 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                                 {u.name.charAt(0).toUpperCase()}
                                             </div>
                                             <div style={{ flex: 1, minWidth: 0 }}>
-                                                <div style={{ fontWeight: 600, fontSize: '0.8125rem', color: isSelected ? '#10b981' : 'var(--text-primary)' }}>{u.name}</div>
+                                                <div style={{ fontWeight: 600, fontSize: '0.8125rem', color: isSelected ? 'var(--success)' : 'var(--text-primary)' }}>{u.name}</div>
                                                 <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}</div>
                                             </div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                 {u._count.contracts > 0 && (
                                                     <span style={{
                                                         padding: '2px 8px', borderRadius: '6px', fontSize: '0.625rem', fontWeight: 700,
-                                                        background: 'rgba(16,185,129,0.12)', color: '#10b981',
+                                                        background: 'var(--success-bg)', color: 'var(--success)',
                                                     }}>{u._count.contracts} contrato{u._count.contracts > 1 ? 's' : ''}</span>
                                                 )}
-                                                {isSelected && <span style={{ color: '#10b981', fontSize: '1rem' }}>✓</span>}
+                                                {isSelected && <span style={{ color: 'var(--success)', fontSize: '1rem' }} aria-hidden="true">✓</span>}
                                             </div>
-                                        </div>
+                                        </button>
                                     );
                                 })}
                             </div>
 
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '18px', gap: '10px' }}>
-                                <button onClick={resetCreateModal}
-                                    style={{ padding: '9px 18px', borderRadius: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer' }}>
+                            <div className="admin-actions-row" style={{ marginTop: '18px' }}>
+                                <button onClick={resetCreateModal} className="btn-admin-ghost">
                                     Cancelar
                                 </button>
                                 <button disabled={!createForm.userId}
                                     onClick={() => setCreateStep(2)}
-                                    style={{
-                                        padding: '9px 22px', borderRadius: '10px', border: 'none', fontSize: '0.8125rem', fontWeight: 700, cursor: 'pointer',
-                                        background: createForm.userId ? 'linear-gradient(135deg, #10b981, #11819B)' : 'var(--bg-elevated)',
-                                        color: createForm.userId ? '#fff' : 'var(--text-muted)',
-                                        opacity: createForm.userId ? 1 : 0.5,
-                    }}>
+                                    className="btn-admin-go">
                                     Próximo →
                                 </button>
                             </div>
@@ -323,35 +305,38 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                             <div style={{ marginBottom: '20px' }}>
                                 <label style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                     📄 Vincular a Contrato
-                                    {clientContracts.length > 0 && <span style={{ fontSize: '0.5625rem', fontWeight: 600, padding: '1px 6px', borderRadius: '4px', background: 'rgba(16,185,129,0.1)', color: '#10b981' }}>{clientContracts.length} ativo{clientContracts.length > 1 ? 's' : ''}</span>}
+                                    {clientContracts.length > 0 && <span style={{ fontSize: '0.5625rem', fontWeight: 600, padding: '1px 6px', borderRadius: '4px', background: 'rgba(16,185,129,0.1)', color: 'var(--success)' }}>{clientContracts.length} ativo{clientContracts.length > 1 ? 's' : ''}</span>}
                                 </label>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                     {/* Avulso card */}
                                     <div
+                                        role="button" tabIndex={0}
+                                        aria-pressed={!createForm.contractId}
                                         onClick={() => setCreateForm({ ...createForm, contractId: '', startTime: '' })}
+                                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setCreateForm({ ...createForm, contractId: '', startTime: '' }); } }}
                                         style={{
                                             padding: '14px 16px', borderRadius: '12px', cursor: 'pointer',
                                             display: 'flex', alignItems: 'center', gap: '14px',
                                             background: !createForm.contractId
-                                                ? 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(67,56,202,0.04))'
+                                                ? 'linear-gradient(135deg, rgba(17,129,155,0.12), rgba(9,110,133,0.04))'
                                                 : 'var(--bg-elevated)',
-                                            border: `1px solid ${!createForm.contractId ? 'rgba(99,102,241,0.35)' : 'var(--border-default)'}`,
-                                            transition: 'all 0.2s',
+                                            border: `1px solid ${!createForm.contractId ? 'rgba(17,129,155,0.45)' : 'var(--border-default)'}`,
+                                            transition: 'background 0.2s ease, border-color 0.2s ease',
                                         }}
                                     >
                                         <div style={{
                                             width: 40, height: 40, borderRadius: '10px', flexShrink: 0,
-                                            background: !createForm.contractId ? 'linear-gradient(135deg, #6366f1, #4f46e5)' : 'var(--bg-secondary)',
+                                            background: !createForm.contractId ? 'var(--accent-gradient)' : 'var(--bg-secondary)',
                                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                                             fontSize: '1.1rem',
                                         }}>
                                             ⚡
                                         </div>
                                         <div style={{ flex: 1, minWidth: 0 }}>
-                                            <div style={{ fontWeight: 700, fontSize: '0.8125rem', color: !createForm.contractId ? '#818cf8' : 'var(--text-primary)' }}>Agendamento Avulso</div>
+                                            <div style={{ fontWeight: 700, fontSize: '0.8125rem', color: !createForm.contractId ? 'var(--accent-text)' : 'var(--text-primary)' }}>Agendamento Avulso</div>
                                             <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '2px' }}>Cria contrato automático · Todos os horários</div>
                                         </div>
-                                        {!createForm.contractId && <span style={{ color: '#818cf8', fontSize: '1.1rem', fontWeight: 700 }}>✓</span>}
+                                        {!createForm.contractId && <span style={{ color: 'var(--accent-text)', fontSize: '1.1rem', fontWeight: 700 }} aria-hidden="true">✓</span>}
                                     </div>
 
                                     {/* Active contract cards */}
@@ -363,10 +348,14 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
 
                                         return (
                                             <div key={c.id}
+                                                role="button" tabIndex={hasCredits ? 0 : -1}
+                                                aria-pressed={isSelected}
+                                                aria-disabled={!hasCredits}
                                                 onClick={() => {
                                                     if (!hasCredits) return;
                                                     setCreateForm({ ...createForm, contractId: c.id, startTime: '' });
                                                 }}
+                                                onKeyDown={e => { if (hasCredits && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setCreateForm({ ...createForm, contractId: c.id, startTime: '' }); } }}
                                                 style={{
                                                     padding: '14px 16px', borderRadius: '12px',
                                                     cursor: hasCredits ? 'pointer' : 'not-allowed',
@@ -376,7 +365,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                                         : !hasCredits ? 'rgba(255,255,255,0.01)' : 'var(--bg-elevated)',
                                                     border: `1px solid ${isSelected ? ct.color + '55' : 'var(--border-default)'}`,
                                                     opacity: hasCredits ? 1 : 0.4,
-                                                    transition: 'all 0.2s',
+                                                    transition: 'background 0.2s ease, border-color 0.2s ease, opacity 0.2s ease',
                                                 }}
                                             >
                                                 {/* Tier icon */}
@@ -400,7 +389,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                                         <span style={{
                                                             fontSize: '0.5625rem', fontWeight: 600, padding: '1px 6px', borderRadius: '4px',
                                                             background: c.type === 'FIXO' ? 'rgba(245,158,11,0.1)' : 'rgba(59,130,246,0.1)',
-                                                            color: c.type === 'FIXO' ? '#f59e0b' : '#3b82f6',
+                                                            color: c.type === 'FIXO' ? 'var(--warning)' : 'var(--info)',
                                                         }}>{c.type === 'FIXO' ? '📌 Fixo' : '🔄 Flex'}</span>
                                                     </div>
                                                     <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
@@ -408,11 +397,11 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                                             <span>📅 {DAY_NAMES[c.fixedDayOfWeek]} {c.fixedTime ? `às ${c.fixedTime}` : ''}</span>
                                                         )}
                                                         {c.type === 'FLEX' && c.flexCreditsRemaining != null && (
-                                                            <span style={{ color: c.flexCreditsRemaining > 0 ? '#10b981' : '#ef4444', fontWeight: 600 }}>
+                                                            <span style={{ color: c.flexCreditsRemaining > 0 ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
                                                                 {c.flexCreditsRemaining > 0 ? `✅ ${c.flexCreditsRemaining} crédito${c.flexCreditsRemaining > 1 ? 's' : ''} restante${c.flexCreditsRemaining > 1 ? 's' : ''}` : '❌ Sem créditos'}
                                                             </span>
                                                         )}
-                                                        {!hasCredits && <span style={{ color: '#ef4444', fontWeight: 600 }}>Créditos esgotados</span>}
+                                                        {!hasCredits && <span style={{ color: 'var(--danger)', fontWeight: 600 }}>Créditos esgotados</span>}
                                                     </div>
                                                 </div>
 
@@ -425,7 +414,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                         <div style={{
                                             padding: '16px', borderRadius: '10px', textAlign: 'center',
                                             background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.15)',
-                                            color: '#f59e0b', fontSize: '0.8125rem', fontWeight: 600,
+                                            color: 'var(--warning)', fontSize: '0.8125rem', fontWeight: 600,
                                         }}>
                                             ⚠️ Cliente sem contratos ativos · Será criado contrato avulso
                                         </div>
@@ -440,23 +429,20 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                 </label>
                                 <input type="date" value={createForm.date}
                                     min={new Date().toISOString().split('T')[0]}
+                                    aria-label="Data da gravação"
                                     onChange={e => {
                                         const newDate = e.target.value;
                                         setCreateForm({ ...createForm, date: newDate, startTime: '' });
                                         if (newDate) loadDaySlots(newDate);
                                     }}
-                                    style={{
-                                        width: '100%', padding: '10px 14px', borderRadius: '10px', fontSize: '0.875rem', fontWeight: 600,
-                                        background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
-                                        color: 'var(--text-primary)', outline: 'none',
-                                    }}
+                                    className="form-input form-input--raised"
                                 />
                                 {/* FIXO day mismatch warning */}
                                 {isFixoDayMismatch && (
                                     <div style={{
                                         marginTop: '8px', padding: '8px 12px', borderRadius: '8px',
                                         background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)',
-                                        fontSize: '0.75rem', color: '#f59e0b', fontWeight: 600,
+                                        fontSize: '0.75rem', color: 'var(--warning)', fontWeight: 600,
                                         display: 'flex', alignItems: 'center', gap: '6px',
                                     }}>
                                         ⚠️ Contrato {activeContract?.name} é fixo em <strong>{DAY_NAMES[activeContract!.fixedDayOfWeek!]}</strong>. A data selecionada é {DAY_NAMES[selectedDateDOW!]}.
@@ -501,8 +487,10 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                                             background: isSelected ? slotTc.bg : !slot.available ? 'rgba(255,255,255,0.02)' : 'var(--bg-elevated)',
                                                             border: `1px solid ${isSelected ? slotTc.color + '55' : 'var(--border-default)'}`,
                                                             opacity: slot.available ? 1 : 0.35,
-                                                            transition: 'all 0.15s',
+                                                            transition: 'background 0.15s ease, border-color 0.15s ease',
+                                                            fontFamily: 'inherit',
                                                         }}
+                                                        aria-pressed={isSelected}
                                                     >
                                                         <span style={{ fontSize: '0.875rem', fontWeight: 700, color: isSelected ? slotTc.color : 'var(--text-primary)' }}>
                                                             {slot.time}
@@ -522,19 +510,13 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                 </div>
                             )}
 
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '20px' }}>
-                                <button onClick={() => setCreateStep(1)}
-                                    style={{ padding: '9px 18px', borderRadius: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer' }}>
+                            <div className="admin-actions-row admin-actions-row--between" style={{ marginTop: '20px' }}>
+                                <button onClick={() => setCreateStep(1)} className="btn-admin-ghost">
                                     ← Voltar
                                 </button>
                                 <button disabled={!createForm.date || !createForm.startTime}
                                     onClick={() => setCreateStep(3)}
-                                    style={{
-                                        padding: '9px 22px', borderRadius: '10px', border: 'none', fontSize: '0.8125rem', fontWeight: 700, cursor: 'pointer',
-                                        background: createForm.date && createForm.startTime ? 'linear-gradient(135deg, #10b981, #11819B)' : 'var(--bg-elevated)',
-                                        color: createForm.date && createForm.startTime ? '#fff' : 'var(--text-muted)',
-                                        opacity: createForm.date && createForm.startTime ? 1 : 0.5,
-                                    }}>
+                                    className="btn-admin-go">
                                     Próximo →
                                 </button>
                             </div>
@@ -554,12 +536,12 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                     Resumo do Agendamento
                                 </div>
 
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 20px' }}>
+                                <div className="admin-grid-2" style={{ gap: '12px 20px' }}>
                                     <div>
                                         <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '3px' }}>Cliente</div>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             <div style={{
-                                                width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg, #10b981, #11819B)',
+                                                width: 28, height: 28, borderRadius: '50%', background: 'var(--accent-gradient-go)',
                                                 display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6875rem', fontWeight: 700, color: '#fff',
                                             }}>{selectedUser?.name?.charAt(0).toUpperCase()}</div>
                                             <span style={{ fontWeight: 600, fontSize: '0.8125rem' }}>{selectedUser?.name}</span>
@@ -599,7 +581,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                             <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '6px' }}>💰 Valor do Agendamento</div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                                 <div style={{ position: 'relative', flex: 1, maxWidth: '200px' }}>
-                                                    <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8125rem', fontWeight: 700, color: '#10b981' }}>R$</span>
+                                                    <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--success)' }}>R$</span>
                                                     <input
                                                         type="text"
                                                         value={priceDisplay}
@@ -608,9 +590,9 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                                             width: '100%', padding: '8px 12px 8px 38px', borderRadius: '10px',
                                                             fontSize: '1.125rem', fontWeight: 800, fontVariantNumeric: 'tabular-nums',
                                                             background: 'var(--bg-elevated)', border: '1px solid rgba(16,185,129,0.3)',
-                                                            color: '#10b981', outline: 'none', fontFamily: 'inherit',
+                                                            color: 'var(--success)', outline: 'none', fontFamily: 'inherit',
                                                         }}
-                                                        onFocus={e => (e.currentTarget.style.borderColor = '#10b981')}
+                                                        onFocus={e => (e.currentTarget.style.borderColor = 'var(--success)')}
                                                         onBlur={e => {
                                                             e.currentTarget.style.borderColor = 'rgba(16,185,129,0.3)';
                                                             const num = parseFloat(priceDisplay.replace(',', '.'));
@@ -632,7 +614,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                     )}
                                     {/* Linha do cupom aplicado (só avulso) */}
                                     {!createForm.contractId && appliedCoupon && (
-                                        <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8125rem', fontWeight: 700, color: '#10b981' }}>
+                                        <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--success)' }}>
                                             <span>🎟️ Cupom {appliedCoupon.code}</span>
                                             <span>−{formatBRL(appliedCoupon.discountAmount)}</span>
                                         </div>
@@ -646,7 +628,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                     <label style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                         ✨ Serviços desta gravação
                                         {selectedContract && inheritedDiscount > 0 && (
-                                            <span style={{ fontSize: '0.5625rem', fontWeight: 700, padding: '1px 6px', borderRadius: '4px', background: 'rgba(45,212,191,0.12)', color: '#2dd4bf' }}>-{inheritedDiscount}% do contrato</span>
+                                            <span style={{ fontSize: '0.5625rem', fontWeight: 700, padding: '1px 6px', borderRadius: '4px', background: 'rgba(45,212,191,0.12)', color: 'var(--accent-text)' }}>-{inheritedDiscount}% do contrato</span>
                                         )}
                                     </label>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -666,7 +648,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                         })}
                                     </div>
                                     {servicesValue > 0 && (
-                                        <div style={{ marginTop: 8, fontSize: '0.75rem', color: '#2dd4bf', fontWeight: 700, textAlign: 'right' }}>
+                                        <div style={{ marginTop: 8, fontSize: '0.75rem', color: 'var(--accent-text)', fontWeight: 700, textAlign: 'right' }}>
                                             +{formatBRL(servicesValue)} em serviços {createForm.contractId ? '(somados a esta gravação)' : '(somados ao valor)'}
                                         </div>
                                     )}
@@ -690,20 +672,21 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                             {/* Avulso: cobrar agora (mesmo InlineCheckout do cliente) */}
                             {!createForm.contractId && (
                                 <div style={{ marginBottom: '14px' }}>
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '12px 14px', borderRadius: '10px', background: chargeNow ? 'rgba(99,102,241,0.06)' : 'var(--bg-elevated)', border: `1px solid ${chargeNow ? 'rgba(99,102,241,0.3)' : 'var(--border-default)'}` }}>
-                                        <input type="checkbox" checked={chargeNow} onChange={e => setChargeNow(e.target.checked)} style={{ width: 18, height: 18, accentColor: '#818cf8', cursor: 'pointer' }} />
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '12px 14px', borderRadius: '10px', background: chargeNow ? 'rgba(17,129,155,0.08)' : 'var(--bg-elevated)', border: `1px solid ${chargeNow ? 'rgba(17,129,155,0.35)' : 'var(--border-default)'}` }}>
+                                        <input type="checkbox" checked={chargeNow} onChange={e => setChargeNow(e.target.checked)} style={{ width: 18, height: 18, accentColor: 'var(--accent-primary)', cursor: 'pointer' }} />
                                         <div>
                                             <div style={{ fontSize: '0.8125rem', fontWeight: 600 }}>💳 Cobrar o cliente agora</div>
                                             <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', marginTop: '2px' }}>Gera PIX ou cobra o cartão do cliente (presente). Sem marcar, segue o status escolhido.</div>
                                         </div>
                                     </label>
                                     {chargeNow && (
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '8px' }}>
+                                        <div className="admin-grid-2" style={{ gap: '8px', marginTop: '8px' }}>
                                             {([{ key: 'PIX' as const, icon: '⚡', label: 'PIX' }, { key: 'CARTAO' as const, icon: '💳', label: 'Cartão' }]).map(m => {
                                                 const active = chargeMethod === m.key;
                                                 return (
-                                                    <button key={m.key} onClick={() => setChargeMethod(m.key)} style={{ padding: '10px', borderRadius: '10px', cursor: 'pointer', textAlign: 'center', background: active ? 'rgba(99,102,241,0.08)' : 'var(--bg-elevated)', border: `1.5px solid ${active ? 'rgba(99,102,241,0.3)' : 'var(--border-default)'}` }}>
-                                                        <span style={{ fontSize: '0.875rem' }}>{m.icon}</span> <span style={{ fontSize: '0.75rem', fontWeight: 700, color: active ? '#818cf8' : 'var(--text-primary)' }}>{m.label}</span>
+                                                    <button key={m.key} onClick={() => setChargeMethod(m.key)} aria-pressed={active}
+                                                        style={{ padding: '10px', minHeight: 44, borderRadius: '10px', cursor: 'pointer', textAlign: 'center', fontFamily: 'inherit', background: active ? 'rgba(17,129,155,0.10)' : 'var(--bg-elevated)', border: `1.5px solid ${active ? 'rgba(17,129,155,0.4)' : 'var(--border-default)'}`, transition: 'background 0.15s ease, border-color 0.15s ease' }}>
+                                                        <span style={{ fontSize: '0.875rem' }}>{m.icon}</span> <span style={{ fontSize: '0.75rem', fontWeight: 700, color: active ? 'var(--accent-text)' : 'var(--text-primary)' }}>{m.label}</span>
                                                     </button>
                                                 );
                                             })}
@@ -718,11 +701,13 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                     {[{ key: 'CONFIRMED', label: '✅ Confirmado' }, { key: 'RESERVED', label: '⏳ Reservado' }].map(s => (
                                         <button key={s.key}
                                             onClick={() => setCreateForm({ ...createForm, status: s.key })}
+                                            aria-pressed={createForm.status === s.key}
                                             style={{
-                                                padding: '8px 16px', borderRadius: '8px', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer',
-                                                background: createForm.status === s.key ? 'rgba(16,185,129,0.12)' : 'var(--bg-elevated)',
+                                                padding: '8px 16px', minHeight: 40, borderRadius: '8px', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                                                background: createForm.status === s.key ? 'var(--success-bg)' : 'var(--bg-elevated)',
                                                 border: `1px solid ${createForm.status === s.key ? 'rgba(16,185,129,0.3)' : 'var(--border-default)'}`,
-                                                color: createForm.status === s.key ? '#10b981' : 'var(--text-secondary)',
+                                                color: createForm.status === s.key ? 'var(--success)' : 'var(--text-secondary)',
+                                                transition: 'background 0.15s ease, color 0.15s ease, border-color 0.15s ease',
                                             }}>
                                             {s.label}
                                         </button>
@@ -740,25 +725,16 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                     onChange={e => setCreateForm({ ...createForm, adminNotes: e.target.value })}
                                     placeholder="Observações internas sobre esta gravação..."
                                     rows={3}
-                                    style={{
-                                        width: '100%', padding: '10px 14px', borderRadius: '10px', fontSize: '0.8125rem',
-                                        background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
-                                        color: 'var(--text-primary)', outline: 'none', resize: 'vertical', fontFamily: 'inherit',
-                                    }}
+                                    className="form-input form-input--raised"
+                                    style={{ fontSize: '0.8125rem', resize: 'vertical' }}
                                 />
                             </div>
 
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '20px' }}>
-                                <button onClick={() => setCreateStep(2)}
-                                    style={{ padding: '9px 18px', borderRadius: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer' }}>
+                            <div className="admin-actions-row admin-actions-row--between" style={{ marginTop: '20px' }}>
+                                <button onClick={() => setCreateStep(2)} className="btn-admin-ghost">
                                     ← Voltar
                                 </button>
-                                <button onClick={handleCreate} disabled={creating}
-                                    style={{
-                                        padding: '10px 28px', borderRadius: '10px', border: 'none', fontSize: '0.875rem', fontWeight: 700, cursor: 'pointer',
-                                        background: 'linear-gradient(135deg, #10b981, #11819B)', color: '#fff',
-                                        opacity: creating ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '8px',
-                                    }}>
+                                <button onClick={handleCreate} disabled={creating} className="btn-admin-go">
                                     {creating ? '⏳ Criando...' : '📅 Agendar'}
                                 </button>
                             </div>

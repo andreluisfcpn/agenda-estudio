@@ -3,18 +3,15 @@ import { useState, useEffect } from 'react';
 import { bookingsApi, BookingWithUser } from '../../../api/client';
 import BottomSheetModal from '../../BottomSheetModal';
 import { formatBRL } from '../../../utils/format';
-import { TIER_META } from '../../../constants/adminMeta';
+import { TIER_META, BOOKING_STATUS_META } from '../../../constants/adminMeta';
 
 const TIER_EMOJI: Record<string, string> = { COMERCIAL: '🏢', AUDIENCIA: '🎤', SABADO: '🌟' };
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: string }> = {
-    COMPLETED:     { label: 'Concluído',      color: '#10b981', bg: 'rgba(16,185,129,0.12)',  icon: '✅' },
-    CONFIRMED:     { label: 'Confirmado',     color: '#3b82f6', bg: 'rgba(59,130,246,0.12)',  icon: '✅' },
-    RESERVED:      { label: 'Reservado',      color: '#f59e0b', bg: 'rgba(245,158,11,0.12)',  icon: '⏳' },
-    CANCELLED:     { label: 'Cancelado',      color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   icon: '🚫' },
-    FALTA:         { label: 'Falta',          color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   icon: '❌' },
-    NAO_REALIZADO: { label: 'Não Realizado',  color: '#14b8a6', bg: 'rgba(45,212,191,0.12)',  icon: '❌' },
-};
+// Statuses selecionáveis neste modal — cores/labels/ícones vêm do adminMeta
+// (source of truth); HELD é interno do fluxo de pagamento e fica de fora.
+const EDITABLE_STATUSES = Object.fromEntries(
+    Object.entries(BOOKING_STATUS_META).filter(([key]) => key !== 'HELD')
+);
 
 interface EditBookingModalProps {
     booking: BookingWithUser | null;
@@ -114,21 +111,25 @@ export default function EditBookingModal({ booking, onClose, onSaved }: EditBook
                     <div className="admin-field" style={{ marginBottom: '16px' }}>
                         <span className="admin-field__label">Status</span>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }} role="group" aria-label="Status do agendamento">
-                            {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
-                                <button key={key}
-                                    onClick={() => setEditForm({ ...editForm, status: key })}
-                                    aria-pressed={editForm.status === key}
-                                    style={{
-                                        padding: '8px 12px', borderRadius: '8px', fontSize: '0.6875rem', fontWeight: 600, cursor: 'pointer',
-                                        background: editForm.status === key ? cfg.bg : 'var(--bg-elevated)',
-                                        border: `1px solid ${editForm.status === key ? cfg.color + '44' : 'var(--border-default)'}`,
-                                        color: editForm.status === key ? cfg.color : 'var(--text-muted)',
-                                        transition: 'background 0.15s ease, color 0.15s ease, border-color 0.15s ease',
-                                    }}
-                                >
-                                    {cfg.icon} {cfg.label}
-                                </button>
-                            ))}
+                            {Object.entries(EDITABLE_STATUSES).map(([key, cfg]) => {
+                                const Icon = cfg.icon;
+                                return (
+                                    <button key={key}
+                                        onClick={() => setEditForm({ ...editForm, status: key })}
+                                        aria-pressed={editForm.status === key}
+                                        style={{
+                                            padding: '8px 12px', borderRadius: '8px', fontSize: '0.6875rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                                            display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                            background: editForm.status === key ? cfg.bg : 'var(--bg-elevated)',
+                                            border: `1px solid ${editForm.status === key ? cfg.color + '44' : 'var(--border-default)'}`,
+                                            color: editForm.status === key ? cfg.color : 'var(--text-muted)',
+                                            transition: 'background 0.15s ease, color 0.15s ease, border-color 0.15s ease',
+                                        }}
+                                    >
+                                        <Icon size={12} aria-hidden="true" /> {cfg.label}
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
 

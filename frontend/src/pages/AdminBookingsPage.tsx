@@ -74,92 +74,61 @@ export default function AdminBookingsPage() {
                 title="Agendamentos"
                 subtitle="Gerencie todos os agendamentos do estúdio"
                 actions={
-                    <button className="btn btn-primary" onClick={() => setShowCreate(true)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 24px', borderRadius: '12px', fontWeight: 700 }}>
-                        <span style={{ fontSize: '1.1rem' }}>+</span> Novo Agendamento
+                    <button className="btn-admin-go" onClick={() => setShowCreate(true)}>
+                        <span style={{ fontSize: '1.1rem' }} aria-hidden="true">+</span> Novo Agendamento
                     </button>
                 }
             />
 
             {/* --- KPI CARDS --- */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginBottom: '24px' }}>
-                <div style={{
-                    padding: '20px', borderRadius: '14px',
-                    background: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(67,56,202,0.04))',
-                    border: '1px solid rgba(99,102,241,0.2)',
-                }}>
-                    <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Total</div>
-                    <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)' }}>{kpis.total}</div>
-                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>agendamentos</div>
+            <div className="admin-kpi-grid">
+                <div className="admin-kpi-card admin-kpi-card--accent">
+                    <div className="admin-kpi-card__label">Total</div>
+                    <div className="admin-kpi-card__value">{kpis.total}</div>
+                    <div className="admin-kpi-card__caption">agendamentos</div>
                 </div>
-                <div style={{
-                    padding: '20px', borderRadius: '14px',
-                    background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
-                }}>
-                    <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Confirmados</div>
-                    <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)' }}>{kpis.confirmed}</div>
-                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>a realizar</div>
+                <div className="admin-kpi-card">
+                    <div className="admin-kpi-card__label" style={{ color: 'var(--info)' }}>Confirmados</div>
+                    <div className="admin-kpi-card__value">{kpis.confirmed}</div>
+                    <div className="admin-kpi-card__caption">a realizar</div>
                 </div>
-                <div style={{
-                    padding: '20px', borderRadius: '14px',
-                    background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
-                }}>
-                    <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Concluídos</div>
-                    <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)' }}>{kpis.completed}</div>
-                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>realizados</div>
+                <div className="admin-kpi-card">
+                    <div className="admin-kpi-card__label" style={{ color: 'var(--success)' }}>Concluídos</div>
+                    <div className="admin-kpi-card__value">{kpis.completed}</div>
+                    <div className="admin-kpi-card__caption">realizados</div>
                 </div>
-                <div style={{
-                    padding: '20px', borderRadius: '14px',
-                    background: kpis.cancelled > 0 ? 'linear-gradient(135deg, rgba(239,68,68,0.06), rgba(220,38,38,0.04))' : 'var(--bg-secondary)',
-                    border: kpis.cancelled > 0 ? '1px solid rgba(239,68,68,0.2)' : '1px solid var(--border-color)',
-                }}>
-                    <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Cancelados</div>
-                    <div style={{ fontSize: '2rem', fontWeight: 800, color: kpis.cancelled > 0 ? '#ef4444' : 'var(--text-primary)' }}>{kpis.cancelled}</div>
-                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>cancelados + faltas</div>
+                <div className={`admin-kpi-card${kpis.cancelled > 0 ? ' admin-kpi-card--danger' : ''}`}>
+                    <div className="admin-kpi-card__label" style={{ color: 'var(--danger)' }}>Cancelados</div>
+                    <div className="admin-kpi-card__value" style={kpis.cancelled > 0 ? { color: 'var(--danger)' } : undefined}>{kpis.cancelled}</div>
+                    <div className="admin-kpi-card__caption">cancelados + faltas</div>
                 </div>
-                <div style={{
-                    padding: '20px', borderRadius: '14px',
-                    background: 'linear-gradient(135deg, rgba(16,185,129,0.08), rgba(6,78,59,0.04))',
-                    border: '1px solid rgba(16,185,129,0.2)',
-                }}>
-                    <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>Receita</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>{formatBRL(kpis.revenue)}</div>
-                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>confirmados + concluídos</div>
+                <div className="admin-kpi-card admin-kpi-card--success">
+                    <div className="admin-kpi-card__label" style={{ color: 'var(--success)' }}>Receita</div>
+                    <div className="admin-kpi-card__value admin-kpi-card__value--sm">{formatBRL(kpis.revenue)}</div>
+                    <div className="admin-kpi-card__caption">confirmados + concluídos</div>
                 </div>
             </div>
 
             {/* --- SEARCH + FILTERS --- */}
-            <div style={{
-                padding: '12px 16px', borderRadius: '12px', marginBottom: '16px',
-                background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
-                display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap'
-            }}>
-                <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
+            <div className="admin-filter-bar admin-filter-bar--panel">
+                <div className="admin-search">
                     <input
                         type="text" placeholder="Buscar por nome ou e-mail..."
+                        aria-label="Buscar por nome ou e-mail"
                         value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-                        style={{
-                            width: '100%', padding: '8px 12px 8px 32px', borderRadius: '8px', fontSize: '0.8125rem',
-                            background: 'var(--bg-elevated)', border: '1px solid var(--border-color)',
-                            color: 'var(--text-primary)', outline: 'none', transition: 'border-color 0.2s'
-                        }}
-                        onFocus={e => (e.currentTarget.style.borderColor = '#10b981')}
-                        onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-color)')}
                     />
-                    <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5, pointerEvents: 'none' }}>🔎</span>
+                    <span className="admin-search__icon" aria-hidden="true">🔎</span>
                 </div>
 
                 {/* Date filter */}
                 <input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)}
-                    style={{
-                        padding: '8px 12px', borderRadius: '8px', fontSize: '0.8125rem', maxWidth: '160px',
-                        background: 'var(--bg-elevated)', border: '1px solid var(--border-color)',
-                        color: 'var(--text-primary)', outline: 'none'
-                    }}
+                    aria-label="Filtrar por data"
+                    className="form-input form-input--raised"
+                    style={{ maxWidth: '160px', fontSize: '0.8125rem' }}
                 />
 
                 {/* Status filter pills */}
-                <div style={{ display: 'flex', gap: '2px', padding: '3px', background: 'var(--bg-elevated)', borderRadius: '10px' }}>
+                <div className="admin-segmented" role="group" aria-label="Filtrar por status">
                     {[
                         { key: '', label: 'Todos' },
                         { key: 'CONFIRMED', label: 'Confirmados' },
@@ -169,14 +138,8 @@ export default function AdminBookingsPage() {
                     ].map(s => (
                         <button key={s.key}
                             onClick={() => setStatusFilter(s.key)}
-                            style={{
-                                padding: '5px 10px', borderRadius: '8px', fontSize: '0.6875rem',
-                                fontWeight: statusFilter === s.key ? 700 : 500, border: 'none', cursor: 'pointer',
-                                background: statusFilter === s.key ? 'var(--bg-secondary)' : 'transparent',
-                                color: statusFilter === s.key ? 'var(--text-primary)' : 'var(--text-muted)',
-                                boxShadow: statusFilter === s.key ? '0 1px 3px rgba(0,0,0,0.2)' : 'none',
-                                transition: 'all 0.2s'
-                            }}
+                            aria-pressed={statusFilter === s.key}
+                            className={`admin-segmented__btn${statusFilter === s.key ? ' admin-segmented__btn--active' : ''}`}
                         >
                             {s.label}
                         </button>
@@ -184,12 +147,7 @@ export default function AdminBookingsPage() {
                 </div>
 
                 {(dateFilter || statusFilter || searchQuery) && (
-                    <button onClick={() => { setDateFilter(''); setStatusFilter(''); setSearchQuery(''); }}
-                        style={{
-                            background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)',
-                            color: '#ef4444', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer',
-                            fontSize: '0.6875rem', fontWeight: 600
-                        }}>
+                    <button className="admin-filter-clear" onClick={() => { setDateFilter(''); setStatusFilter(''); setSearchQuery(''); }}>
                         🧹 Limpar
                     </button>
                 )}
@@ -197,7 +155,7 @@ export default function AdminBookingsPage() {
                 <span style={{
                     marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--text-muted)',
                     padding: '4px 10px', background: 'var(--bg-elevated)', borderRadius: '8px'
-                }}>
+                }} aria-live="polite">
                     {filtered.length} resultado{filtered.length !== 1 ? 's' : ''}
                 </span>
             </div>
@@ -229,20 +187,13 @@ export default function AdminBookingsPage() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {filtered.map((b, i) => {
+                                    {filtered.map((b) => {
                                         const sc = getMeta(BOOKING_STATUS_META, b.status);
                                         const dateObj = new Date(b.date);
                                         const dayStr = dateObj.toLocaleDateString('pt-BR', { timeZone: 'UTC', weekday: 'short', day: '2-digit', month: '2-digit' });
                                         const createdStr = b.createdAt ? new Date(b.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
                                         return (
-                                            <tr key={b.id}
-                                                style={{
-                                                    background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
-                                                    transition: 'background 0.15s'
-                                                }}
-                                                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(16,185,129,0.04)')}
-                                                onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)')}
-                                            >
+                                            <tr key={b.id} className="admin-zebra-row">
                                                 {/* Client */}
                                                 <td className="admin-card-title" style={{ paddingLeft: '20px' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -255,10 +206,12 @@ export default function AdminBookingsPage() {
                                                             {b.user.name.charAt(0).toUpperCase()}
                                                         </div>
                                                         <div>
-                                                            <div style={{ fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', color: 'var(--accent-primary)' }}
+                                                            <button
+                                                                style={{ fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', color: 'var(--accent-text)', background: 'none', border: 'none', padding: 0, fontFamily: 'inherit', textAlign: 'left' }}
+                                                                title={`Abrir perfil de ${b.user.name}`}
                                                                 onClick={() => navigate(`/admin/clients/${b.user.id}`)}>
                                                                 {b.user.name}
-                                                            </div>
+                                                            </button>
                                                             <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '1px' }}>
                                                                 {b.user.email}
                                                             </div>
@@ -292,7 +245,7 @@ export default function AdminBookingsPage() {
                                                 </td>
 
                                                 {/* Valor */}
-                                                <td data-label="Valor" style={{ textAlign: 'right', fontWeight: 700, fontSize: '0.875rem', fontVariantNumeric: 'tabular-nums', color: '#10b981' }}>
+                                                <td data-label="Valor" style={{ textAlign: 'right', fontWeight: 700, fontSize: '0.875rem', fontVariantNumeric: 'tabular-nums', color: 'var(--success)' }}>
                                                     {formatBRL(b.price)}
                                                 </td>
 
@@ -309,29 +262,12 @@ export default function AdminBookingsPage() {
                                                         <select
                                                             value={b.status}
                                                             onChange={e => handleInlineStatusChange(b.id, e.target.value)}
-                                                            style={{
-                                                                padding: '6px 30px 6px 24px', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 700,
-                                                                letterSpacing: '0.01em',
-                                                                background: 'rgba(255,255,255,0.04)', color: sc.color,
-                                                                border: `1px solid rgba(255,255,255,0.08)`,
-                                                                cursor: 'pointer', outline: 'none', WebkitAppearance: 'none', MozAppearance: 'none',
-                                                                appearance: 'none', fontFamily: 'inherit',
-                                                                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M.7.7 4 4l3.3-3.3' stroke='rgba(255,255,255,0.3)' stroke-width='1.2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
-                                                                backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center',
-                                                                transition: 'all 0.2s ease',
-                                                                backdropFilter: 'blur(8px)',
-                                                            }}
-                                                            onMouseEnter={e => {
-                                                                e.currentTarget.style.background = `rgba(255,255,255,0.07)`;
-                                                                e.currentTarget.style.borderColor = `${sc.color}44`;
-                                                            }}
-                                                            onMouseLeave={e => {
-                                                                e.currentTarget.style.background = `rgba(255,255,255,0.04)`;
-                                                                e.currentTarget.style.borderColor = `rgba(255,255,255,0.08)`;
-                                                            }}
+                                                            aria-label={`Status do agendamento de ${b.user.name}`}
+                                                            className="admin-status-select"
+                                                            style={{ color: sc.color }}
                                                         >
                                                             {Object.entries(BOOKING_STATUS_META).filter(([key]) => key !== 'HELD').map(([key, cfg]) => (
-                                                                <option key={key} value={key} style={{ background: '#0a1a1f', color: cfg.color, padding: '6px' }}>{cfg.label}</option>
+                                                                <option key={key} value={key} style={{ background: 'var(--sheet-bg)', color: cfg.color, padding: '6px' }}>{cfg.label}</option>
                                                             ))}
                                                         </select>
                                                     </div>
@@ -340,27 +276,14 @@ export default function AdminBookingsPage() {
                                                 {/* Actions */}
                                                 <td data-label="" style={{ textAlign: 'center' }}>
                                                     <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                                                        <button style={{
-                                                            background: 'var(--bg-elevated)', border: '1px solid var(--border-color)',
-                                                            color: 'var(--text-secondary)', padding: '6px 10px', borderRadius: '8px',
-                                                            cursor: 'pointer', fontSize: '0.8125rem', transition: 'all 0.2s'
-                                                        }}
-                                                        onMouseEnter={e => { e.currentTarget.style.borderColor = '#10b981'; e.currentTarget.style.color = '#10b981'; }}
-                                                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-color)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
-                                                        title="Editar"
-                                                        onClick={() => setEditBooking(b)}>
+                                                        <button className="admin-icon-btn admin-icon-btn--success"
+                                                            aria-label={`Editar agendamento de ${b.user.name}`}
+                                                            onClick={() => setEditBooking(b)}>
                                                             ✏️
                                                         </button>
-
-                                                        <button style={{
-                                                            background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)',
-                                                            color: '#ef4444', padding: '6px 10px', borderRadius: '8px',
-                                                            cursor: 'pointer', fontSize: '0.8125rem', transition: 'all 0.2s', opacity: 0.7
-                                                        }}
-                                                        onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
-                                                        onMouseLeave={e => (e.currentTarget.style.opacity = '0.7')}
-                                                        title="Excluir permanentemente"
-                                                        onClick={() => handleHardDelete(b)}>
+                                                        <button className="admin-icon-btn admin-icon-btn--danger"
+                                                            aria-label={`Excluir permanentemente agendamento de ${b.user.name}`}
+                                                            onClick={() => handleHardDelete(b)}>
                                                             🗑️
                                                         </button>
                                                     </div>
