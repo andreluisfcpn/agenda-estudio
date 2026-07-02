@@ -598,20 +598,178 @@
     to { opacity: 1; transform: translateY(0); }
 }
 
+/* Timeline */
+.today-timeline {
+    display: flex;
+    flex-direction: column;
+}
+.today-slot-row {
+    display: flex;
+    gap: 16px;
+    padding: 4px 0;
+    transition: opacity 0.3s ease;
+}
+.today-rail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 44px;
+    padding-top: 18px;
+}
+.today-connector {
+    width: 2px;
+    flex: 1;
+    margin-top: 4px;
+    background: var(--border-color);
+}
+.today-connector--now {
+    background: linear-gradient(to bottom, var(--success), var(--border-color));
+}
+
+/* Intervalos (almoço/higienização) */
+.today-break-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 6px 0;
+    margin-left: 20px;
+}
+.today-break-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--border-color);
+    flex-shrink: 0;
+}
+.today-break-dot--now { background: var(--success); }
+.today-break-chip {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    border-radius: 8px;
+    border-left: 2px solid transparent;
+}
+.today-break-chip--now {
+    background: rgba(16, 185, 129, 0.06);
+    border-left-color: var(--success);
+}
+/* Chip pulsante "agora/AGORA" */
+.today-now-chip {
+    font-size: 0.6rem;
+    font-weight: 800;
+    color: var(--success);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    animation: today-pulse 2s infinite;
+    background: var(--success-bg);
+    padding: 1px 6px;
+    border-radius: 4px;
+}
+
+/* Card do slot */
 .today-slot-card {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.01);
+    overflow: hidden;
+    margin-bottom: 4px;
     transition: border-color 0.25s ease, transform 0.25s ease;
+}
+.today-slot-card--filled {
+    background: var(--bg-secondary);
+    border-color: var(--border-color);
+}
+.today-slot-card--now {
+    border-color: rgba(16, 185, 129, 0.4);
+    box-shadow: 0 0 24px rgba(16, 185, 129, 0.08);
 }
 @media (hover: hover) {
     .today-slot-card:hover {
-        /* !important: vence o border inline dinâmico (limpo no loop da página). */
-        border-color: rgba(16, 185, 129, 0.3) !important;
+        border-color: rgba(16, 185, 129, 0.3);
         transform: translateX(2px);
     }
+}
+.today-slot-head {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 20px;
+    width: 100%;
+    text-align: left;
+}
+.today-slot-head--clickable {
+    cursor: pointer;
+    padding: 16px 20px;
+}
+.today-slot-head--clickable:focus-visible {
+    outline: 2px solid var(--accent-text);
+    outline-offset: -2px;
+    border-radius: 14px;
+}
+.today-time-badge {
+    padding: 6px 12px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    font-weight: 700;
+    font-size: 0.8125rem;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    min-width: 100px;
+    text-align: center;
+}
+.today-time-badge--now {
+    background: var(--success-bg);
+    color: var(--success);
+}
+.today-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 800;
+    color: #fff;
+}
+.today-chevron {
+    color: var(--text-muted);
+    transition: transform 0.25s ease;
+    display: inline-block;
+    margin-left: 2px;
+    flex-shrink: 0;
+}
+.today-chevron--open { transform: rotate(90deg); }
+
+/* Painel expandido */
+.today-expand-panel {
+    border-top: 1px solid var(--border-color);
+    padding: 24px;
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.1) 0%, transparent 100%);
+    animation: today-slide-down 0.3s ease;
+}
+.today-actions-bar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    padding: 14px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color);
 }
 
 .today-action-btn {
     border: none;
     padding: 6px 14px;
+    min-height: 36px;
     border-radius: 8px;
     font-weight: 600;
     font-size: 0.8rem;
@@ -629,6 +787,19 @@
 .today-action-btn:focus-visible {
     outline: 2px solid var(--accent-text);
     outline-offset: 2px;
+}
+@media (max-width: 768px) {
+    .today-action-btn { min-height: 44px; }
+}
+/* Variantes de cor (mesmos valores do adminMeta). */
+.today-action-btn--info { background: var(--info-bg); color: var(--info); }
+.today-action-btn--success { background: var(--success-bg); color: var(--success); }
+.today-action-btn--danger { background: var(--danger-bg); color: var(--danger); }
+.today-action-btn--teal { background: rgba(20, 184, 166, 0.12); color: #14b8a6; } /* NAO_REALIZADO (adminMeta) */
+.today-action-btn--neutral {
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
 }
 
 /* Dot da timeline — o estado "agora" ganha ripple via ::after. */

@@ -176,14 +176,14 @@ export default function AdminTodayPage() {
                             <span className="today-summary-num">{dayStats.recordings}</span>&nbsp;gravações hoje
                         </span>
                         <span className="today-summary-item">
-                            <CheckCircle2 size={16} style={{ color: '#10b981' }} />
+                            <CheckCircle2 size={16} style={{ color: 'var(--success)' }} />
                             <span className="today-summary-num">{dayStats.completed}</span>&nbsp;concluídas
                         </span>
 
                         {dayStats.nowSession ? (
                             <span className="today-next today-next--now">
                                 <span className="today-live-dot" />
-                                <span><strong style={{ color: '#10b981' }}>Gravando agora:</strong> {dayStats.nowSession.user.name}</span>
+                                <span><strong style={{ color: 'var(--success)' }}>Gravando agora:</strong> {dayStats.nowSession.user.name}</span>
                             </span>
                         ) : dayStats.next ? (
                             <span className="today-next">
@@ -191,7 +191,7 @@ export default function AdminTodayPage() {
                                 <span>Próxima às <strong style={{ color: 'var(--text-primary)' }}>{dayStats.next.startTime}</strong> · {dayStats.next.user.name}</span>
                             </span>
                         ) : dayStats.recordings > 0 ? (
-                            <span className="today-next"><CheckCircle2 size={15} style={{ color: '#10b981', flexShrink: 0 }} /> Tudo concluído por hoje</span>
+                            <span className="today-next"><CheckCircle2 size={15} style={{ color: 'var(--success)', flexShrink: 0 }} /> Tudo concluído por hoje</span>
                         ) : (
                             <button className="today-next" style={{ cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text-secondary)' }}
                                 onClick={() => navigate('/calendar')}>
@@ -215,39 +215,17 @@ export default function AdminTodayPage() {
                 </div>
             ) : (
                 /* --- TIMELINE --- */
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+                <div className="today-timeline">
                     {TIMELINE.map((item, index) => {
                         if (item.type === 'BREAK') {
                             const isBreakNow = nowTime >= item.time && nowTime <= item.timeEnd;
                             return (
-                                <div key={item.id} style={{
-                                    display: 'flex', alignItems: 'center', gap: '16px',
-                                    padding: '6px 0', margin: '0 0 0 20px',
-                                }}>
-                                    <div style={{
-                                        width: 6, height: 6, borderRadius: '50%',
-                                        background: isBreakNow ? '#10b981' : 'var(--border-color)',
-                                        flexShrink: 0,
-                                    }} />
-                                    <div style={{
-                                        fontSize: '0.75rem', color: 'var(--text-muted)',
-                                        display: 'flex', alignItems: 'center', gap: '8px',
-                                        padding: '4px 12px',
-                                        background: isBreakNow ? 'rgba(16,185,129,0.06)' : 'transparent',
-                                        borderRadius: '8px',
-                                        borderLeft: `2px solid ${isBreakNow ? '#10b981' : 'transparent'}`,
-                                    }}>
+                                <div key={item.id} className="today-break-row">
+                                    <div className={`today-break-dot${isBreakNow ? ' today-break-dot--now' : ''}`} />
+                                    <div className={`today-break-chip${isBreakNow ? ' today-break-chip--now' : ''}`}>
                                         <span style={{ fontSize: '0.875rem' }}>{item.breakIcon}</span>
                                         <span>{item.breakLabel}</span>
-                                        {isBreakNow && (
-                                            <span style={{
-                                                fontSize: '0.6rem', fontWeight: 800, color: '#10b981',
-                                                textTransform: 'uppercase', letterSpacing: '0.1em',
-                                                animation: 'today-pulse 2s infinite',
-                                                background: 'rgba(16,185,129,0.12)',
-                                                padding: '1px 6px', borderRadius: '4px',
-                                            }}>agora</span>
-                                        )}
+                                        {isBreakNow && <span className="today-now-chip">agora</span>}
                                     </div>
                                 </div>
                             );
@@ -261,81 +239,51 @@ export default function AdminTodayPage() {
                         const TierIcon = tierInfo ? tierInfo.icon : null;
 
                         return (
-                            <div key={item.id} style={{
-                                display: 'flex', gap: '16px',
-                                padding: '4px 0',
-                                opacity: isPast && !booking ? 0.3 : 1,
-                                transition: 'opacity 0.3s',
-                            }}>
+                            <div key={item.id} className="today-slot-row" style={{ opacity: isPast && !booking ? 0.3 : 1 }}>
                                 {/* -- Left: Dot + Connector -- */}
-                                <div style={{
-                                    display: 'flex', flexDirection: 'column', alignItems: 'center',
-                                    minWidth: 44, paddingTop: '18px',
-                                }}>
+                                <div className="today-rail">
                                     <div className={`today-dot${isNow ? ' today-dot--now' : ''}`} style={{
                                         width: isNow ? 18 : 12, height: isNow ? 18 : 12,
                                         borderRadius: '50%',
                                         border: `2px solid ${
-                                            isNow ? '#10b981'
-                                            : booking ? (booking.status === 'COMPLETED' ? '#10b981' : booking.status === 'FALTA' ? '#ef4444' : '#3b82f6')
+                                            isNow ? 'var(--success)'
+                                            : booking ? (booking.status === 'COMPLETED' ? 'var(--success)' : booking.status === 'FALTA' ? 'var(--danger)' : 'var(--info)')
                                             : 'var(--border-color)'
                                         }`,
                                         background: booking
-                                            ? (booking.status === 'COMPLETED' ? '#10b981' : booking.status === 'FALTA' ? '#ef4444' : booking.status === 'CONFIRMED' ? '#3b82f6' : 'transparent')
+                                            ? (booking.status === 'COMPLETED' ? 'var(--success)' : booking.status === 'FALTA' ? 'var(--danger)' : booking.status === 'CONFIRMED' ? 'var(--info)' : 'transparent')
                                             : 'transparent',
                                         transition: 'border-color 0.3s ease, background 0.3s ease',
                                         flexShrink: 0,
                                     }} />
 
                                     {isNow && (
-                                        <div style={{
-                                            marginTop: '6px', fontSize: '0.55rem', fontWeight: 800,
-                                            color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.12em',
-                                            animation: 'today-pulse 2s infinite',
-                                            background: 'rgba(16,185,129,0.12)',
-                                            padding: '2px 6px', borderRadius: '4px',
-                                        }}>AGORA</div>
+                                        <div className="today-now-chip" style={{ marginTop: '6px' }}>AGORA</div>
                                     )}
 
                                     {index < TIMELINE.length - 1 && (
-                                        <div style={{
-                                            width: 2, flex: 1, marginTop: 4,
-                                            background: isNow
-                                                ? 'linear-gradient(to bottom, #10b981, var(--border-color))'
-                                                : 'var(--border-color)',
-                                        }} />
+                                        <div className={`today-connector${isNow ? ' today-connector--now' : ''}`} />
                                     )}
                                 </div>
 
                                 {/* -- Right: Slot Card -- */}
-                                <div className="today-slot-card" style={{
-                                    flex: 1,
-                                    border: `1px solid ${isNow ? 'rgba(16,185,129,0.4)' : booking ? 'var(--border-color)' : 'rgba(255,255,255,0.04)'}`,
-                                    borderRadius: '14px',
-                                    background: booking ? 'var(--bg-secondary)' : 'rgba(255,255,255,0.01)',
-                                    overflow: 'hidden',
-                                    boxShadow: isNow ? '0 0 24px rgba(16,185,129,0.08)' : 'none',
-                                    marginBottom: '4px',
-                                }}>
+                                <div className={`today-slot-card${booking ? ' today-slot-card--filled' : ''}${isNow ? ' today-slot-card--now' : ''}`}>
                                     {/* Card Header */}
                                     <div
-                                        style={{
-                                            display: 'flex', alignItems: 'center', gap: '14px',
-                                            padding: booking ? '16px 20px' : '12px 20px',
-                                            cursor: booking ? 'pointer' : 'default',
-                                        }}
+                                        className={`today-slot-head${booking ? ' today-slot-head--clickable' : ''}`}
+                                        role={booking ? 'button' : undefined}
+                                        tabIndex={booking ? 0 : undefined}
+                                        aria-expanded={booking ? !!isExpanded : undefined}
                                         onClick={() => booking && openSlotDetails(booking)}
+                                        onKeyDown={(e) => {
+                                            if (booking && (e.key === 'Enter' || e.key === ' ')) {
+                                                e.preventDefault();
+                                                openSlotDetails(booking);
+                                            }
+                                        }}
                                     >
                                         {/* Time badge */}
-                                        <div style={{
-                                            padding: '6px 12px', borderRadius: '8px',
-                                            background: isNow ? 'rgba(16,185,129,0.12)' : 'rgba(255,255,255,0.03)',
-                                            fontWeight: 700, fontSize: '0.8125rem',
-                                            fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-                                            color: isNow ? '#10b981' : 'var(--text-secondary)',
-                                            whiteSpace: 'nowrap',
-                                            minWidth: 100, textAlign: 'center',
-                                        }}>
+                                        <div className={`today-time-badge${isNow ? ' today-time-badge--now' : ''}`}>
                                             {item.label}
                                         </div>
 
@@ -343,12 +291,9 @@ export default function AdminTodayPage() {
                                         <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
                                             {booking && tierInfo ? (
                                                 <>
-                                                    {/* Avatar */}
-                                                    <div style={{
-                                                        width: 38, height: 38, borderRadius: '10px', flexShrink: 0,
+                                                    {/* Avatar — gradient dinâmico do tier (inline permitido) */}
+                                                    <div className="today-avatar" style={{
                                                         background: `linear-gradient(135deg, ${tierInfo.color}, ${tierInfo.color}66)`,
-                                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                        fontSize: '0.7rem', fontWeight: 800, color: '#fff',
                                                         border: `1px solid ${tierInfo.color}33`,
                                                     }}>
                                                         {getInitials(booking.user.name)}
@@ -357,10 +302,11 @@ export default function AdminTodayPage() {
                                                     <div style={{ minWidth: 0 }}>
                                                         <div style={{
                                                             fontWeight: 600, fontSize: '0.875rem',
-                                                            color: 'var(--accent-primary)',
+                                                            color: 'var(--accent-text)',
                                                             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                                             cursor: 'pointer',
                                                         }}
+                                                            title={`Abrir perfil de ${booking.user.name}`}
                                                             onClick={(e) => { e.stopPropagation(); navigate(`/admin/clients/${booking.user.id}`); }}>
                                                             {booking.user.name}
                                                         </div>
@@ -392,19 +338,22 @@ export default function AdminTodayPage() {
                                             {booking && !isExpanded && (booking.status === 'CONFIRMED' || booking.status === 'RESERVED') && !isPast && (
                                                 <div style={{ display: 'flex', gap: '3px' }}>
                                                     {booking.status === 'RESERVED' && (
-                                                        <button className="today-action-btn" title="Confirmar"
-                                                            style={{ background: 'rgba(59,130,246,0.12)', color: '#3b82f6', padding: '4px 10px', fontSize: '0.6875rem' }}
+                                                        <button className="today-action-btn today-action-btn--info"
+                                                            aria-label="Confirmar presença"
+                                                            style={{ padding: '4px 10px', fontSize: '0.6875rem' }}
                                                             onClick={(e) => { e.stopPropagation(); handleStatusChange(booking.id, 'CONFIRMED', '✅ Confirmação'); }}>
                                                             Confirmar
                                                         </button>
                                                     )}
-                                                    <button className="today-action-btn" title="Finalizar gravação"
-                                                        style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981', padding: '4px 8px', fontSize: '0.75rem' }}
+                                                    <button className="today-action-btn today-action-btn--success"
+                                                        aria-label="Finalizar gravação"
+                                                        style={{ padding: '4px 10px', fontSize: '0.75rem' }}
                                                         onClick={(e) => { e.stopPropagation(); setFinalizeBooking(booking); }}>
                                                         🏁
                                                     </button>
-                                                    <button className="today-action-btn" title="Falta"
-                                                        style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444', padding: '4px 8px', fontSize: '0.75rem' }}
+                                                    <button className="today-action-btn today-action-btn--danger"
+                                                        aria-label="Registrar falta"
+                                                        style={{ padding: '4px 10px', fontSize: '0.75rem' }}
                                                         onClick={(e) => { e.stopPropagation(); handleStatusChange(booking.id, 'FALTA', '❌ Falta'); }}>
                                                         ❌
                                                     </button>
@@ -412,57 +361,38 @@ export default function AdminTodayPage() {
                                             )}
 
                                             {booking && (
-                                                <span style={{
-                                                    fontSize: '0.75rem', color: 'var(--text-muted)',
-                                                    transform: isExpanded ? 'rotate(90deg)' : 'none',
-                                                    transition: 'transform 0.25s ease',
-                                                    display: 'inline-block', marginLeft: '2px',
-                                                }}>▶</span>
+                                                <ChevronRight size={14} aria-hidden="true"
+                                                    className={`today-chevron${isExpanded ? ' today-chevron--open' : ''}`} />
                                             )}
                                         </div>
                                     </div>
 
                                     {/* -- Expanded Panel -- */}
                                     {booking && isExpanded && (
-                                        <div style={{
-                                            borderTop: '1px solid var(--border-color)',
-                                            padding: '24px',
-                                            background: 'linear-gradient(180deg, rgba(0,0,0,0.1) 0%, transparent 100%)',
-                                            animation: 'today-slide-down 0.3s ease',
-                                        }}>
+                                        <div className="today-expand-panel">
                                             {/* Action buttons row */}
                                             {(booking.status === 'CONFIRMED' || booking.status === 'RESERVED') && !isPast && (
-                                                <div style={{
-                                                    display: 'flex', gap: '8px', marginBottom: '24px', flexWrap: 'wrap',
-                                                    padding: '14px', borderRadius: '12px',
-                                                    background: 'rgba(255,255,255,0.02)',
-                                                    border: '1px solid var(--border-color)',
-                                                }}>
+                                                <div className="today-actions-bar">
                                                     {booking.status === 'RESERVED' && (
-                                                        <button className="today-action-btn"
-                                                            style={{ background: 'rgba(59,130,246,0.12)', color: '#3b82f6' }}
+                                                        <button className="today-action-btn today-action-btn--info"
                                                             onClick={() => handleStatusChange(booking.id, 'CONFIRMED', '✅ Confirmação')}>
                                                             ✅ Confirmar Presença
                                                         </button>
                                                     )}
-                                                    <button className="today-action-btn"
-                                                        style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981' }}
+                                                    <button className="today-action-btn today-action-btn--success"
                                                         onClick={() => setFinalizeBooking(booking)}>
                                                         🏁 Finalizar gravação
                                                     </button>
-                                                    <button className="today-action-btn"
-                                                        style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}
+                                                    <button className="today-action-btn today-action-btn--danger"
                                                         onClick={() => handleStatusChange(booking.id, 'FALTA', '❌ Falta')}>
                                                         ❌ Falta
                                                     </button>
-                                                    <button className="today-action-btn"
-                                                        style={{ background: 'rgba(45,212,191,0.08)', color: '#14b8a6' }}
+                                                    <button className="today-action-btn today-action-btn--teal"
                                                         onClick={() => handleStatusChange(booking.id, 'NAO_REALIZADO', '❌ Não Realizado')}>
                                                         ❌ Não Realizado
                                                     </button>
                                                     <div style={{ flex: 1 }} />
-                                                    <button className="today-action-btn"
-                                                        style={{ background: 'rgba(239,68,68,0.06)', color: '#ef4444' }}
+                                                    <button className="today-action-btn today-action-btn--danger"
                                                         onClick={() => handleCancel(booking.id, booking.user.name)}>
                                                         🚫 Cancelar
                                                     </button>
@@ -473,14 +403,14 @@ export default function AdminTodayPage() {
                                             {booking.status === 'COMPLETED' && (
                                                 <div style={{ marginBottom: '24px' }}>
                                                     <div style={{
-                                                        fontSize: '0.6875rem', fontWeight: 700, color: '#10b981',
+                                                        fontSize: '0.6875rem', fontWeight: 700, color: 'var(--success)',
                                                         textTransform: 'uppercase', letterSpacing: '0.1em',
                                                         marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px',
                                                     }}>
-                                                        <span style={{ width: 20, height: 2, background: '#10b981', borderRadius: 1 }} />
+                                                        <span style={{ width: 20, height: 2, background: 'var(--success)', borderRadius: 1 }} />
                                                         Métricas Pós-Gravação
                                                     </div>
-                                                    <button className="today-action-btn" style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444', marginBottom: '14px' }}
+                                                    <button className="today-action-btn today-action-btn--danger" style={{ marginBottom: '14px' }}
                                                         onClick={() => setFinalizeBooking(booking)}>
                                                         🔴 Dados da transmissão (redes, links e métricas por rede)
                                                     </button>
@@ -491,10 +421,10 @@ export default function AdminTodayPage() {
                                                             { label: '💬 Mensagens', value: chatMessages, onChange: (v: string) => setChatMessages(v === '' ? '' : Number(v)), type: 'number', ph: 'Ex: 2400' },
                                                             { label: '🌎 Origem', value: audienceOrigin, onChange: setAudienceOrigin, type: 'text', ph: 'Ex: SP Capital' },
                                                         ].map(f => (
-                                                            <div key={f.label}>
-                                                                <label style={{ display: 'block', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px' }}>{f.label}</label>
-                                                                <input type={f.type} className="form-input" placeholder={f.ph}
-                                                                    style={{ fontSize: '0.8125rem', background: 'var(--bg-elevated)' }}
+                                                            <div key={f.label} className="admin-field">
+                                                                <label className="admin-field__label">{f.label}</label>
+                                                                <input type={f.type} className="form-input form-input--raised" placeholder={f.ph}
+                                                                    style={{ fontSize: '0.8125rem' }}
                                                                     value={f.value} onChange={e => f.onChange(e.target.value)} />
                                                             </div>
                                                         ))}
@@ -505,23 +435,23 @@ export default function AdminTodayPage() {
                                             {/* Notes — `admin-grid-2` collapses to 1 column on ≤640px (mobile). */}
                                             <div className="admin-grid-2" style={{ marginBottom: '20px' }}>
                                                 <div>
-                                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.6875rem', fontWeight: 700, color: '#2dd4bf', marginBottom: '8px' }}>
-                                                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#2dd4bf' }} />
+                                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.6875rem', fontWeight: 700, color: 'var(--accent-text)', marginBottom: '8px' }}>
+                                                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent-text)' }} />
                                                         Observação Interna (Admin)
                                                     </label>
-                                                    <textarea className="form-input"
-                                                        style={{ minHeight: 80, resize: 'vertical', fontFamily: 'inherit', fontSize: '0.8125rem', background: 'var(--bg-elevated)' }}
+                                                    <textarea className="form-input form-input--raised"
+                                                        style={{ minHeight: 80, resize: 'vertical', fontFamily: 'inherit', fontSize: '0.8125rem' }}
                                                         placeholder="Notas privadas sobre a sessão..."
                                                         value={adminNotes}
                                                         onChange={e => setAdminNotes(e.target.value)} />
                                                 </div>
                                                 <div>
-                                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.6875rem', fontWeight: 700, color: '#10b981', marginBottom: '8px' }}>
-                                                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} />
+                                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.6875rem', fontWeight: 700, color: 'var(--success)', marginBottom: '8px' }}>
+                                                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--success)' }} />
                                                         Feedback para o Cliente
                                                     </label>
-                                                    <textarea className="form-input"
-                                                        style={{ minHeight: 80, resize: 'vertical', fontFamily: 'inherit', fontSize: '0.8125rem', background: 'var(--bg-elevated)' }}
+                                                    <textarea className="form-input form-input--raised"
+                                                        style={{ minHeight: 80, resize: 'vertical', fontFamily: 'inherit', fontSize: '0.8125rem' }}
                                                         placeholder="Visível no painel do cliente..."
                                                         value={clientNotes}
                                                         onChange={e => setClientNotes(e.target.value)} />
@@ -530,16 +460,14 @@ export default function AdminTodayPage() {
 
                                             {/* Footer actions */}
                                             <div style={{
-                                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                                display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap',
                                                 paddingTop: '16px', borderTop: '1px solid var(--border-color)',
                                             }}>
-                                                <button className="today-action-btn"
-                                                    style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}
+                                                <button className="today-action-btn today-action-btn--neutral"
                                                     onClick={() => navigate(`/admin/clients/${booking.user.id}`)}>
                                                     👤 Ver Perfil
                                                 </button>
-                                                <button className="today-action-btn"
-                                                    style={{ background: 'linear-gradient(135deg, #10b981, #059669)', color: '#fff', fontWeight: 700, padding: '8px 20px' }}
+                                                <button className="btn-admin-go"
                                                     onClick={() => handleSaveMetrics(booking.id)}
                                                     disabled={saving}>
                                                     {saving ? '⏳ Salvando...' : '💾 Salvar Alterações'}
