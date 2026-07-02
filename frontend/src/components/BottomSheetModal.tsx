@@ -4,6 +4,11 @@ import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import { X } from 'lucide-react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 
+/** Desktop max-width preset: sm=480px (default, original behavior), md=640px,
+ *  lg=820px, xl=1000px. On mobile (<640px) the sheet is always full-width and
+ *  `size` has no effect. */
+export type ModalSize = 'sm' | 'md' | 'lg' | 'xl';
+
 interface BottomSheetModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -11,7 +16,9 @@ interface BottomSheetModalProps {
     children: React.ReactNode;
     /** Prevent closing (drag, backdrop, ESC) while an async action is in progress */
     preventClose?: boolean;
-    /** Override the default max-width (480px). Pass any CSS value. */
+    /** Desktop max-width preset. Prefer this over `maxWidth`. */
+    size?: ModalSize;
+    /** @deprecated Use `size` instead. If present, wins over `size` (inline style). */
     maxWidth?: string;
     /** Hide the built-in header (drag handle + title + X). Useful when the child manages its own header. */
     hideHeader?: boolean;
@@ -27,6 +34,7 @@ export default function BottomSheetModal({
     title,
     children,
     preventClose = false,
+    size = 'sm',
     maxWidth,
     hideHeader = false,
     className,
@@ -127,7 +135,7 @@ export default function BottomSheetModal({
                 >
                     <motion.div
                         ref={trapRef}
-                        className={`bottom-sheet-card ${className || ''}`}
+                        className={`bottom-sheet-card bottom-sheet-card--${size} ${className || ''}`}
                         style={cardStyle}
                         initial={{ y: "100%" }}
                         animate={{ y: 0 }}

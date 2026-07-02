@@ -12,9 +12,9 @@
     height: 100%;
     /* iOS Safari viewport hack safe zone */
     height: 100svh;
-    background: rgba(4, 12, 14, 0.75);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    background: var(--overlay-bg);
+    backdrop-filter: blur(var(--overlay-blur));
+    -webkit-backdrop-filter: blur(var(--overlay-blur));
     z-index: 1000;
     display: flex;
     justify-content: center;
@@ -24,7 +24,7 @@
 
 /* ── Card Container ── */
 .bottom-sheet-card {
-    background: #091E24;
+    background: var(--sheet-bg);
     border: 1px solid rgba(255, 255, 255, 0.06);
     border-bottom: none;
     border-radius: 28px 28px 0 0;
@@ -140,6 +140,14 @@
         max-width: 480px;
         box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
     }
+
+    /* Size system — desktop only; on mobile the sheet is always full-width.
+       min(…, 100vw - gutter) keeps lg/xl usable on small laptops without
+       extra breakpoints. An inline maxWidth (deprecated prop) wins over these. */
+    .bottom-sheet-card--sm { max-width: var(--modal-w-sm); }
+    .bottom-sheet-card--md { max-width: min(var(--modal-w-md), calc(100vw - 48px)); }
+    .bottom-sheet-card--lg { max-width: min(var(--modal-w-lg), calc(100vw - 48px)); }
+    .bottom-sheet-card--xl { max-width: min(var(--modal-w-xl), calc(100vw - 64px)); }
 
     /* No drag handle / grabber on desktop */
     .bottom-sheet-handle {
