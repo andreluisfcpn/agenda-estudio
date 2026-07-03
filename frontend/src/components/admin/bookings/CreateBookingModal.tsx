@@ -442,8 +442,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                     <div style={{
                                         marginTop: '8px', padding: '8px 12px', borderRadius: '8px',
                                         background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)',
-                                        fontSize: '0.75rem', color: 'var(--warning)', fontWeight: 600,
-                                        display: 'flex', alignItems: 'center', gap: '6px',
+                                        fontSize: '0.75rem', color: 'var(--warning)', fontWeight: 600, lineHeight: 1.5,
                                     }}>
                                         ⚠️ Contrato {activeContract?.name} é fixo em <strong>{DAY_NAMES[activeContract!.fixedDayOfWeek!]}</strong>. A data selecionada é {DAY_NAMES[selectedDateDOW!]}.
                                     </div>
