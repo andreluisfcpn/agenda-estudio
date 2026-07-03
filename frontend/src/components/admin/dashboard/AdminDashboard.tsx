@@ -6,24 +6,15 @@ import { useNavigate } from 'react-router-dom';
 import StatusBadge from '../../ui/StatusBadge';
 import AdminPageHeader from '../AdminPageHeader';
 import { DashboardSkeleton } from '../../ui/SkeletonLoader';
-import { CalendarDays, LayoutDashboard } from 'lucide-react';
+import {
+    CalendarDays, LayoutDashboard, Flag, XCircle, ClipboardCheck, AlertTriangle,
+    AlertCircle, Clock, CheckCircle2, TrendingUp, CalendarClock, Target, Moon,
+} from 'lucide-react';
 import { TIER_META, BOOKING_STATUS_META, getMeta } from '../../../constants/adminMeta';
-import { formatBRL } from '../../../utils/format';
+import { formatBRL, DAY_NAMES, getInitials } from '../../../utils/format';
+import { todayStrSaoPaulo } from '../../../utils/time';
+import { STUDIO_SLOTS } from '../../../constants/slots';
 
-const DAY_LABELS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-
-const SLOT_GRID = [
-    { time: '10:00', end: '12:00', label: '10h — 12h' },
-    { time: '13:00', end: '15:00', label: '13h — 15h' },
-    { time: '15:30', end: '17:30', label: '15h30 — 17h30' },
-    { time: '18:00', end: '20:00', label: '18h — 20h' },
-    { time: '20:30', end: '22:30', label: '20h30 — 22h30' },
-];
-
-function getToday(): string {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 
 function getMonthRange(): { start: Date; end: Date } {
     const now = new Date();
@@ -93,7 +84,7 @@ export default function AdminDashboard() {
 
     if (loading) return <DashboardSkeleton />;
 
-    const today = getToday();
+    const today = todayStrSaoPaulo();
     const now = new Date();
     const { start: monthStart, end: monthEnd } = getMonthRange();
     const weekDates = getWeekDates();
@@ -121,9 +112,9 @@ export default function AdminDashboard() {
     const weekOccupancy = weekDates.map(d => {
         const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         const dayOfWeek = d.getDay();
-        if (dayOfWeek === 0) return { date: ds, day: DAY_LABELS[dayOfWeek], pct: 0, count: 0, total: 0, closed: true };
+        if (dayOfWeek === 0) return { date: ds, day: DAY_NAMES[dayOfWeek], pct: 0, count: 0, total: 0, closed: true };
         const count = allBookings.filter(b => b.date.split('T')[0] === ds && b.status !== 'CANCELLED').length;
-        return { date: ds, day: DAY_LABELS[dayOfWeek], pct: Math.round((count / 5) * 100), count, total: 5, closed: false };
+        return { date: ds, day: DAY_NAMES[dayOfWeek], pct: Math.round((count / 5) * 100), count, total: 5, closed: false };
     });
 
     // Next 5 upcoming bookings
@@ -150,7 +141,7 @@ export default function AdminDashboard() {
     const totalAlerts = expiringContracts.length + pendingCancellations.length + unconfirmedToday.length;
 
     // ── Slot enrichment for today ──
-    const todaySlots = SLOT_GRID.map(slot => {
+    const todaySlots = STUDIO_SLOTS.map(slot => {
         const booking = todaysBookings.find(b => b.startTime === slot.time);
         return { ...slot, booking: booking || null };
     });
@@ -166,7 +157,7 @@ export default function AdminDashboard() {
             <div style={{ height: 24 }} />
 
             {/* ── SECTION 1: Agenda do Dia (Hero) ────────────────── */}
-            <div style={{ padding: '24px', marginBottom: '24px', borderRadius: '16px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderTop: '3px solid var(--accent-primary)' }}>
+            <div className="admin-card admin-card--lg" style={{ marginBottom: '24px', borderTop: '3px solid var(--accent-primary)' }}>
                 <div className="dash-card-head">
                     <div className="dash-card-head__title">
                         <h2 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -182,9 +173,9 @@ export default function AdminDashboard() {
                 </div>
 
                 {isSunday ? (
-                    <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
-                        <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>🏖️</div>
-                        <div style={{ fontWeight: 600 }}>Estúdio fechado aos domingos</div>
+                    <div className="admin-empty" style={{ padding: '32px 20px' }}>
+                        <Moon size={40} className="admin-empty__icon" aria-hidden="true" />
+                        <div className="admin-empty__title">Estúdio fechado aos domingos</div>
                     </div>
                 ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -234,37 +225,39 @@ export default function AdminDashboard() {
                                     {b && b.status === 'RESERVED' && !isPast && (
                                         <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
                                             <button className="btn btn-sm" title="Check-in (Confirmar Presença)"
-                                                style={{ background: 'var(--info-bg)', color: 'var(--info)', border: 'none', padding: '6px 12px', minHeight: 34, borderRadius: '6px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}
+                                                style={{ background: 'var(--info-bg)', color: 'var(--info)', border: 'none', padding: '6px 12px', minHeight: 34, borderRadius: '6px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
                                                 onClick={() => handleQuickAction(b.id, 'checkin')}>
-                                                📋 Check-in
+                                                <ClipboardCheck size={14} aria-hidden="true" /> Check-in
                                             </button>
                                             <button className="btn btn-sm" title="Registrar Falta"
-                                                style={{ background: 'var(--danger-bg)', color: 'var(--danger)', border: 'none', padding: '6px 12px', minHeight: 34, borderRadius: '6px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}
+                                                style={{ background: 'var(--danger-bg)', color: 'var(--danger)', border: 'none', padding: '6px 12px', minHeight: 34, borderRadius: '6px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                                                aria-label="Registrar falta"
                                                 onClick={() => handleQuickAction(b.id, 'falta')}>
-                                                ❌
+                                                <XCircle size={15} aria-hidden="true" />
                                             </button>
                                         </div>
                                     )}
                                     {b && b.status === 'CONFIRMED' && !isPast && (
                                         <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
                                             <button className="btn btn-sm" title="Finalizar Sessão"
-                                                style={{ background: 'var(--success-bg)', color: 'var(--success)', border: 'none', padding: '6px 12px', minHeight: 34, borderRadius: '6px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}
+                                                style={{ background: 'var(--success-bg)', color: 'var(--success)', border: 'none', padding: '6px 12px', minHeight: 34, borderRadius: '6px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
                                                 onClick={() => handleQuickAction(b.id, 'complete')}>
-                                                🏁 Finalizar
+                                                <Flag size={14} aria-hidden="true" /> Finalizar
                                             </button>
                                             <button className="btn btn-sm" title="Registrar Falta"
-                                                style={{ background: 'var(--danger-bg)', color: 'var(--danger)', border: 'none', padding: '6px 12px', minHeight: 34, borderRadius: '6px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}
+                                                style={{ background: 'var(--danger-bg)', color: 'var(--danger)', border: 'none', padding: '6px 12px', minHeight: 34, borderRadius: '6px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                                                aria-label="Registrar falta"
                                                 onClick={() => handleQuickAction(b.id, 'falta')}>
-                                                ❌
+                                                <XCircle size={15} aria-hidden="true" />
                                             </button>
                                         </div>
                                     )}
 
                                     {b && b.status === 'COMPLETED' && (
-                                        <span style={{ fontSize: '0.75rem', color: 'var(--success)', fontWeight: 600 }}>Concluído</span>
+                                        <span style={{ fontSize: '0.75rem', color: 'var(--success)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}><Flag size={13} aria-hidden="true" /> Concluído</span>
                                     )}
                                     {b && b.status === 'FALTA' && (
-                                        <span style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 600 }}>Falta</span>
+                                        <span style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}><XCircle size={13} aria-hidden="true" /> Falta</span>
                                     )}
                                 </div>
                             );
@@ -293,9 +286,9 @@ export default function AdminDashboard() {
             <div className="admin-grid-2" style={{ marginBottom: '24px' }}>
 
                 {/* Alerts */}
-                <div style={{ padding: '20px', borderRadius: '16px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                <div className="admin-card">
                     <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        🚨 Alertas
+                        <AlertTriangle size={18} style={{ color: 'var(--danger)' }} aria-hidden="true" /> Alertas
                         {totalAlerts > 0 && (
                             <span style={{ background: 'var(--danger)', color: '#fff', fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: '10px', minWidth: 20, textAlign: 'center' }}>
                                 {totalAlerts}
@@ -304,15 +297,15 @@ export default function AdminDashboard() {
                     </h3>
 
                     {totalAlerts === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>
-                            <div style={{ fontSize: '1.5rem', marginBottom: '8px' }}>✅</div>
-                            <div style={{ fontSize: '0.875rem' }}>Tudo em ordem!</div>
+                        <div className="admin-empty" style={{ padding: '20px' }}>
+                            <CheckCircle2 size={36} className="admin-empty__icon" aria-hidden="true" />
+                            <div className="admin-empty__title">Tudo em ordem!</div>
                         </div>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                             {expiringContracts.map(c => (
                                 <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '10px', background: 'var(--danger-bg)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-                                    <span style={{ fontSize: '1.25rem' }} aria-hidden="true">🔴</span>
+                                    <AlertCircle size={18} style={{ color: 'var(--danger)', flexShrink: 0 }} aria-hidden="true" />
                                     <div style={{ flex: 1 }}>
                                         <div style={{ fontSize: '0.8125rem', fontWeight: 600 }}>
                                             Contrato de <span style={{ cursor: 'pointer', color: 'var(--accent-text)' }} onClick={() => c.user?.id && navigate(`/admin/clients/${c.user.id}`)}>{c.user?.name}</span> expira em {daysUntil(c.endDate)} dia(s)
@@ -324,7 +317,7 @@ export default function AdminDashboard() {
 
                             {pendingCancellations.map(c => (
                                 <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '10px', background: 'var(--warning-bg)', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
-                                    <span style={{ fontSize: '1.25rem' }} aria-hidden="true">🟠</span>
+                                    <AlertTriangle size={18} style={{ color: 'var(--warning)', flexShrink: 0 }} aria-hidden="true" />
                                     <div style={{ flex: 1 }}>
                                         <div style={{ fontSize: '0.8125rem', fontWeight: 600 }}>
                                             Cancelamento pendente: <span style={{ cursor: 'pointer', color: 'var(--accent-text)' }} onClick={() => navigate('/admin/contracts')}>{c.user?.name}</span>
@@ -336,7 +329,7 @@ export default function AdminDashboard() {
 
                             {unconfirmedToday.map(b => (
                                 <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '10px', background: 'var(--warning-bg)', border: '1px solid rgba(245, 158, 11, 0.15)' }}>
-                                    <span style={{ fontSize: '1.25rem' }} aria-hidden="true">🟡</span>
+                                    <Clock size={18} style={{ color: 'var(--warning)', flexShrink: 0 }} aria-hidden="true" />
                                     <div style={{ flex: 1 }}>
                                         <div style={{ fontSize: '0.8125rem', fontWeight: 600 }}>
                                             {b.user.name} às {b.startTime} — ainda sem confirmação
@@ -353,8 +346,8 @@ export default function AdminDashboard() {
                 </div>
 
                 {/* Weekly Occupancy */}
-                <div style={{ padding: '20px', borderRadius: '16px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
-                    <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, marginBottom: '16px' }}>📈 Ocupação da Semana</h3>
+                <div className="admin-card">
+                    <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}><TrendingUp size={18} style={{ color: 'var(--accent-text)' }} aria-hidden="true" /> Ocupação da Semana</h3>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         {weekOccupancy.map(d => (
                             <div key={d.date} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -383,12 +376,15 @@ export default function AdminDashboard() {
             <div className="admin-grid-2">
 
                 {/* Next Bookings */}
-                <div style={{ padding: '20px', borderRadius: '16px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
-                    <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, marginBottom: '16px' }}>🔜 Próximos Agendamentos</h3>
+                <div className="admin-card">
+                    <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}><CalendarClock size={18} style={{ color: 'var(--accent-text)' }} aria-hidden="true" /> Próximos Agendamentos</h3>
                     {futureBookings.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>
-                            <div style={{ fontSize: '1.5rem', marginBottom: '8px' }}>📅</div>
-                            <div style={{ fontSize: '0.875rem' }}>Nenhum agendamento futuro</div>
+                        <div className="admin-empty" style={{ padding: '20px' }}>
+                            <CalendarDays size={36} className="admin-empty__icon" aria-hidden="true" />
+                            <div className="admin-empty__title">Nenhum agendamento futuro</div>
+                            <button className="btn-admin-ghost" style={{ minHeight: 36, padding: '6px 14px', fontSize: '0.75rem' }} onClick={() => navigate('/calendar')}>
+                                Abrir agenda
+                            </button>
                         </div>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -417,9 +413,9 @@ export default function AdminDashboard() {
                 </div>
 
                 {/* Churn Risk */}
-                <div style={{ padding: '20px', borderRadius: '16px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                <div className="admin-card">
                     <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        ⚠️ Clientes em Risco
+                        <AlertTriangle size={18} style={{ color: 'var(--warning)' }} aria-hidden="true" /> Clientes em Risco
                         {churnRisk.length > 0 && (
                             <span style={{ background: 'var(--warning)', color: '#fff', fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: '10px' }}>
                                 {churnRisk.length}
@@ -427,9 +423,9 @@ export default function AdminDashboard() {
                         )}
                     </h3>
                     {churnRisk.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>
-                            <div style={{ fontSize: '1.5rem', marginBottom: '8px' }}>🎯</div>
-                            <div style={{ fontSize: '0.875rem' }}>Todos os clientes engajados!</div>
+                        <div className="admin-empty" style={{ padding: '20px' }}>
+                            <Target size={36} className="admin-empty__icon" aria-hidden="true" />
+                            <div className="admin-empty__title">Todos os clientes engajados!</div>
                         </div>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -444,14 +440,7 @@ export default function AdminDashboard() {
                                         borderRadius: '10px', background: 'var(--warning-bg)',
                                         border: '1px solid rgba(245, 158, 11, 0.15)',
                                     }}>
-                                        <div style={{
-                                            width: 32, height: 32, borderRadius: '50%',
-                                            background: 'var(--accent-gradient-go)',
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            fontSize: '0.7rem', fontWeight: 700, color: '#fff', flexShrink: 0,
-                                        }}>
-                                            {u.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
-                                        </div>
+                                        <div className="admin-avatar">{getInitials(u.name)}</div>
                                         <div style={{ flex: 1 }}>
                                             <div style={{ fontWeight: 600, fontSize: '0.8125rem', cursor: 'pointer', color: 'var(--text-primary)' }}
                                                 onClick={() => navigate(`/admin/clients/${u.id}`)}>
