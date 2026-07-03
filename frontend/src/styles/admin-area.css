@@ -365,6 +365,11 @@
     border: 1px solid rgba(245, 158, 11, 0.25);
     color: var(--warning);
 }
+.admin-alert--success {
+    background: var(--success-bg);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    color: var(--success);
+}
 
 /* Banner informativo (ícone + texto). O texto deve vir num único filho
    (ex.: <span>) — senão o flex quebra cada trecho/<strong> em coluna própria

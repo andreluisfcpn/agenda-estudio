@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { contractsApi, Contract } from '../api/client';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import { useUI } from '../context/UIContext';
-import { FileText } from 'lucide-react';
+import { FileText, Search, X, Inbox, Link2, FolderOpen, Pencil, CircleDollarSign, HandCoins, Ban, RefreshCw, Pause, Play, CreditCard } from 'lucide-react';
 import BottomSheetModal from '../components/BottomSheetModal';
 import AdminPageHeader from '../components/admin/AdminPageHeader';
 import { HeroSkeleton, TableSkeleton } from '../components/ui/SkeletonLoader';
@@ -197,11 +197,11 @@ export default function AdminContractsPage() {
                         aria-label="Buscar por projeto ou cliente"
                         value={search} onChange={e => setSearch(e.target.value)}
                     />
-                    <span className="admin-search__icon" aria-hidden="true">🔎</span>
+                    <Search size={14} className="admin-search__icon" aria-hidden="true" />
                 </div>
                 {search && (
                     <button onClick={() => setSearch('')} aria-label="Limpar busca"
-                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem', minWidth: 36, minHeight: 36 }}>✕</button>
+                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem', minWidth: 36, minHeight: 36 }}><X size={16} aria-hidden="true" /></button>
                 )}
 
                 <div className="admin-segmented" role="group" aria-label="Filtrar por status">
@@ -233,9 +233,9 @@ export default function AdminContractsPage() {
             <div style={{ borderRadius: '16px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', overflow: 'hidden' }}>
                 {filtered.length === 0 ? (
                     <div style={{ padding: '48px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                        <div style={{ fontSize: '2.5rem', marginBottom: '12px', opacity: 0.4 }}>📭</div>
-                        <div style={{ fontWeight: 600 }}>Nenhum contrato encontrado</div>
-                        <div style={{ fontSize: '0.8125rem', marginTop: '4px' }}>Tente ajustar os filtros ou busca</div>
+                        <Inbox size={44} className="admin-empty__icon" aria-hidden="true" />
+                        <div className="admin-empty__title">Nenhum contrato encontrado</div>
+                        <div className="admin-empty__hint">Tente ajustar os filtros ou busca</div>
                     </div>
                 ) : (
                     <div className="table-container admin-table-wrap" style={{ margin: 0 }}>
@@ -276,7 +276,7 @@ export default function AdminContractsPage() {
                                                         </button>
                                                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '1px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                             <button style={{ cursor: 'pointer', background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', textAlign: 'left' }} onClick={() => navigate(`/admin/contracts/${c.id}`)} title="Abrir contrato">{c.name}</button>
-                                                            {c.contractUrl && <a href={c.contractUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)', fontSize: '0.65rem' }} title="Contrato digital">🔗</a>}
+                                                            {c.contractUrl && <a href={c.contractUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)', fontSize: '0.65rem' }} title="Contrato digital"><Link2 size={12} aria-hidden="true" /></a>}
                                                         </div>
                                                     </div>
                                                 </div>
@@ -361,45 +361,45 @@ export default function AdminContractsPage() {
                                             <td data-label="" style={{ textAlign: 'center' }}>
                                                 <div style={{ display: 'flex', gap: '4px', justifyContent: 'center', flexWrap: 'wrap' }}>
                                                     <button className="admin-icon-btn" aria-label={`Abrir contrato ${c.name}`}
-                                                        onClick={() => navigate(`/admin/contracts/${c.id}`)}>📂</button>
+                                                        onClick={() => navigate(`/admin/contracts/${c.id}`)}><FolderOpen size={16} aria-hidden="true" /></button>
                                                     <button className="admin-icon-btn admin-icon-btn--success" aria-label={`Editar contrato ${c.name}`}
                                                         onClick={() => {
                                                             setEditContract(c);
                                                             setEditForm({ status: c.status, endDate: c.endDate.split('T')[0], flexCreditsRemaining: c.flexCreditsRemaining?.toString() || '', contractUrl: c.contractUrl || '', paymentMethod: c.paymentMethod || '', boletoAllowed: c.boletoAllowed ?? false });
                                                             setEditError('');
-                                                        }}>✏️</button>
+                                                        }}><Pencil size={16} aria-hidden="true" /></button>
 
                                                     {c.status === 'PENDING_CANCELLATION' && (
                                                         <>
                                                             <button className="admin-icon-btn admin-icon-btn--danger" aria-label="Cobrar multa de cancelamento"
-                                                                onClick={() => handleResolveCancel(c.id, 'CHARGE_FEE')}>💰</button>
+                                                                onClick={() => handleResolveCancel(c.id, 'CHARGE_FEE')}><CircleDollarSign size={16} aria-hidden="true" /></button>
                                                             <button className="admin-icon-btn admin-icon-btn--success" aria-label="Isentar multa de cancelamento"
-                                                                onClick={() => handleResolveCancel(c.id, 'WAIVE_FEE')}>🆓</button>
+                                                                onClick={() => handleResolveCancel(c.id, 'WAIVE_FEE')}><HandCoins size={16} aria-hidden="true" /></button>
                                                         </>
                                                     )}
 
                                                     {c.status === 'ACTIVE' && (
                                                         <button className="admin-icon-btn admin-icon-btn--danger" aria-label={`Cancelar contrato ${c.name}`}
-                                                            onClick={() => handleCancel(c.id)}>🚫</button>
+                                                            onClick={() => handleCancel(c.id)}><Ban size={16} aria-hidden="true" /></button>
                                                     )}
 
                                                     {(c.status === 'ACTIVE' || c.status === 'EXPIRED') && (
                                                         <button className="admin-icon-btn" aria-label={`Renovar contrato ${c.name}`}
                                                             onClick={() => {
-                                                                showConfirm({ title: '🔄 Renovar Contrato', message: `Renovar "${c.name}" por mais 3 meses?`, onConfirm: async () => { try { const r = await contractsApi.renew(c.id, { durationMonths: 3 }); showToast(r.message); reload(); } catch (e: unknown) { showToast(getErrorMessage(e) || 'Erro'); } } });
-                                                            }}>🔄</button>
+                                                                showConfirm({ title: 'Renovar Contrato', message: `Renovar "${c.name}" por mais 3 meses?`, onConfirm: async () => { try { const r = await contractsApi.renew(c.id, { durationMonths: 3 }); showToast(r.message); reload(); } catch (e: unknown) { showToast(getErrorMessage(e) || 'Erro'); } } });
+                                                            }}><RefreshCw size={16} aria-hidden="true" /></button>
                                                     )}
                                                     {c.status === 'ACTIVE' && (
                                                         <button className="admin-icon-btn" aria-label={`Pausar contrato ${c.name}`}
                                                             onClick={() => {
-                                                                showConfirm({ title: '⏸️ Pausar Contrato', message: `Pausar "${c.name}"? Bookings futuros serão cancelados.`, onConfirm: async () => { try { const r = await contractsApi.pause(c.id, { reason: 'Pausa administrativa' }); showToast(r.message); reload(); } catch (e: unknown) { showToast(getErrorMessage(e) || 'Erro'); } } });
-                                                            }}>⏸️</button>
+                                                                showConfirm({ title: 'Pausar Contrato', message: `Pausar "${c.name}"? Bookings futuros serão cancelados.`, onConfirm: async () => { try { const r = await contractsApi.pause(c.id, { reason: 'Pausa administrativa' }); showToast(r.message); reload(); } catch (e: unknown) { showToast(getErrorMessage(e) || 'Erro'); } } });
+                                                            }}><Pause size={16} aria-hidden="true" /></button>
                                                     )}
                                                     {(c.status as string) === 'PAUSED' && (
                                                         <button className="admin-icon-btn admin-icon-btn--success" aria-label={`Retomar contrato ${c.name}`}
                                                             onClick={() => {
-                                                                showConfirm({ title: '▶️ Retomar Contrato', message: `Retomar "${c.name}"? Vigência será estendida.`, onConfirm: async () => { try { const r = await contractsApi.resume(c.id); showToast(r.message); reload(); } catch (e: unknown) { showToast(getErrorMessage(e) || 'Erro'); } } });
-                                                            }}>▶️</button>
+                                                                showConfirm({ title: 'Retomar Contrato', message: `Retomar "${c.name}"? Vigência será estendida.`, onConfirm: async () => { try { const r = await contractsApi.resume(c.id); showToast(r.message); reload(); } catch (e: unknown) { showToast(getErrorMessage(e) || 'Erro'); } } });
+                                                            }}><Play size={16} aria-hidden="true" /></button>
                                                     )}
                                                 </div>
                                             </td>
@@ -448,11 +448,11 @@ export default function AdminContractsPage() {
                             </div>
                         )}
                         <div className="form-group">
-                            <label className="form-label">🔗 Link do Contrato Digital</label>
+                            <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Link2 size={13} aria-hidden="true" /> Link do Contrato Digital</label>
                             <input className="form-input" type="url" placeholder="https://..." value={editForm.contractUrl} onChange={e => setEditForm({ ...editForm, contractUrl: e.target.value })} />
                         </div>
                         <div className="form-group">
-                            <label className="form-label">💳 Forma de Pagamento</label>
+                            <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 5 }}><CreditCard size={13} aria-hidden="true" /> Forma de Pagamento</label>
                             <select className="form-select" value={editForm.paymentMethod} onChange={e => setEditForm({ ...editForm, paymentMethod: e.target.value })}>
                                 <option value="">-- Não definido --</option>
                                 {getPaymentMethods().map(pm => (
@@ -468,7 +468,7 @@ export default function AdminContractsPage() {
                                     onChange={e => setEditForm({ ...editForm, boletoAllowed: e.target.checked })}
                                     style={{ width: 18, height: 18, accentColor: '#f59e0b', cursor: 'pointer' }}
                                 />
-                                <span>📄 Permitir <strong>boleto</strong> neste contrato</span>
+                                <span><FileText size={13} style={{ verticalAlign: '-2px', marginRight: 4 }} aria-hidden="true" />Permitir <strong>boleto</strong> neste contrato</span>
                             </label>
                             <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '6px 0 0 28px' }}>
                                 O cliente poderá pagar as parcelas deste contrato via boleto. Desligado por padrão.
@@ -476,7 +476,7 @@ export default function AdminContractsPage() {
                         </div>
                         <div className="admin-actions-row">
                             <button className="btn btn-secondary" onClick={() => setEditContract(null)}>Cancelar</button>
-                            <button className="btn btn-primary" onClick={handleEdit}>💾 Salvar</button>
+                            <button className="btn btn-primary" onClick={handleEdit}>Salvar</button>
                         </div>
                     </div>
                 </BottomSheetModal>

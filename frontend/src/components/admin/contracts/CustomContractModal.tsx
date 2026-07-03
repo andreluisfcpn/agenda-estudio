@@ -2,7 +2,9 @@ import { getErrorMessage } from '../../../utils/errors';
 import { useState, useEffect } from 'react';
 import { contractsApi, pricingApi, UserSummary, PricingConfig, AddOnConfig, CouponValidation } from '../../../api/client';
 import BottomSheetModal from '../../BottomSheetModal';
-import InlineCheckout from '../../InlineCheckout';
+import WizardSteps from '../WizardSteps';
+import ChargeNowSheet from '../ChargeNowSheet';
+import { Wand2 } from 'lucide-react';
 import CouponField from '../../CouponField';
 import { getPaymentMethods } from '../../../constants/paymentMethods';
 
@@ -217,31 +219,20 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
     // (payment.userId) — o backend resolve o pagador a partir do payment, não do admin.
     if (chargePaymentId) {
         return (
-            <BottomSheetModal isOpen onClose={() => { setChargePaymentId(null); onClose(); }} hideHeader size="sm" className="admin-sheet" title="Cobrar 1ª cobrança">
-                <div style={{ padding: '24px 28px' }}>
-                    <h3 style={{ fontSize: '1.0625rem', fontWeight: 800, margin: '0 0 4px' }}>Cobrar 1ª cobrança</h3>
-                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0 0 16px' }}>
-                        Cobre agora (PIX ou cartão do cliente presente) ou deixe pendente — o cliente paga depois / cobrança automática.
-                    </p>
-                    <InlineCheckout
-                        amount={chargeAmountApi ?? cycleAmount}
-                        paymentId={chargePaymentId}
-                        description={`${customForm.name || 'Contrato personalizado'} - 1ª cobrança`}
-                        allowedMethods={[customForm.paymentMethod as 'CARTAO' | 'PIX' | 'BOLETO']}
-                        isAdmin
-                        allowBoleto={customForm.paymentMethod === 'BOLETO'}
-                        context="contract"
-                        onSuccess={() => { setChargePaymentId(null); onClose(); }}
-                        onError={(msg) => setCustomError(msg)}
-                        onCancel={() => { setChargePaymentId(null); onClose(); }}
-                    />
-                    {customError && <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', color: '#ef4444', fontSize: '0.75rem' }}>{customError}</div>}
-                    <button onClick={() => { setChargePaymentId(null); onClose(); }}
-                        style={{ marginTop: 12, width: '100%', padding: '10px', borderRadius: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer' }}>
-                        Deixar pendente (cliente paga depois)
-                    </button>
-                </div>
-            </BottomSheetModal>
+            <ChargeNowSheet
+                paymentId={chargePaymentId}
+                amount={chargeAmountApi ?? cycleAmount}
+                description={`${customForm.name || 'Contrato personalizado'} - 1ª cobrança`}
+                title="Cobrar 1ª cobrança"
+                subtitle="Cobre agora (PIX ou cartão do cliente presente) ou deixe pendente — o cliente paga depois / cobrança automática."
+                allowedMethods={[customForm.paymentMethod as 'CARTAO' | 'PIX' | 'BOLETO']}
+                allowBoleto={customForm.paymentMethod === 'BOLETO'}
+                context="contract"
+                error={customError || undefined}
+                onError={(msg) => setCustomError(msg)}
+                onSuccess={() => { setChargePaymentId(null); onClose(); }}
+                onDismiss={() => { setChargePaymentId(null); onClose(); }}
+            />
         );
     }
 
@@ -250,26 +241,14 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
                 {/* Header */}
                 <div style={{ padding: '28px 32px 0', borderBottom: 'none' }}>
                     <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-gradient-go)', fontSize: '1rem' }}>✨</span>
+                        <span style={{ width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-gradient-go)', fontSize: '1rem' }}><Wand2 size={16} aria-hidden="true" /></span>
                         Contrato Personalizado
                     </h2>
                     <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px', marginBottom: 0 }}>
                         Monte um plano sob medida para o cliente
                     </p>
                     {/* Step indicator */}
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
-                        {[{ n: 1, label: 'Plano' }, { n: 2, label: 'Agenda' }, { n: 3, label: 'Serviços' }, { n: 4, label: 'Resumo' }].map(s => (
-                            <div key={s.n} style={{
-                                flex: 1, padding: '8px', borderRadius: '8px', textAlign: 'center', fontSize: '0.625rem', fontWeight: 700,
-                                background: customStep === s.n ? 'rgba(45,212,191,0.12)' : customStep > s.n ? 'rgba(16,185,129,0.08)' : 'var(--bg-elevated)',
-                                border: `1px solid ${customStep === s.n ? 'rgba(45,212,191,0.3)' : customStep > s.n ? 'rgba(16,185,129,0.2)' : 'var(--border-default)'}`,
-                                color: customStep === s.n ? '#2dd4bf' : customStep > s.n ? '#10b981' : 'var(--text-muted)',
-                                transition: 'all 0.2s',
-                            }}>
-                                {customStep > s.n ? '✓' : s.n}. {s.label}
-                            </div>
-                        ))}
-                    </div>
+                    <WizardSteps steps={['Plano', 'Agenda', 'Serviços', 'Resumo']} current={customStep} onStepClick={(s) => setCustomStep(s as 1 | 2 | 3 | 4)} />
                 </div>
 
                 {customError && <div style={{ margin: '16px 32px 0', padding: '10px 14px', borderRadius: '10px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)', color: '#ef4444', fontSize: '0.8125rem', fontWeight: 600 }}>{customError}</div>}
@@ -861,7 +840,7 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
                                         opacity: canStep4 && !customSubmitting ? 1 : 0.5,
                                         display: 'flex', alignItems: 'center', gap: '8px',
                                     }}>
-                                    {customSubmitting ? '⏳ Criando...' : '✨ Criar Contrato'}
+                                    {customSubmitting ? 'Criando…' : 'Criar Contrato'}
                                 </button>
                             </div>
                         </div>

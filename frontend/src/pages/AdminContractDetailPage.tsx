@@ -15,7 +15,7 @@ import { getPaymentBadge } from '../constants/paymentMethods';
 import { decomposeBookingPricing, AddonCatalogEntry } from '../utils/bookingPricing';
 import { formatBRL } from '../utils/format';
 import { getErrorMessage } from '../utils/errors';
-import { ArrowLeft, Mic, CreditCard, Receipt, Sparkles, ExternalLink, CheckCircle2, Zap } from 'lucide-react';
+import { ArrowLeft, Mic, CreditCard, Receipt, Sparkles, ExternalLink, CheckCircle2, Zap, Eye, MessageCircle } from 'lucide-react';
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' });
 
@@ -254,8 +254,8 @@ export default function AdminContractDetailPage() {
                                     {(b.status === 'COMPLETED' && (b.peakViewers != null || b.durationMinutes != null)) && (
                                         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 8, fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
                                             {b.durationMinutes != null && <span>⏱️ {b.durationMinutes} min</span>}
-                                            {b.peakViewers != null && <span>👁️ {b.peakViewers} pico</span>}
-                                            {b.chatMessages != null && <span>💬 {b.chatMessages}</span>}
+                                            {b.peakViewers != null && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><Eye size={12} aria-hidden="true" /> {b.peakViewers} pico</span>}
+                                            {b.chatMessages != null && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><MessageCircle size={12} aria-hidden="true" /> {b.chatMessages}</span>}
                                         </div>
                                     )}
                                     {(canFinalize || canEditData) && (
