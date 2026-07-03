@@ -819,6 +819,63 @@ button.admin-kpi-card:focus-visible {
     }
 }
 
+/* ── Dashboard (Centro de Comando) ──────────────────────────────
+   KPIs: 2 colunas no mobile, 4 no desktop (o repeat(4,1fr) fixo cortava
+   os cards em 375px). Painéis: 1 coluna no mobile (usar .admin-grid-2). */
+.dash-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+}
+@media (min-width: 768px) {
+    .dash-kpi-grid {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+    }
+}
+.dash-kpi-card {
+    padding: 18px 16px;
+    border-radius: 14px;
+    text-align: center;
+    min-width: 0;
+    border: 1px solid var(--card-border, var(--border-color));
+    background: var(--card-bg, var(--bg-secondary));
+}
+.dash-kpi-card__label {
+    font-size: 0.5625rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 8px;
+    color: var(--card-accent, var(--text-muted));
+}
+.dash-kpi-card__value {
+    font-size: 1.5rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    color: var(--card-accent, var(--text-primary));
+    line-height: 1.1;
+}
+.dash-kpi-card__sub {
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    margin-top: 6px;
+    line-height: 1.35;
+}
+
+/* Cabeçalho de card com título + ação (quebra no mobile em vez de espremer). */
+.dash-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+.dash-card-head__title { min-width: 0; }
+.dash-card-head__action { flex-shrink: 0; }
+
 /* ── Totais no mobile (o <tfoot> some no modo cards) ── */
 .admin-mobile-totals { display: none; }
 @media (max-width: 768px) {

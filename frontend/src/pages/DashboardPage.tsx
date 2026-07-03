@@ -7,9 +7,11 @@ import { useNavigate } from 'react-router-dom';
 import PaymentModal from '../components/PaymentModal';
 import StatCard from '../components/ui/StatCard';
 import StatusBadge from '../components/ui/StatusBadge';
+import AdminPageHeader from '../components/admin/AdminPageHeader';
 import NotificationBanner from '../components/NotificationBanner';
 import { DashboardSkeleton } from '../components/ui/SkeletonLoader';
-import { Wallet, CalendarDays, Clapperboard, FileText, Package, AlertTriangle, ArrowRight, XCircle, Clock, CheckCircle } from 'lucide-react';
+import { Wallet, CalendarDays, Clapperboard, FileText, Package, AlertTriangle, ArrowRight, XCircle, Clock, CheckCircle, LayoutDashboard } from 'lucide-react';
+import { TIER_META, BOOKING_STATUS_META, getMeta } from '../constants/adminMeta';
 import { formatBRL } from '../utils/format';
 
 function formatContractOrigin(booking: Booking): string {
@@ -167,28 +169,28 @@ function AdminDashboard() {
 
     return (
         <div aria-label="Painel principal">
-            {/* ─── HEADER ─── */}
-            <div style={{ marginBottom: '28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-                <div>
-                    <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{ fontSize: '1.75rem' }}>📊</span> Centro de Comando
-                    </h1>
-                    <p className="page-subtitle" style={{ marginTop: '4px', textTransform: 'capitalize' }}>
-                        {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
-                    </p>
-                </div>
-            </div>
+            {/* ─── HEADER (padrão AdminPageHeader) ─── */}
+            <AdminPageHeader
+                icon={LayoutDashboard}
+                title="Centro de Comando"
+                subtitle={new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+            />
+            <div style={{ height: 24 }} />
 
             {/* ── SECTION 1: Agenda do Dia (Hero) ────────────────── */}
             <div style={{ padding: '24px', marginBottom: '24px', borderRadius: '16px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderTop: '3px solid var(--accent-primary)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                    <div>
-                        <h2 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0 }}>📅 Agenda de Hoje</h2>
+                <div className="dash-card-head">
+                    <div className="dash-card-head__title">
+                        <h2 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <CalendarDays size={18} style={{ color: 'var(--accent-primary)' }} aria-hidden="true" /> Agenda de Hoje
+                        </h2>
                         <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '4px' }}>
                             {todaysBookings.length} de 5 slots ocupados
                         </p>
                     </div>
-                    <button onClick={() => navigate('/calendar')} style={{ padding: '6px 14px', borderRadius: '8px', fontSize: '0.6875rem', fontWeight: 700, background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)', cursor: 'pointer', transition: 'all 0.2s' }}>Ver Agenda Completa →</button>
+                    <button onClick={() => navigate('/calendar')} className="dash-card-head__action btn-admin-ghost" style={{ minHeight: 38, padding: '8px 16px', fontSize: '0.75rem' }}>
+                        Ver Agenda Completa →
+                    </button>
                 </div>
 
                 {isSunday ? (
@@ -208,7 +210,7 @@ function AdminDashboard() {
                                     background: b ? 'rgba(255,255,255,0.03)' : 'transparent',
                                     border: `1px solid ${b ? 'var(--border-color)' : 'var(--border-subtle)'}`,
                                     opacity: isPast && !b ? 0.4 : 1,
-                                    transition: 'all 0.2s',
+                                    transition: 'background 0.2s ease, border-color 0.2s ease',
                                 }}>
                                     {/* Time column */}
                                     <div style={{ minWidth: 110, fontWeight: 700, fontSize: '0.9375rem', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
@@ -222,17 +224,14 @@ function AdminDashboard() {
                                     <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                                         {b ? (
                                             <>
-                                                <span style={{ fontWeight: 600, cursor: 'pointer', color: 'var(--text-primary)' }}
+                                                <button style={{ fontWeight: 600, cursor: 'pointer', color: 'var(--text-primary)', background: 'none', border: 'none', padding: 0, fontFamily: 'inherit', fontSize: '0.875rem', textAlign: 'left' }}
+                                                    title={`Abrir perfil de ${b.user.name}`}
                                                     onClick={() => navigate(`/admin/clients/${b.user.id}`)}>
                                                     {b.user.name}
-                                                </span>
-                                                <span className={`badge badge-${b.tierApplied.toLowerCase()}`} style={{ fontSize: '0.7rem' }}>
-                                                    {TIER_EMOJI[b.tierApplied]} {b.tierApplied}
-                                                </span>
-                                                <span className={`badge badge-${b.status.toLowerCase()}`} style={{ fontSize: '0.7rem' }}>
-                                                    {b.status === 'CONFIRMED' ? '✅' : b.status === 'COMPLETED' ? '🏁' : b.status === 'RESERVED' ? '⏳' : b.status === 'FALTA' ? '❌' : '🔄'} {b.status}
-                                                </span>
-                                                <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                                                </button>
+                                                <StatusBadge meta={getMeta(TIER_META, b.tierApplied)} />
+                                                <StatusBadge meta={getMeta(BOOKING_STATUS_META, b.status)} />
+                                                <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginLeft: 'auto', fontVariantNumeric: 'tabular-nums' }}>
                                                     {formatBRL(b.price)}
                                                 </span>
                                             </>
@@ -247,12 +246,12 @@ function AdminDashboard() {
                                     {b && b.status === 'RESERVED' && !isPast && (
                                         <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
                                             <button className="btn btn-sm" title="Check-in (Confirmar Presença)"
-                                                style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: 'none', padding: '4px 10px', borderRadius: '6px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}
+                                                style={{ background: 'var(--info-bg)', color: 'var(--info)', border: 'none', padding: '6px 12px', minHeight: 34, borderRadius: '6px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}
                                                 onClick={() => handleQuickAction(b.id, 'checkin')}>
                                                 📋 Check-in
                                             </button>
                                             <button className="btn btn-sm" title="Registrar Falta"
-                                                style={{ background: 'rgba(220, 38, 38, 0.12)', color: '#dc2626', border: 'none', padding: '4px 10px', borderRadius: '6px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}
+                                                style={{ background: 'var(--danger-bg)', color: 'var(--danger)', border: 'none', padding: '6px 12px', minHeight: 34, borderRadius: '6px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}
                                                 onClick={() => handleQuickAction(b.id, 'falta')}>
                                                 ❌
                                             </button>
@@ -261,12 +260,12 @@ function AdminDashboard() {
                                     {b && b.status === 'CONFIRMED' && !isPast && (
                                         <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
                                             <button className="btn btn-sm" title="Finalizar Sessão"
-                                                style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: 'none', padding: '4px 10px', borderRadius: '6px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}
+                                                style={{ background: 'var(--success-bg)', color: 'var(--success)', border: 'none', padding: '6px 12px', minHeight: 34, borderRadius: '6px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}
                                                 onClick={() => handleQuickAction(b.id, 'complete')}>
                                                 🏁 Finalizar
                                             </button>
                                             <button className="btn btn-sm" title="Registrar Falta"
-                                                style={{ background: 'rgba(220, 38, 38, 0.12)', color: '#dc2626', border: 'none', padding: '4px 10px', borderRadius: '6px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}
+                                                style={{ background: 'var(--danger-bg)', color: 'var(--danger)', border: 'none', padding: '6px 12px', minHeight: 34, borderRadius: '6px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}
                                                 onClick={() => handleQuickAction(b.id, 'falta')}>
                                                 ❌
                                             </button>
@@ -274,10 +273,10 @@ function AdminDashboard() {
                                     )}
 
                                     {b && b.status === 'COMPLETED' && (
-                                        <span style={{ fontSize: '0.75rem', color: 'var(--tier-comercial)', fontWeight: 600 }}>🏁 Concluído</span>
+                                        <span style={{ fontSize: '0.75rem', color: 'var(--success)', fontWeight: 600 }}>Concluído</span>
                                     )}
                                     {b && b.status === 'FALTA' && (
-                                        <span style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: 600 }}>❌ Falta</span>
+                                        <span style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 600 }}>Falta</span>
                                     )}
                                 </div>
                             );
@@ -286,31 +285,31 @@ function AdminDashboard() {
                 )}
             </div>
 
-            {/* ── SECTION 2: KPIs ──────────────────────────────── */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
+            {/* ── SECTION 2: KPIs (2 colunas mobile · 4 desktop) ─── */}
+            <div className="dash-kpi-grid">
                 {[
-                    { label: 'RECEITA DO MÊS', value: formatBRL(monthRevenue), sub: `${monthBookings.length} agendamentos`, color: '#10b981', bg: 'rgba(16,185,129,0.08)', border: 'rgba(16,185,129,0.2)' },
-                    { label: 'OCUPAÇÃO HOJE', value: isSunday ? '—' : `${todaysBookings.length}/5`, sub: isSunday ? 'Fechado' : `${Math.round((todaysBookings.length / 5) * 100)}% dos slots`, color: todaysBookings.length >= 4 ? '#10b981' : todaysBookings.length >= 2 ? '#f59e0b' : 'var(--text-muted)', bg: 'rgba(59,130,246,0.08)', border: 'rgba(59,130,246,0.2)' },
-                    { label: 'TAXA DE PRESENÇA', value: `${attendanceRate}%`, sub: `${completedThisMonth} concluídas, ${noShowsThisMonth} faltas`, color: attendanceRate >= 80 ? '#10b981' : attendanceRate >= 60 ? '#f59e0b' : '#ef4444', bg: attendanceRate >= 80 ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)', border: attendanceRate >= 80 ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)' },
-                    { label: 'CONTRATOS ATIVOS', value: `${activeContracts.length}`, sub: `${allUsers.filter(u => u.role !== 'ADMIN').length} clientes cadastrados`, color: '#2dd4bf', bg: 'rgba(45,212,191,0.08)', border: 'rgba(45,212,191,0.2)' },
+                    { label: 'RECEITA DO MÊS', value: formatBRL(monthRevenue), sub: `${monthBookings.length} agendamentos`, accent: 'var(--success)', bg: 'var(--success-bg)', border: 'rgba(16,185,129,0.2)' },
+                    { label: 'OCUPAÇÃO HOJE', value: isSunday ? '—' : `${todaysBookings.length}/5`, sub: isSunday ? 'Fechado' : `${Math.round((todaysBookings.length / 5) * 100)}% dos slots`, accent: todaysBookings.length >= 4 ? 'var(--success)' : todaysBookings.length >= 2 ? 'var(--warning)' : 'var(--text-secondary)', bg: 'var(--info-bg)', border: 'rgba(59,130,246,0.2)' },
+                    { label: 'TAXA DE PRESENÇA', value: `${attendanceRate}%`, sub: `${completedThisMonth} concluídas, ${noShowsThisMonth} faltas`, accent: attendanceRate >= 80 ? 'var(--success)' : attendanceRate >= 60 ? 'var(--warning)' : 'var(--danger)', bg: attendanceRate >= 80 ? 'var(--success-bg)' : 'var(--danger-bg)', border: attendanceRate >= 80 ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)' },
+                    { label: 'CONTRATOS ATIVOS', value: `${activeContracts.length}`, sub: `${allUsers.filter(u => u.role !== 'ADMIN').length} clientes cadastrados`, accent: 'var(--accent-text)', bg: 'rgba(17,129,155,0.08)', border: 'rgba(17,129,155,0.2)' },
                 ].map((kpi, i) => (
-                    <div key={i} style={{ padding: '20px', borderRadius: '14px', background: kpi.bg, border: `1px solid ${kpi.border}`, textAlign: 'center' }}>
-                        <div style={{ fontSize: '0.5625rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: kpi.color, marginBottom: '8px' }}>{kpi.label}</div>
-                        <div style={{ fontSize: '1.5rem', fontWeight: 800, color: kpi.color }}>{kpi.value}</div>
-                        <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '6px' }}>{kpi.sub}</div>
+                    <div key={i} className="dash-kpi-card" style={{ '--card-bg': kpi.bg, '--card-border': kpi.border, '--card-accent': kpi.accent } as React.CSSProperties}>
+                        <div className="dash-kpi-card__label">{kpi.label}</div>
+                        <div className="dash-kpi-card__value">{kpi.value}</div>
+                        <div className="dash-kpi-card__sub">{kpi.sub}</div>
                     </div>
                 ))}
             </div>
 
             {/* ── SECTION 3: Alertas + Ocupação Semanal ────────── */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+            <div className="admin-grid-2" style={{ marginBottom: '24px' }}>
 
                 {/* Alerts */}
                 <div style={{ padding: '20px', borderRadius: '16px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
                     <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                         🚨 Alertas
                         {totalAlerts > 0 && (
-                            <span style={{ background: '#dc2626', color: '#fff', fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: '10px', minWidth: 20, textAlign: 'center' }}>
+                            <span style={{ background: 'var(--danger)', color: '#fff', fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: '10px', minWidth: 20, textAlign: 'center' }}>
                                 {totalAlerts}
                             </span>
                         )}
@@ -324,11 +323,11 @@ function AdminDashboard() {
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                             {expiringContracts.map(c => (
-                                <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '10px', background: 'rgba(220, 38, 38, 0.08)', border: '1px solid rgba(220, 38, 38, 0.2)' }}>
-                                    <span style={{ fontSize: '1.25rem' }}>🔴</span>
+                                <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '10px', background: 'var(--danger-bg)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                                    <span style={{ fontSize: '1.25rem' }} aria-hidden="true">🔴</span>
                                     <div style={{ flex: 1 }}>
                                         <div style={{ fontSize: '0.8125rem', fontWeight: 600 }}>
-                                            Contrato de <span style={{ cursor: 'pointer', color: 'var(--accent-primary)' }} onClick={() => c.user?.id && navigate(`/admin/clients/${c.user.id}`)}>{c.user?.name}</span> expira em {daysUntil(c.endDate)} dia(s)
+                                            Contrato de <span style={{ cursor: 'pointer', color: 'var(--accent-text)' }} onClick={() => c.user?.id && navigate(`/admin/clients/${c.user.id}`)}>{c.user?.name}</span> expira em {daysUntil(c.endDate)} dia(s)
                                         </div>
                                         <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{c.type} · {c.tier}</div>
                                     </div>
@@ -336,11 +335,11 @@ function AdminDashboard() {
                             ))}
 
                             {pendingCancellations.map(c => (
-                                <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '10px', background: 'rgba(217, 119, 6, 0.08)', border: '1px solid rgba(217, 119, 6, 0.2)' }}>
-                                    <span style={{ fontSize: '1.25rem' }}>🟠</span>
+                                <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '10px', background: 'var(--warning-bg)', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
+                                    <span style={{ fontSize: '1.25rem' }} aria-hidden="true">🟠</span>
                                     <div style={{ flex: 1 }}>
                                         <div style={{ fontSize: '0.8125rem', fontWeight: 600 }}>
-                                            Cancelamento pendente: <span style={{ cursor: 'pointer', color: 'var(--accent-primary)' }} onClick={() => navigate('/admin/contracts')}>{c.user?.name}</span>
+                                            Cancelamento pendente: <span style={{ cursor: 'pointer', color: 'var(--accent-text)' }} onClick={() => navigate('/admin/contracts')}>{c.user?.name}</span>
                                         </div>
                                         <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Aguardando resolução (multa ou isenção)</div>
                                     </div>
@@ -348,14 +347,14 @@ function AdminDashboard() {
                             ))}
 
                             {unconfirmedToday.map(b => (
-                                <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '10px', background: 'rgba(217, 119, 6, 0.08)', border: '1px solid rgba(217, 119, 6, 0.15)' }}>
-                                    <span style={{ fontSize: '1.25rem' }}>🟡</span>
+                                <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '10px', background: 'var(--warning-bg)', border: '1px solid rgba(245, 158, 11, 0.15)' }}>
+                                    <span style={{ fontSize: '1.25rem' }} aria-hidden="true">🟡</span>
                                     <div style={{ flex: 1 }}>
                                         <div style={{ fontSize: '0.8125rem', fontWeight: 600 }}>
                                             {b.user.name} às {b.startTime} — ainda sem confirmação
                                         </div>
                                     </div>
-                                    <button className="btn btn-sm" style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981', border: 'none', padding: '4px 10px', borderRadius: '6px', fontWeight: 700, fontSize: '0.7rem', cursor: 'pointer' }}
+                                    <button className="btn btn-sm" style={{ background: 'var(--success-bg)', color: 'var(--success)', border: 'none', padding: '6px 12px', minHeight: 34, borderRadius: '6px', fontWeight: 700, fontSize: '0.7rem', cursor: 'pointer' }}
                                         onClick={() => handleQuickAction(b.id, 'checkin')}>
                                         Confirmar
                                     </button>
@@ -378,8 +377,8 @@ function AdminDashboard() {
                                     {!d.closed && (
                                         <div style={{
                                             width: `${d.pct}%`, height: '100%', borderRadius: 10,
-                                            background: d.pct > 80 ? 'linear-gradient(90deg, #dc2626, #ef4444)' : d.pct > 60 ? 'linear-gradient(90deg, #d97706, #f59e0b)' : 'linear-gradient(90deg, #10b981, #34d399)',
-                                            transition: 'width 0.5s ease',
+                                            background: d.pct > 80 ? 'linear-gradient(90deg, #dc2626, var(--danger))' : d.pct > 60 ? 'linear-gradient(90deg, #d97706, var(--warning))' : 'linear-gradient(90deg, #10b981, #34d399)',
+                                            transition: 'width 0.3s ease',
                                         }} />
                                     )}
                                 </div>
@@ -393,7 +392,7 @@ function AdminDashboard() {
             </div>
 
             {/* ── SECTION 4: Próximos Agendamentos + Churn Risk ── */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div className="admin-grid-2">
 
                 {/* Next Bookings */}
                 <div style={{ padding: '20px', borderRadius: '16px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
@@ -415,15 +414,14 @@ function AdminDashboard() {
                                         {new Date(b.date).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit' })}
                                     </div>
                                     <div style={{ fontWeight: 700, fontSize: '0.8125rem', minWidth: 42 }}>{b.startTime}</div>
-                                    <div style={{ flex: 1 }}>
-                                        <span style={{ fontWeight: 600, fontSize: '0.8125rem', cursor: 'pointer', color: 'var(--text-primary)' }}
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <button style={{ fontWeight: 600, fontSize: '0.8125rem', cursor: 'pointer', color: 'var(--text-primary)', background: 'none', border: 'none', padding: 0, fontFamily: 'inherit', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}
+                                            title={`Abrir perfil de ${b.user.name}`}
                                             onClick={() => navigate(`/admin/clients/${b.user.id}`)}>
                                             {b.user.name}
-                                        </span>
+                                        </button>
                                     </div>
-                                    <span className={`badge badge-${b.tierApplied.toLowerCase()}`} style={{ fontSize: '0.65rem' }}>
-                                        {TIER_EMOJI[b.tierApplied]}
-                                    </span>
+                                    <StatusBadge meta={getMeta(TIER_META, b.tierApplied)} size="sm" />
                                 </div>
                             ))}
                         </div>
@@ -435,7 +433,7 @@ function AdminDashboard() {
                     <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                         ⚠️ Clientes em Risco
                         {churnRisk.length > 0 && (
-                            <span style={{ background: '#d97706', color: '#fff', fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: '10px' }}>
+                            <span style={{ background: 'var(--warning)', color: '#fff', fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: '10px' }}>
                                 {churnRisk.length}
                             </span>
                         )}
@@ -455,12 +453,12 @@ function AdminDashboard() {
                                 return (
                                     <div key={u.id} style={{
                                         display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px',
-                                        borderRadius: '10px', background: 'rgba(217, 119, 6, 0.06)',
-                                        border: '1px solid rgba(217, 119, 6, 0.15)',
+                                        borderRadius: '10px', background: 'var(--warning-bg)',
+                                        border: '1px solid rgba(245, 158, 11, 0.15)',
                                     }}>
                                         <div style={{
                                             width: 32, height: 32, borderRadius: '50%',
-                                            background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))',
+                                            background: 'var(--accent-gradient-go)',
                                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                                             fontSize: '0.7rem', fontWeight: 700, color: '#fff', flexShrink: 0,
                                         }}>
