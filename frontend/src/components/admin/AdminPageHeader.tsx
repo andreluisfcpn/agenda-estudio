@@ -20,7 +20,7 @@ export default function AdminPageHeader({ icon: Icon, title, subtitle, actions, 
                 <div className="client-hero__icon-wrapper">
                     <Icon size={24} strokeWidth={1.8} />
                 </div>
-                <div style={{ minWidth: 0 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
                     <h1 className="client-hero__title">{title}</h1>
                     {subtitle && <p className="client-hero__subtitle">{subtitle}</p>}
                 </div>

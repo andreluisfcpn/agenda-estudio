@@ -776,6 +776,28 @@ button.admin-kpi-card:focus-visible {
     .admin-segmented__btn { min-height: 40px; }
 }
 
+/* ── AdminPageHeader (client-hero--standalone): empilhar ações no mobile ──
+   Escopo em --standalone → só o admin (o cliente usa .client-hero__header sem
+   o modificador). No desktop: ícone + título (cresce) + ações à direita. No
+   mobile, as ações caíam na MESMA linha e espremiam o texto até uma palavra
+   por linha (bug dos heros mobile) — aqui elas descem para uma linha própria
+   full-width. A separação entre linhas vem do `gap:16px` do .client-hero__header. */
+@media (max-width: 640px) {
+    .client-hero__header--standalone {
+        flex-wrap: wrap;
+    }
+    .client-hero__header--standalone .client-hero__actions {
+        flex-basis: 100%;
+        margin-left: 0;
+        flex-wrap: wrap;
+    }
+    /* CTAs (botões diretos) ocupam a largura; grupos que são <div> (pills de
+       período, navegador de mês) mantêm o layout interno natural. */
+    .client-hero__header--standalone .client-hero__actions > button {
+        flex: 1 1 auto;
+    }
+}
+
 /* ── Totais no mobile (o <tfoot> some no modo cards) ── */
 .admin-mobile-totals { display: none; }
 @media (max-width: 768px) {
