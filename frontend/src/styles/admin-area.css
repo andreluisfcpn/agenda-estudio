@@ -727,6 +727,8 @@ button.admin-kpi-card:focus-visible {
     font-size: 0.75rem;
     opacity: 0.5;
     pointer-events: none;
+    display: inline-flex;
+    color: var(--text-muted);
 }
 @media (max-width: 768px) {
     .admin-search > input { min-height: 44px; }
@@ -817,6 +819,168 @@ button.admin-kpi-card:focus-visible {
     .client-hero__header--standalone .client-hero__actions > button {
         flex: 1 1 auto;
     }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Rodada 2 — utilities de polimento (press feedback, wizard steps,
+   section header, avatar, input com ícone, empty states)
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Press feedback (touch) — reduced-motion coberto pelo catch-all global. */
+.admin-select-row:active { transform: scale(0.98); }
+.admin-pill:active { transform: scale(0.96); }
+.admin-icon-btn:active { transform: scale(0.92); }
+.admin-segmented__btn:active { transform: scale(0.96); }
+button.admin-kpi-card:active { transform: scale(0.99); }
+.btn-admin-ghost:not(:disabled):active { transform: scale(0.98); }
+
+/* Input com ícone à esquerda (substitui spans absolutos de emoji). */
+.admin-input-icon {
+    position: relative;
+}
+.admin-input-icon > .form-input {
+    padding-left: 36px;
+}
+.admin-input-icon > svg {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+/* Indicador de passos dos wizards (componente WizardSteps). */
+.admin-wizard-steps {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 20px;
+    padding: 0 4px;
+}
+.admin-wizard-steps__bar {
+    flex: 1;
+    height: 2px;
+    background: var(--border-default);
+    border-radius: 1px;
+    transition: background 0.3s ease;
+}
+.admin-wizard-steps__bar--done { background: var(--success); }
+.admin-wizard-steps__step {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    padding: 0;
+    font-family: inherit;
+    cursor: default;
+}
+.admin-wizard-steps__step--done { cursor: pointer; }
+.admin-wizard-steps__step:focus-visible {
+    outline: 2px solid var(--accent-text);
+    outline-offset: 2px;
+}
+.admin-wizard-steps__dot {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    background: var(--bg-elevated);
+    color: var(--text-muted);
+    border: 2px solid var(--border-default);
+    transition: background 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+.admin-wizard-steps__step--active .admin-wizard-steps__dot {
+    background: var(--success);
+    color: #fff;
+    border-color: var(--success);
+}
+.admin-wizard-steps__step--done .admin-wizard-steps__dot {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--success);
+    border-color: rgba(16, 185, 129, 0.3);
+}
+.admin-wizard-steps__label {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+.admin-wizard-steps__step--active .admin-wizard-steps__label {
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+/* Cabeçalho numerado de seção de formulário (componente SectionHeader). */
+.admin-section-header {
+    font-size: 0.625rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.admin-section-header__num {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.5rem;
+    font-weight: 800;
+    flex-shrink: 0;
+}
+
+/* Avatar de iniciais (círculo) — o gradiente por tier segue inline (dinâmico). */
+.admin-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--accent-gradient-go);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #fff;
+    flex-shrink: 0;
+}
+.admin-avatar--sm { width: 28px; height: 28px; font-size: 0.6875rem; }
+.admin-avatar--lg { width: 36px; height: 36px; font-size: 0.8125rem; }
+
+/* Empty state padrão (ícone lucide + título + dica + CTA opcional). */
+.admin-empty {
+    padding: 48px 20px;
+    text-align: center;
+    color: var(--text-muted);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+.admin-empty__icon {
+    opacity: 0.35;
+    margin-bottom: 8px;
+}
+.admin-empty__title {
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+.admin-empty__hint {
+    font-size: 0.8125rem;
+}
+.admin-empty > .btn-admin-ghost,
+.admin-empty > .btn-admin-go {
+    margin-top: 12px;
 }
 
 /* ── Dashboard (Centro de Comando) ──────────────────────────────

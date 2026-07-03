@@ -85,6 +85,16 @@ Prop `size` (desktop; mobile é sempre sheet full-width):
 | `.admin-modal-head/body/foot`, `.admin-modal-title(+__icon)` | estrutura de modal |
 | `.admin-save-bar` (`--stacked`) | barra flutuante de salvar |
 | `.admin-hover-bg` | hover de linha sem JS |
+| `.admin-wizard-steps` (via componente `WizardSteps`) | passos de wizard (dots + conector, aria-current) |
+| `.admin-section-header` (via componente `SectionHeader`) | cabeçalho numerado de seção de form |
+| `.admin-avatar` (`--sm/--lg`) | círculo de iniciais (gradiente por tier segue inline) |
+| `.admin-input-icon` | ícone lucide dentro de input (padding-left 36px) |
+| `.admin-empty` (`__icon/__title/__hint` + CTA opcional) | empty state padrão |
+| `.dash-kpi-grid/.dash-kpi-card`, `.dash-card-head` | dashboard (Centro de Comando) |
+
+Componentes compartilhados do admin (`components/admin/`): `AdminPageHeader`,
+`WizardSteps`, `SectionHeader`, `ChargeNowSheet` (sheet de cobrança imediata —
+embrulha o InlineCheckout; nunca alterar as props repassadas a ele).
 
 Regra: **inline style só para valor verdadeiramente dinâmico** (cor vinda de
 adminMeta, width %). Estrutura repetida = classe.
@@ -102,6 +112,28 @@ adminMeta, width %). Estrutura repetida = classe.
   não animar via JS). Nenhuma informação pode depender só de animação.
 - framer-motion: exclusivo do BottomSheetModal. GSAP: não usar (removido).
 - Hover só sob `@media (hover: hover)`; feedback de toque via `:active`.
+
+## 5b. Ícones
+
+**Emoji como ícone estrutural é proibido no admin** (botões, títulos de seção,
+labels, badges de estado). Usar lucide-react, com `aria-hidden` quando decorativo.
+Tamanhos: 13px (label de campo), 14-16px (botão/badge), 16-18px (ícone-só/título
+de seção/KPI), 40-48px (empty state, com opacity .35 via `.admin-empty__icon`).
+
+Mapa canônico (emoji → lucide): 🏁 `Flag` · ❌ `XCircle` · ✏️ `Pencil` · 🗑️ `Trash2` ·
+limpar filtro `FilterX` · 📋 `ClipboardCheck` · 🚨/⚠️/🟠 `AlertTriangle` · 🔴 `AlertCircle`
+(ou `Radio` p/ ao-vivo) · 🟡 `Clock` · 📈 `TrendingUp` · 🔜 `CalendarClock` · ✅ `CheckCircle2` ·
+✓ `Check` · 🎯 `Target` · 📅 `CalendarDays` · 🏖️/😴 `Moon` · 📭 `Inbox` · 🔎 `Search` ·
+🎟️ `TicketPercent` · 💰 `Wallet` (`CircleDollarSign` p/ multa) · 🆓 `HandCoins` · 🚫 `Ban` ·
+🔄 `RefreshCw` · ⏸️/▶️ `Pause`/`Play` · 📂 `FolderOpen` · 💾 `Save` · ➕ `Plus` · 📄 `FileText` ·
+📌 `Pin` · ⚡ `Zap` · ✨ `Sparkles` (`Wand2` p/ CUSTOM) · 💳 `CreditCard` · 👤 `UserRound` ·
+👥 `Users` · 👋 `UserMinus` · 🧩 `Puzzle` · 🔗 `Link2` · 🔒 `Lock` · ⏰ `Clock` · 🏦 `Landmark` ·
+🏢🎤🌟 **`TIER_META[tier].icon`** (nunca redeclarar TIER_EMOJI) · 📊 `BarChart3` · 👁️ `Eye` ·
+💬 `MessageCircle` · 🌎 `Globe` · 🏆 `Trophy` · 📥 `Download` · ✂️ `Scissors` · ✉️ `Mail` ·
+📝 `NotebookPen` · 🪪 `IdCard` · 📱 `Smartphone` · ⏳ em CTAs → remover (texto basta).
+
+**Ficam como emoji**: toasts e texto corrido, 🥇🥈🥉 do ranking, dados vindos da
+API/config (paymentMethods `emoji`, ícones de serviço/`EmojiField`).
 
 ## 6. Acessibilidade (mínimo por página)
 

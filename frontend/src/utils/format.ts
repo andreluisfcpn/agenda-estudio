@@ -43,8 +43,9 @@ export function daysUntil(dateStr: string): number {
 
 export const DAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
-export const TIER_EMOJI: Record<string, string> = {
-    COMERCIAL: '🏢',
-    AUDIENCIA: '🎤',
-    SABADO: '🌟',
-};
+export const DAY_NAMES_FULL = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+
+/** Iniciais para avatares (ex: "Maria da Silva" → "MD"). */
+export function getInitials(name: string): string {
+    return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+}
