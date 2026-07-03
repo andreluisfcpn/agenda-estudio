@@ -754,6 +754,9 @@ button.admin-kpi-card:focus-visible {
     font-size: 0.6875rem;
     font-weight: 600;
     font-family: inherit;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
 }
 .admin-filter-clear:focus-visible {
     outline: 2px solid var(--accent-text);

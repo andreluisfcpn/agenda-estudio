@@ -4,8 +4,7 @@ import { bookingsApi, BookingWithUser } from '../../../api/client';
 import BottomSheetModal from '../../BottomSheetModal';
 import { formatBRL } from '../../../utils/format';
 import { TIER_META, BOOKING_STATUS_META } from '../../../constants/adminMeta';
-
-const TIER_EMOJI: Record<string, string> = { COMERCIAL: '🏢', AUDIENCIA: '🎤', SABADO: '🌟' };
+import { Pencil, CalendarDays, Clock, Wallet } from 'lucide-react';
 
 // Statuses selecionáveis neste modal — cores/labels/ícones vêm do adminMeta
 // (source of truth); HELD é interno do fluxo de pagamento e fica de fora.
@@ -51,7 +50,7 @@ export default function EditBookingModal({ booking, onClose, onSaved }: EditBook
                 {/* Header */}
                 <div className="admin-modal-head">
                     <h2 className="admin-modal-title">
-                        <span className="admin-modal-title__icon">✏️</span>
+                        <span className="admin-modal-title__icon"><Pencil size={16} aria-hidden="true" /></span>
                         Editar Agendamento
                     </h2>
                     {/* Client info bar */}
@@ -77,7 +76,7 @@ export default function EditBookingModal({ booking, onClose, onSaved }: EditBook
                                 background: TIER_META[booking.contract.tier]?.bg || 'var(--bg-elevated)',
                                 color: TIER_META[booking.contract.tier]?.color || 'var(--text-muted)',
                             }}>
-                                {TIER_EMOJI[booking.contract.tier]} {booking.contract.name}
+                                {(() => { const TI = TIER_META[booking.contract!.tier]?.icon; return TI ? <TI size={11} style={{ verticalAlign: '-1px', marginRight: 3 }} aria-hidden="true" /> : null; })()}{booking.contract.name}
                             </span>
                         )}
                     </div>
@@ -90,7 +89,7 @@ export default function EditBookingModal({ booking, onClose, onSaved }: EditBook
                     <div className="admin-grid-2" style={{ marginBottom: '16px' }}>
                         {/* Date */}
                         <div className="admin-field">
-                            <label className="admin-field__label" htmlFor="edit-booking-date">📅 Data</label>
+                            <label className="admin-field__label" htmlFor="edit-booking-date" style={{ display: 'flex', alignItems: 'center', gap: 4 }}><CalendarDays size={13} aria-hidden="true" /> Data</label>
                             <input id="edit-booking-date" type="date" value={editForm.date}
                                 min={new Date().toISOString().split('T')[0]}
                                 onChange={e => setEditForm({ ...editForm, date: e.target.value })}
@@ -99,7 +98,7 @@ export default function EditBookingModal({ booking, onClose, onSaved }: EditBook
                         </div>
                         {/* Time */}
                         <div className="admin-field">
-                            <label className="admin-field__label" htmlFor="edit-booking-time">⏰ Horário</label>
+                            <label className="admin-field__label" htmlFor="edit-booking-time" style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={13} aria-hidden="true" /> Horário</label>
                             <input id="edit-booking-time" type="time" step="1800" value={editForm.startTime}
                                 onChange={e => setEditForm({ ...editForm, startTime: e.target.value })}
                                 className="form-input form-input--raised"
@@ -140,8 +139,8 @@ export default function EditBookingModal({ booking, onClose, onSaved }: EditBook
                         fontSize: '0.75rem', color: 'var(--text-muted)',
                         display: 'flex', justifyContent: 'space-between',
                     }}>
-                        <span>💰 Valor: <strong style={{ color: 'var(--success)' }}>{formatBRL(booking.price)}</strong></span>
-                        <span>{TIER_EMOJI[booking.tierApplied]} {booking.tierApplied}</span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Wallet size={12} aria-hidden="true" /> Valor: <strong style={{ color: 'var(--success)' }}>{formatBRL(booking.price)}</strong></span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>{(() => { const TI = TIER_META[booking.tierApplied]?.icon; return TI ? <TI size={12} aria-hidden="true" /> : null; })()} {booking.tierApplied}</span>
                     </div>
 
                     {/* Actions */}
@@ -150,7 +149,7 @@ export default function EditBookingModal({ booking, onClose, onSaved }: EditBook
                             Cancelar
                         </button>
                         <button onClick={handleEdit} className="btn-admin-go">
-                            💾 Salvar Alterações
+                            Salvar Alterações
                         </button>
                     </div>
                 </div>

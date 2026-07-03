@@ -3,7 +3,7 @@ import { useState, useMemo } from 'react';
 import { bookingsApi, BookingWithUser } from '../api/client';
 import { useNavigate } from 'react-router-dom';
 import { useUI } from '../context/UIContext';
-import { ClipboardList } from 'lucide-react';
+import { ClipboardList, Search, FilterX, Pencil, Trash2, Clock, Moon } from 'lucide-react';
 import AdminPageHeader from '../components/admin/AdminPageHeader';
 import { HeroSkeleton, TableSkeleton } from '../components/ui/SkeletonLoader';
 import StatusBadge from '../components/ui/StatusBadge';
@@ -28,7 +28,7 @@ export default function AdminBookingsPage() {
             ? `\n\n⚠️ O crédito consumido do contrato "${b.contract?.name}" será devolvido.`
             : '';
         showConfirm({
-            title: '🗑️ Excluir Agendamento Permanentemente',
+            title: 'Excluir Agendamento Permanentemente',
             message: `Tem certeza que deseja excluir este agendamento?\n\nCliente: ${b.user.name}\nData: ${new Date(b.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}\nHorário: ${b.startTime}\n\nEsta ação é irreversível — o agendamento será removido como se nunca tivesse existido.${creditWarning}`,
             onConfirm: async () => {
                 try {
@@ -117,7 +117,7 @@ export default function AdminBookingsPage() {
                         aria-label="Buscar por nome ou e-mail"
                         value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                     />
-                    <span className="admin-search__icon" aria-hidden="true">🔎</span>
+                    <Search size={14} className="admin-search__icon" aria-hidden="true" />
                 </div>
 
                 {/* Date filter */}
@@ -148,7 +148,7 @@ export default function AdminBookingsPage() {
 
                 {(dateFilter || statusFilter || searchQuery) && (
                     <button className="admin-filter-clear" onClick={() => { setDateFilter(''); setStatusFilter(''); setSearchQuery(''); }}>
-                        🧹 Limpar
+                        <FilterX size={14} aria-hidden="true" /> Limpar
                     </button>
                 )}
 
@@ -166,10 +166,10 @@ export default function AdminBookingsPage() {
             ) : (
                 <div style={{ borderRadius: '16px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', overflow: 'hidden' }}>
                     {filtered.length === 0 ? (
-                        <div style={{ padding: '48px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                            <div style={{ fontSize: '2.5rem', marginBottom: '12px', opacity: 0.4 }}>😴</div>
-                            <div style={{ fontWeight: 600 }}>Nenhum agendamento encontrado</div>
-                            <div style={{ fontSize: '0.8125rem', marginTop: '4px' }}>Tente ajustar os filtros ou período</div>
+                        <div className="admin-empty">
+                            <Moon size={44} className="admin-empty__icon" aria-hidden="true" />
+                            <div className="admin-empty__title">Nenhum agendamento encontrado</div>
+                            <div className="admin-empty__hint">Tente ajustar os filtros ou período</div>
                         </div>
                     ) : (
                         <div className="table-container" style={{ margin: 0 }}>
@@ -223,7 +223,7 @@ export default function AdminBookingsPage() {
                                                 <td data-label="Quando">
                                                     <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{dayStr}</div>
                                                     <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                        <span style={{ fontSize: '0.6875rem' }}>⏰</span>
+                                                        <Clock size={12} aria-hidden="true" />
                                                         {b.startTime} – {b.endTime}
                                                     </div>
                                                 </td>
@@ -279,12 +279,12 @@ export default function AdminBookingsPage() {
                                                         <button className="admin-icon-btn admin-icon-btn--success"
                                                             aria-label={`Editar agendamento de ${b.user.name}`}
                                                             onClick={() => setEditBooking(b)}>
-                                                            ✏️
+                                                            <Pencil size={16} aria-hidden="true" />
                                                         </button>
                                                         <button className="admin-icon-btn admin-icon-btn--danger"
                                                             aria-label={`Excluir permanentemente agendamento de ${b.user.name}`}
                                                             onClick={() => handleHardDelete(b)}>
-                                                            🗑️
+                                                            <Trash2 size={16} aria-hidden="true" />
                                                         </button>
                                                     </div>
                                                 </td>

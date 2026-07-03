@@ -1,15 +1,19 @@
 import { getErrorMessage } from '../../../utils/errors';
-import React, { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { bookingsApi, contractsApi, pricingApi, UserSummary, Contract, Slot, AddOnConfig, CouponValidation } from '../../../api/client';
 import { useUI } from '../../../context/UIContext';
 import BottomSheetModal from '../../BottomSheetModal';
-import InlineCheckout from '../../InlineCheckout';
 import CouponField from '../../CouponField';
 import ServiceLineItem from '../../ui/ServiceLineItem';
-import { formatBRL } from '../../../utils/format';
+import { formatBRL, DAY_NAMES } from '../../../utils/format';
 import { TIER_META } from '../../../constants/adminMeta';
+import WizardSteps from '../WizardSteps';
+import ChargeNowSheet from '../ChargeNowSheet';
+import {
+    Search, FileText, CalendarDays, Zap, Wallet, TicketPercent, Sparkles,
+    CreditCard, Check, NotebookPen, CheckCircle2, Clock as ClockIcon, AlertTriangle,
+} from 'lucide-react';
 
-const TIER_EMOJI: Record<string, string> = { COMERCIAL: '🏢', AUDIENCIA: '🎤', SABADO: '🌟' };
 
 interface CreateBookingModalProps {
     isOpen: boolean;
@@ -137,30 +141,20 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
     // Charge-now step (avulso): same InlineCheckout + unified policy as the client.
     if (chargePaymentId) {
         return (
-            <BottomSheetModal isOpen onClose={() => { resetCreateModal(); showToast('Agendamento criado (pagamento pendente).'); }} hideHeader size="sm" className="admin-sheet" title="Cobrar agendamento">
-                    <div style={{ padding: '24px 28px' }}>
-                        <h3 style={{ fontSize: '1.0625rem', fontWeight: 800, margin: '0 0 4px' }}>Cobrar agendamento</h3>
-                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0 0 16px' }}>
-                            {chargeMethod === 'PIX' ? 'Mostre o QR Code PIX ao cliente.' : 'Use o cartão do cliente (presente).'} A reserva confirma ao pagar.
-                        </p>
-                        <InlineCheckout
-                            amount={chargeAmountApi ?? ((customPrice || 0) + servicesValue)}
-                            paymentId={chargePaymentId}
-                            description="Agendamento avulso"
-                            allowedMethods={[chargeMethod]}
-                            isAdmin
-                            context="avulso"
-                            onSuccess={() => { resetCreateModal(); showToast('Pagamento confirmado!'); }}
-                            onError={(msg) => setCreateError(msg)}
-                            onCancel={() => { resetCreateModal(); showToast('Agendamento criado (pagamento pendente).'); }}
-                        />
-                        {createError && <div className="admin-alert admin-alert--danger" role="alert" style={{ marginTop: 10, marginBottom: 0 }}>{createError}</div>}
-                        <button onClick={() => { resetCreateModal(); showToast('Agendamento criado (pagamento pendente).'); }}
-                            className="btn-admin-ghost" style={{ marginTop: 12, width: '100%' }}>
-                            Fechar (deixar pendente)
-                        </button>
-                    </div>
-                </BottomSheetModal>
+            <ChargeNowSheet
+                paymentId={chargePaymentId}
+                amount={chargeAmountApi ?? ((customPrice || 0) + servicesValue)}
+                description="Agendamento avulso"
+                title="Cobrar agendamento"
+                subtitle={`${chargeMethod === 'PIX' ? 'Mostre o QR Code PIX ao cliente.' : 'Use o cartão do cliente (presente).'} A reserva confirma ao pagar.`}
+                allowedMethods={[chargeMethod]}
+                context="avulso"
+                error={createError || undefined}
+                onError={(msg) => setCreateError(msg)}
+                onSuccess={() => { resetCreateModal(); showToast('Pagamento confirmado!'); }}
+                onDismiss={() => { resetCreateModal(); showToast('Agendamento criado (pagamento pendente).'); }}
+                dismissLabel="Fechar (deixar pendente)"
+            />
         );
     }
 
@@ -174,40 +168,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                     </h2>
 
                     {/* Step indicator */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '20px', padding: '0 4px' }}>
-                        {stepLabels.map((label, i) => {
-                            const step = i + 1;
-                            const isActive = createStep === step;
-                            const isDone = createStep > step;
-                            return (
-                                <React.Fragment key={step}>
-                                    {i > 0 && <div style={{ flex: 1, height: 2, background: isDone ? 'var(--success)' : 'var(--border-default)', borderRadius: 1, transition: 'background 0.3s' }} />}
-                                    <button type="button" disabled={!isDone}
-                                        aria-label={isDone ? `Voltar ao passo ${step}: ${label}` : `Passo ${step}: ${label}`}
-                                        aria-current={isActive ? 'step' : undefined}
-                                        style={{
-                                            display: 'flex', alignItems: 'center', gap: '6px', cursor: isDone ? 'pointer' : 'default',
-                                            background: 'none', border: 'none', padding: 0, fontFamily: 'inherit',
-                                        }} onClick={() => isDone && setCreateStep(step)}>
-                                        <span style={{
-                                            width: 26, height: 26, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            fontSize: '0.6875rem', fontWeight: 700,
-                                            background: isActive ? 'var(--success)' : isDone ? 'rgba(16,185,129,0.15)' : 'var(--bg-elevated)',
-                                            color: isActive ? '#fff' : isDone ? 'var(--success)' : 'var(--text-muted)',
-                                            border: `2px solid ${isActive ? 'var(--success)' : isDone ? 'rgba(16,185,129,0.3)' : 'var(--border-default)'}`,
-                                            transition: 'background 0.3s ease, color 0.3s ease, border-color 0.3s ease',
-                                        }}>
-                                            {isDone ? '✓' : step}
-                                        </span>
-                                        <span style={{
-                                            fontSize: '0.6875rem', fontWeight: isActive ? 700 : 500,
-                                            color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
-                                        }}>{label}</span>
-                                    </button>
-                                </React.Fragment>
-                            );
-                        })}
-                    </div>
+                    <WizardSteps steps={stepLabels} current={createStep} onStepClick={setCreateStep} />
                 </div>
 
                 <div className="admin-modal-body">
@@ -222,7 +183,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                     aria-label="Buscar cliente por nome ou e-mail"
                                     value={createSearch} onChange={e => setCreateSearch(e.target.value)} autoFocus
                                 />
-                                <span className="admin-search__icon" aria-hidden="true">🔎</span>
+                                <Search size={14} className="admin-search__icon" aria-hidden="true" />
                             </div>
 
                             <div style={{ maxHeight: '340px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -261,7 +222,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                                         background: 'var(--success-bg)', color: 'var(--success)',
                                                     }}>{u._count.contracts} contrato{u._count.contracts > 1 ? 's' : ''}</span>
                                                 )}
-                                                {isSelected && <span style={{ color: 'var(--success)', fontSize: '1rem' }} aria-hidden="true">✓</span>}
+                                                {isSelected && <Check size={16} style={{ color: 'var(--success)' }} aria-hidden="true" />}
                                             </div>
                                         </button>
                                     );
@@ -284,7 +245,6 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                     {/* -------- STEP 2: Contract, Date, Slot -------- */}
                     {createStep === 2 && (() => {
                         const TIER_LABEL: Record<string, string> = { COMERCIAL: 'Comercial', AUDIENCIA: 'Audiência', SABADO: 'Sábado' };
-                        const DAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
                         // Determine selected contract and its tier for slot filtering
                         const activeContract = clientContracts.find(c => c.id === createForm.contractId);
@@ -304,7 +264,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                             {/* -- Contract Selector (always shown) -- */}
                             <div style={{ marginBottom: '20px' }}>
                                 <label style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    📄 Vincular a Contrato
+                                    <FileText size={13} aria-hidden="true" /> Vincular a Contrato
                                     {clientContracts.length > 0 && <span style={{ fontSize: '0.5625rem', fontWeight: 600, padding: '1px 6px', borderRadius: '4px', background: 'rgba(16,185,129,0.1)', color: 'var(--success)' }}>{clientContracts.length} ativo{clientContracts.length > 1 ? 's' : ''}</span>}
                                 </label>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -330,13 +290,13 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                                             fontSize: '1.1rem',
                                         }}>
-                                            ⚡
+                                            <Zap size={18} aria-hidden="true" />
                                         </div>
                                         <div style={{ flex: 1, minWidth: 0 }}>
                                             <div style={{ fontWeight: 700, fontSize: '0.8125rem', color: !createForm.contractId ? 'var(--accent-text)' : 'var(--text-primary)' }}>Agendamento Avulso</div>
                                             <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '2px' }}>Cria contrato automático · Todos os horários</div>
                                         </div>
-                                        {!createForm.contractId && <span style={{ color: 'var(--accent-text)', fontSize: '1.1rem', fontWeight: 700 }} aria-hidden="true">✓</span>}
+                                        {!createForm.contractId && <Check size={17} style={{ color: 'var(--accent-text)' }} aria-hidden="true" />}
                                     </div>
 
                                     {/* Active contract cards */}
@@ -375,7 +335,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                     fontSize: '1.1rem', border: `1px solid ${ct.color}33`,
                                                 }}>
-                                                    {TIER_EMOJI[c.tier]}
+                                                    <ct.icon size={18} aria-hidden="true" />
                                                 </div>
 
                                                 {/* Contract info */}
@@ -394,7 +354,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                                     </div>
                                                     <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                                                         {c.type === 'FIXO' && c.fixedDayOfWeek != null && (
-                                                            <span>📅 {DAY_NAMES[c.fixedDayOfWeek]} {c.fixedTime ? `às ${c.fixedTime}` : ''}</span>
+                                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><CalendarDays size={12} aria-hidden="true" /> {DAY_NAMES[c.fixedDayOfWeek]} {c.fixedTime ? `às ${c.fixedTime}` : ''}</span>
                                                         )}
                                                         {c.type === 'FLEX' && c.flexCreditsRemaining != null && (
                                                             <span style={{ color: c.flexCreditsRemaining > 0 ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
@@ -405,7 +365,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                                     </div>
                                                 </div>
 
-                                                {isSelected && <span style={{ color: ct.color, fontSize: '1.1rem', fontWeight: 700 }}>✓</span>}
+                                                {isSelected && <Check size={17} style={{ color: ct.color }} aria-hidden="true" />}
                                             </div>
                                         );
                                     })}
@@ -425,7 +385,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                             {/* -- Date -- */}
                             <div style={{ marginBottom: '18px' }}>
                                 <label style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px', display: 'block' }}>
-                                    📅 Data da gravação
+                                    <CalendarDays size={13} style={{ verticalAlign: '-2px', marginRight: 4 }} aria-hidden="true" />Data da gravação
                                 </label>
                                 <input type="date" value={createForm.date}
                                     min={new Date().toISOString().split('T')[0]}
@@ -444,7 +404,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                         background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)',
                                         fontSize: '0.75rem', color: 'var(--warning)', fontWeight: 600, lineHeight: 1.5,
                                     }}>
-                                        ⚠️ Contrato {activeContract?.name} é fixo em <strong>{DAY_NAMES[activeContract!.fixedDayOfWeek!]}</strong>. A data selecionada é {DAY_NAMES[selectedDateDOW!]}.
+                                        <AlertTriangle size={13} style={{ verticalAlign: '-2px', marginRight: 4 }} aria-hidden="true" />Contrato {activeContract?.name} é fixo em <strong>{DAY_NAMES[activeContract!.fixedDayOfWeek!]}</strong>. A data selecionada é {DAY_NAMES[selectedDateDOW!]}.
                                     </div>
                                 )}
                             </div>
@@ -453,13 +413,13 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                             {createForm.date && (
                                 <div>
                                     <label style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                        🔓 Horário disponível
+                                        Horário disponível
                                         {filterTier && (
                                             <span style={{
                                                 fontSize: '0.5625rem', fontWeight: 700, padding: '1px 8px', borderRadius: '4px',
                                                 background: tc(filterTier).bg, color: tc(filterTier).color,
                                             }}>
-                                                {TIER_EMOJI[filterTier]} Filtrado: {TIER_LABEL[filterTier]}
+                                                Filtrado: {TIER_LABEL[filterTier]}
                                             </span>
                                         )}
                                     </label>
@@ -499,7 +459,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                                             background: slot.available ? slotTc.bg : 'rgba(255,255,255,0.05)',
                                                             color: slot.available ? slotTc.color : 'var(--text-muted)',
                                                         }}>
-                                                            {slot.available ? `${TIER_EMOJI[slot.tier || 'COMERCIAL']} ${slot.tier}` : 'Ocupado'}
+                                                            {slot.available ? slot.tier : 'Ocupado'}
                                                         </span>
                                                     </button>
                                                 );
@@ -564,20 +524,20 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                                 padding: '2px 10px', borderRadius: '6px', fontSize: '0.6875rem', fontWeight: 700,
                                                 background: tc(selectedSlot.tier).bg, color: tc(selectedSlot.tier).color,
                                             }}>
-                                                {TIER_EMOJI[selectedSlot.tier]} {selectedSlot.tier}
+                                                {(() => { const TI = tc(selectedSlot.tier).icon; return <TI size={12} aria-hidden="true" />; })()} {selectedSlot.tier}
                                             </span>
                                         ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                                     </div>
                                     <div style={{ gridColumn: '1 / -1' }}>
                                         <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '3px' }}>Contrato</div>
                                         <div style={{ fontWeight: 600, fontSize: '0.8125rem' }}>
-                                            {selectedContract ? `${TIER_EMOJI[selectedContract.tier]} ${selectedContract.name}` : '⚡ Avulso (contrato automático)'}
+                                            {selectedContract ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>{(() => { const TI = tc(selectedContract.tier).icon; return <TI size={13} aria-hidden="true" />; })()} {selectedContract.name}</span> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Zap size={13} aria-hidden="true" /> Avulso (contrato automático)</span>}
                                         </div>
                                     </div>
                                     {/* Editable price for Avulso */}
                                     {!createForm.contractId && (
                                         <div style={{ gridColumn: '1 / -1', marginTop: '4px' }}>
-                                            <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '6px' }}>💰 Valor do Agendamento</div>
+                                            <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '6px' }}><Wallet size={12} style={{ verticalAlign: '-2px', marginRight: 4 }} aria-hidden="true" />Valor do Agendamento</div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                                 <div style={{ position: 'relative', flex: 1, maxWidth: '200px' }}>
                                                     <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--success)' }}>R$</span>
@@ -614,7 +574,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                     {/* Linha do cupom aplicado (só avulso) */}
                                     {!createForm.contractId && appliedCoupon && (
                                         <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--success)' }}>
-                                            <span>🎟️ Cupom {appliedCoupon.code}</span>
+                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><TicketPercent size={13} aria-hidden="true" /> Cupom {appliedCoupon.code}</span>
                                             <span>−{formatBRL(appliedCoupon.discountAmount)}</span>
                                         </div>
                                     )}
@@ -625,7 +585,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                             {addons.length > 0 && (
                                 <div style={{ marginBottom: '14px' }}>
                                     <label style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                        ✨ Serviços desta gravação
+                                        <Sparkles size={13} aria-hidden="true" /> Serviços desta gravação
                                         {selectedContract && inheritedDiscount > 0 && (
                                             <span style={{ fontSize: '0.5625rem', fontWeight: 700, padding: '1px 6px', borderRadius: '4px', background: 'rgba(45,212,191,0.12)', color: 'var(--accent-text)' }}>-{inheritedDiscount}% do contrato</span>
                                         )}
@@ -674,18 +634,18 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                     <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '12px 14px', borderRadius: '10px', background: chargeNow ? 'rgba(17,129,155,0.08)' : 'var(--bg-elevated)', border: `1px solid ${chargeNow ? 'rgba(17,129,155,0.35)' : 'var(--border-default)'}` }}>
                                         <input type="checkbox" checked={chargeNow} onChange={e => setChargeNow(e.target.checked)} style={{ width: 18, height: 18, accentColor: 'var(--accent-primary)', cursor: 'pointer' }} />
                                         <div>
-                                            <div style={{ fontSize: '0.8125rem', fontWeight: 600 }}>💳 Cobrar o cliente agora</div>
+                                            <div style={{ fontSize: '0.8125rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><CreditCard size={14} aria-hidden="true" /> Cobrar o cliente agora</div>
                                             <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', marginTop: '2px' }}>Gera PIX ou cobra o cartão do cliente (presente). Sem marcar, segue o status escolhido.</div>
                                         </div>
                                     </label>
                                     {chargeNow && (
                                         <div className="admin-grid-2" style={{ gap: '8px', marginTop: '8px' }}>
-                                            {([{ key: 'PIX' as const, icon: '⚡', label: 'PIX' }, { key: 'CARTAO' as const, icon: '💳', label: 'Cartão' }]).map(m => {
+                                            {([{ key: 'PIX' as const, icon: Zap, label: 'PIX' }, { key: 'CARTAO' as const, icon: CreditCard, label: 'Cartão' }]).map(m => {
                                                 const active = chargeMethod === m.key;
                                                 return (
                                                     <button key={m.key} onClick={() => setChargeMethod(m.key)} aria-pressed={active}
                                                         style={{ padding: '10px', minHeight: 44, borderRadius: '10px', cursor: 'pointer', textAlign: 'center', fontFamily: 'inherit', background: active ? 'rgba(17,129,155,0.10)' : 'var(--bg-elevated)', border: `1.5px solid ${active ? 'rgba(17,129,155,0.4)' : 'var(--border-default)'}`, transition: 'background 0.15s ease, border-color 0.15s ease' }}>
-                                                        <span style={{ fontSize: '0.875rem' }}>{m.icon}</span> <span style={{ fontSize: '0.75rem', fontWeight: 700, color: active ? 'var(--accent-text)' : 'var(--text-primary)' }}>{m.label}</span>
+                                                        <m.icon size={14} style={{ verticalAlign: '-2px' }} aria-hidden="true" /> <span style={{ fontSize: '0.75rem', fontWeight: 700, color: active ? 'var(--accent-text)' : 'var(--text-primary)' }}>{m.label}</span>
                                                     </button>
                                                 );
                                             })}
@@ -697,7 +657,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                             <div style={{ marginBottom: '14px' }}>
                                 <label style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px', display: 'block' }}>Status inicial</label>
                                 <div style={{ display: 'flex', gap: '6px' }}>
-                                    {[{ key: 'CONFIRMED', label: '✅ Confirmado' }, { key: 'RESERVED', label: '⏳ Reservado' }].map(s => (
+                                    {[{ key: 'CONFIRMED', icon: CheckCircle2, label: 'Confirmado' }, { key: 'RESERVED', icon: ClockIcon, label: 'Reservado' }].map(s => (
                                         <button key={s.key}
                                             onClick={() => setCreateForm({ ...createForm, status: s.key })}
                                             aria-pressed={createForm.status === s.key}
@@ -708,7 +668,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                                 color: createForm.status === s.key ? 'var(--success)' : 'var(--text-secondary)',
                                                 transition: 'background 0.15s ease, color 0.15s ease, border-color 0.15s ease',
                                             }}>
-                                            {s.label}
+                                            <s.icon size={13} style={{ verticalAlign: '-2px', marginRight: 5 }} aria-hidden="true" />{s.label}
                                         </button>
                                     ))}
                                 </div>
@@ -717,7 +677,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                             {/* Admin notes */}
                             <div style={{ marginBottom: '14px' }}>
                                 <label style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px', display: 'block' }}>
-                                    📝 Notas internas (opcional)
+                                    <NotebookPen size={13} style={{ verticalAlign: '-2px', marginRight: 4 }} aria-hidden="true" />Notas internas (opcional)
                                 </label>
                                 <textarea
                                     value={createForm.adminNotes}
@@ -734,7 +694,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                     ← Voltar
                                 </button>
                                 <button onClick={handleCreate} disabled={creating} className="btn-admin-go">
-                                    {creating ? '⏳ Criando...' : '📅 Agendar'}
+                                    {creating ? 'Criando…' : <><CalendarDays size={15} aria-hidden="true" /> Agendar</>}
                                 </button>
                             </div>
                         </div>
