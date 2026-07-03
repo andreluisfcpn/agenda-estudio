@@ -365,6 +365,27 @@
     border: 1px solid rgba(245, 158, 11, 0.25);
     color: var(--warning);
 }
+
+/* Banner informativo (ícone + texto). O texto deve vir num único filho
+   (ex.: <span>) — senão o flex quebra cada trecho/<strong> em coluna própria
+   e o texto colapsa numa palavra por linha no mobile. */
+.admin-info-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 14px 18px;
+    border-radius: 12px;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    background: var(--info-bg);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    color: var(--text-secondary);
+}
+.admin-info-banner__icon {
+    flex-shrink: 0;
+    font-size: 1rem;
+    line-height: 1.4;
+}
 /* Campos lado a lado que quebram sozinhos no mobile (sem media query). */
 .admin-form-row {
     display: flex;

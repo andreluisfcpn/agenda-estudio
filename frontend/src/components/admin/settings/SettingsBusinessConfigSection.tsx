@@ -185,13 +185,9 @@ export default function SettingsBusinessConfigSection({ groups, title, subtitle,
                 )}
 
                 {/* Info banner */}
-                <div style={{
-                    padding: '14px 18px', borderRadius: '12px', fontSize: '0.8125rem',
-                    background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.15)',
-                    color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '8px',
-                }}>
-                    <span style={{ fontSize: '1rem' }}>ℹ️</span>
-                    Alterações nestas regras afetam imediatamente a criação de <strong style={{ marginLeft: '4px' }}>novos contratos</strong> e agendamentos. Contratos já existentes não são retroativamente recalculados.
+                <div className="admin-info-banner">
+                    <span className="admin-info-banner__icon" aria-hidden="true">ℹ️</span>
+                    <span>Alterações nestas regras afetam imediatamente a criação de <strong>novos contratos</strong> e agendamentos. Contratos já existentes não são retroativamente recalculados.</span>
                 </div>
             </div>
 
