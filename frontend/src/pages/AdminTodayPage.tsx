@@ -1,6 +1,9 @@
 import { getErrorMessage } from '../utils/errors';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Clapperboard, CheckCircle2, ChevronRight, CalendarDays } from 'lucide-react';
+import {
+    Clapperboard, CheckCircle2, ChevronRight, CalendarDays, Flag, XCircle,
+    AlertCircle, Ban, UserRound, Save, Radio, Timer, Eye, MessageCircle, Globe,
+} from 'lucide-react';
 import { bookingsApi, BookingWithUser } from '../api/client';
 import { useUI } from '../context/UIContext';
 import { useNavigate } from 'react-router-dom';
@@ -10,38 +13,11 @@ import StatusBadge from '../components/ui/StatusBadge';
 import FinalizeRecordingModal from '../components/admin/bookings/FinalizeRecordingModal';
 import { TIER_META, BOOKING_STATUS_META, getMeta } from '../constants/adminMeta';
 
-import { formatBRL } from '../utils/format';
+import { formatBRL, getInitials } from '../utils/format';
+import { todayStrSaoPaulo } from '../utils/time';
+import { buildDayTimeline } from '../constants/slots';
 
-interface SlotDef {
-    id: string;
-    type: 'SLOT' | 'BREAK';
-    time: string;
-    timeEnd: string;
-    label: string;
-    breakLabel?: string;
-    breakIcon?: string;
-}
-
-const TIMELINE: SlotDef[] = [
-    { id: 'S1', type: 'SLOT',  time: '10:00', timeEnd: '12:00', label: '10h — 12h' },
-    { id: 'T1', type: 'BREAK', time: '12:00', timeEnd: '13:00', label: '12:00 — 13:00', breakLabel: 'Intervalo para Almoço', breakIcon: '🍽️' },
-    { id: 'S2', type: 'SLOT',  time: '13:00', timeEnd: '15:00', label: '13h — 15h' },
-    { id: 'T2', type: 'BREAK', time: '15:00', timeEnd: '15:30', label: '15:00 — 15:30', breakLabel: 'Higienização', breakIcon: '🧹' },
-    { id: 'S3', type: 'SLOT',  time: '15:30', timeEnd: '17:30', label: '15h30 — 17h30' },
-    { id: 'T3', type: 'BREAK', time: '17:30', timeEnd: '18:00', label: '17:30 — 18:00', breakLabel: 'Higienização', breakIcon: '🧹' },
-    { id: 'S4', type: 'SLOT',  time: '18:00', timeEnd: '20:00', label: '18h — 20h' },
-    { id: 'T4', type: 'BREAK', time: '20:00', timeEnd: '20:30', label: '20:00 — 20:30', breakLabel: 'Higienização', breakIcon: '🧹' },
-    { id: 'S5', type: 'SLOT',  time: '20:30', timeEnd: '22:30', label: '20h30 — 22h30' },
-];
-
-function getToday(): string {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function getInitials(name: string): string {
-    return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
-}
+const TIMELINE = buildDayTimeline();
 
 // Estilos .today-* vivem em styles/admin-area.css (seção AdminTodayPage).
 
@@ -61,7 +37,7 @@ export default function AdminTodayPage() {
     const [audienceOrigin, setAudienceOrigin] = useState('');
     const [saving, setSaving] = useState(false);
 
-    const today = getToday();
+    const today = todayStrSaoPaulo();
     const isSunday = new Date().getDay() === 0;
 
     const loadData = useCallback(async () => {
@@ -88,7 +64,7 @@ export default function AdminTodayPage() {
 
     const handleCancel = (bookingId: string, clientName: string) => {
         showConfirm({
-            title: '🚫 Cancelar Agendamento',
+            title: 'Cancelar Agendamento',
             message: `Tem certeza que deseja cancelar a sessão de ${clientName}?`,
             onConfirm: async () => {
                 try {
@@ -223,7 +199,7 @@ export default function AdminTodayPage() {
                                 <div key={item.id} className="today-break-row">
                                     <div className={`today-break-dot${isBreakNow ? ' today-break-dot--now' : ''}`} />
                                     <div className={`today-break-chip${isBreakNow ? ' today-break-chip--now' : ''}`}>
-                                        <span style={{ fontSize: '0.875rem' }}>{item.breakIcon}</span>
+                                        {item.breakIcon && <item.breakIcon size={14} aria-hidden="true" />}
                                         <span>{item.breakLabel}</span>
                                         {isBreakNow && <span className="today-now-chip">agora</span>}
                                     </div>
@@ -324,7 +300,7 @@ export default function AdminTodayPage() {
                                                 </>
                                             ) : (
                                                 <span style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>
-                                                    {isPast ? '— Encerrado —' : '🔓 Horário disponível'}
+                                                    {isPast ? '— Encerrado —' : 'Horário disponível'}
                                                 </span>
                                             )}
                                         </div>
@@ -341,7 +317,7 @@ export default function AdminTodayPage() {
                                                         <button className="today-action-btn today-action-btn--info"
                                                             aria-label="Confirmar presença"
                                                             style={{ padding: '4px 10px', fontSize: '0.6875rem' }}
-                                                            onClick={(e) => { e.stopPropagation(); handleStatusChange(booking.id, 'CONFIRMED', '✅ Confirmação'); }}>
+                                                            onClick={(e) => { e.stopPropagation(); handleStatusChange(booking.id, 'CONFIRMED', 'Confirmação'); }}>
                                                             Confirmar
                                                         </button>
                                                     )}
@@ -349,13 +325,13 @@ export default function AdminTodayPage() {
                                                         aria-label="Finalizar gravação"
                                                         style={{ padding: '4px 10px', fontSize: '0.75rem' }}
                                                         onClick={(e) => { e.stopPropagation(); setFinalizeBooking(booking); }}>
-                                                        🏁
+                                                        <Flag size={15} aria-hidden="true" />
                                                     </button>
                                                     <button className="today-action-btn today-action-btn--danger"
                                                         aria-label="Registrar falta"
                                                         style={{ padding: '4px 10px', fontSize: '0.75rem' }}
-                                                        onClick={(e) => { e.stopPropagation(); handleStatusChange(booking.id, 'FALTA', '❌ Falta'); }}>
-                                                        ❌
+                                                        onClick={(e) => { e.stopPropagation(); handleStatusChange(booking.id, 'FALTA', 'Falta'); }}>
+                                                        <XCircle size={15} aria-hidden="true" />
                                                     </button>
                                                 </div>
                                             )}
@@ -375,26 +351,26 @@ export default function AdminTodayPage() {
                                                 <div className="today-actions-bar">
                                                     {booking.status === 'RESERVED' && (
                                                         <button className="today-action-btn today-action-btn--info"
-                                                            onClick={() => handleStatusChange(booking.id, 'CONFIRMED', '✅ Confirmação')}>
-                                                            ✅ Confirmar Presença
+                                                            onClick={() => handleStatusChange(booking.id, 'CONFIRMED', 'Confirmação')}>
+                                                            <CheckCircle2 size={14} aria-hidden="true" /> Confirmar Presença
                                                         </button>
                                                     )}
                                                     <button className="today-action-btn today-action-btn--success"
                                                         onClick={() => setFinalizeBooking(booking)}>
-                                                        🏁 Finalizar gravação
+                                                        <Flag size={14} aria-hidden="true" /> Finalizar gravação
                                                     </button>
                                                     <button className="today-action-btn today-action-btn--danger"
-                                                        onClick={() => handleStatusChange(booking.id, 'FALTA', '❌ Falta')}>
-                                                        ❌ Falta
+                                                        onClick={() => handleStatusChange(booking.id, 'FALTA', 'Falta')}>
+                                                        <XCircle size={14} aria-hidden="true" /> Falta
                                                     </button>
                                                     <button className="today-action-btn today-action-btn--teal"
-                                                        onClick={() => handleStatusChange(booking.id, 'NAO_REALIZADO', '❌ Não Realizado')}>
-                                                        ❌ Não Realizado
+                                                        onClick={() => handleStatusChange(booking.id, 'NAO_REALIZADO', 'Não Realizado')}>
+                                                        <AlertCircle size={14} aria-hidden="true" /> Não Realizado
                                                     </button>
                                                     <div style={{ flex: 1 }} />
                                                     <button className="today-action-btn today-action-btn--danger"
                                                         onClick={() => handleCancel(booking.id, booking.user.name)}>
-                                                        🚫 Cancelar
+                                                        <Ban size={14} aria-hidden="true" /> Cancelar
                                                     </button>
                                                 </div>
                                             )}
@@ -412,17 +388,17 @@ export default function AdminTodayPage() {
                                                     </div>
                                                     <button className="today-action-btn today-action-btn--danger" style={{ marginBottom: '14px' }}
                                                         onClick={() => setFinalizeBooking(booking)}>
-                                                        🔴 Dados da transmissão (redes, links e métricas por rede)
+                                                        <Radio size={14} aria-hidden="true" /> Dados da transmissão (redes, links e métricas por rede)
                                                     </button>
                                                     <div className="admin-kpi-grid">
                                                         {[
-                                                            { label: '⏱️ Duração (min)', value: durationMin, onChange: (v: string) => setDurationMin(v === '' ? '' : Number(v)), type: 'number', ph: 'Ex: 120' },
-                                                            { label: '👁️ Pico Viewers', value: peakViewers, onChange: (v: string) => setPeakViewers(v === '' ? '' : Number(v)), type: 'number', ph: 'Ex: 1530' },
-                                                            { label: '💬 Mensagens', value: chatMessages, onChange: (v: string) => setChatMessages(v === '' ? '' : Number(v)), type: 'number', ph: 'Ex: 2400' },
-                                                            { label: '🌎 Origem', value: audienceOrigin, onChange: setAudienceOrigin, type: 'text', ph: 'Ex: SP Capital' },
+                                                            { icon: Timer, label: 'Duração (min)', value: durationMin, onChange: (v: string) => setDurationMin(v === '' ? '' : Number(v)), type: 'number', ph: 'Ex: 120' },
+                                                            { icon: Eye, label: 'Pico Viewers', value: peakViewers, onChange: (v: string) => setPeakViewers(v === '' ? '' : Number(v)), type: 'number', ph: 'Ex: 1530' },
+                                                            { icon: MessageCircle, label: 'Mensagens', value: chatMessages, onChange: (v: string) => setChatMessages(v === '' ? '' : Number(v)), type: 'number', ph: 'Ex: 2400' },
+                                                            { icon: Globe, label: 'Origem', value: audienceOrigin, onChange: setAudienceOrigin, type: 'text', ph: 'Ex: SP Capital' },
                                                         ].map(f => (
                                                             <div key={f.label} className="admin-field">
-                                                                <label className="admin-field__label">{f.label}</label>
+                                                                <label className="admin-field__label" style={{ display: 'flex', alignItems: 'center', gap: 4 }}><f.icon size={13} aria-hidden="true" /> {f.label}</label>
                                                                 <input type={f.type} className="form-input form-input--raised" placeholder={f.ph}
                                                                     style={{ fontSize: '0.8125rem' }}
                                                                     value={f.value} onChange={e => f.onChange(e.target.value)} />
@@ -465,12 +441,12 @@ export default function AdminTodayPage() {
                                             }}>
                                                 <button className="today-action-btn today-action-btn--neutral"
                                                     onClick={() => navigate(`/admin/clients/${booking.user.id}`)}>
-                                                    👤 Ver Perfil
+                                                    <UserRound size={14} aria-hidden="true" /> Ver Perfil
                                                 </button>
                                                 <button className="btn-admin-go"
                                                     onClick={() => handleSaveMetrics(booking.id)}
                                                     disabled={saving}>
-                                                    {saving ? '⏳ Salvando...' : '💾 Salvar Alterações'}
+                                                    {saving ? 'Salvando…' : <><Save size={15} aria-hidden="true" /> Salvar Alterações</>}
                                                 </button>
                                             </div>
                                         </div>
