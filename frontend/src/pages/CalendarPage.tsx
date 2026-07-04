@@ -571,7 +571,7 @@ export default function CalendarPage() {
                 <ContractWizard
                     pricing={pricing}
                     onClose={() => setShowWizard(false)}
-                    onComplete={() => navigate('/my-contracts')}
+                    onComplete={() => navigate('/meus-contratos')}
                     onOpenCustom={() => {
                         setShowWizard(false);
                         setShowCustomWizard(true);
@@ -583,7 +583,7 @@ export default function CalendarPage() {
                 <CustomContractWizard
                     pricing={pricing}
                     onClose={() => setShowCustomWizard(false)}
-                    onComplete={() => navigate('/my-contracts')}
+                    onComplete={() => navigate('/meus-contratos')}
                 />
             )}
 

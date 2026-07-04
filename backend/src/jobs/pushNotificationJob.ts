@@ -154,7 +154,7 @@ async function computeUserNotifications(
                 : `Seu contrato "${c.name}" expira em ${daysLeft} dia(s)`,
             entityType: 'CONTRACT',
             entityId: c.id,
-            actionUrl: isAdmin ? `/admin/clients/${c.userId}` : '/my-contracts',
+            actionUrl: isAdmin ? `/admin/clients/${c.userId}` : '/meus-contratos',
         });
     }
 
@@ -173,7 +173,7 @@ async function computeUserNotifications(
                 message: `Seu plano Flex tem apenas ${c.flexCreditsRemaining} crédito(s) restante(s).`,
                 entityType: 'CONTRACT',
                 entityId: c.id,
-                actionUrl: '/my-contracts',
+                actionUrl: '/meus-contratos',
             });
         }
     }

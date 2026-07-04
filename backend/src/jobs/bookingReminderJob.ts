@@ -73,7 +73,7 @@ export async function runBookingReminderJob(): Promise<void> {
                     message,
                     entityType: 'BOOKING',
                     entityId: booking.id,
-                    actionUrl: '/my-bookings',
+                    actionUrl: '/minhas-gravacoes',
                     sendPush: true,
                     // Per-window identity — without it the 24h reminder's dedup (TTL 24h)
                     // suppressed the 2h reminder (same type+entity default key).

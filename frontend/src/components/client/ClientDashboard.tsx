@@ -281,7 +281,7 @@ export default function ClientDashboard() {
                     <button className="btn btn-primary" onClick={() => navigate('/calendar')}>
                         <CalendarDays size={18} /> Ver Agenda
                     </button>
-                    <button className="btn btn-secondary" onClick={() => navigate('/my-bookings')}>
+                    <button className="btn btn-secondary" onClick={() => navigate('/minhas-gravacoes')}>
                         <Clapperboard size={18} /> Suas Gravações
                     </button>
                 </div>
@@ -315,10 +315,10 @@ export default function ClientDashboard() {
                 <StatCard icon={CalendarDays} label="Agendamentos Ativos" value={stats.bookings}
                     detail="próximas sessões" accent="var(--accent-primary)" index={1} onClick={() => navigate('/calendar')} />
                 <StatCard icon={Clapperboard} label="Gravações" value={stats.completedBookings}
-                    detail="sessões concluídas" accent="var(--client-accent-teal)" index={2} onClick={() => navigate('/my-bookings')} />
+                    detail="sessões concluídas" accent="var(--client-accent-teal)" index={2} onClick={() => navigate('/minhas-gravacoes')} />
                 <StatCard icon={FileText} label="Contratos" value={stats.contracts}
                     detail={stats.pausedContracts > 0 ? `${stats.pausedContracts} pausado(s)` : 'ativos'}
-                    accent="var(--warning)" index={3} onClick={() => navigate('/my-contracts')} />
+                    accent="var(--warning)" index={3} onClick={() => navigate('/meus-contratos')} />
             </div>
 
             {myContracts.filter(c => c.status === 'ACTIVE' && c.addonUsage && Object.keys(c.addonUsage).length > 0).map(c => (

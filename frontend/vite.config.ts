@@ -39,9 +39,9 @@ export default defineConfig({
                         icons: [{ src: '/icons/icon-192.svg', sizes: '192x192' }],
                     },
                     {
-                        name: 'Meus Agendamentos',
-                        short_name: 'Agendamentos',
-                        url: '/my-bookings',
+                        name: 'Minhas Gravações',
+                        short_name: 'Gravações',
+                        url: '/minhas-gravacoes',
                         icons: [{ src: '/icons/icon-192.svg', sizes: '192x192' }],
                     },
                     {

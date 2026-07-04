@@ -28,8 +28,8 @@ interface TabItem {
 const CLIENT_TABS: TabItem[] = [
     { to: '/dashboard', icon: LayoutDashboard, label: 'Início' },
     { to: '/calendar', icon: CalendarDays, label: 'Agenda' },
-    { to: '/my-bookings', icon: Clapperboard, label: 'Gravações' },
-    { to: '/my-contracts', icon: FileText, label: 'Contratos' },
+    { to: '/minhas-gravacoes', icon: Clapperboard, label: 'Gravações' },
+    { to: '/meus-contratos', icon: FileText, label: 'Contratos' },
     { to: '/meus-pagamentos', icon: Wallet, label: 'Pagar' },
 ];
 

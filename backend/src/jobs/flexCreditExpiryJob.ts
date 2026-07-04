@@ -75,7 +75,7 @@ export async function runFlexCreditExpiryJob(): Promise<void> {
                     entityType: 'CONTRACT',
                     // Distinct per forfeiture level so a later loss isn't deduped away.
                     entityId: `${c.id}:lvl${newForfeited}`,
-                    actionUrl: '/my-contracts',
+                    actionUrl: '/meus-contratos',
                     sendPush: true,
                 });
             } catch (err) { console.error(`[FLEX-EXPIRY] notify forfeit ${c.id}:`, err); }
@@ -94,7 +94,7 @@ export async function runFlexCreditExpiryJob(): Promise<void> {
                     message: `Faltam ${state.daysLeftInWindow} dia(s) para fechar a semana do contrato "${c.name}". Agende sua gravação para não perder 1 crédito.`,
                     entityType: 'CONTRACT',
                     entityId: `${c.id}:w${state.currentWindowIndex}`,
-                    actionUrl: '/my-contracts',
+                    actionUrl: '/meus-contratos',
                     sendPush: true,
                 });
                 warned++;

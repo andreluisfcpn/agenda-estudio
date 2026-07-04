@@ -41,7 +41,7 @@ export default function MyResultsPage() {
             <div className="client-hero client-hero--default animate-card-enter">
                 <HeroAmbient variant="gravacoes" />
                 <div className="client-hero__header" style={{ marginBottom: '16px' }}>
-                    <button className="results-back" onClick={() => navigate('/my-bookings')} aria-label="Voltar">
+                    <button className="results-back" onClick={() => navigate('/minhas-gravacoes')} aria-label="Voltar">
                         <ArrowLeft size={18} />
                     </button>
                     <div className="client-hero__icon-wrapper client-hero__icon-wrapper--violet">

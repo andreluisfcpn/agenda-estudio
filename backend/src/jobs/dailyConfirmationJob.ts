@@ -105,7 +105,7 @@ export async function runDailyConfirmationJob(opts?: { force?: boolean; forceDat
                     message: `Sua gravação de hoje às ${b.startTime} está confirmada. Até logo!`,
                     entityType: 'BOOKING',
                     entityId: b.id,
-                    actionUrl: '/my-bookings',
+                    actionUrl: '/minhas-gravacoes',
                     sendPush: true,
                     dedupKey: dedupId,
                 });

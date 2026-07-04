@@ -165,9 +165,9 @@ function AppRoutes() {
             <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
             <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
             <Route path="/calendar" element={<ProtectedRoute><CalendarPage /></ProtectedRoute>} />
-            <Route path="/my-bookings" element={<ProtectedRoute><MyBookingsPage /></ProtectedRoute>} />
+            <Route path="/minhas-gravacoes" element={<ProtectedRoute><MyBookingsPage /></ProtectedRoute>} />
             <Route path="/meus-resultados" element={<ProtectedRoute><MyResultsPage /></ProtectedRoute>} />
-            <Route path="/my-contracts" element={<ProtectedRoute><MyContractsPage /></ProtectedRoute>} />
+            <Route path="/meus-contratos" element={<ProtectedRoute><MyContractsPage /></ProtectedRoute>} />
             <Route path="/meus-pagamentos" element={<ProtectedRoute><MyPaymentsPage /></ProtectedRoute>} />
             <Route path="/perfil" element={<ProtectedRoute><MyProfilePage /></ProtectedRoute>} />
 
@@ -184,6 +184,10 @@ function AppRoutes() {
             <Route path="/admin/configuracoes" element={<ProtectedRoute><AdminRoute><AdminSettingsPage /></AdminRoute></ProtectedRoute>} />
 
             {/* Legacy redirects */}
+            {/* Rotas antigas em inglês (R4): bookmarks, atalhos da PWA instalada e
+                actionUrls de notificações persistidas continuam funcionando. */}
+            <Route path="/my-bookings" element={<Navigate to="/minhas-gravacoes" replace />} />
+            <Route path="/my-contracts" element={<Navigate to="/meus-contratos" replace />} />
             <Route path="/clients" element={<Navigate to="/admin/clients" replace />} />
             <Route path="/admin/pricing" element={<Navigate to="/admin/configuracoes?sec=financeiro" replace />} />
             <Route path="/admin/services" element={<Navigate to="/admin/configuracoes?sec=servicos" replace />} />

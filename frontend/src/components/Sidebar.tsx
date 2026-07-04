@@ -259,8 +259,8 @@ export default function Sidebar({ collapsed }: SidebarProps) {
 
                 {!isAdmin && (
                     <>
-                        <NavItem to="/my-bookings" icon={Clapperboard} label="Minhas Gravações" collapsed={collapsed} />
-                        <NavItem to="/my-contracts" icon={FileText} label="Meus Contratos" collapsed={collapsed} />
+                        <NavItem to="/minhas-gravacoes" icon={Clapperboard} label="Minhas Gravações" collapsed={collapsed} />
+                        <NavItem to="/meus-contratos" icon={FileText} label="Meus Contratos" collapsed={collapsed} />
                         <NavItem to="/meus-pagamentos" icon={Wallet} label="Pagamentos" collapsed={collapsed} />
                     </>
                 )}
