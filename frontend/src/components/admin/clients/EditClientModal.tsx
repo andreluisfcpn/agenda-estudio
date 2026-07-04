@@ -2,7 +2,8 @@ import { getErrorMessage } from '../../../utils/errors';
 import React, { useState, useEffect } from 'react';
 import { usersApi, UserSummary, ApiError } from '../../../api/client';
 import BottomSheetModal from '../../BottomSheetModal';
-import { Pencil, UserRound, Mail, Lock, Smartphone, IdCard, Globe, MapPin, Building2, Map, NotebookPen, ShieldCheck, Save } from 'lucide-react';
+import { Pencil, UserRound, Mail, Lock, Smartphone, IdCard, Globe, NotebookPen, ShieldCheck, Save } from 'lucide-react';
+import AddressFields from './AddressFields';
 import { maskPhone, maskCpfCnpj, maskEmail, translateError } from '../../../utils/mask';
 
 interface EditClientModalProps {
@@ -15,6 +16,7 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
     const [editForm, setEditForm] = useState({
         name: '', email: '', phone: '', role: '', password: '',
         notes: '', cpfCnpj: '', address: '', city: '', state: '',
+        zipCode: '', addressNumber: '', complement: '', neighborhood: '',
         socialLinks: '', clientStatus: 'ACTIVE',
     });
     const [editError, setEditError] = useState('');
@@ -28,7 +30,7 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
         let cancelled = false;
         setEditForm({
             name: user.name, email: user.email, phone: maskPhone(user.phone || ''), role: user.role, password: '',
-            notes: '', cpfCnpj: '', address: '', city: '', state: '', socialLinks: '', clientStatus: user.clientStatus || 'ACTIVE',
+            notes: '', cpfCnpj: '', address: '', city: '', state: '', zipCode: '', addressNumber: '', complement: '', neighborhood: '', socialLinks: '', clientStatus: user.clientStatus || 'ACTIVE',
         });
         setEditError('');
         setEditFieldErrors({});
@@ -45,6 +47,10 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                     address: d.address || '',
                     city: d.city || '',
                     state: d.state || '',
+                    zipCode: d.zipCode || '',
+                    addressNumber: d.addressNumber || '',
+                    complement: d.complement || '',
+                    neighborhood: d.neighborhood || '',
                     socialLinks: d.socialLinks || '',
                     clientStatus: d.clientStatus || 'ACTIVE',
                 }));
@@ -73,6 +79,10 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
             data.address = editForm.address || null;
             data.city = editForm.city || null;
             data.state = editForm.state || null;
+            data.zipCode = editForm.zipCode || null;
+            data.addressNumber = editForm.addressNumber || null;
+            data.complement = editForm.complement || null;
+            data.neighborhood = editForm.neighborhood || null;
             data.socialLinks = editForm.socialLinks || null;
             await usersApi.update(user.id, data);
             onClose();
@@ -267,50 +277,12 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                             </div>
                         </div>
 
-                        {/* Address row */}
-                        <div style={{ marginBottom: '12px' }}>
-                            <label style={editLabelStyle}>Endereço</label>
-                            <div style={{ position: 'relative' }}>
-                                <MapPin size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
-                                <input
-                                    value={editForm.address}
-                                    onChange={e => setEditForm({ ...editForm, address: e.target.value })}
-                                    placeholder="Rua, número, complemento"
-                                    style={editInputStyle(false)}
-                                    onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-default)')}
-                                />
-                            </div>
-                        </div>
-
-                        {/* City + State */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>
-                            <div>
-                                <label style={editLabelStyle}>Cidade</label>
-                                <div style={{ position: 'relative' }}>
-                                    <Building2 size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
-                                    <input
-                                        value={editForm.city}
-                                        onChange={e => setEditForm({ ...editForm, city: e.target.value })}
-                                        placeholder="Rio de Janeiro"
-                                        style={editInputStyle(false)}
-                                        onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-default)')}
-                                    />
-                                </div>
-                            </div>
-                            <div>
-                                <label style={editLabelStyle}>UF</label>
-                                <div style={{ position: 'relative' }}>
-                                    <Map size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
-                                    <input
-                                        value={editForm.state}
-                                        onChange={e => setEditForm({ ...editForm, state: e.target.value })}
-                                        placeholder="RJ" maxLength={2}
-                                        style={{ ...editInputStyle(false), textTransform: 'uppercase' as any }}
-                                        onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-default)')}
-                                    />
-                                </div>
-                            </div>
-                        </div>
+                        {/* Endereço estruturado + autopreenchimento por CEP */}
+                        <AddressFields
+                            heading={false}
+                            values={{ zipCode: editForm.zipCode, address: editForm.address, addressNumber: editForm.addressNumber, complement: editForm.complement, neighborhood: editForm.neighborhood, city: editForm.city, state: editForm.state }}
+                            onChange={patch => setEditForm(f => ({ ...f, ...patch }))}
+                        />
                     </div>
 
                     {/* --- SECTION 3: Segurança & Notas --- */}

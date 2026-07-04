@@ -195,8 +195,8 @@ export const contractsApi = {
 export const usersApi = {
     getAll: (role?: string) => request<{ users: UserSummary[] }>(`/users${role ? `?role=${role}` : ''}`),
     getById: (id: string) => request<{ user: UserDetail }>(`/users/${id}`),
-    create: (data: { email: string; password: string; name: string; phone?: string; role?: string; notes?: string; cpfCnpj?: string | null; tags?: string[]; socialLinks?: string | null; clientStatus?: string }) => request<{ user: UserSummary; message: string }>('/users', { method: 'POST', body: JSON.stringify(data) }),
-    update: (id: string, data: { name?: string; email?: string; phone?: string; role?: string; password?: string; notes?: string; cpfCnpj?: string | null; address?: string | null; city?: string | null; state?: string | null; tags?: string[]; socialLinks?: string | null; clientStatus?: string }) => request<{ user: UserSummary; message: string }>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    create: (data: { email: string; password: string; name: string; phone?: string; role?: string; notes?: string; cpfCnpj?: string | null; address?: string | null; addressNumber?: string | null; complement?: string | null; neighborhood?: string | null; city?: string | null; state?: string | null; zipCode?: string | null; tags?: string[]; socialLinks?: string | null; clientStatus?: string }) => request<{ user: UserSummary; message: string }>('/users', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: { name?: string; email?: string; phone?: string; role?: string; password?: string; notes?: string; cpfCnpj?: string | null; address?: string | null; addressNumber?: string | null; complement?: string | null; neighborhood?: string | null; city?: string | null; state?: string | null; zipCode?: string | null; tags?: string[]; socialLinks?: string | null; clientStatus?: string }) => request<{ user: UserSummary; message: string }>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     remove: (id: string) => request<{ message: string }>(`/users/${id}`, { method: 'DELETE' }),
     paymentOverview: (id: string) => request<{
         autoChargeEnabled: boolean; hasSavedCard: boolean;
@@ -473,6 +473,7 @@ export interface UserDetail {
     id: string; email: string; name: string; phone: string | null; role: string;
     notes: string | null; photoUrl: string | null;
     cpfCnpj: string | null; address: string | null; city: string | null; state: string | null;
+    addressNumber: string | null; complement: string | null; neighborhood: string | null; zipCode: string | null;
     tags: string[]; socialLinks: string | null; clientStatus: string;
     createdAt: string;
     contracts: Contract[]; bookings: Booking[];

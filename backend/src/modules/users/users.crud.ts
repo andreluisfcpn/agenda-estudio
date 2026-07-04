@@ -27,6 +27,13 @@ const createUserSchema = z.object({
     role: z.enum(['ADMIN', 'CLIENTE']).optional().default('CLIENTE'),
     notes: z.string().optional(),
     cpfCnpj: z.string().optional().nullable(),
+    address: z.string().optional().nullable(),
+    addressNumber: z.string().optional().nullable(),
+    complement: z.string().optional().nullable(),
+    neighborhood: z.string().optional().nullable(),
+    city: z.string().optional().nullable(),
+    state: z.string().optional().nullable(),
+    zipCode: z.string().optional().nullable(),
     tags: z.array(z.string()).optional(),
     socialLinks: z.string().optional().nullable(),
     clientStatus: z.enum(['ACTIVE', 'INACTIVE', 'BLOCKED']).optional(),
@@ -43,8 +50,12 @@ const updateUserSchema = z.object({
     notes: z.string().optional(),
     cpfCnpj: z.string().optional().nullable(),
     address: z.string().optional().nullable(),
+    addressNumber: z.string().optional().nullable(),
+    complement: z.string().optional().nullable(),
+    neighborhood: z.string().optional().nullable(),
     city: z.string().optional().nullable(),
     state: z.string().optional().nullable(),
+    zipCode: z.string().optional().nullable(),
     tags: z.array(z.string()).optional(),
     socialLinks: z.string().optional().nullable(),
     clientStatus: z.enum(['ACTIVE', 'INACTIVE', 'BLOCKED']).optional(),
@@ -82,6 +93,13 @@ export function registerUserCrudRoutes(router: Router) {
                     ...(cpf.value !== null ? { cpfCnpj: cpf.value } : {}),
                     ...(data.tags ? { tags: data.tags } : {}),
                     ...(data.socialLinks !== undefined ? { socialLinks: data.socialLinks } : {}),
+                    ...(data.address !== undefined ? { address: data.address } : {}),
+                    ...(data.addressNumber !== undefined ? { addressNumber: data.addressNumber } : {}),
+                    ...(data.complement !== undefined ? { complement: data.complement } : {}),
+                    ...(data.neighborhood !== undefined ? { neighborhood: data.neighborhood } : {}),
+                    ...(data.city !== undefined ? { city: data.city } : {}),
+                    ...(data.state !== undefined ? { state: data.state } : {}),
+                    ...(data.zipCode !== undefined ? { zipCode: data.zipCode } : {}),
                     ...(data.clientStatus ? { clientStatus: data.clientStatus as any } : {}),
                 },
                 select: { id: true, email: true, name: true, phone: true, role: true, createdAt: true },
@@ -138,8 +156,12 @@ export function registerUserCrudRoutes(router: Router) {
                 updateData.cpfCnpj = cpf.value;
             }
             if (data.address !== undefined) updateData.address = data.address;
+            if (data.addressNumber !== undefined) updateData.addressNumber = data.addressNumber;
+            if (data.complement !== undefined) updateData.complement = data.complement;
+            if (data.neighborhood !== undefined) updateData.neighborhood = data.neighborhood;
             if (data.city !== undefined) updateData.city = data.city;
             if (data.state !== undefined) updateData.state = data.state;
+            if (data.zipCode !== undefined) updateData.zipCode = data.zipCode;
             if (data.tags !== undefined) updateData.tags = data.tags;
             if (data.socialLinks !== undefined) updateData.socialLinks = data.socialLinks;
             if (data.clientStatus) updateData.clientStatus = data.clientStatus;

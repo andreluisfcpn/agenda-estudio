@@ -117,9 +117,13 @@ model User {
   photoUrl     String?  @map("photo_url")
   notes        String?  @db.Text // admin internal observations
   cpfCnpj      String?  @unique @map("cpf_cnpj")
-  address      String?  @db.Text
+  address      String?  @db.Text // logradouro / rua
+  addressNumber String? @map("address_number")
+  complement   String?
+  neighborhood String?  // bairro
   city         String?
   state        String?
+  zipCode      String?  @map("zip_code") // CEP
   tags         String[] @default([])
   socialLinks  String?  @map("social_links") @db.Text // JSON: {"youtube":"url","instagram":"url",...}
   clientStatus String   @default("ACTIVE") @map("client_status") // ACTIVE, INACTIVE, BLOCKED

@@ -36,8 +36,12 @@ export type UserMinAggregateOutputType = {
   notes: string | null
   cpfCnpj: string | null
   address: string | null
+  addressNumber: string | null
+  complement: string | null
+  neighborhood: string | null
   city: string | null
   state: string | null
+  zipCode: string | null
   socialLinks: string | null
   clientStatus: string | null
   stripeCustomerId: string | null
@@ -59,8 +63,12 @@ export type UserMaxAggregateOutputType = {
   notes: string | null
   cpfCnpj: string | null
   address: string | null
+  addressNumber: string | null
+  complement: string | null
+  neighborhood: string | null
   city: string | null
   state: string | null
+  zipCode: string | null
   socialLinks: string | null
   clientStatus: string | null
   stripeCustomerId: string | null
@@ -82,8 +90,12 @@ export type UserCountAggregateOutputType = {
   notes: number
   cpfCnpj: number
   address: number
+  addressNumber: number
+  complement: number
+  neighborhood: number
   city: number
   state: number
+  zipCode: number
   tags: number
   socialLinks: number
   clientStatus: number
@@ -108,8 +120,12 @@ export type UserMinAggregateInputType = {
   notes?: true
   cpfCnpj?: true
   address?: true
+  addressNumber?: true
+  complement?: true
+  neighborhood?: true
   city?: true
   state?: true
+  zipCode?: true
   socialLinks?: true
   clientStatus?: true
   stripeCustomerId?: true
@@ -131,8 +147,12 @@ export type UserMaxAggregateInputType = {
   notes?: true
   cpfCnpj?: true
   address?: true
+  addressNumber?: true
+  complement?: true
+  neighborhood?: true
   city?: true
   state?: true
+  zipCode?: true
   socialLinks?: true
   clientStatus?: true
   stripeCustomerId?: true
@@ -154,8 +174,12 @@ export type UserCountAggregateInputType = {
   notes?: true
   cpfCnpj?: true
   address?: true
+  addressNumber?: true
+  complement?: true
+  neighborhood?: true
   city?: true
   state?: true
+  zipCode?: true
   tags?: true
   socialLinks?: true
   clientStatus?: true
@@ -251,8 +275,12 @@ export type UserGroupByOutputType = {
   notes: string | null
   cpfCnpj: string | null
   address: string | null
+  addressNumber: string | null
+  complement: string | null
+  neighborhood: string | null
   city: string | null
   state: string | null
+  zipCode: string | null
   tags: string[]
   socialLinks: string | null
   clientStatus: string
@@ -296,8 +324,12 @@ export type UserWhereInput = {
   notes?: Prisma.StringNullableFilter<"User"> | string | null
   cpfCnpj?: Prisma.StringNullableFilter<"User"> | string | null
   address?: Prisma.StringNullableFilter<"User"> | string | null
+  addressNumber?: Prisma.StringNullableFilter<"User"> | string | null
+  complement?: Prisma.StringNullableFilter<"User"> | string | null
+  neighborhood?: Prisma.StringNullableFilter<"User"> | string | null
   city?: Prisma.StringNullableFilter<"User"> | string | null
   state?: Prisma.StringNullableFilter<"User"> | string | null
+  zipCode?: Prisma.StringNullableFilter<"User"> | string | null
   tags?: Prisma.StringNullableListFilter<"User">
   socialLinks?: Prisma.StringNullableFilter<"User"> | string | null
   clientStatus?: Prisma.StringFilter<"User"> | string
@@ -329,8 +361,12 @@ export type UserOrderByWithRelationInput = {
   notes?: Prisma.SortOrderInput | Prisma.SortOrder
   cpfCnpj?: Prisma.SortOrderInput | Prisma.SortOrder
   address?: Prisma.SortOrderInput | Prisma.SortOrder
+  addressNumber?: Prisma.SortOrderInput | Prisma.SortOrder
+  complement?: Prisma.SortOrderInput | Prisma.SortOrder
+  neighborhood?: Prisma.SortOrderInput | Prisma.SortOrder
   city?: Prisma.SortOrderInput | Prisma.SortOrder
   state?: Prisma.SortOrderInput | Prisma.SortOrder
+  zipCode?: Prisma.SortOrderInput | Prisma.SortOrder
   tags?: Prisma.SortOrder
   socialLinks?: Prisma.SortOrderInput | Prisma.SortOrder
   clientStatus?: Prisma.SortOrder
@@ -366,8 +402,12 @@ export type UserWhereUniqueInput = Prisma.AtLeast<{
   photoUrl?: Prisma.StringNullableFilter<"User"> | string | null
   notes?: Prisma.StringNullableFilter<"User"> | string | null
   address?: Prisma.StringNullableFilter<"User"> | string | null
+  addressNumber?: Prisma.StringNullableFilter<"User"> | string | null
+  complement?: Prisma.StringNullableFilter<"User"> | string | null
+  neighborhood?: Prisma.StringNullableFilter<"User"> | string | null
   city?: Prisma.StringNullableFilter<"User"> | string | null
   state?: Prisma.StringNullableFilter<"User"> | string | null
+  zipCode?: Prisma.StringNullableFilter<"User"> | string | null
   tags?: Prisma.StringNullableListFilter<"User">
   socialLinks?: Prisma.StringNullableFilter<"User"> | string | null
   clientStatus?: Prisma.StringFilter<"User"> | string
@@ -398,8 +438,12 @@ export type UserOrderByWithAggregationInput = {
   notes?: Prisma.SortOrderInput | Prisma.SortOrder
   cpfCnpj?: Prisma.SortOrderInput | Prisma.SortOrder
   address?: Prisma.SortOrderInput | Prisma.SortOrder
+  addressNumber?: Prisma.SortOrderInput | Prisma.SortOrder
+  complement?: Prisma.SortOrderInput | Prisma.SortOrder
+  neighborhood?: Prisma.SortOrderInput | Prisma.SortOrder
   city?: Prisma.SortOrderInput | Prisma.SortOrder
   state?: Prisma.SortOrderInput | Prisma.SortOrder
+  zipCode?: Prisma.SortOrderInput | Prisma.SortOrder
   tags?: Prisma.SortOrder
   socialLinks?: Prisma.SortOrderInput | Prisma.SortOrder
   clientStatus?: Prisma.SortOrder
@@ -428,8 +472,12 @@ export type UserScalarWhereWithAggregatesInput = {
   notes?: Prisma.StringNullableWithAggregatesFilter<"User"> | string | null
   cpfCnpj?: Prisma.StringNullableWithAggregatesFilter<"User"> | string | null
   address?: Prisma.StringNullableWithAggregatesFilter<"User"> | string | null
+  addressNumber?: Prisma.StringNullableWithAggregatesFilter<"User"> | string | null
+  complement?: Prisma.StringNullableWithAggregatesFilter<"User"> | string | null
+  neighborhood?: Prisma.StringNullableWithAggregatesFilter<"User"> | string | null
   city?: Prisma.StringNullableWithAggregatesFilter<"User"> | string | null
   state?: Prisma.StringNullableWithAggregatesFilter<"User"> | string | null
+  zipCode?: Prisma.StringNullableWithAggregatesFilter<"User"> | string | null
   tags?: Prisma.StringNullableListFilter<"User">
   socialLinks?: Prisma.StringNullableWithAggregatesFilter<"User"> | string | null
   clientStatus?: Prisma.StringWithAggregatesFilter<"User"> | string
@@ -452,8 +500,12 @@ export type UserCreateInput = {
   notes?: string | null
   cpfCnpj?: string | null
   address?: string | null
+  addressNumber?: string | null
+  complement?: string | null
+  neighborhood?: string | null
   city?: string | null
   state?: string | null
+  zipCode?: string | null
   tags?: Prisma.UserCreatetagsInput | string[]
   socialLinks?: string | null
   clientStatus?: string
@@ -485,8 +537,12 @@ export type UserUncheckedCreateInput = {
   notes?: string | null
   cpfCnpj?: string | null
   address?: string | null
+  addressNumber?: string | null
+  complement?: string | null
+  neighborhood?: string | null
   city?: string | null
   state?: string | null
+  zipCode?: string | null
   tags?: Prisma.UserCreatetagsInput | string[]
   socialLinks?: string | null
   clientStatus?: string
@@ -518,8 +574,12 @@ export type UserUpdateInput = {
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   cpfCnpj?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  addressNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  complement?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  neighborhood?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   tags?: Prisma.UserUpdatetagsInput | string[]
   socialLinks?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
@@ -551,8 +611,12 @@ export type UserUncheckedUpdateInput = {
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   cpfCnpj?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  addressNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  complement?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  neighborhood?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   tags?: Prisma.UserUpdatetagsInput | string[]
   socialLinks?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
@@ -584,8 +648,12 @@ export type UserCreateManyInput = {
   notes?: string | null
   cpfCnpj?: string | null
   address?: string | null
+  addressNumber?: string | null
+  complement?: string | null
+  neighborhood?: string | null
   city?: string | null
   state?: string | null
+  zipCode?: string | null
   tags?: Prisma.UserCreatetagsInput | string[]
   socialLinks?: string | null
   clientStatus?: string
@@ -608,8 +676,12 @@ export type UserUpdateManyMutationInput = {
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   cpfCnpj?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  addressNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  complement?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  neighborhood?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   tags?: Prisma.UserUpdatetagsInput | string[]
   socialLinks?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
@@ -632,8 +704,12 @@ export type UserUncheckedUpdateManyInput = {
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   cpfCnpj?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  addressNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  complement?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  neighborhood?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   tags?: Prisma.UserUpdatetagsInput | string[]
   socialLinks?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
@@ -664,8 +740,12 @@ export type UserCountOrderByAggregateInput = {
   notes?: Prisma.SortOrder
   cpfCnpj?: Prisma.SortOrder
   address?: Prisma.SortOrder
+  addressNumber?: Prisma.SortOrder
+  complement?: Prisma.SortOrder
+  neighborhood?: Prisma.SortOrder
   city?: Prisma.SortOrder
   state?: Prisma.SortOrder
+  zipCode?: Prisma.SortOrder
   tags?: Prisma.SortOrder
   socialLinks?: Prisma.SortOrder
   clientStatus?: Prisma.SortOrder
@@ -688,8 +768,12 @@ export type UserMaxOrderByAggregateInput = {
   notes?: Prisma.SortOrder
   cpfCnpj?: Prisma.SortOrder
   address?: Prisma.SortOrder
+  addressNumber?: Prisma.SortOrder
+  complement?: Prisma.SortOrder
+  neighborhood?: Prisma.SortOrder
   city?: Prisma.SortOrder
   state?: Prisma.SortOrder
+  zipCode?: Prisma.SortOrder
   socialLinks?: Prisma.SortOrder
   clientStatus?: Prisma.SortOrder
   stripeCustomerId?: Prisma.SortOrder
@@ -711,8 +795,12 @@ export type UserMinOrderByAggregateInput = {
   notes?: Prisma.SortOrder
   cpfCnpj?: Prisma.SortOrder
   address?: Prisma.SortOrder
+  addressNumber?: Prisma.SortOrder
+  complement?: Prisma.SortOrder
+  neighborhood?: Prisma.SortOrder
   city?: Prisma.SortOrder
   state?: Prisma.SortOrder
+  zipCode?: Prisma.SortOrder
   socialLinks?: Prisma.SortOrder
   clientStatus?: Prisma.SortOrder
   stripeCustomerId?: Prisma.SortOrder
@@ -894,8 +982,12 @@ export type UserCreateWithoutPushSubscriptionsInput = {
   notes?: string | null
   cpfCnpj?: string | null
   address?: string | null
+  addressNumber?: string | null
+  complement?: string | null
+  neighborhood?: string | null
   city?: string | null
   state?: string | null
+  zipCode?: string | null
   tags?: Prisma.UserCreatetagsInput | string[]
   socialLinks?: string | null
   clientStatus?: string
@@ -926,8 +1018,12 @@ export type UserUncheckedCreateWithoutPushSubscriptionsInput = {
   notes?: string | null
   cpfCnpj?: string | null
   address?: string | null
+  addressNumber?: string | null
+  complement?: string | null
+  neighborhood?: string | null
   city?: string | null
   state?: string | null
+  zipCode?: string | null
   tags?: Prisma.UserCreatetagsInput | string[]
   socialLinks?: string | null
   clientStatus?: string
@@ -974,8 +1070,12 @@ export type UserUpdateWithoutPushSubscriptionsInput = {
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   cpfCnpj?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  addressNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  complement?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  neighborhood?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   tags?: Prisma.UserUpdatetagsInput | string[]
   socialLinks?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
@@ -1006,8 +1106,12 @@ export type UserUncheckedUpdateWithoutPushSubscriptionsInput = {
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   cpfCnpj?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  addressNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  complement?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  neighborhood?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   tags?: Prisma.UserUpdatetagsInput | string[]
   socialLinks?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
@@ -1038,8 +1142,12 @@ export type UserCreateWithoutContractsInput = {
   notes?: string | null
   cpfCnpj?: string | null
   address?: string | null
+  addressNumber?: string | null
+  complement?: string | null
+  neighborhood?: string | null
   city?: string | null
   state?: string | null
+  zipCode?: string | null
   tags?: Prisma.UserCreatetagsInput | string[]
   socialLinks?: string | null
   clientStatus?: string
@@ -1070,8 +1178,12 @@ export type UserUncheckedCreateWithoutContractsInput = {
   notes?: string | null
   cpfCnpj?: string | null
   address?: string | null
+  addressNumber?: string | null
+  complement?: string | null
+  neighborhood?: string | null
   city?: string | null
   state?: string | null
+  zipCode?: string | null
   tags?: Prisma.UserCreatetagsInput | string[]
   socialLinks?: string | null
   clientStatus?: string
@@ -1118,8 +1230,12 @@ export type UserUpdateWithoutContractsInput = {
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   cpfCnpj?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  addressNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  complement?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  neighborhood?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   tags?: Prisma.UserUpdatetagsInput | string[]
   socialLinks?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
@@ -1150,8 +1266,12 @@ export type UserUncheckedUpdateWithoutContractsInput = {
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   cpfCnpj?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  addressNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  complement?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  neighborhood?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   tags?: Prisma.UserUpdatetagsInput | string[]
   socialLinks?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
@@ -1182,8 +1302,12 @@ export type UserCreateWithoutBookingsInput = {
   notes?: string | null
   cpfCnpj?: string | null
   address?: string | null
+  addressNumber?: string | null
+  complement?: string | null
+  neighborhood?: string | null
   city?: string | null
   state?: string | null
+  zipCode?: string | null
   tags?: Prisma.UserCreatetagsInput | string[]
   socialLinks?: string | null
   clientStatus?: string
@@ -1214,8 +1338,12 @@ export type UserUncheckedCreateWithoutBookingsInput = {
   notes?: string | null
   cpfCnpj?: string | null
   address?: string | null
+  addressNumber?: string | null
+  complement?: string | null
+  neighborhood?: string | null
   city?: string | null
   state?: string | null
+  zipCode?: string | null
   tags?: Prisma.UserCreatetagsInput | string[]
   socialLinks?: string | null
   clientStatus?: string
@@ -1262,8 +1390,12 @@ export type UserUpdateWithoutBookingsInput = {
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   cpfCnpj?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  addressNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  complement?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  neighborhood?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   tags?: Prisma.UserUpdatetagsInput | string[]
   socialLinks?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
@@ -1294,8 +1426,12 @@ export type UserUncheckedUpdateWithoutBookingsInput = {
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   cpfCnpj?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  addressNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  complement?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  neighborhood?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   tags?: Prisma.UserUpdatetagsInput | string[]
   socialLinks?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
@@ -1326,8 +1462,12 @@ export type UserCreateWithoutPaymentsInput = {
   notes?: string | null
   cpfCnpj?: string | null
   address?: string | null
+  addressNumber?: string | null
+  complement?: string | null
+  neighborhood?: string | null
   city?: string | null
   state?: string | null
+  zipCode?: string | null
   tags?: Prisma.UserCreatetagsInput | string[]
   socialLinks?: string | null
   clientStatus?: string
@@ -1358,8 +1498,12 @@ export type UserUncheckedCreateWithoutPaymentsInput = {
   notes?: string | null
   cpfCnpj?: string | null
   address?: string | null
+  addressNumber?: string | null
+  complement?: string | null
+  neighborhood?: string | null
   city?: string | null
   state?: string | null
+  zipCode?: string | null
   tags?: Prisma.UserCreatetagsInput | string[]
   socialLinks?: string | null
   clientStatus?: string
@@ -1406,8 +1550,12 @@ export type UserUpdateWithoutPaymentsInput = {
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   cpfCnpj?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  addressNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  complement?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  neighborhood?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   tags?: Prisma.UserUpdatetagsInput | string[]
   socialLinks?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
@@ -1438,8 +1586,12 @@ export type UserUncheckedUpdateWithoutPaymentsInput = {
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   cpfCnpj?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  addressNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  complement?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  neighborhood?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   tags?: Prisma.UserUpdatetagsInput | string[]
   socialLinks?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
@@ -1470,8 +1622,12 @@ export type UserCreateWithoutCouponEligibilitiesInput = {
   notes?: string | null
   cpfCnpj?: string | null
   address?: string | null
+  addressNumber?: string | null
+  complement?: string | null
+  neighborhood?: string | null
   city?: string | null
   state?: string | null
+  zipCode?: string | null
   tags?: Prisma.UserCreatetagsInput | string[]
   socialLinks?: string | null
   clientStatus?: string
@@ -1502,8 +1658,12 @@ export type UserUncheckedCreateWithoutCouponEligibilitiesInput = {
   notes?: string | null
   cpfCnpj?: string | null
   address?: string | null
+  addressNumber?: string | null
+  complement?: string | null
+  neighborhood?: string | null
   city?: string | null
   state?: string | null
+  zipCode?: string | null
   tags?: Prisma.UserCreatetagsInput | string[]
   socialLinks?: string | null
   clientStatus?: string
@@ -1550,8 +1710,12 @@ export type UserUpdateWithoutCouponEligibilitiesInput = {
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   cpfCnpj?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  addressNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  complement?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  neighborhood?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   tags?: Prisma.UserUpdatetagsInput | string[]
   socialLinks?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
@@ -1582,8 +1746,12 @@ export type UserUncheckedUpdateWithoutCouponEligibilitiesInput = {
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   cpfCnpj?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  addressNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  complement?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  neighborhood?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   tags?: Prisma.UserUpdatetagsInput | string[]
   socialLinks?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
@@ -1614,8 +1782,12 @@ export type UserCreateWithoutCouponRedemptionsInput = {
   notes?: string | null
   cpfCnpj?: string | null
   address?: string | null
+  addressNumber?: string | null
+  complement?: string | null
+  neighborhood?: string | null
   city?: string | null
   state?: string | null
+  zipCode?: string | null
   tags?: Prisma.UserCreatetagsInput | string[]
   socialLinks?: string | null
   clientStatus?: string
@@ -1646,8 +1818,12 @@ export type UserUncheckedCreateWithoutCouponRedemptionsInput = {
   notes?: string | null
   cpfCnpj?: string | null
   address?: string | null
+  addressNumber?: string | null
+  complement?: string | null
+  neighborhood?: string | null
   city?: string | null
   state?: string | null
+  zipCode?: string | null
   tags?: Prisma.UserCreatetagsInput | string[]
   socialLinks?: string | null
   clientStatus?: string
@@ -1694,8 +1870,12 @@ export type UserUpdateWithoutCouponRedemptionsInput = {
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   cpfCnpj?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  addressNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  complement?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  neighborhood?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   tags?: Prisma.UserUpdatetagsInput | string[]
   socialLinks?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
@@ -1726,8 +1906,12 @@ export type UserUncheckedUpdateWithoutCouponRedemptionsInput = {
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   cpfCnpj?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  addressNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  complement?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  neighborhood?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   tags?: Prisma.UserUpdatetagsInput | string[]
   socialLinks?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
@@ -1758,8 +1942,12 @@ export type UserCreateWithoutSavedPaymentMethodsInput = {
   notes?: string | null
   cpfCnpj?: string | null
   address?: string | null
+  addressNumber?: string | null
+  complement?: string | null
+  neighborhood?: string | null
   city?: string | null
   state?: string | null
+  zipCode?: string | null
   tags?: Prisma.UserCreatetagsInput | string[]
   socialLinks?: string | null
   clientStatus?: string
@@ -1790,8 +1978,12 @@ export type UserUncheckedCreateWithoutSavedPaymentMethodsInput = {
   notes?: string | null
   cpfCnpj?: string | null
   address?: string | null
+  addressNumber?: string | null
+  complement?: string | null
+  neighborhood?: string | null
   city?: string | null
   state?: string | null
+  zipCode?: string | null
   tags?: Prisma.UserCreatetagsInput | string[]
   socialLinks?: string | null
   clientStatus?: string
@@ -1838,8 +2030,12 @@ export type UserUpdateWithoutSavedPaymentMethodsInput = {
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   cpfCnpj?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  addressNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  complement?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  neighborhood?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   tags?: Prisma.UserUpdatetagsInput | string[]
   socialLinks?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
@@ -1870,8 +2066,12 @@ export type UserUncheckedUpdateWithoutSavedPaymentMethodsInput = {
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   cpfCnpj?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  addressNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  complement?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  neighborhood?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   tags?: Prisma.UserUpdatetagsInput | string[]
   socialLinks?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
@@ -1902,8 +2102,12 @@ export type UserCreateWithoutBlockedSlotsInput = {
   notes?: string | null
   cpfCnpj?: string | null
   address?: string | null
+  addressNumber?: string | null
+  complement?: string | null
+  neighborhood?: string | null
   city?: string | null
   state?: string | null
+  zipCode?: string | null
   tags?: Prisma.UserCreatetagsInput | string[]
   socialLinks?: string | null
   clientStatus?: string
@@ -1934,8 +2138,12 @@ export type UserUncheckedCreateWithoutBlockedSlotsInput = {
   notes?: string | null
   cpfCnpj?: string | null
   address?: string | null
+  addressNumber?: string | null
+  complement?: string | null
+  neighborhood?: string | null
   city?: string | null
   state?: string | null
+  zipCode?: string | null
   tags?: Prisma.UserCreatetagsInput | string[]
   socialLinks?: string | null
   clientStatus?: string
@@ -1982,8 +2190,12 @@ export type UserUpdateWithoutBlockedSlotsInput = {
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   cpfCnpj?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  addressNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  complement?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  neighborhood?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   tags?: Prisma.UserUpdatetagsInput | string[]
   socialLinks?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
@@ -2014,8 +2226,12 @@ export type UserUncheckedUpdateWithoutBlockedSlotsInput = {
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   cpfCnpj?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  addressNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  complement?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  neighborhood?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   tags?: Prisma.UserUpdatetagsInput | string[]
   socialLinks?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
@@ -2046,8 +2262,12 @@ export type UserCreateWithoutNotificationsInput = {
   notes?: string | null
   cpfCnpj?: string | null
   address?: string | null
+  addressNumber?: string | null
+  complement?: string | null
+  neighborhood?: string | null
   city?: string | null
   state?: string | null
+  zipCode?: string | null
   tags?: Prisma.UserCreatetagsInput | string[]
   socialLinks?: string | null
   clientStatus?: string
@@ -2078,8 +2298,12 @@ export type UserUncheckedCreateWithoutNotificationsInput = {
   notes?: string | null
   cpfCnpj?: string | null
   address?: string | null
+  addressNumber?: string | null
+  complement?: string | null
+  neighborhood?: string | null
   city?: string | null
   state?: string | null
+  zipCode?: string | null
   tags?: Prisma.UserCreatetagsInput | string[]
   socialLinks?: string | null
   clientStatus?: string
@@ -2126,8 +2350,12 @@ export type UserUpdateWithoutNotificationsInput = {
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   cpfCnpj?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  addressNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  complement?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  neighborhood?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   tags?: Prisma.UserUpdatetagsInput | string[]
   socialLinks?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
@@ -2158,8 +2386,12 @@ export type UserUncheckedUpdateWithoutNotificationsInput = {
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   cpfCnpj?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   address?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  addressNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  complement?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  neighborhood?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   city?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   state?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  zipCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   tags?: Prisma.UserUpdatetagsInput | string[]
   socialLinks?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   clientStatus?: Prisma.StringFieldUpdateOperationsInput | string
@@ -2293,8 +2525,12 @@ export type UserSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = r
   notes?: boolean
   cpfCnpj?: boolean
   address?: boolean
+  addressNumber?: boolean
+  complement?: boolean
+  neighborhood?: boolean
   city?: boolean
   state?: boolean
+  zipCode?: boolean
   tags?: boolean
   socialLinks?: boolean
   clientStatus?: boolean
@@ -2327,8 +2563,12 @@ export type UserSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensio
   notes?: boolean
   cpfCnpj?: boolean
   address?: boolean
+  addressNumber?: boolean
+  complement?: boolean
+  neighborhood?: boolean
   city?: boolean
   state?: boolean
+  zipCode?: boolean
   tags?: boolean
   socialLinks?: boolean
   clientStatus?: boolean
@@ -2351,8 +2591,12 @@ export type UserSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensio
   notes?: boolean
   cpfCnpj?: boolean
   address?: boolean
+  addressNumber?: boolean
+  complement?: boolean
+  neighborhood?: boolean
   city?: boolean
   state?: boolean
+  zipCode?: boolean
   tags?: boolean
   socialLinks?: boolean
   clientStatus?: boolean
@@ -2375,8 +2619,12 @@ export type UserSelectScalar = {
   notes?: boolean
   cpfCnpj?: boolean
   address?: boolean
+  addressNumber?: boolean
+  complement?: boolean
+  neighborhood?: boolean
   city?: boolean
   state?: boolean
+  zipCode?: boolean
   tags?: boolean
   socialLinks?: boolean
   clientStatus?: boolean
@@ -2387,7 +2635,7 @@ export type UserSelectScalar = {
   updatedAt?: boolean
 }
 
-export type UserOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "email" | "passwordHash" | "name" | "phone" | "googleId" | "role" | "photoUrl" | "notes" | "cpfCnpj" | "address" | "city" | "state" | "tags" | "socialLinks" | "clientStatus" | "stripeCustomerId" | "autoChargeEnabled" | "essentialNotificationsOnly" | "createdAt" | "updatedAt", ExtArgs["result"]["user"]>
+export type UserOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "email" | "passwordHash" | "name" | "phone" | "googleId" | "role" | "photoUrl" | "notes" | "cpfCnpj" | "address" | "addressNumber" | "complement" | "neighborhood" | "city" | "state" | "zipCode" | "tags" | "socialLinks" | "clientStatus" | "stripeCustomerId" | "autoChargeEnabled" | "essentialNotificationsOnly" | "createdAt" | "updatedAt", ExtArgs["result"]["user"]>
 export type UserInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   bookings?: boolean | Prisma.User$bookingsArgs<ExtArgs>
   contracts?: boolean | Prisma.User$contractsArgs<ExtArgs>
@@ -2428,8 +2676,12 @@ export type $UserPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs =
     notes: string | null
     cpfCnpj: string | null
     address: string | null
+    addressNumber: string | null
+    complement: string | null
+    neighborhood: string | null
     city: string | null
     state: string | null
+    zipCode: string | null
     tags: string[]
     socialLinks: string | null
     clientStatus: string
@@ -2881,8 +3133,12 @@ export interface UserFieldRefs {
   readonly notes: Prisma.FieldRef<"User", 'String'>
   readonly cpfCnpj: Prisma.FieldRef<"User", 'String'>
   readonly address: Prisma.FieldRef<"User", 'String'>
+  readonly addressNumber: Prisma.FieldRef<"User", 'String'>
+  readonly complement: Prisma.FieldRef<"User", 'String'>
+  readonly neighborhood: Prisma.FieldRef<"User", 'String'>
   readonly city: Prisma.FieldRef<"User", 'String'>
   readonly state: Prisma.FieldRef<"User", 'String'>
+  readonly zipCode: Prisma.FieldRef<"User", 'String'>
   readonly tags: Prisma.FieldRef<"User", 'String[]'>
   readonly socialLinks: Prisma.FieldRef<"User", 'String'>
   readonly clientStatus: Prisma.FieldRef<"User", 'String'>
