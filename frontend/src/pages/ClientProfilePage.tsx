@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { usersApi, bookingsApi, UserDetail, Booking, Contract } from '../api/client';
-import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import { HeroSkeleton, TableSkeleton } from '../components/ui/SkeletonLoader';
 import StatusBadge from '../components/ui/StatusBadge';
-import SavedCardItem from '../components/ui/SavedCardItem';
 import ProfileHeader from '../components/admin/clients/ProfileHeader';
 import ClientDataCard from '../components/admin/clients/ClientDataCard';
 import ClientHealthCards from '../components/admin/clients/ClientHealthCards';
-import { TIER_META, BOOKING_STATUS_META, CONTRACT_STATUS_META, CONTRACT_TYPE_META, getMeta } from '../constants/adminMeta';
+import PaymentOverviewCard from '../components/admin/clients/PaymentOverviewCard';
+import ClientContractsCard from '../components/admin/clients/ClientContractsCard';
+import { TIER_META, BOOKING_STATUS_META, getMeta } from '../constants/adminMeta';
 
 import { formatBRL } from '../utils/format';
 
@@ -21,7 +21,6 @@ export default function ClientProfilePage() {
     const [notesSaving, setNotesSaving] = useState(false);
     const [notesSaved, setNotesSaved] = useState(false);
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const { get: getRule } = useBusinessConfig();
 
     // Expandable booking notes
     const [expandedBookingId, setExpandedBookingId] = useState<string | null>(null);
@@ -225,93 +224,11 @@ export default function ClientProfilePage() {
 
             <ClientHealthCards user={user} />
 
-            {/* Payment: auto-charge + saved cards + upcoming installments (admin view) */}
             {payOverview && (
-                <div className="card" style={{ padding: '20px', marginBottom: '16px' }}>
-                    <h2 style={{ fontSize: '1.0625rem', fontWeight: 700, marginBottom: '16px' }}>💳 Pagamento</h2>
-                    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '12px 14px', borderRadius: 'var(--radius-md)', background: payOverview.autoChargeEnabled ? 'rgba(16,185,129,0.06)' : 'var(--bg-elevated)', border: `1px solid ${payOverview.autoChargeEnabled ? 'rgba(16,185,129,0.25)' : 'var(--border-default)'}`, cursor: payOverview.hasSavedCard ? 'pointer' : 'not-allowed', opacity: payOverview.hasSavedCard ? 1 : 0.6 }}>
-                        <div>
-                            <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>🔁 Cobrança automática</div>
-                            <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '2px' }}>{payOverview.hasSavedCard ? 'Cobra o cartão salvo na data de vencimento.' : 'Requer um cartão salvo do cliente.'}</div>
-                        </div>
-                        <input type="checkbox" checked={payOverview.autoChargeEnabled} disabled={!payOverview.hasSavedCard || autoSaving} onChange={e => handleAutoCharge(e.target.checked)} style={{ width: 20, height: 20, accentColor: 'var(--success)', cursor: payOverview.hasSavedCard ? 'pointer' : 'not-allowed' }} />
-                    </label>
-
-                    <div style={{ marginTop: '14px' }}>
-                        <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>Cartões salvos</div>
-                        {payOverview.cards.length === 0 ? (
-                            <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Nenhum cartão salvo</div>
-                        ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                {payOverview.cards.map(c => (
-                                    <SavedCardItem key={c.id} card={c} />
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    <div style={{ marginTop: '14px' }}>
-                        <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>Parcelas a vencer ({payOverview.duePayments.length})</div>
-                        {payOverview.duePayments.length === 0 ? (
-                            <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Nenhuma parcela pendente</div>
-                        ) : payOverview.duePayments.slice(0, 8).map(p => (
-                            <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '8px 12px', borderRadius: 'var(--radius-sm)', background: p.overdue ? 'rgba(220,38,38,0.06)' : 'var(--bg-elevated)', border: p.overdue ? '1px solid rgba(220,38,38,0.2)' : '1px solid transparent', marginBottom: '6px' }}>
-                                <div style={{ minWidth: 0 }}>
-                                    <div style={{ fontSize: '0.8125rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.contractName}</div>
-                                    <div style={{ fontSize: '0.6875rem', color: p.overdue ? 'var(--danger)' : 'var(--text-muted)' }}>{p.overdue ? '⚠️ Vencida · ' : ''}{p.dueDate ? new Date(p.dueDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '—'}</div>
-                                </div>
-                                <span style={{ fontSize: '0.875rem', fontWeight: 700, color: p.overdue ? 'var(--danger)' : 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>{formatBRL(p.amount)}</span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
+                <PaymentOverviewCard overview={payOverview} autoSaving={autoSaving} onToggleAutoCharge={handleAutoCharge} />
             )}
 
-            {/* Contracts */}
-            <div className="card" style={{ padding: '20px', marginBottom: '16px' }}>
-                <h2 style={{ fontSize: '1.0625rem', fontWeight: 700, marginBottom: '16px' }}>📋 Contratos ({user.contracts.length})</h2>
-                {user.contracts.length === 0 ? (
-                    <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Nenhum contrato</div>
-                ) : (
-                    <div style={{ display: 'grid', gap: '12px', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
-                        {user.contracts.map((c: Contract) => (
-                            <div key={c.id} style={{
-                                padding: '12px', borderRadius: 'var(--radius-sm)',
-                                background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
-                            }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                        <StatusBadge meta={getMeta(CONTRACT_TYPE_META, c.type)} />
-                                        <StatusBadge meta={getMeta(TIER_META, c.tier)} />
-                                    </div>
-                                    <StatusBadge meta={getMeta(CONTRACT_STATUS_META, c.status)} />
-                                </div>
-                                <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-                                    <div>{c.durationMonths}m · {c.discountPct}% desconto · {c.durationMonths === 3 ? getRule('episodes_3months') : getRule('episodes_6months')} gravações</div>
-                                    <div>{new Date(c.startDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })} → {new Date(c.endDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</div>
-                                    {c.type === 'FLEX' && c.flexCreditsRemaining != null && (
-                                        <div style={{ marginTop: '4px', fontWeight: 600, color: 'var(--accent-primary)' }}>
-                                            Créditos restantes: {c.flexCreditsRemaining}/{c.flexCreditsTotal}
-                                        </div>
-                                    )}
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px', flexWrap: 'wrap' }}>
-                                    <button onClick={() => navigate(`/admin/contracts/${c.id}`)}
-                                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--accent-text)' }}>
-                                        📂 Abrir contrato →
-                                    </button>
-                                    {c.contractUrl && (
-                                        <a href={c.contractUrl} target="_blank" rel="noopener noreferrer"
-                                            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.8125rem', color: 'var(--accent-text)', textDecoration: 'none' }}>
-                                            📄 Ver contrato digital ↗
-                                        </a>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
+            <ClientContractsCard contracts={user.contracts} />
 
             {/* Notes — Full Width */}
             <div className="card" style={{ padding: '20px', marginBottom: '16px' }}>
