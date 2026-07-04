@@ -10,18 +10,20 @@ import TimeField from '../../ui/fields/TimeField';
 import ColorField from '../../ui/fields/ColorField';
 import UrlField from '../../ui/fields/UrlField';
 import EmailField from '../../ui/fields/EmailField';
+import type { LucideIcon } from 'lucide-react';
+import { Package, ClipboardCheck, CreditCard, Clock, Landmark, Building2, Info } from 'lucide-react';
 
 /**
  * Group metadata copied verbatim from AdminPricingPage so the section headers,
  * icons and descriptions match the legacy "rules" tab exactly.
  */
-const GROUP_LABELS: Record<string, { label: string; emoji: string; desc: string; color: string }> = {
-    plans:    { label: 'Planos & Episódios',    emoji: '📦', desc: 'Descontos por fidelidade e contagem de episódios', color: '#2dd4bf' },
-    policies: { label: 'Políticas Operacionais', emoji: '📋', desc: 'Janelas de tempo, multas e restrições de agendamento', color: '#f59e0b' },
-    payments: { label: 'Taxas & Descontos',      emoji: '💳', desc: 'Descontos PIX, taxas cartão e serviços mensais', color: '#10b981' },
-    schedule: { label: 'Horários & Grade',       emoji: '🕐', desc: 'Slots de atendimento, dias de funcionamento e duração dos blocos', color: '#3b82f6' },
-    gateway:  { label: 'Taxas de Gateway',       emoji: '🏦', desc: 'Taxas de processamento dos meios de pagamento (Stripe e Cora)', color: '#ef4444' },
-    studio:   { label: 'Estúdio & Branding',     emoji: '🏢', desc: 'Nome, logo, e-mail e imagens do estúdio', color: '#f97316' },
+const GROUP_LABELS: Record<string, { label: string; icon: LucideIcon; desc: string; color: string }> = {
+    plans:    { label: 'Planos & Episódios',    icon: Package, desc: 'Descontos por fidelidade e contagem de episódios', color: '#2dd4bf' },
+    policies: { label: 'Políticas Operacionais', icon: ClipboardCheck, desc: 'Janelas de tempo, multas e restrições de agendamento', color: '#f59e0b' },
+    payments: { label: 'Taxas & Descontos',      icon: CreditCard, desc: 'Descontos PIX, taxas cartão e serviços mensais', color: '#10b981' },
+    schedule: { label: 'Horários & Grade',       icon: Clock, desc: 'Slots de atendimento, dias de funcionamento e duração dos blocos', color: '#3b82f6' },
+    gateway:  { label: 'Taxas de Gateway',       icon: Landmark, desc: 'Taxas de processamento dos meios de pagamento (Stripe e Cora)', color: '#ef4444' },
+    studio:   { label: 'Estúdio & Branding',     icon: Building2, desc: 'Nome, logo, e-mail e imagens do estúdio', color: '#f97316' },
 };
 
 /**
@@ -134,7 +136,7 @@ export default function SettingsBusinessConfigSection({ groups, title, subtitle,
                                         background: `${groupMeta.color}15`, display: 'inline-flex',
                                         alignItems: 'center', justifyContent: 'center', fontSize: '0.9375rem',
                                     }}>
-                                        {groupMeta.emoji}
+                                        {(() => { const GI = groupMeta.icon; return <GI size={15} aria-hidden="true" style={{ color: groupMeta.color }} />; })()}
                                     </span>
                                     {groupMeta.label}
                                 </h3>
@@ -186,7 +188,7 @@ export default function SettingsBusinessConfigSection({ groups, title, subtitle,
 
                 {/* Info banner */}
                 <div className="admin-info-banner">
-                    <span className="admin-info-banner__icon" aria-hidden="true">ℹ️</span>
+                    <Info size={16} className="admin-info-banner__icon" aria-hidden="true" />
                     <span>Alterações nestas regras afetam imediatamente a criação de <strong>novos contratos</strong> e agendamentos. Contratos já existentes não são retroativamente recalculados.</span>
                 </div>
             </div>

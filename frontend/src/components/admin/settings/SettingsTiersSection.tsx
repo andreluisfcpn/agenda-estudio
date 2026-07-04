@@ -4,11 +4,13 @@ import { pricingApi, PricingConfig, BusinessConfigItem } from '../../../api/clie
 import LoadingSpinner from '../../ui/LoadingSpinner';
 import SettingsSaveBar, { SettingsMessages } from './SettingsSaveBar';
 import { formatBRL } from '../../../utils/format';
+import { TIER_META, getMeta } from '../../../constants/adminMeta';
+import { Package } from 'lucide-react';
 
-const TIER_INFO: Record<string, { emoji: string; desc: string; color: string; bg: string }> = {
-    COMERCIAL: { emoji: '🏢', desc: 'Segunda a Sexta, 10h–15:30h', color: '#10b981', bg: 'rgba(16,185,129,0.10)' },
-    AUDIENCIA: { emoji: '🎤', desc: 'Segunda a Sexta, 18h–20:30h', color: '#2dd4bf', bg: 'rgba(45,212,191,0.10)' },
-    SABADO:    { emoji: '🌟', desc: 'Sábado, qualquer horário',     color: '#fbbf24', bg: 'rgba(245,158,11,0.10)' },
+const TIER_INFO: Record<string, { desc: string; color: string; bg: string }> = {
+    COMERCIAL: { desc: 'Segunda a Sexta, 10h–15:30h', color: '#10b981', bg: 'rgba(16,185,129,0.10)' },
+    AUDIENCIA: { desc: 'Segunda a Sexta, 18h–20:30h', color: '#2dd4bf', bg: 'rgba(45,212,191,0.10)' },
+    SABADO:    { desc: 'Sábado, qualquer horário',     color: '#fbbf24', bg: 'rgba(245,158,11,0.10)' },
 };
 
 /**
@@ -83,7 +85,7 @@ export default function SettingsTiersSection() {
                                     background: info?.bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
                                     fontSize: '1.5rem', border: `1px solid ${info?.color}22`,
                                 }}>
-                                    {info?.emoji}
+                                    {(() => { const TI = getMeta(TIER_META, p.tier).icon; return <TI size={24} strokeWidth={1.8} style={{ color: info?.color }} aria-hidden="true" />; })()}
                                 </div>
                                 <div>
                                     <div style={{ fontWeight: 700, fontSize: '1.0625rem' }}>{p.label || p.tier}</div>
@@ -120,11 +122,11 @@ export default function SettingsTiersSection() {
                             }}>
                                 <div style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>Preços com Desconto</div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem', marginBottom: '6px' }}>
-                                    <span style={{ color: 'var(--text-secondary)' }}>📦 {getCfg('episodes_3months') || 12} ep / 3 meses ({getCfg('discount_3months') || 30}%)</span>
+                                    <span style={{ color: 'var(--text-secondary)' }}><Package size={12} aria-hidden="true" style={{ verticalAlign: '-1px' }} /> {getCfg('episodes_3months') || 12} ep / 3 meses ({getCfg('discount_3months') || 30}%)</span>
                                     <span style={{ fontWeight: 700, color: info?.color }}>{formatBRL(Math.round(p.price * (1 - ((getCfg('discount_3months') || 30) / 100))))}</span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
-                                    <span style={{ color: 'var(--text-secondary)' }}>📦 {getCfg('episodes_6months') || 24} ep / 6 meses ({getCfg('discount_6months') || 40}%)</span>
+                                    <span style={{ color: 'var(--text-secondary)' }}><Package size={12} aria-hidden="true" style={{ verticalAlign: '-1px' }} /> {getCfg('episodes_6months') || 24} ep / 6 meses ({getCfg('discount_6months') || 40}%)</span>
                                     <span style={{ fontWeight: 700, color: info?.color }}>{formatBRL(Math.round(p.price * (1 - ((getCfg('discount_6months') || 40) / 100))))}</span>
                                 </div>
                             </div>

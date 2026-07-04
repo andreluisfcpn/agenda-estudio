@@ -660,6 +660,9 @@ button.sf-card:hover { border-color: var(--border-hover); }
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .sf-schedule-help {
   font-size: 0.75rem;

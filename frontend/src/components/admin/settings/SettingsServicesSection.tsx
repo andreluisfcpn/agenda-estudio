@@ -5,7 +5,8 @@ import LoadingSpinner from '../../ui/LoadingSpinner';
 import { SettingsMessages } from './SettingsSaveBar';
 import SegmentedControl from '../../ui/fields/SegmentedControl';
 import StepperField from '../../ui/fields/StepperField';
-import { Plus, Trash2, Save } from 'lucide-react';
+import { Plus, Trash2, Save, Check, CalendarDays, Mic } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { renderServiceIcon, SERVICE_ICON_OPTIONS } from '../../../utils/serviceIcons';
 
 type EditableAddon = AddOnConfig & { _isNew?: boolean };
@@ -179,7 +180,7 @@ function AddonCard({ initial, siblingKeys, onSaved, onDeleted }: {
                                                 color: on ? 'var(--accent-primary)' : 'var(--text-muted)',
                                                 border: `1px solid ${on ? 'var(--accent-primary)' : 'var(--border-color)'}`,
                                             }}>
-                                            {on ? '✓ ' : ''}{lbl}
+                                            {on ? <><Check size={12} aria-hidden="true" style={{ verticalAlign: '-1px' }} /> </> : ''}{lbl}
                                         </button>
                                     );
                                 })}
@@ -270,10 +271,10 @@ export default function SettingsServicesSection() {
     const perEpisode = addons.filter(a => !a.monthly);
     const monthly = addons.filter(a => a.monthly);
 
-    const renderGroup = (title: string, desc: string, icon: string, group: EditableAddon[]) => (
+    const renderGroup = (title: string, desc: string, Icon: LucideIcon, group: EditableAddon[]) => (
         <div style={{ marginBottom: 32 }}>
             <div style={{ marginBottom: 16, paddingBottom: 12, borderBottom: '1px solid var(--border-color)' }}>
-                <h2 style={{ fontSize: '1.1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}><span>{icon}</span> {title}</h2>
+                <h2 style={{ fontSize: '1.1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}><Icon size={18} aria-hidden="true" /> {title}</h2>
                 <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>{desc}</p>
             </div>
             {group.length === 0 ? (
@@ -301,8 +302,8 @@ export default function SettingsServicesSection() {
 
             <SettingsMessages error={error} success={success} />
 
-            {renderGroup('Serviços Mensais', 'Assinaturas contratáveis pelo cliente (ex.: Gestão de Redes Sociais).', '📅', monthly)}
-            {renderGroup('Serviços por Episódio', 'Adicionais que acompanham cada gravação.', '🎙️', perEpisode)}
+            {renderGroup('Serviços Mensais', 'Assinaturas contratáveis pelo cliente (ex.: Gestão de Redes Sociais).', CalendarDays, monthly)}
+            {renderGroup('Serviços por Episódio', 'Adicionais que acompanham cada gravação.', Mic, perEpisode)}
         </div>
     );
 }

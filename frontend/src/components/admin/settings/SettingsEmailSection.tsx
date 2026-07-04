@@ -4,7 +4,7 @@ import { pricingApi } from '../../../api/client';
 import LoadingSpinner from '../../ui/LoadingSpinner';
 import SettingsSaveBar, { SettingsMessages } from './SettingsSaveBar';
 import ToggleField from '../../ui/fields/ToggleField';
-import { Mail, Send, Eye, EyeOff } from 'lucide-react';
+import { Mail, Send, Eye, EyeOff, FileText, Lock } from 'lucide-react';
 
 // All editable keys in the `email` config group.
 const EMAIL_KEYS = [
@@ -207,7 +207,7 @@ export default function SettingsEmailSection() {
                 <div style={cardStyle}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 8, flexWrap: 'wrap' }}>
                         <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
-                            ✉️ Template do código
+                            <FileText size={16} aria-hidden="true" /> Template do código
                         </h3>
                         <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowPreview(p => !p)} style={{ gap: 6 }}>
                             <Eye size={14} /> {showPreview ? 'Ocultar prévia' : 'Pré-visualizar'}
@@ -266,7 +266,7 @@ export default function SettingsEmailSection() {
                     background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.15)',
                     color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 8,
                 }}>
-                    <span style={{ fontSize: '1rem' }}>🔒</span>
+                    <Lock size={16} aria-hidden="true" style={{ flexShrink: 0 }} />
                     As senhas/chaves são guardadas criptografadas e nunca aparecem por completo aqui nem na configuração pública.
                 </div>
             </div>

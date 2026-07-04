@@ -1,4 +1,4 @@
-import { Save, Loader2 } from 'lucide-react';
+import { Save, Loader2, AlertTriangle } from 'lucide-react';
 
 interface SettingsSaveBarProps {
     saving: boolean;
@@ -57,8 +57,8 @@ export function SettingsMessages({ error, success }: SettingsMessagesProps) {
                 <div style={{
                     padding: '12px 16px', marginBottom: '16px', borderRadius: '12px',
                     background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
-                    color: '#ef4444', fontSize: '0.8125rem', fontWeight: 600
-                }}>⚠️ {error}</div>
+                    color: '#ef4444', fontSize: '0.8125rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px'
+                }}><AlertTriangle size={14} aria-hidden="true" style={{ flexShrink: 0 }} /> {error}</div>
             )}
             {success && (
                 <div style={{

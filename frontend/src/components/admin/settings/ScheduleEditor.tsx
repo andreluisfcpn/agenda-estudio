@@ -3,6 +3,7 @@ import WeekdayToggles from '../../ui/fields/WeekdayToggles';
 import TimeSlotListField from '../../ui/fields/TimeSlotListField';
 import TimeField from '../../ui/fields/TimeField';
 import StepperField from '../../ui/fields/StepperField';
+import { CalendarDays, Clock, AlarmClock, Settings2 } from 'lucide-react';
 
 interface ScheduleEditorProps {
     items: BusinessConfigItem[];
@@ -48,7 +49,7 @@ export default function ScheduleEditor({ items, onChange }: ScheduleEditorProps)
             {/* ── Dias ── */}
             {dayItem && (
                 <div className="sf-schedule-block">
-                    <div className="sf-schedule-block-title">📅 Dias de funcionamento</div>
+                    <div className="sf-schedule-block-title"><CalendarDays size={13} aria-hidden="true" /> Dias de funcionamento</div>
                     <WeekdayToggles
                         value={dayItem.value}
                         onChange={v => onChange(dayItem.key, v)}
@@ -60,7 +61,7 @@ export default function ScheduleEditor({ items, onChange }: ScheduleEditorProps)
             {/* ── Horários de bloco ── */}
             {slotKeys.length > 0 && (
                 <div className="sf-schedule-block">
-                    <div className="sf-schedule-block-title">🕐 Horários de início (HH:MM)</div>
+                    <div className="sf-schedule-block-title"><Clock size={13} aria-hidden="true" /> Horários de início (HH:MM)</div>
                     {slotKeys.map(k => {
                         const it = byKey[k]!;
                         return (
@@ -80,7 +81,7 @@ export default function ScheduleEditor({ items, onChange }: ScheduleEditorProps)
             {/* ── Fechamento + duração ── */}
             {(closeItem || durationItem) && (
                 <div className="sf-schedule-block">
-                    <div className="sf-schedule-block-title">⏰ Fechamento & duração</div>
+                    <div className="sf-schedule-block-title"><AlarmClock size={13} aria-hidden="true" /> Fechamento & duração</div>
                     <div className="admin-grid-2">
                         {closeItem && (
                             <div className="form-group" style={{ marginBottom: 0 }}>
@@ -111,7 +112,7 @@ export default function ScheduleEditor({ items, onChange }: ScheduleEditorProps)
             {/* ── Outros numéricos (mantém visíveis chaves divergentes do seed) ── */}
             {fallbackNumeric.length > 0 && (
                 <div className="sf-schedule-block">
-                    <div className="sf-schedule-block-title">⚙️ Outras regras</div>
+                    <div className="sf-schedule-block-title"><Settings2 size={13} aria-hidden="true" /> Outras regras</div>
                     <div className="admin-grid-2">
                         {fallbackNumeric.map(it => {
                             const suffix = it.key.includes('minutes') ? 'min'

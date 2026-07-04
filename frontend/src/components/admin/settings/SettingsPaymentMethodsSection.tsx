@@ -8,6 +8,7 @@ import SegmentedControl from '../../ui/fields/SegmentedControl';
 import ColorField from '../../ui/fields/ColorField';
 import EmojiField from '../../ui/fields/EmojiField';
 import StepperField from '../../ui/fields/StepperField';
+import { CreditCard, Check } from 'lucide-react';
 
 /**
  * Self-contained payment-methods editor. Reuses the payment-method cards from
@@ -75,7 +76,7 @@ export default function SettingsPaymentMethodsSection() {
                 background: 'rgba(45,212,191,0.06)', border: '1px solid rgba(45,212,191,0.15)',
                 color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '8px',
             }}>
-                <span style={{ fontSize: '1rem' }}>💳</span>
+                <CreditCard size={16} aria-hidden="true" style={{ flexShrink: 0 }} />
                 Gerencie os métodos de pagamento disponíveis em todo o sistema. Desativar um método o remove de todos os wizards e modais.
             </div>
 
@@ -136,7 +137,7 @@ export default function SettingsPaymentMethodsSection() {
                         </div>
 
                         {/* Fields */}
-                        <div style={{ display: 'grid', gap: '12px', gridTemplateColumns: '1fr 1fr' }}>
+                        <div className="admin-grid-2" style={{ gap: '12px' }}>
                             <div className="form-group" style={{ marginBottom: 0 }}>
                                 <label className="form-label">Nome Completo</label>
                                 <input className="form-input" value={pm.label}
@@ -181,7 +182,7 @@ export default function SettingsPaymentMethodsSection() {
                                                 color: on ? pm.color : 'var(--text-muted)',
                                                 border: `1px solid ${on ? pm.color : 'var(--border-color)'}`,
                                             }}>
-                                            {on ? '✓ ' : ''}{lbl}
+                                            {on ? <><Check size={12} aria-hidden="true" style={{ verticalAlign: '-1px' }} /> </> : ''}{lbl}
                                         </button>
                                     );
                                 })}
