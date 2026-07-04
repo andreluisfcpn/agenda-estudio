@@ -279,17 +279,12 @@ export default function MyContractsPage() {
             <div className="client-hero client-hero--default animate-card-enter">
                 <HeroAmbient variant="contratos" />
                 <div className="client-hero__header" style={{ marginBottom: '16px' }}>
-                    <div className="client-hero__icon-wrapper" style={{
-                        background: 'linear-gradient(135deg, rgba(17,129,155,0.22), rgba(17,129,155,0.06))',
-                        borderColor: 'rgba(17,129,155,0.25)',
-                        boxShadow: '0 0 20px rgba(17,129,155,0.15)',
-                        color: 'var(--accent-primary)',
-                    }}>
+                    <div className="client-hero__icon-wrapper client-hero__icon-wrapper--teal">
                         <Pencil size={22} />
                     </div>
                     <div>
-                        <h2 className="client-hero__greeting" style={{ margin: 0 }}>Meus Contratos</h2>
-                        <p className="client-hero__message" style={{ margin: '4px 0 0 0' }}>
+                        <h2 className="client-hero__greeting">Meus Contratos</h2>
+                        <p className="client-hero__message">
                             {activeContracts.length > 0
                                 ? `${activeContracts.length} ativo(s) · Acompanhe consumo e regras`
                                 : 'Acompanhe seus planos, consumo e regras'}

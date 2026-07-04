@@ -62,7 +62,9 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
     const [appliedCoupon, setAppliedCoupon] = useState<CouponValidation | null>(null);
 
     useEffect(() => {
-        pricingApi.getAddons().then(res => setAddons(res.addons)).catch(console.error);
+        let alive = true;
+        pricingApi.getAddons().then(res => { if (alive) setAddons(res.addons); }).catch(console.error);
+        return () => { alive = false; };
     }, []);
 
     // Submission
@@ -147,11 +149,13 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
 
     useEffect(() => {
         if (step === 2 && firstDate && tierConfig) {
+            let alive = true;
             setLoadingSlots(true);
             bookingsApi.getAvailability(firstDate)
-                .then(res => { setAvailableSlots(res.slots); })
+                .then(res => { if (alive) setAvailableSlots(res.slots); })
                 .catch(err => console.error(err))
-                .finally(() => setLoadingSlots(false));
+                .finally(() => { if (alive) setLoadingSlots(false); });
+            return () => { alive = false; };
         }
     }, [step, firstDate, tierConfig]);
 
