@@ -1476,3 +1476,7 @@ tr:hover td {
   font-size: 0.9rem;
   line-height: 1.5;
 }
+
+/* Slot no passado (grade compartilhada admin+cliente): sem glow de hover —
+   parecia clicável, mas a célula só mostra o aviso de "Encerrado". */
+.calendar-cell.calendar-cell--past:hover { background: transparent; }

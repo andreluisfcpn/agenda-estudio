@@ -18,7 +18,22 @@ import { studioSlotDate, todayStrSaoPaulo } from '../utils/time';
 import { CalendarDays, Mic, Clock, List } from 'lucide-react';
 import CalendarMobileView from '../components/calendar/CalendarMobileView';
 import CalendarDesktopView from '../components/calendar/CalendarDesktopView';
-import { TIER_COLORS, getWeekDates, formatDate } from '../components/calendar/calendarShared';
+import { TIER_COLORS, getWeekDates, formatDate, BookingLookup } from '../components/calendar/calendarShared';
+
+/**
+ * Data/dia iniciais da agenda. No domingo a grade Seg–Sáb da semana corrente
+ * já passou INTEIRA — para o cliente, abrir nela é uma parede de "Encerrado";
+ * começamos na segunda seguinte. Admin consulta o passado, mantém a corrente.
+ */
+function initialCalendarStart(isAdmin: boolean): { base: Date; dayIndex: number } {
+    const now = new Date();
+    if (!isAdmin && now.getDay() === 0) {
+        const d = new Date(now);
+        d.setDate(d.getDate() + 1);
+        return { base: d, dayIndex: 0 };
+    }
+    return { base: now, dayIndex: now.getDay() === 0 ? 5 : now.getDay() - 1 };
+}
 
 export default function CalendarPage() {
     const { user } = useAuth();
@@ -30,13 +45,11 @@ export default function CalendarPage() {
     // Minimum advance notice for clients (admin books any time). Slots closer than this
     // are greyed out to match the backend rule.
     const minAdvanceHours = getConfigNum('booking_min_advance_hours') || 12;
-    const [currentWeek, setCurrentWeek] = useState(new Date());
-    const [weekDates, setWeekDates] = useState<Date[]>(getWeekDates(new Date()));
+    const initialStart = useRef(initialCalendarStart(isAdmin)).current;
+    const [currentWeek, setCurrentWeek] = useState(initialStart.base);
+    const [weekDates, setWeekDates] = useState<Date[]>(getWeekDates(initialStart.base));
 
-    const [selectedDayIndex, setSelectedDayIndex] = useState(() => {
-        const today = new Date().getDay();
-        return today === 0 ? 5 : today - 1; // Mon=0 ... Sat=5
-    });
+    const [selectedDayIndex, setSelectedDayIndex] = useState(initialStart.dayIndex); // Mon=0 ... Sat=5
     const [slotsMap, setSlotsMap] = useState<Record<string, Slot[]>>({});
     const [bookingsMap, setBookingsMap] = useState<Record<string, BookingWithUser[]>>({});
     const [myBookingsMap, setMyBookingsMap] = useState<Record<string, MyBookingSlot[]>>({});
@@ -46,10 +59,8 @@ export default function CalendarPage() {
     const [slotsPhase, setSlotsPhase] = useState<'visible' | 'out' | 'out_done' | 'in'>('visible');
     const [showPastSlotAlert, setShowPastSlotAlert] = useState(false);
     const [displayDateStr, setDisplayDateStr] = useState(() => {
-        const initialDates = getWeekDates(new Date());
-        const todayIdx = new Date().getDay();
-        const initIdx = todayIdx === 0 ? 5 : todayIdx - 1;
-        const d = initialDates[initIdx] || initialDates[0];
+        const initialDates = getWeekDates(initialStart.base);
+        const d = initialDates[initialStart.dayIndex] || initialDates[0];
         return d ? formatDate(d) : '';
     });
     const slotsFadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -195,35 +206,48 @@ export default function CalendarPage() {
 
     const today = formatDate(new Date());
 
-    const buildBookingLookup = (date: string): Record<string, { label: string; tier: string; isMine: boolean; myBooking?: MyBookingSlot }> => {
-        const map: Record<string, { label: string; tier: string; isMine: boolean; myBooking?: MyBookingSlot }> = {};
-        const myBookings = myBookingsMap[date] || [];
-        for (const b of myBookings) {
-            if (b.status === 'RESERVED' && b.holdExpiresAt && new Date(b.holdExpiresAt).getTime() <= Date.now()) {
-                continue;
-            }
-            map[b.startTime] = { label: `${user?.name?.split(' ')[0] || 'Eu'}`, tier: b.tierApplied.toLowerCase(), isMine: true, myBooking: b };
-        }
-        if (isAdmin && bookingsMap[date]) {
-            for (const b of bookingsMap[date]) {
+    // Lookups por data memoizados: antes eram reconstruídos POR CÉLULA a cada
+    // render (30×/render na grade desktop). Holds expirados voltam a ser
+    // filtrados quando o onExpire dispara loadWeekData (muda os deps).
+    const bookingLookups = useMemo(() => {
+        const lookups: Record<string, BookingLookup> = {};
+        const dates = new Set([...Object.keys(myBookingsMap), ...Object.keys(bookingsMap)]);
+        for (const date of dates) {
+            const map: BookingLookup = {};
+            const myBookings = myBookingsMap[date] || [];
+            for (const b of myBookings) {
                 if (b.status === 'RESERVED' && b.holdExpiresAt && new Date(b.holdExpiresAt).getTime() <= Date.now()) {
                     continue;
                 }
-                if (!map[b.startTime]) map[b.startTime] = { label: b.user.name, tier: b.tierApplied.toLowerCase(), isMine: false };
+                map[b.startTime] = { label: `${user?.name?.split(' ')[0] || 'Eu'}`, tier: b.tierApplied.toLowerCase(), isMine: true, myBooking: b };
             }
+            if (isAdmin && bookingsMap[date]) {
+                for (const b of bookingsMap[date]) {
+                    if (b.status === 'RESERVED' && b.holdExpiresAt && new Date(b.holdExpiresAt).getTime() <= Date.now()) {
+                        continue;
+                    }
+                    if (!map[b.startTime]) map[b.startTime] = { label: b.user.name, tier: b.tierApplied.toLowerCase(), isMine: false };
+                }
+            }
+            lookups[date] = map;
         }
-        return map;
-    };
+        return lookups;
+    }, [myBookingsMap, bookingsMap, isAdmin, user?.name]);
 
-    const handleSlotClick = (date: string, time: string, slot: Slot, info?: { isMine: boolean; myBooking?: MyBookingSlot }) => {
+    const buildBookingLookup = useCallback(
+        (date: string): BookingLookup => bookingLookups[date] || {},
+        [bookingLookups]
+    );
+
+    const openDetailModal = useCallback((b: MyBookingSlot, date: string) => {
+        setDetailBooking({ booking: b, date });
+    }, []);
+
+    const handleSlotClick = useCallback((date: string, time: string, slot: Slot, info?: { isMine: boolean; myBooking?: MyBookingSlot }) => {
         if (info?.isMine && info.myBooking) { openDetailModal(info.myBooking, date); return; }
         if (!slot.available || !slot.tier || !slot.price) return;
         setSelectedSlot({ date, time, tier: slot.tier, price: slot.price });
-    };
-
-    const openDetailModal = (b: MyBookingSlot, date: string) => {
-        setDetailBooking({ booking: b, date });
-    };
+    }, [openDetailModal]);
 
     // Compute weekly summary
     const weekSummary = (() => {
@@ -282,6 +306,11 @@ export default function CalendarPage() {
             slotsFadeTimer.current = setTimeout(() => setSlotsPhase('visible'), 260);
         }
     }, [slotsPhase, isFetchingWeek, selectedDateStr]);
+
+    // Cleanup do timer de crossfade no unmount (setState em componente morto).
+    useEffect(() => () => {
+        if (slotsFadeTimer.current) clearTimeout(slotsFadeTimer.current);
+    }, []);
 
     // Fetch all user bookings on mount so the Agendados carrousel has the complete list
     useEffect(() => {

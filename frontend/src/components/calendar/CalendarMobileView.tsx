@@ -182,7 +182,7 @@ export default function CalendarMobileView({
                             const isSelected = i === selectedDayIndex;
                             return (
                                 <button
-                                    key={i}
+                                    key={formatDate(d)}
                                     className={`calendar-day-pill ${isSelected ? 'calendar-day-pill--selected' : ''} ${isToday ? 'calendar-day-pill--today' : ''}`}
                                     onClick={() => onSelectDay(i)}
                                 >
@@ -261,20 +261,21 @@ export default function CalendarMobileView({
 
                         if (hasActiveHold) {
                             statusLabel = 'Aguardando Pagamento';
-                            statusColor = '#f59e0b';
+                            statusColor = 'var(--warning)';
                             cardBg = 'rgba(245,158,11,0.06)';
-                            borderColor = '#f59e0b';
+                            borderColor = 'var(--warning)';
                             clickable = true;
                         } else if (info) {
                             statusLabel = info.isMine ? 'Meu Agendamento' : 'Ocupado';
-                            statusColor = info.isMine ? '#10b981' : 'var(--text-muted)';
+                            statusColor = info.isMine ? 'var(--success)' : 'var(--text-muted)';
                             cardBg = info.isMine ? 'rgba(16,185,129,0.06)' : 'var(--bg-secondary)';
-                            borderColor = info.isMine ? '#10b981' : 'var(--border-subtle)';
+                            borderColor = info.isMine ? 'var(--success)' : 'var(--border-subtle)';
                             clickable = info.isMine;
                         } else if (isPast || !isAvailable) {
                             // Skip "Fora da Grade" rows — no slot data for this timeslot
                             if (!slot?.tier) return null;
-                            statusLabel = isPast ? 'Indisponível' : 'Bloqueado';
+                            // "Encerrado" = horário já passou; "Bloqueado" = indisponibilizado pelo estúdio.
+                            statusLabel = isPast ? 'Encerrado' : 'Bloqueado';
                             statusColor = 'var(--text-muted)';
                             cardBg = 'var(--bg-secondary)';
                         } else {

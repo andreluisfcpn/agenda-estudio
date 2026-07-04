@@ -61,7 +61,7 @@ export default function CalendarDesktopView({
                 <div className="calendar-grid calendar-grid--scroll">
                     <div className="calendar-day-header calendar-day-header--sticky"></div>
                     {weekDates.map((d, i) => (
-                        <div key={i} className={`calendar-day-header calendar-day-header--sticky ${formatDate(d) === today ? 'today' : ''}`}>
+                        <div key={formatDate(d)} className={`calendar-day-header calendar-day-header--sticky ${formatDate(d) === today ? 'today' : ''}`}>
                             <span className="calendar-day-header__dow">{DAYS[i]}</span>
                             <br />
                             <span className="calendar-day-header__num">{d.getDate()}</span>
@@ -151,7 +151,7 @@ export default function CalendarDesktopView({
                                             }
                                             if (slot && isAvailable) onSlotClick(dateStr, row.time, slot);
                                         }}
-                                        title={!slot?.tier ? 'Fora da Grade' : isPast ? 'Indisponível' : `${tierMeta?.label || ''} — ${row.label}`}
+                                        title={!slot?.tier ? 'Fora da Grade' : isPast ? 'Encerrado — horário já passou' : `${tierMeta?.label || ''} — ${row.label}`}
                                         style={{
                                             height: row.height, padding: '4px',
                                             background: (isAvailable && !isPast && tierMeta)
@@ -167,7 +167,7 @@ export default function CalendarDesktopView({
                                         {(slotNotAvailable || isPast) && !info ? (
                                             isPast ? (
                                                 <div className="calendar-slot calendar-slot--fill calendar-slot--off">
-                                                    Indisponível
+                                                    Encerrado
                                                 </div>
                                             ) : (
                                                 <div className={`calendar-slot calendar-slot--fill tier-${slot?.tier?.toLowerCase() || 'blocked'}`}>

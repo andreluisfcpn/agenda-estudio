@@ -1,28 +1,16 @@
-import { useState, useEffect } from 'react';
+import { Clock } from 'lucide-react';
+import { useCountdown } from '../../hooks/useCountdown';
 
 /** Tiny countdown label for calendar cells with an active payment hold */
 export default function HoldCountdownCell({ expiresAt, label, tier, rowLabel, onExpire, onClick }: {
     expiresAt: string; label: string; tier: string; rowLabel: string;
     onExpire: () => void; onClick: () => void;
 }) {
-    const [remaining, setRemaining] = useState(() => {
-        const diff = new Date(expiresAt).getTime() - Date.now();
-        return Math.max(0, Math.floor(diff / 1000));
-    });
-
-    useEffect(() => {
-        const timer = setInterval(() => {
-            const diff = new Date(expiresAt).getTime() - Date.now();
-            const secs = Math.max(0, Math.floor(diff / 1000));
-            setRemaining(secs);
-            if (secs <= 0) { clearInterval(timer); onExpire(); }
-        }, 1000);
-        return () => clearInterval(timer);
-    }, [expiresAt, onExpire]);
+    const remaining = useCountdown(expiresAt, onExpire) ?? 0;
 
     const mins = Math.floor(remaining / 60);
     const secs = remaining % 60;
-    const color = remaining <= 60 ? '#ef4444' : remaining <= 180 ? '#f59e0b' : '#d97706';
+    const color = remaining <= 60 ? 'var(--danger)' : remaining <= 180 ? 'var(--warning)' : 'var(--warning-strong)';
 
     return (
         <div
@@ -41,14 +29,13 @@ export default function HoldCountdownCell({ expiresAt, label, tier, rowLabel, on
                 <div style={{ fontSize: '0.65rem', opacity: 0.85 }}>{label}</div>
                 <div style={{
                     fontSize: '0.875rem', fontWeight: 800, fontVariantNumeric: 'tabular-nums', color,
+                    display: 'flex', alignItems: 'center', gap: '3px',
                 }}>
-                    ⏱ {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
+                    <Clock size={12} aria-hidden="true" />
+                    {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
                 </div>
                 <div style={{ fontSize: '0.55rem', fontWeight: 600, color, opacity: 0.9 }}>Aguardando Pgto</div>
             </div>
         </div>
     );
 }
-
-// Nota (R4 L2): movido verbatim de CalendarPage.tsx — cores/emoji e useCountdown
-// entram no loop de melhorias (L3), não aqui.
