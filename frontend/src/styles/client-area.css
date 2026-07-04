@@ -856,3 +856,19 @@
   box-shadow: 0 0 20px rgba(17, 129, 155, 0.12);
   color: var(--client-accent-cyan);
 }
+
+/* Dentro do header com ícone, título/mensagem usam margens justas —
+   era o mesmo style={{}} repetido em TODAS as 7 páginas do cliente. */
+.client-hero__header .client-hero__greeting { margin: 0; }
+.client-hero__header .client-hero__message { margin: 4px 0 0; }
+
+/* Listas empilhadas das seções do dashboard (antes: style inline repetido) */
+.client-invoice-list { display: grid; gap: 12px; }
+.client-history-list { display: grid; gap: 10px; }
+
+/* CTA dentro de empty state (alvo de toque >=48px) */
+.client-empty__cta {
+  margin-top: 14px;
+  min-height: 48px;
+  padding: 12px 24px;
+}

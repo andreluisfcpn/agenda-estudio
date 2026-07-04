@@ -12,6 +12,7 @@ import NotificationBanner from '../NotificationBanner';
 import { DashboardSkeleton } from '../ui/SkeletonLoader';
 import { formatBRL, daysUntil, DAY_NAMES } from '../../utils/format';
 import { computeFlexState } from '../../utils/flexCredits';
+import { isContractCurrent } from '../../utils/contractStatus';
 import {
     Wallet, CalendarDays, Clapperboard, FileText,
     Package, AlertTriangle, ArrowRight,
@@ -124,7 +125,9 @@ export default function ClientDashboard() {
             setStats({
                 bookings: activeBookings.length,
                 completedBookings: completedBookings.length,
-                contracts: contractsRes.contracts.length,
+                // Mesma regra da aba "Ativos" de MyContractsPage — contar todos os
+                // contratos fazia o KPI mostrar "8" para um cliente com 0 ativos.
+                contracts: contractsRes.contracts.filter(isContractCurrent).length,
                 pausedContracts: contractsRes.contracts.filter(c => c.status === 'PAUSED').length,
                 openPaymentsValue: totalDebt,
                 overdueCount,
@@ -138,16 +141,21 @@ export default function ClientDashboard() {
     // Perform the bounce scroll hint on load when bookings exist
     useEffect(() => {
         if (!loading && upcomingBookings.length > 0 && scrollRef.current) {
+            // timer2 fica no escopo do EFFECT (o cleanup retornado de dentro do
+            // setTimeout era código morto — o timer aninhado vazava no unmount).
+            let timer2: number | undefined;
             const timer1 = setTimeout(() => {
                 if (scrollRef.current) scrollRef.current.scrollBy({ left: 40, behavior: 'smooth' });
-                const timer2 = setTimeout(() => {
+                timer2 = window.setTimeout(() => {
                     if (scrollRef.current) scrollRef.current.scrollBy({ left: -40, behavior: 'smooth' });
                 }, 400);
-                return () => clearTimeout(timer2);
             }, 1200);
-            return () => clearTimeout(timer1);
+            return () => { clearTimeout(timer1); if (timer2 !== undefined) clearTimeout(timer2); };
         }
     }, [loading, upcomingBookings.length]);
+
+    // Momentum do carrossel: cancela o requestAnimationFrame pendente no unmount.
+    useEffect(() => stopMomentum, []);
 
     // Pull-to-refresh handlers
     const handleTouchStart = useCallback((e: React.TouchEvent) => {
@@ -257,21 +265,14 @@ export default function ClientDashboard() {
             <div className={`${heroClass} animate-card-enter`}>
                 <HeroAmbient variant="inicio" />
                 <div className="client-hero__header" style={{ marginBottom: '16px' }}>
-                    <div className="client-hero__icon-wrapper" style={{
-                        background: stats.overdueCount > 0
-                            ? 'linear-gradient(135deg, rgba(239,68,68,0.2), rgba(239,68,68,0.05))'
-                            : 'linear-gradient(135deg, rgba(16,185,129,0.2), rgba(16,185,129,0.05))',
-                        borderColor: stats.overdueCount > 0 ? 'rgba(239,68,68,0.25)' : 'rgba(16,185,129,0.25)',
-                        boxShadow: stats.overdueCount > 0 ? '0 0 20px rgba(239,68,68,0.12)' : '0 0 20px rgba(16,185,129,0.12)',
-                        color: stats.overdueCount > 0 ? '#ef4444' : '#10b981',
-                    }}>
+                    <div className={`client-hero__icon-wrapper ${stats.overdueCount > 0 ? 'client-hero__icon-wrapper--danger' : 'client-hero__icon-wrapper--success'}`}>
                         <Mic size={22} />
                     </div>
                     <div>
-                        <h2 className="client-hero__greeting" style={{ margin: 0 }}>
+                        <h2 className="client-hero__greeting">
                             {greeting}, {user?.name?.split(' ')[0]}
                         </h2>
-                        <p className="client-hero__message" style={{ margin: '4px 0 0 0' }}>
+                        <p className="client-hero__message">
                             {heroMessage}
                         </p>
                     </div>
@@ -310,14 +311,14 @@ export default function ClientDashboard() {
             <div className="client-stats-grid stagger-enter">
                 <StatCard icon={Wallet} label="Faturas Abertas" value={formatBRL(stats.openPaymentsValue)}
                     detail={stats.overdueCount > 0 ? `${stats.overdueCount} fatura(s) atrasada(s)` : stats.openPaymentsValue > 0 ? 'No prazo' : 'Tudo em dia'}
-                    accent={stats.overdueCount > 0 ? '#ef4444' : '#10b981'} index={0} onClick={() => navigate('/meus-pagamentos')} />
+                    accent={stats.overdueCount > 0 ? 'var(--danger)' : 'var(--success)'} index={0} onClick={() => navigate('/meus-pagamentos')} />
                 <StatCard icon={CalendarDays} label="Agendamentos Ativos" value={stats.bookings}
                     detail="próximas sessões" accent="var(--accent-primary)" index={1} onClick={() => navigate('/calendar')} />
                 <StatCard icon={Clapperboard} label="Gravações" value={stats.completedBookings}
-                    detail="sessões concluídas" accent="#2dd4bf" index={2} onClick={() => navigate('/my-bookings')} />
+                    detail="sessões concluídas" accent="var(--client-accent-teal)" index={2} onClick={() => navigate('/my-bookings')} />
                 <StatCard icon={FileText} label="Contratos" value={stats.contracts}
-                    detail={stats.pausedContracts > 0 ? `${stats.pausedContracts} pausado(s)` : 'Fixo e Flex'}
-                    accent="#f59e0b" index={3} onClick={() => navigate('/my-contracts')} />
+                    detail={stats.pausedContracts > 0 ? `${stats.pausedContracts} pausado(s)` : 'ativos'}
+                    accent="var(--warning)" index={3} onClick={() => navigate('/my-contracts')} />
             </div>
 
             {myContracts.filter(c => c.status === 'ACTIVE' && c.addonUsage && Object.keys(c.addonUsage).length > 0).map(c => (
@@ -358,7 +359,7 @@ export default function ClientDashboard() {
                         </span>
                         Faturas em Aberto
                     </h3>
-                    <div className="stagger-enter" style={{ display: 'grid', gap: '12px' }}>
+                    <div className="stagger-enter client-invoice-list">
                         {openPayments.map((p, i) => {
                             const isOverdue = new Date(p.dueDate) < new Date();
                             return (
@@ -398,8 +399,7 @@ export default function ClientDashboard() {
                     <div className="client-empty">
                         <CalendarDays size={32} className="client-empty__icon" />
                         <div className="client-empty__text">Nenhum agendamento futuro</div>
-                        <button className="btn btn-primary" onClick={() => navigate('/calendar')}
-                            style={{ marginTop: '14px', minHeight: '48px', padding: '12px 24px' }}>
+                        <button className="btn btn-primary client-empty__cta" onClick={() => navigate('/calendar')}>
                             Agendar Sessão
                         </button>
                     </div>
@@ -486,7 +486,7 @@ export default function ClientDashboard() {
                         <div className="client-empty__text">Nenhum histórico encontrado</div>
                     </div>
                 ) : (
-                    <div className="stagger-enter" style={{ display: 'grid', gap: '10px' }}>
+                    <div className="stagger-enter client-history-list">
                         {recentBookings.slice(0, 5).map((b, i) => {
                             const bookingDate = new Date(b.date);
                             const dayLabel = DAY_NAMES[bookingDate.getUTCDay()];
