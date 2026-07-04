@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import HeroAmbient from '../components/client/HeroAmbient';
 import { bookingsApi, blockedSlotsApi, pricingApi, contractsApi, Slot, BookingWithUser, MyBookingSlot, PricingConfig, AddOnConfig, ContractWithStats } from '../api/client';
 import { useAuth } from '../context/AuthContext';
@@ -15,98 +15,10 @@ import AdminPageHeader from '../components/admin/AdminPageHeader';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { studioSlotDate, todayStrSaoPaulo } from '../utils/time';
-import { CalendarDays, ChevronLeft, ChevronRight, Mic, Clock, List } from 'lucide-react';
-
-const DAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-
-const TIER_COLORS: Record<string, { color: string; bg: string; label: string }> = {
-    comercial: { color: '#10b981', bg: 'rgba(16,185,129,0.10)', label: 'Comercial' },
-    audiencia: { color: '#2dd4bf', bg: 'rgba(45,212,191,0.10)', label: 'Audiência' },
-    sabado:    { color: '#fbbf24', bg: 'rgba(245,158,11,0.10)', label: 'Sábado' },
-};
-
-function getWeekDates(baseDate: Date): Date[] {
-    const dates: Date[] = [];
-    const d = new Date(baseDate);
-    const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-    d.setDate(diff);
-    for (let i = 0; i < 6; i++) {
-        dates.push(new Date(d));
-        d.setDate(d.getDate() + 1);
-    }
-    return dates;
-}
-
-function formatDate(d: Date): string {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-}
-function formatDateShort(d: Date): string { return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}`; }
-
-const GRID_ROWS = [
-    { id: 'S1', type: 'SLOT', time: '10:00', timeEnd: '12:00', label: '10:00 - 12:00', height: 80 },
-    { id: 'T1', type: 'TRANSITION', time: '12:00', timeEnd: '13:00', label: 'Intervalo para Almoço', height: 40 },
-    { id: 'S2', type: 'SLOT', time: '13:00', timeEnd: '15:00', label: '13:00 - 15:00', height: 80 },
-    { id: 'T2', type: 'TRANSITION', time: '15:00', timeEnd: '15:30', label: 'Higienização e Acomodação do próximo cliente', height: 30 },
-    { id: 'S3', type: 'SLOT', time: '15:30', timeEnd: '17:30', label: '15:30 - 17:30', height: 80 },
-    { id: 'T3', type: 'TRANSITION', time: '17:30', timeEnd: '18:00', label: 'Higienização', height: 30 },
-    { id: 'S4', type: 'SLOT', time: '18:00', timeEnd: '20:00', label: '18:00 - 20:00', height: 80 },
-    { id: 'T4', type: 'TRANSITION', time: '20:00', timeEnd: '20:30', label: 'Higienização', height: 30 },
-    { id: 'S5', type: 'SLOT', time: '20:30', timeEnd: '22:30', label: '20:30 - 22:30', height: 80 },
-];
-
-/** Tiny countdown label for calendar cells with an active payment hold */
-function HoldCountdownCell({ expiresAt, label, tier, rowLabel, onExpire, onClick }: {
-    expiresAt: string; label: string; tier: string; rowLabel: string;
-    onExpire: () => void; onClick: () => void;
-}) {
-    const [remaining, setRemaining] = useState(() => {
-        const diff = new Date(expiresAt).getTime() - Date.now();
-        return Math.max(0, Math.floor(diff / 1000));
-    });
-
-    useEffect(() => {
-        const timer = setInterval(() => {
-            const diff = new Date(expiresAt).getTime() - Date.now();
-            const secs = Math.max(0, Math.floor(diff / 1000));
-            setRemaining(secs);
-            if (secs <= 0) { clearInterval(timer); onExpire(); }
-        }, 1000);
-        return () => clearInterval(timer);
-    }, [expiresAt, onExpire]);
-
-    const mins = Math.floor(remaining / 60);
-    const secs = remaining % 60;
-    const color = remaining <= 60 ? '#ef4444' : remaining <= 180 ? '#f59e0b' : '#d97706';
-
-    return (
-        <div
-            className="calendar-cell occupied"
-            onClick={onClick}
-            style={{
-                height: 80, padding: '4px',
-                background: 'linear-gradient(135deg, rgba(217,119,6,0.18), rgba(245,158,11,0.10))',
-                border: `1px solid ${color}`,
-                cursor: 'pointer',
-                animation: remaining <= 120 ? 'pulse 2s infinite' : undefined,
-            }}
-        >
-            <div className={`calendar-slot tier-${tier}`}
-                style={{ height: '100%', fontWeight: 800, fontSize: '0.7rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: '2px' }}>
-                <div style={{ fontSize: '0.65rem', opacity: 0.85 }}>{label}</div>
-                <div style={{
-                    fontSize: '0.875rem', fontWeight: 800, fontVariantNumeric: 'tabular-nums', color,
-                }}>
-                    ⏱ {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
-                </div>
-                <div style={{ fontSize: '0.55rem', fontWeight: 600, color, opacity: 0.9 }}>Aguardando Pgto</div>
-            </div>
-        </div>
-    );
-}
+import { CalendarDays, Mic, Clock, List } from 'lucide-react';
+import CalendarMobileView from '../components/calendar/CalendarMobileView';
+import CalendarDesktopView from '../components/calendar/CalendarDesktopView';
+import { TIER_COLORS, getWeekDates, formatDate } from '../components/calendar/calendarShared';
 
 export default function CalendarPage() {
     const { user } = useAuth();
@@ -168,19 +80,6 @@ export default function CalendarPage() {
     const [contracts, setContracts] = useState<ContractWithStats[]>([]);
     const { showAlert, showToast } = useUI();
 
-    // ─── Pills carousel (3-panel: prev | current | next) ───
-    const pillsCarouselRef = useRef<HTMLDivElement>(null);
-    const pillsDragStartX = useRef(0);
-    const pillsDragDelta = useRef(0);
-    const pillsDragging = useRef(false);
-    const pillsTransitioning = useRef(false);
-    const pillsDragStartY = useRef(0);
-    const pillsIsHorizontal = useRef<boolean | null>(null);
-
-    const slotListRef = useRef<HTMLDivElement>(null);
-    const swipeTouchStartX = useRef(0);
-    const swipeTouchStartY = useRef(0);
-
     const prevWeekDates = useMemo(() => {
         const d = new Date(currentWeek);
         d.setDate(d.getDate() - 7);
@@ -192,81 +91,7 @@ export default function CalendarPage() {
         return getWeekDates(d);
     }, [currentWeek]);
 
-    const setPillsTransform = (px: number, withTransition = false) => {
-        const el = pillsCarouselRef.current;
-        if (!el) return;
-        el.style.transition = withTransition ? 'transform 0.35s cubic-bezier(0.22, 1, 0.36, 1)' : 'none';
-        el.style.transform = `translateX(calc(-33.333% + ${px}px))`;
-    };
-
-    const finishPillsSnap = (direction: number) => {
-        pillsTransitioning.current = true;
-        const el = pillsCarouselRef.current;
-        // Animate to target panel
-        if (direction === 0) {
-            setPillsTransform(0, true); // snap back
-        } else {
-            // direction 1 = next (slide left to -200%), direction -1 = prev (slide right to 0%)
-            if (el) {
-                el.style.transition = 'transform 0.35s cubic-bezier(0.22, 1, 0.36, 1)';
-                el.style.transform = direction > 0 ? 'translateX(-66.666%)' : 'translateX(0%)';
-            }
-        }
-        setTimeout(() => {
-            pillsTransitioning.current = false;
-            if (direction !== 0) {
-                navigateWeek(direction);
-                // Reset to center without animation
-                requestAnimationFrame(() => {
-                    if (el) {
-                        el.style.transition = 'none';
-                        el.style.transform = 'translateX(-33.333%)';
-                    }
-                });
-            }
-        }, 360);
-    };
-
-    const handlePillsDragStart = (clientX: number, clientY: number) => {
-        if (pillsTransitioning.current) return;
-        pillsDragging.current = true;
-        pillsDragStartX.current = clientX;
-        pillsDragStartY.current = clientY;
-        pillsDragDelta.current = 0;
-        pillsIsHorizontal.current = null;
-    };
-    const handlePillsDragMove = (clientX: number, clientY: number) => {
-        if (!pillsDragging.current) return;
-        const dx = clientX - pillsDragStartX.current;
-        const dy = clientY - pillsDragStartY.current;
-        // Lock direction on first significant move
-        if (pillsIsHorizontal.current === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
-            pillsIsHorizontal.current = Math.abs(dx) > Math.abs(dy);
-        }
-        if (pillsIsHorizontal.current === false) return; // vertical scroll, ignore
-        if (pillsIsHorizontal.current === true) {
-            // Prevent page scroll during horizontal drag
-            pillsDragDelta.current = dx;
-            setPillsTransform(dx);
-        }
-    };
-    const handlePillsDragEnd = () => {
-        if (!pillsDragging.current) return;
-        pillsDragging.current = false;
-        const dx = pillsDragDelta.current;
-        const THRESHOLD = 60;
-        if (dx < -THRESHOLD) {
-            finishPillsSnap(1); // next week
-        } else if (dx > THRESHOLD) {
-            finishPillsSnap(-1); // prev week
-        } else {
-            finishPillsSnap(0); // snap back
-        }
-        pillsDragDelta.current = 0;
-    };
-
     const bookingsSectionRef = useRef<HTMLDivElement>(null);
-    const calendarSectionRef = useRef<HTMLDivElement>(null);
 
 
     // Load addons and contracts once on mount so the detail modal has full context
@@ -314,16 +139,7 @@ export default function CalendarPage() {
         const dates = getWeekDates(currentWeek);
         setWeekDates(dates);
         loadWeekData(dates);
-        // Double-rAF ensures the carousel resets after React's DOM commit
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                const el = pillsCarouselRef.current;
-                if (el) {
-                    el.style.transition = 'none';
-                    el.style.transform = 'translateX(-33.333%)';
-                }
-            });
-        });
+        // (o reset do carrossel de pills vive na CalendarMobileView, que observa weekDates)
     }, [currentWeek, loadWeekData]);
 
     // Refetch calendar data when user returns to this tab (e.g. after paying)
@@ -640,361 +456,45 @@ export default function CalendarPage() {
                     // ─── AGENDAR TAB (Calendar Grid) ───
                     <div key="agendar" className="fade-in-view">
             {isMobile ? (
-                <div ref={calendarSectionRef} className="calendar-mobile">
-                    {/* Month/Year Header + Today Button */}
-                    <div className="calendar-mobile-month">
-                        <span className="calendar-mobile-month__text">{displayMonth}</span>
-                        <button className="calendar-mobile-today-btn" onClick={goToday}>
-                            Hoje
-                        </button>
-                    </div>
-
-                    {/* Day Picker Pills Carousel — drag to navigate weeks */}
-                    <div className="pills-carousel-viewport">
-                        <div
-                            key={weekDates[0]?.getTime()}
-                            ref={pillsCarouselRef}
-                            className="pills-carousel-track"
-                            style={{ transform: 'translateX(-33.333%)' }}
-                            onTouchStart={(e) => handlePillsDragStart(e.touches[0].clientX, e.touches[0].clientY)}
-                            onTouchMove={(e) => {
-                                handlePillsDragMove(e.touches[0].clientX, e.touches[0].clientY);
-                                if (pillsIsHorizontal.current === true) e.preventDefault();
-                            }}
-                            onTouchEnd={() => handlePillsDragEnd()}
-                            onMouseDown={(e) => { handlePillsDragStart(e.clientX, e.clientY); e.preventDefault(); }}
-                            onMouseMove={(e) => handlePillsDragMove(e.clientX, e.clientY)}
-                            onMouseUp={() => handlePillsDragEnd()}
-                            onMouseLeave={() => { if (pillsDragging.current) handlePillsDragEnd(); }}
-                        >
-                            {/* Previous Week */}
-                            <div className="pills-carousel-panel">
-                                {prevWeekDates.map((d, i) => (
-                                    <div key={`prev-${i}`} className="calendar-day-pill">
-                                        <span className="calendar-day-pill-name">{DAYS[i]}</span>
-                                        <span className="calendar-day-pill-number">{d.getDate()}</span>
-                                    </div>
-                                ))}
-                            </div>
-                            {/* Current Week */}
-                            <div className="pills-carousel-panel">
-                                {weekDates.map((d, i) => {
-                                    const isToday = formatDate(d) === today;
-                                    const isSelected = i === selectedDayIndex;
-                                    return (
-                                        <button
-                                            key={i}
-                                            className={`calendar-day-pill ${isSelected ? 'calendar-day-pill--selected' : ''} ${isToday ? 'calendar-day-pill--today' : ''}`}
-                                            onClick={() => setSelectedDayIndex(i)}
-                                        >
-                                            <span className="calendar-day-pill-name">{DAYS[i]}</span>
-                                            <span className="calendar-day-pill-number">{d.getDate()}</span>
-                                            {isToday && <span className="calendar-day-pill-dot" />}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                            {/* Next Week */}
-                            <div className="pills-carousel-panel">
-                                {nextWeekDates.map((d, i) => (
-                                    <div key={`next-${i}`} className="calendar-day-pill">
-                                        <span className="calendar-day-pill-name">{DAYS[i]}</span>
-                                        <span className="calendar-day-pill-number">{d.getDate()}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-
-
-
-                    {/* Slot Cards — crossfade on date change */}
-                    {loading ? (
-                        <div className="loading-spinner"><div className="spinner" /></div>
-                    ) : (
-                    <div className={`calendar-slots-crossfade slots-phase-${slotsPhase}`}>
-                        <div
-                            ref={slotListRef}
-                            className="calendar-mobile-slots"
-                            onTouchStart={(e) => {
-                                swipeTouchStartX.current = e.touches[0].clientX;
-                                swipeTouchStartY.current = e.touches[0].clientY;
-                            }}
-                            onTouchEnd={(e) => {
-                                const dx = e.changedTouches[0].clientX - swipeTouchStartX.current;
-                                const dy = e.changedTouches[0].clientY - swipeTouchStartY.current;
-                                // Only trigger if horizontal swipe dominates
-                                if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-                                    if (dx < 0) {
-                                        // Swipe left = next day / next week on last day
-                                        if (selectedDayIndex < 5) setSelectedDayIndex(selectedDayIndex + 1);
-                                        else navigateWeek(1);
-                                    } else {
-                                        // Swipe right = prev day / prev week on first day
-                                        if (selectedDayIndex > 0) setSelectedDayIndex(selectedDayIndex - 1);
-                                        else navigateWeek(-1);
-                                    }
-                                }
-                            }}
-                        >
-                            {GRID_ROWS.filter(row => row.type !== 'TRANSITION').map(row => {
-                                const slots = slotsMap[displayDateStr] || [];
-                                const slot = slots.find(s => s.time === row.time);
-                                const isAvailable = slot?.available && slot?.tier;
-                                const lookup = buildBookingLookup(displayDateStr);
-                                const info = lookup[row.time];
-                                const slotDateTime = studioSlotDate(displayDateStr, row.time);
-                                // Clients need the minimum advance notice; admin can book any time (0).
-                                const minAheadMinutes = isAdmin ? 0 : minAdvanceHours * 60;
-                                const isPast = (slotDateTime.getTime() - Date.now()) / (1000 * 60) < minAheadMinutes;
-                                const tierKey = slot?.tier?.toLowerCase() || '';
-                                const tierMeta = TIER_COLORS[tierKey];
-
-                                // Hold countdown
-                                const hasActiveHold = info?.isMine && info.myBooking?.holdExpiresAt
-                                    && new Date(info.myBooking.holdExpiresAt).getTime() > Date.now();
-
-                                let statusLabel = '';
-                                let statusColor = 'var(--text-muted)';
-                                let cardBg = 'var(--bg-card)';
-                                let borderColor = 'var(--border-subtle)';
-                                let clickable = false;
-
-                                if (hasActiveHold) {
-                                    statusLabel = 'Aguardando Pagamento';
-                                    statusColor = '#f59e0b';
-                                    cardBg = 'rgba(245,158,11,0.06)';
-                                    borderColor = '#f59e0b';
-                                    clickable = true;
-                                } else if (info) {
-                                    statusLabel = info.isMine ? 'Meu Agendamento' : 'Ocupado';
-                                    statusColor = info.isMine ? '#10b981' : 'var(--text-muted)';
-                                    cardBg = info.isMine ? 'rgba(16,185,129,0.06)' : 'var(--bg-secondary)';
-                                    borderColor = info.isMine ? '#10b981' : 'var(--border-subtle)';
-                                    clickable = info.isMine;
-                                } else if (isPast || !isAvailable) {
-                                    // Skip "Fora da Grade" rows — no slot data for this timeslot
-                                    if (!slot?.tier) return null;
-                                    statusLabel = isPast ? 'Indisponível' : 'Bloqueado';
-                                    statusColor = 'var(--text-muted)';
-                                    cardBg = 'var(--bg-secondary)';
-                                } else {
-                                    statusLabel = 'Disponível';
-                                    statusColor = tierMeta?.color || 'var(--accent-primary)';
-                                    cardBg = tierMeta?.bg || 'var(--bg-card)';
-                                    borderColor = tierMeta?.color || 'var(--accent-primary)';
-                                    clickable = true;
-                                }
-
-                                return (
-                                    <div
-                                        key={row.id}
-                                        className={`calendar-mobile-slot ${clickable ? 'calendar-mobile-slot--clickable' : ''}`}
-                                        style={{ background: cardBg, borderLeft: `3px solid ${borderColor}` }}
-                                        onClick={() => {
-                                            if (hasActiveHold && info?.myBooking && slot) {
-                                                handleSlotClick(selectedDateStr, row.time, slot, info);
-                                            } else if (info?.isMine && info.myBooking) {
-                                                openDetailModal(info.myBooking, selectedDateStr);
-                                            } else if (clickable && slot && isAvailable && !isPast) {
-                                                handleSlotClick(selectedDateStr, row.time, slot);
-                                            } else if (isPast) {
-                                                setShowPastSlotAlert(true);
-                                            }
-                                        }}
-                                    >
-                                        <div className="calendar-mobile-slot-time">
-                                            <span className="calendar-mobile-slot-start">{row.time}</span>
-                                            <span className="calendar-mobile-slot-end">até {row.timeEnd}</span>
-                                        </div>
-                                        <div className="calendar-mobile-slot-info">
-                                            <span className="calendar-mobile-slot-status" style={{ color: statusColor }}>
-                                                {info?.isMine ? info.label : statusLabel}
-                                            </span>
-                                            {tierMeta && isAvailable && !isPast && !info && (
-                                                <span className="calendar-mobile-slot-tier" style={{ color: tierMeta.color }}>
-                                                    {tierMeta.label}
-                                                </span>
-                                            )}
-                                            {info && (
-                                                <span className="calendar-mobile-slot-detail">{row.label}</span>
-                                            )}
-                                        </div>
-                                        {clickable && (
-                                            <ChevronRight size={18} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                    )}
-                </div>
+                <CalendarMobileView
+                    isAdmin={isAdmin}
+                    minAdvanceHours={minAdvanceHours}
+                    loading={loading}
+                    weekDates={weekDates}
+                    prevWeekDates={prevWeekDates}
+                    nextWeekDates={nextWeekDates}
+                    selectedDayIndex={selectedDayIndex}
+                    onSelectDay={setSelectedDayIndex}
+                    navigateWeek={navigateWeek}
+                    goToday={goToday}
+                    today={today}
+                    displayMonth={displayMonth}
+                    slotsPhase={slotsPhase}
+                    displayDateStr={displayDateStr}
+                    selectedDateStr={selectedDateStr}
+                    slotsMap={slotsMap}
+                    buildBookingLookup={buildBookingLookup}
+                    onSlotClick={handleSlotClick}
+                    onOpenDetail={openDetailModal}
+                    onPastSlot={() => setShowPastSlotAlert(true)}
+                />
             ) : (
-            /* ─── DESKTOP GRID VIEW ─── */
-            <div className="calendar-container" style={{ borderRadius: '16px', overflow: 'hidden' }}>
-                {/* Navigation Bar */}
-                <div className="calendar-header calendar-toolbar">
-                    <button className="btn btn-ghost calendar-toolbar__today" onClick={goToday}>
-                        Hoje
-                    </button>
-                    <div className="calendar-toolbar__nav-group">
-                        <button className="calendar-toolbar__nav" aria-label="Semana anterior" onClick={() => navigateWeek(-1)}><ChevronLeft size={18} /></button>
-
-                        <div className="calendar-toolbar__range">
-                            <div className="calendar-toolbar__range-dates">
-                                {weekDates.length > 0 && `${formatDateShort(weekDates[0])} — ${formatDateShort(weekDates[5])}`}
-                            </div>
-                            <div className="calendar-toolbar__range-month">{displayMonth}</div>
-                        </div>
-
-                        <button className="calendar-toolbar__nav" aria-label="Próxima semana" onClick={() => navigateWeek(1)}><ChevronRight size={18} /></button>
-                    </div>
-                    {/* Spacer to balance */}
-                    <div className="calendar-toolbar__spacer" />
-                </div>
-
-                {loading ? (
-                    <div className="loading-spinner"><div className="spinner" /></div>
-                ) : (
-                    <div className="calendar-grid calendar-grid--scroll">
-                        <div className="calendar-day-header calendar-day-header--sticky"></div>
-                        {weekDates.map((d, i) => (
-                            <div key={i} className={`calendar-day-header calendar-day-header--sticky ${formatDate(d) === today ? 'today' : ''}`}>
-                                <span className="calendar-day-header__dow">{DAYS[i]}</span>
-                                <br />
-                                <span className="calendar-day-header__num">{d.getDate()}</span>
-                            </div>
-                        ))}
-
-                        {GRID_ROWS.map(row => (
-                            <React.Fragment key={row.id}>
-                                <div className={`calendar-time-label calendar-time-cell${row.type === 'TRANSITION' ? ' calendar-time-cell--ghost' : ''}`}
-                                    style={{ height: row.height }}>
-                                    {row.type === 'SLOT' && (
-                                        <>
-                                            <span className="calendar-time-cell__start">{row.time}</span>
-                                            <span className="calendar-time-cell__end">até {row.timeEnd}</span>
-                                        </>
-                                    )}
-                                </div>
-                                {weekDates.map((d) => {
-                                    const dateStr = formatDate(d);
-
-                                    if (row.type === 'TRANSITION') {
-                                        return (
-                                            <div key={`${dateStr}-${row.id}`} className="calendar-cell--break"
-                                                style={{ height: row.height }}
-                                                title={`${row.time} - ${row.timeEnd}: ${row.label}`}>
-                                            </div>
-                                        );
-                                    }
-
-                                    const slots = slotsMap[dateStr] || [];
-                                    const slot = slots.find(s => s.time === row.time);
-                                    const isAvailable = slot?.available && slot?.tier;
-                                    const lookup = buildBookingLookup(dateStr);
-                                    const info = lookup[row.time];
-
-                                    if (info) {
-                                        // Check if this is an avulso booking with active hold timer
-                                        const hasActiveHold = info.isMine && info.myBooking?.holdExpiresAt
-                                            && new Date(info.myBooking.holdExpiresAt).getTime() > Date.now();
-
-                                        if (hasActiveHold && info.myBooking) {
-                                            return (
-                                                <HoldCountdownCell
-                                                    key={`${dateStr}-${row.id}`}
-                                                    expiresAt={info.myBooking.holdExpiresAt!}
-                                                    label={`${user?.name?.split(' ')[0] || 'Eu'}`}
-                                                    tier={info.tier}
-                                                    rowLabel={row.label}
-                                                    onExpire={() => loadWeekData(weekDates)}
-                                                    onClick={() => slot && handleSlotClick(dateStr, row.time, slot, info)}
-                                                />
-                                            );
-                                        }
-
-                                        return (
-                                            <div
-                                                key={`${dateStr}-${row.id}`}
-                                                className={`calendar-cell occupied${info.isMine ? ' calendar-cell--mine' : ''}`}
-                                                onClick={() => slot && handleSlotClick(dateStr, row.time, slot, info)}
-                                                style={{ height: row.height, padding: '4px' }}
-                                            >
-                                                <div className={`calendar-slot calendar-slot--fill tier-${info.tier}`}>
-                                                    <div>{info.label}</div>
-                                                    <div className="calendar-slot__sub">{row.label}</div>
-                                                </div>
-                                            </div>
-                                        );
-                                    }
-
-                                    const slotNotAvailable = slot && !slot.available;
-                                    const slotDateTime = studioSlotDate(dateStr, row.time);
-                                    // Clients need the minimum advance notice; admin can book any time (0).
-                                    const minAheadMinutes = isAdmin ? 0 : minAdvanceHours * 60;
-                                    const isPast = (slotDateTime.getTime() - Date.now()) / (1000 * 60) < minAheadMinutes;
-
-                                    const tierKey = slot?.tier?.toLowerCase() || '';
-                                    const tierMeta = TIER_COLORS[tierKey];
-
-                                    return (
-                                        <div
-                                            key={`${dateStr}-${row.id}`}
-                                            className={`calendar-cell ${(slotNotAvailable || isPast) ? 'occupied' : ''}${isPast ? ' calendar-cell--past' : ''}${!slot?.tier ? ' calendar-cell--void' : ''}`}
-                                            onClick={() => {
-                                                if (isPast) {
-                                                    setShowPastSlotAlert(true);
-                                                    return;
-                                                }
-                                                if (slot && isAvailable) handleSlotClick(dateStr, row.time, slot);
-                                            }}
-                                            title={!slot?.tier ? 'Fora da Grade' : isPast ? 'Indisponível' : `${tierMeta?.label || ''} — ${row.label}`}
-                                            style={{
-                                                height: row.height, padding: '4px',
-                                                background: (isAvailable && !isPast && tierMeta)
-                                                    ? tierMeta.bg
-                                                    : undefined,
-                                                borderLeft: (isAvailable && !isPast && tierMeta)
-                                                    ? `3px solid ${tierMeta.color}`
-                                                    : undefined,
-                                                cursor: (isAvailable && !isPast) ? 'pointer' : isPast ? 'not-allowed' : 'default',
-                                                transition: 'background 0.2s',
-                                            }}
-                                        >
-                                            {(slotNotAvailable || isPast) && !info ? (
-                                                isPast ? (
-                                                    <div className="calendar-slot calendar-slot--fill calendar-slot--off">
-                                                        Indisponível
-                                                    </div>
-                                                ) : (
-                                                    <div className={`calendar-slot calendar-slot--fill tier-${slot?.tier?.toLowerCase() || 'blocked'}`}>
-                                                        Ocupado
-                                                    </div>
-                                                )
-                                            ) : (
-                                                (isAvailable && !isPast && !info) && (
-                                                    <div className="calendar-cell__free">
-                                                        <span className="calendar-cell__free-title" style={{ color: tierMeta?.color || 'var(--text-primary)' }}>
-                                                            Disponível
-                                                        </span>
-                                                        {tierMeta && (
-                                                            <span className="calendar-cell__free-tier" style={{ color: tierMeta.color }}>
-                                                                {tierMeta.label}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                )
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </React.Fragment>
-                        ))}
-                    </div>
-                )}
-            </div>
+                <CalendarDesktopView
+                    isAdmin={isAdmin}
+                    userFirstName={user?.name?.split(' ')[0] || 'Eu'}
+                    minAdvanceHours={minAdvanceHours}
+                    loading={loading}
+                    weekDates={weekDates}
+                    displayMonth={displayMonth}
+                    today={today}
+                    slotsMap={slotsMap}
+                    buildBookingLookup={buildBookingLookup}
+                    onSlotClick={handleSlotClick}
+                    onPastSlot={() => setShowPastSlotAlert(true)}
+                    onHoldExpire={() => loadWeekData(weekDates)}
+                    goToday={goToday}
+                    navigateWeek={navigateWeek}
+                />
             )}
 
             {/* ─── LEGEND ─── */}
