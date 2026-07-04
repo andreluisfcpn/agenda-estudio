@@ -322,6 +322,26 @@ router.post('/:provider/toggle', authenticate, authorize('ADMIN'), async (req: R
         return;
     }
 
+    // Guarda: só liga se o AMBIENTE ATIVO tiver as credenciais obrigatórias —
+    // ligar sem elas quebraria o checkout silenciosamente. Config flat legado
+    // (sem sandbox/production) fica isento, espelhando o fallback do runtime.
+    if (enabled) {
+        let cfg: Record<string, any> | null = null;
+        try { cfg = JSON.parse(decryptConfigSafe(integration.config)); } catch { /* config ilegível → não bloqueia */ }
+        const env = integration.environment === 'production' ? 'production' : 'sandbox';
+        const isDual = !!(cfg && (cfg.sandbox || cfg.production));
+        if (isDual) {
+            const envCfg = cfg?.[env] || {};
+            const complete = provider === 'CORA'
+                ? !!(envCfg.clientId && envCfg.certificatePem && envCfg.privateKeyPem)
+                : !!(envCfg.secretKey && envCfg.publishableKey);
+            if (!complete) {
+                res.status(400).json({ error: `Ative somente após configurar as credenciais de ${env === 'production' ? 'produção' : 'sandbox'} (ambiente ativo).` });
+                return;
+            }
+        }
+    }
+
     await prisma.integrationConfig.update({
         where: { provider },
         data: { enabled },
