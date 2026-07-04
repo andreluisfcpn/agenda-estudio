@@ -3,7 +3,7 @@ import { integrationsApi } from '../api/client';
 import { getErrorMessage } from '../utils/errors';
 import {
   Icons, StatusBadge, Toggle, TestInfo, WebhookUrlBox,
-  FileUploadZone, EnvToggle,
+  FileUploadZone, EnvToggle, CredsTabs, envConfigured,
   type IntegrationSummary,
 } from './IntegrationHelpers';
 import '../styles/integration-settings.css';
@@ -32,6 +32,11 @@ export default function IntegrationSettings() {
     sandbox: { ...emptyStripeCreds }, production: { ...emptyStripeCreds }, environment: 'sandbox',
   });
 
+  // Aba de EDIÇÃO de credenciais — desacoplada do ambiente ATIVO (form.environment).
+  // Alternar a aba NÃO muda qual ambiente o checkout usa; só o Salvar aplica o environment.
+  const [coraEditEnv, setCoraEditEnv] = useState<'sandbox' | 'production'>('sandbox');
+  const [stripeEditEnv, setStripeEditEnv] = useState<'sandbox' | 'production'>('sandbox');
+
   // Cora webhooks
   const [coraWebhooks, setCoraWebhooks] = useState<{ id: string; url: string; events?: string[] }[]>([]);
   const [loadingWebhooks, setLoadingWebhooks] = useState(false);
@@ -43,13 +48,18 @@ export default function IntegrationSettings() {
       const res = await integrationsApi.list();
       setIntegrations(res.integrations);
 
+      // Valores MASCARADOS pelo backend ('abc...def', '***CONFIGURED***') não entram
+      // no form: campo vazio = "manter o valor atual" (o merge do PUT preserva) e o
+      // placeholder "Já configurada" comunica isso — antes o mascarado aparecia editável.
+      const unmask = (v?: string) => (!v || v.includes('...') || v.includes('***') ? '' : v);
+
       const cora = res.integrations.find((i: IntegrationSummary) => i.provider === 'CORA');
       if (cora?.configured) {
         const cfg = cora.config || {};
         const parseCreds = (c: any) => ({
-          clientId: c?.clientId || '',
-          certificatePem: c?.certificatePem === '***CERTIFICATE_CONFIGURED***' ? '' : (c?.certificatePem || ''),
-          privateKeyPem: c?.privateKeyPem === '***PRIVATE_KEY_CONFIGURED***' ? '' : (c?.privateKeyPem || ''),
+          clientId: unmask(c?.clientId),
+          certificatePem: unmask(c?.certificatePem),
+          privateKeyPem: unmask(c?.privateKeyPem),
           pixKey: c?.pixKey || '',
         });
         const hasDual = cfg.sandbox || cfg.production;
@@ -58,13 +68,14 @@ export default function IntegrationSettings() {
           production: hasDual ? parseCreds(cfg.production) : { ...emptyCoraCreds },
           environment: cora.environment || 'sandbox',
         });
+        setCoraEditEnv(cora.environment === 'production' ? 'production' : 'sandbox');
       }
 
       const stripe = res.integrations.find((i: IntegrationSummary) => i.provider === 'STRIPE');
       if (stripe?.configured) {
         const cfg = stripe.config || {};
         const parseCreds = (c: any) => ({
-          secretKey: c?.secretKey || '', publishableKey: c?.publishableKey || '', webhookSecret: c?.webhookSecret || '',
+          secretKey: unmask(c?.secretKey), publishableKey: c?.publishableKey || '', webhookSecret: unmask(c?.webhookSecret),
         });
         const hasDual = cfg.sandbox || cfg.production;
         setStripeForm({
@@ -72,6 +83,7 @@ export default function IntegrationSettings() {
           production: hasDual ? parseCreds(cfg.production) : { ...emptyStripeCreds },
           environment: stripe.environment || 'sandbox',
         });
+        setStripeEditEnv(stripe.environment === 'production' ? 'production' : 'sandbox');
       }
     } catch (err) { console.error(err); }
     setLoading(false);
@@ -150,19 +162,28 @@ export default function IntegrationSettings() {
 
   if (loading) return <div className="loading-spinner"><div className="spinner" /></div>;
 
-  // Cora saved state checks
+  // Cora saved state checks — indexados pela aba de EDIÇÃO (não pelo ambiente ativo)
   const savedCoraCfg = cora?.config || {};
-  const coraEnvKey = coraForm.environment as 'sandbox' | 'production';
-  const savedCoraEnvCfg = (savedCoraCfg as any)?.[coraEnvKey] || savedCoraCfg;
+  const coraEditKey = coraEditEnv;
+  const savedCoraEnvCfg = (savedCoraCfg as any)?.[coraEditKey] || (coraEditKey === 'sandbox' ? savedCoraCfg : undefined);
   const hasSavedCert = savedCoraEnvCfg?.certificatePem === '***CERTIFICATE_CONFIGURED***';
   const hasSavedKey = savedCoraEnvCfg?.privateKeyPem === '***PRIVATE_KEY_CONFIGURED***';
+  const hasSavedCoraClientId = !!savedCoraEnvCfg?.clientId;
 
   // Stripe saved state checks
   const savedStripeCfg = stripe?.config || {};
-  const stripeEnvKey = stripeForm.environment as 'sandbox' | 'production';
-  const savedStripeEnvCfg = (savedStripeCfg as any)?.[stripeEnvKey] || savedStripeCfg;
-  const hasSavedStripeKey = savedStripeEnvCfg?.secretKey?.includes?.('...');
-  const hasSavedStripeWebhook = savedStripeEnvCfg?.webhookSecret?.includes?.('...');
+  const stripeEditKey = stripeEditEnv;
+  const savedStripeEnvCfg = (savedStripeCfg as any)?.[stripeEditKey] || (stripeEditKey === 'sandbox' ? savedStripeCfg : undefined);
+  const hasSavedStripeKey = !!savedStripeEnvCfg?.secretKey;
+  const hasSavedStripeWebhook = !!savedStripeEnvCfg?.webhookSecret;
+
+  // Ambiente tem credenciais? (salvas OU digitadas no form — evita aviso falso enquanto cola)
+  const coraEnvOk = (env: 'sandbox' | 'production') =>
+    envConfigured('CORA', savedCoraCfg, env) ||
+    !!(coraForm[env].clientId && coraForm[env].certificatePem && coraForm[env].privateKeyPem);
+  const stripeEnvOk = (env: 'sandbox' | 'production') =>
+    envConfigured('STRIPE', savedStripeCfg, env) ||
+    !!(stripeForm[env].secretKey && stripeForm[env].publishableKey);
 
   // Webhook helpers
   const webhookUrl = window.location.hostname === 'localhost'
@@ -193,8 +214,8 @@ export default function IntegrationSettings() {
 
   const isWebhookRegistered = coraWebhooks.some(w => w.url === webhookUrl);
 
-  const coraCreds = coraForm[coraEnvKey];
-  const stripeCreds = stripeForm[stripeEnvKey];
+  const coraCreds = coraForm[coraEditKey];
+  const stripeCreds = stripeForm[stripeEditKey];
 
   return (
     <div className="int-settings">
@@ -229,6 +250,7 @@ export default function IntegrationSettings() {
             <div className="int-card-controls" onClick={e => e.stopPropagation()}>
               <StatusBadge provider={cora} />
               <Toggle on={!!cora?.enabled} disabled={!cora?.configured}
+                ariaLabel="Ativar ou desativar cobranças via Cora (PIX/Boleto)"
                 onChange={() => cora?.configured && handleToggle('CORA', !cora?.enabled)} />
             </div>
             <Icons.ChevronDown className={`int-chevron ${openCards.has('CORA') ? 'int-chevron--open' : ''}`} />
@@ -236,44 +258,65 @@ export default function IntegrationSettings() {
 
           <div className={`int-card-body ${openCards.has('CORA') ? 'int-card-body--open' : ''}`}>
             <div className="int-card-content">
+              {cora?.configured && !cora.enabled && (
+                <div className="int-off-note">
+                  Integração desligada: <strong>PIX e Boleto</strong> não aparecem no checkout. Use o interruptor acima para ativar.
+                </div>
+              )}
+
               <EnvToggle
                 env={coraForm.environment as 'sandbox' | 'production'}
                 onChange={v => setCoraForm(f => ({ ...f, environment: v }))}
                 labels={{ sandbox: 'Sandbox', production: 'Produção' }}
+                title="Ambiente ativo no checkout"
+                hint={`Define quais credenciais são usadas nas cobranças. Clique em Salvar para aplicar.${cora?.environment && coraForm.environment !== cora.environment ? ' • Alteração pendente — ainda não salva.' : ''}`}
               />
+
+              {coraForm.environment === 'production' && !coraEnvOk('production') && (
+                <div className="int-warn" role="alert">
+                  <Icons.Info size={15} />
+                  <div>
+                    Produção selecionada, mas as credenciais de produção estão vazias — com a integração ativa, o checkout não conseguirá cobrar.
+                    {' '}<button type="button" className="int-warn-link" onClick={() => setCoraEditEnv('production')}>Editar credenciais de produção</button>
+                  </div>
+                </div>
+              )}
+
+              <CredsTabs editEnv={coraEditEnv} onChange={setCoraEditEnv}
+                sandboxOk={coraEnvOk('sandbox')} productionOk={coraEnvOk('production')} />
 
               {/* Client ID + Chave PIX — short fields side-by-side on tablet+ */}
               <div className="int-field-row">
                 <div className="int-field">
-                  <label className="int-label"><Icons.Key /> Client ID ({coraEnvKey})</label>
+                  <label className="int-label"><Icons.Key /> Client ID ({coraEditKey})</label>
                   <input className="int-input int-input--cora" type="text"
-                    placeholder={`Client ID da Cora para ${coraEnvKey === 'sandbox' ? 'homologação' : 'produção'}`}
+                    placeholder={hasSavedCoraClientId ? '✅ Já configurado. Deixe em branco para manter.' : `Client ID da Cora para ${coraEditKey === 'sandbox' ? 'homologação' : 'produção'}`}
                     value={coraCreds.clientId}
-                    onChange={e => setCoraForm(f => ({ ...f, [coraEnvKey]: { ...f[coraEnvKey], clientId: e.target.value } }))}
+                    onChange={e => setCoraForm(f => ({ ...f, [coraEditKey]: { ...f[coraEditKey], clientId: e.target.value } }))}
                   />
                 </div>
                 <div className="int-field">
-                  <label className="int-label"><Icons.Globe /> Chave PIX ({coraEnvKey})</label>
+                  <label className="int-label"><Icons.Globe /> Chave PIX ({coraEditKey})</label>
                   <input className="int-input int-input--cora" type="text" placeholder="email@empresa.com ou CPF/CNPJ"
                     value={coraCreds.pixKey}
-                    onChange={e => setCoraForm(f => ({ ...f, [coraEnvKey]: { ...f[coraEnvKey], pixKey: e.target.value } }))}
+                    onChange={e => setCoraForm(f => ({ ...f, [coraEditKey]: { ...f[coraEditKey], pixKey: e.target.value } }))}
                   />
                 </div>
               </div>
 
               {/* Certificate Upload */}
-              <FileUploadZone label={`Certificado mTLS (.pem) — ${coraEnvKey}`}
+              <FileUploadZone label={`Certificado mTLS (.pem) — ${coraEditKey}`}
                 accept=".pem,.crt,.cer" provider="cora" hasSaved={hasSavedCert}
                 value={coraCreds.certificatePem}
-                onChange={v => setCoraForm(f => ({ ...f, [coraEnvKey]: { ...f[coraEnvKey], certificatePem: v } }))}
+                onChange={v => setCoraForm(f => ({ ...f, [coraEditKey]: { ...f[coraEditKey], certificatePem: v } }))}
                 placeholder="Cole o conteúdo do certificado .pem aqui...&#10;-----BEGIN CERTIFICATE-----&#10;..."
               />
 
               {/* Private Key Upload */}
-              <FileUploadZone label={`Chave Privada (.key) — ${coraEnvKey}`}
+              <FileUploadZone label={`Chave Privada (.key) — ${coraEditKey}`}
                 accept=".key,.pem" provider="cora" hasSaved={hasSavedKey}
                 value={coraCreds.privateKeyPem}
-                onChange={v => setCoraForm(f => ({ ...f, [coraEnvKey]: { ...f[coraEnvKey], privateKeyPem: v } }))}
+                onChange={v => setCoraForm(f => ({ ...f, [coraEditKey]: { ...f[coraEditKey], privateKeyPem: v } }))}
                 placeholder="Cole o conteúdo da chave privada .key aqui...&#10;-----BEGIN PRIVATE KEY-----&#10;..."
               />
 
@@ -347,6 +390,7 @@ export default function IntegrationSettings() {
             <div className="int-card-controls" onClick={e => e.stopPropagation()}>
               <StatusBadge provider={stripe} />
               <Toggle on={!!stripe?.enabled} disabled={!stripe?.configured}
+                ariaLabel="Ativar ou desativar cobranças via Stripe (Cartão)"
                 onChange={() => stripe?.configured && handleToggle('STRIPE', !stripe?.enabled)} />
             </div>
             <Icons.ChevronDown className={`int-chevron ${openCards.has('STRIPE') ? 'int-chevron--open' : ''}`} />
@@ -354,39 +398,60 @@ export default function IntegrationSettings() {
 
           <div className={`int-card-body ${openCards.has('STRIPE') ? 'int-card-body--open' : ''}`}>
             <div className="int-card-content">
+              {stripe?.configured && !stripe.enabled && (
+                <div className="int-off-note">
+                  Integração desligada: <strong>Cartão</strong> não aparece no checkout. Use o interruptor acima para ativar.
+                </div>
+              )}
+
               <EnvToggle
                 env={stripeForm.environment as 'sandbox' | 'production'}
                 onChange={v => setStripeForm(f => ({ ...f, environment: v }))}
                 labels={{ sandbox: 'Teste (sk_test)', production: 'Produção (sk_live)' }}
+                title="Ambiente ativo no checkout"
+                hint={`Define quais credenciais são usadas nas cobranças. Clique em Salvar para aplicar.${stripe?.environment && stripeForm.environment !== stripe.environment ? ' • Alteração pendente — ainda não salva.' : ''}`}
               />
+
+              {stripeForm.environment === 'production' && !stripeEnvOk('production') && (
+                <div className="int-warn" role="alert">
+                  <Icons.Info size={15} />
+                  <div>
+                    Produção selecionada, mas as credenciais de produção estão vazias — com a integração ativa, o checkout não conseguirá cobrar.
+                    {' '}<button type="button" className="int-warn-link" onClick={() => setStripeEditEnv('production')}>Editar credenciais de produção</button>
+                  </div>
+                </div>
+              )}
+
+              <CredsTabs editEnv={stripeEditEnv} onChange={setStripeEditEnv}
+                sandboxOk={stripeEnvOk('sandbox')} productionOk={stripeEnvOk('production')} />
 
               {/* Secret + Publishable Key — credentials pair side-by-side on tablet+ */}
               <div className="int-field-row">
                 <div className="int-field">
-                  <label className="int-label"><Icons.Key /> Secret Key ({stripeEnvKey})</label>
+                  <label className="int-label"><Icons.Key /> Secret Key ({stripeEditKey})</label>
                   <input className="int-input int-input--stripe" type="password"
-                    placeholder={hasSavedStripeKey ? '✅ Já configurada. Deixe em branco para manter.' : stripeEnvKey === 'sandbox' ? 'sk_test_xxx' : 'sk_live_xxx'}
+                    placeholder={hasSavedStripeKey ? '✅ Já configurada. Deixe em branco para manter.' : stripeEditKey === 'sandbox' ? 'sk_test_xxx' : 'sk_live_xxx'}
                     value={stripeCreds.secretKey}
-                    onChange={e => setStripeForm(f => ({ ...f, [stripeEnvKey]: { ...f[stripeEnvKey], secretKey: e.target.value } }))}
+                    onChange={e => setStripeForm(f => ({ ...f, [stripeEditKey]: { ...f[stripeEditKey], secretKey: e.target.value } }))}
                   />
                 </div>
                 <div className="int-field">
-                  <label className="int-label"><Icons.Globe /> Publishable Key ({stripeEnvKey})</label>
+                  <label className="int-label"><Icons.Globe /> Publishable Key ({stripeEditKey})</label>
                   <input className="int-input int-input--stripe" type="text"
-                    placeholder={stripeEnvKey === 'sandbox' ? 'pk_test_xxx' : 'pk_live_xxx'}
+                    placeholder={stripeEditKey === 'sandbox' ? 'pk_test_xxx' : 'pk_live_xxx'}
                     value={stripeCreds.publishableKey}
-                    onChange={e => setStripeForm(f => ({ ...f, [stripeEnvKey]: { ...f[stripeEnvKey], publishableKey: e.target.value } }))}
+                    onChange={e => setStripeForm(f => ({ ...f, [stripeEditKey]: { ...f[stripeEditKey], publishableKey: e.target.value } }))}
                   />
                 </div>
               </div>
 
               {/* Webhook Secret */}
               <div className="int-field">
-                <label className="int-label"><Icons.Bell /> Webhook Secret ({stripeEnvKey})</label>
+                <label className="int-label"><Icons.Bell /> Webhook Secret ({stripeEditKey})</label>
                 <input className="int-input int-input--stripe" type="password"
                   placeholder={hasSavedStripeWebhook ? '✅ Já configurado. Deixe em branco para manter.' : 'whsec_xxx'}
                   value={stripeCreds.webhookSecret}
-                  onChange={e => setStripeForm(f => ({ ...f, [stripeEnvKey]: { ...f[stripeEnvKey], webhookSecret: e.target.value } }))}
+                  onChange={e => setStripeForm(f => ({ ...f, [stripeEditKey]: { ...f[stripeEditKey], webhookSecret: e.target.value } }))}
                 />
               </div>
 

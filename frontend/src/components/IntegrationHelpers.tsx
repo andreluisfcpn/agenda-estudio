@@ -31,21 +31,32 @@ export const Icons = {
 /* ═══ Shared Types ═══ */
 export type { IntegrationSummary };
 
-/* ═══ Status Badge ═══ */
+/* ═══ Status Badge ═══
+   Comunica o estado REAL da integração (ligada? em qual ambiente?).
+   O dot fica vermelho quando o último teste de conexão falhou. */
 export function StatusBadge({ provider }: { provider?: IntegrationSummary }) {
-  if (!provider?.configured) return <span className="int-status int-status--unconfigured"><span className="int-status-dot" /> Não configurado</span>;
-  if (provider.testStatus === 'success') return <span className="int-status int-status--connected"><span className="int-status-dot" /> Conectado</span>;
-  if (provider.testStatus === 'error') return <span className="int-status int-status--error"><span className="int-status-dot" /> Erro</span>;
-  return <span className="int-status int-status--untested"><span className="int-status-dot" /> Não testado</span>;
+  const dot = <span className={`int-status-dot${provider?.testStatus === 'error' ? ' int-status-dot--error' : ''}`} />;
+  if (!provider?.configured) return <span className="int-status int-status--unconfigured"><span className="int-status-dot" /> Não configurada</span>;
+  if (!provider.enabled) return <span className="int-status int-status--off">{dot} Desligada</span>;
+  if (provider.environment === 'production') return <span className="int-status int-status--on-prod">{dot} Ativa · Produção</span>;
+  return <span className="int-status int-status--on-sandbox">{dot} Ativa · Sandbox</span>;
+}
+
+/* ═══ Credenciais configuradas? (por ambiente, sobre o config MASCARADO) ═══ */
+export function envConfigured(provider: 'CORA' | 'STRIPE', maskedCfg: Record<string, any> | undefined, env: 'sandbox' | 'production'): boolean {
+  const cfg = maskedCfg?.[env] ?? (env === 'sandbox' ? maskedCfg : undefined); // config flat legado = sandbox
+  if (!cfg) return false;
+  if (provider === 'CORA') return !!(cfg.clientId && cfg.certificatePem && cfg.privateKeyPem);
+  return !!(cfg.secretKey && cfg.publishableKey);
 }
 
 /* ═══ Toggle Switch ═══ */
-export function Toggle({ on, disabled, onChange }: { on: boolean; disabled?: boolean; onChange: () => void }) {
+export function Toggle({ on, disabled, onChange, ariaLabel }: { on: boolean; disabled?: boolean; onChange: () => void; ariaLabel?: string }) {
   return (
     <div
       className={`int-toggle ${on ? 'int-toggle--on' : ''} ${disabled ? 'int-toggle--disabled' : ''}`}
       onClick={e => { e.stopPropagation(); if (!disabled) onChange(); }}
-      role="switch" aria-checked={on} tabIndex={0}
+      role="switch" aria-checked={on} aria-label={ariaLabel} tabIndex={0}
       onKeyDown={e => { if (!disabled && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onChange(); } }}
     >
       <div className="int-toggle-knob" />
@@ -168,21 +179,26 @@ export function FileUploadZone({
   );
 }
 
-/* ═══ Environment Toggle (Sandbox ↔ Produção) ═══ */
-export function EnvToggle({ env, onChange, labels }: {
+/* ═══ Environment Toggle (Sandbox ↔ Produção) ═══
+   Com `title`/`hint` vira o seletor rotulado de "Ambiente ativo". */
+export function EnvToggle({ env, onChange, labels, title, hint }: {
   env: 'sandbox' | 'production';
   onChange: (v: 'sandbox' | 'production') => void;
   labels: { sandbox: string; production: string };
+  title?: string;
+  hint?: string;
 }) {
   const isProd = env === 'production';
   return (
     <div className="int-env-toggle-wrap">
+      {title && <div className="int-env-title">{title}</div>}
       <button
         type="button"
         className={`int-env-toggle ${isProd ? 'int-env-toggle--prod' : ''}`}
         onClick={() => onChange(isProd ? 'sandbox' : 'production')}
         role="switch"
         aria-checked={isProd}
+        aria-label={title || 'Ambiente'}
       >
         <span className={`int-env-toggle-option ${!isProd ? 'int-env-toggle-option--active' : ''}`}>
           <Icons.Flask size={13} /> {labels.sandbox}
@@ -192,6 +208,35 @@ export function EnvToggle({ env, onChange, labels }: {
         </span>
         <span className="int-env-toggle-slider" />
       </button>
+      {hint && <div className="int-env-hint">{hint}</div>}
+    </div>
+  );
+}
+
+/* ═══ Abas de EDIÇÃO de credenciais (desacopladas do ambiente ativo) ═══
+   Cada aba indica se aquele ambiente já tem credenciais (✓) ou não (—). */
+export function CredsTabs({ editEnv, onChange, sandboxOk, productionOk }: {
+  editEnv: 'sandbox' | 'production';
+  onChange: (v: 'sandbox' | 'production') => void;
+  sandboxOk: boolean;
+  productionOk: boolean;
+}) {
+  const tab = (env: 'sandbox' | 'production', label: string, ok: boolean) => (
+    <button type="button"
+      className={`int-creds-tab ${editEnv === env ? 'int-creds-tab--active' : ''}`}
+      onClick={() => onChange(env)}
+      aria-pressed={editEnv === env}>
+      {label}
+      <span className={`int-creds-tab-dot ${ok ? 'int-creds-tab-dot--ok' : ''}`} aria-label={ok ? 'configurado' : 'sem credenciais'}>
+        {ok ? <Icons.Check size={10} /> : '—'}
+      </span>
+    </button>
+  );
+  return (
+    <div className="int-creds-tabs" role="group" aria-label="Editar credenciais de qual ambiente">
+      <span className="int-creds-tabs-label">Credenciais:</span>
+      {tab('sandbox', 'Sandbox', sandboxOk)}
+      {tab('production', 'Produção', productionOk)}
     </div>
   );
 }
