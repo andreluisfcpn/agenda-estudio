@@ -14,6 +14,7 @@ import {
     type LucideIcon,
 } from 'lucide-react';
 import { formatBRL } from '../utils/format';
+import { useCountdown } from '../hooks/useCountdown';
 import { GRID_ROWS } from './calendar/calendarShared';
 
 // Horários de início da grade do estúdio — o reagendamento só faz sentido neles.
@@ -80,24 +81,16 @@ function statusLabel(s: string) {
     }
 }
 function statusColor(s: string) {
-    if (s === 'COMPLETED') return '#10b981';
-    if (s === 'CONFIRMED') return '#2dd4bf';
-    if (s === 'RESERVED') return '#f59e0b';
+    if (s === 'COMPLETED') return 'var(--success)';
+    if (s === 'CONFIRMED') return 'var(--client-accent-teal)';
+    if (s === 'RESERVED') return 'var(--warning)';
     return 'var(--text-muted)';
 }
 
 function HoldBanner({ expiresAt, onExpire }: { expiresAt: string; onExpire: () => void }) {
-    const [remaining, setRemaining] = useState(() => Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000)));
-    useEffect(() => {
-        const t = setInterval(() => {
-            const s = Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
-            setRemaining(s);
-            if (s <= 0) { clearInterval(t); onExpire(); }
-        }, 1000);
-        return () => clearInterval(t);
-    }, [expiresAt, onExpire]);
+    const remaining = useCountdown(expiresAt, onExpire) ?? 0;
     const mins = Math.floor(remaining / 60), secs = remaining % 60;
-    const color = remaining <= 60 ? '#ef4444' : remaining <= 180 ? '#f59e0b' : '#d97706';
+    const color = remaining <= 60 ? 'var(--danger)' : remaining <= 180 ? 'var(--warning)' : 'var(--warning-strong)';
     return (
         <div className="info-box info-box--warning" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
             <span>Aguardando pagamento — conclua para confirmar.</span>
@@ -369,7 +362,7 @@ export default function BookingDetailModal({
                     {/* Metrics (completed) — read-only */}
                     {isCompleted && isLive && (
                         <div className="bdm-section">
-                            <div className="bdm-section__title"><Radio size={14} style={{ color: '#ef4444' }} /> Resultados da transmissão</div>
+                            <div className="bdm-section__title"><Radio size={14} style={{ color: 'var(--danger)' }} /> Resultados da transmissão</div>
                             <p className="bdm-snapshot-note">Números registrados no encerramento da transmissão.</p>
                             {/* Totais */}
                             <div className="metrics-grid">

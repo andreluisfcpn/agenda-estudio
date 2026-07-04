@@ -158,3 +158,33 @@ API/config (paymentMethods `emoji`, ícones de serviço/`EmojiField`).
 12. Modais com `size` correto, sem `maxWidth` mágico
 13. Console limpo em 375/768/1440
 14. Diff só de apresentação (zero mudança em hooks/API/payloads)
+
+## 8. Área do Cliente (rodada 4)
+
+A área do cliente mantém **identidade colorida própria** (decisão de produto): tom por página — violeta em Gravações/Resultados, teal em Contratos, verde/vermelho em Pagamentos e Dashboard (estado), ciano no Perfil. NÃO alinhar ao padrão neutro do admin.
+
+### Tokens de acento (`client-area.css`, zona livre do cliente)
+`--client-accent-violet #8b5cf6 · --client-accent-teal #2dd4bf · --client-accent-blue #3b82f6 · --client-accent-pink #ec4899 · --client-accent-purple #a855f7 · --client-accent-cyan #33c4e0`
+
+### Hero do cliente
+`client-hero` + `client-hero__header` (ícone + título). O icon-wrapper usa **modifiers** em vez de style inline: `--success / --danger / --violet / --teal / --cyan` (valores exatos migrados 1:1 — conferir git blame antes de alterar). Margens de `__greeting/__message` dentro do `__header` vêm do CSS (não repetir `style={{margin}}`).
+
+### Hooks compartilhados
+- `hooks/useIsMobile(768)` — detecção de viewport; o `BottomSheetModal` usa 640 DE PROPÓSITO (sheet vs dialog), não migrar.
+- `hooks/useCountdown(deadline, onExpire)` — contagem regressiva 1s com `onExpire` em ref (o interval NÃO recicla quando o caller passa arrow function nova). Usado por HoldCountdownCell, PendingPaymentCard, AwaitingPaymentBanner e HoldBanner. Cores canônicas dos timers: `--danger` (≤60s), `--warning` (≤180s), `--warning-strong`/`--success` (calmo).
+
+### Agenda (compartilhada admin+cliente)
+`CalendarPage` é orquestrador (estado/fetch/modais); o DOM vive em `components/calendar/CalendarMobileView` e `CalendarDesktopView`; constantes em `calendarShared.ts` (DAYS/TIER_COLORS/GRID_ROWS). Slots passados = "Encerrado"; bloqueados pelo estúdio = "Bloqueado"; ocupados = "Ocupado". Estilos novos da grade vão ADITIVOS em `index.css` (nunca em admin-area.css).
+
+### ErrorBoundary
+Dois níveis (página no Layout + AppRoutes). Crash de render mostra fallback pt-BR com "Recarregar" em vez de tela branca.
+
+### Exceções documentadas (NÃO migrar para tokens)
+- `TIER_COLORS` (calendarShared): paleta vívida da grade escura, compartilhada com o admin — difere dos `--tier-*` de propósito.
+- Hex do **recharts** (ResultsChart): `var()` não é confiável em presentation attribute SVG passado como prop.
+- **Cores de marca** de plataformas (YouTube/TikTok/Instagram/Facebook): são dados, não tema.
+- `SEVERITY_META` do NotificationBell (`#dc2626/#d97706/#3b82f6`): red-600 não tem token equivalente (--danger é red-500).
+- Estilos **dinâmicos** (width % de progresso, background de avatar com foto) ficam inline.
+
+### Rotas
+URLs do cliente em português: `/minhas-gravacoes`, `/meus-contratos`, `/meus-pagamentos`, `/meus-resultados`, `/perfil`, `/calendar`, `/dashboard`. As antigas `/my-bookings` e `/my-contracts` são redirects permanentes em App.tsx — NÃO remover (bookmarks/PWA/notificações persistidas).

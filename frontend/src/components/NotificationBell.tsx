@@ -64,7 +64,11 @@ export default function NotificationBell() {
                 setTimeout(() => setShake(false), 700);
             }
             prevUnreadRef.current = res.summary.unread;
-        } catch (err) { console.error('Erro ao carregar notificações:', err); }
+        } catch (err) {
+            // Falha de poll é transitória (backend reiniciando, rede) — o próximo
+            // tick em 60s recupera sozinho. Logar só em dev evita spam no console.
+            if (import.meta.env.DEV) console.error('Erro ao carregar notificações:', err);
+        }
     }, []);
 
     useEffect(() => {

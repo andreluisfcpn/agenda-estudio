@@ -540,8 +540,8 @@ export default function CalendarPage() {
                 ))}
                 {!isAdmin && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.6875rem', fontWeight: 600 }}>
-                        <span style={{ width: 10, height: 10, borderRadius: 3, border: '2px solid #10b981', background: 'rgba(52,211,153,0.2)', display: 'inline-block' }} />
-                        <span style={{ color: '#10b981' }}>Meu Agendamento</span>
+                        <span style={{ width: 10, height: 10, borderRadius: 3, border: '2px solid var(--success)', background: 'rgba(52,211,153,0.2)', display: 'inline-block' }} />
+                        <span style={{ color: 'var(--success)' }}>Meu Agendamento</span>
                     </div>
                 )}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.6875rem', fontWeight: 600 }}>

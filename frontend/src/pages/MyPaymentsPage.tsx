@@ -574,7 +574,7 @@ export default function MyPaymentsPage() {
                             )}
                             <div className="wallet-card__body">
                                 <div className="wallet-card__icon">
-                                    <CreditCard size={22} style={{ color: card.isDefault ? '#10b981' : 'var(--text-secondary)' }} />
+                                    <CreditCard size={22} style={{ color: card.isDefault ? 'var(--success)' : 'var(--text-secondary)' }} />
                                 </div>
                                 <div>
                                     <div className="wallet-card__brand">

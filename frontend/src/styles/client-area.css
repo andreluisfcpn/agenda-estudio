@@ -872,3 +872,67 @@
   min-height: 48px;
   padding: 12px 24px;
 }
+
+/* ── Meu Perfil (R4: inline→classes; o background do avatar continua
+      inline porque é dado dinâmico — foto do usuário ou gradiente) ── */
+.profile-avatar-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 24px;
+}
+.profile-avatar {
+  width: 104px;
+  height: 104px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.1rem;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  position: relative;
+  border: 3px solid var(--border-color);
+}
+.profile-avatar__overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.profile-grid-city-uf {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.profile-grid-city-uf .form-group { margin-bottom: 0; }
+.profile-input-adorned {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-secondary);
+  padding: 0 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+}
+.profile-input-adorned__prefix { color: var(--text-muted); }
+.profile-input-adorned .form-input {
+  border: none;
+  padding: 10px 0;
+  background: transparent;
+}
+.profile-hint {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+.profile-save-btn {
+  width: 100%;
+  margin-top: 8px;
+  gap: 8px;
+}

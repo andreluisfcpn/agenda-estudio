@@ -124,15 +124,12 @@ export default function MyProfilePage() {
                     <ArrowLeft size={16} /> Voltar
                 </button>
                 <div className="client-hero__header" style={{ marginBottom: 0 }}>
-                    <div className="client-hero__icon-wrapper" style={{
-                        background: 'linear-gradient(135deg, rgba(17,129,155,0.22), rgba(17,129,155,0.05))',
-                        borderColor: 'rgba(17,129,155,0.25)', boxShadow: '0 0 20px rgba(17,129,155,0.12)', color: '#33c4e0',
-                    }}>
+                    <div className="client-hero__icon-wrapper client-hero__icon-wrapper--cyan">
                         <UserRound size={22} />
                     </div>
                     <div>
-                        <h2 className="client-hero__greeting" style={{ margin: 0 }}>Meu Perfil</h2>
-                        <p className="client-hero__message" style={{ margin: '4px 0 0 0' }}>Gerencie seus dados e preferências</p>
+                        <h2 className="client-hero__greeting">Meu Perfil</h2>
+                        <p className="client-hero__message">Gerencie seus dados e preferências</p>
                     </div>
                 </div>
             </div>
@@ -144,23 +141,20 @@ export default function MyProfilePage() {
             ) : (
                 <div className="profile-page-section animate-card-enter">
                     {/* Avatar */}
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 24 }}>
+                    <div className="profile-avatar-block">
                         <div
+                            className="profile-avatar"
                             style={{
-                                width: 104, height: 104, borderRadius: '50%',
                                 background: user?.photoUrl
                                     ? `url(${user.photoUrl}) center/cover no-repeat`
                                     : 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontSize: '2.1rem', fontWeight: 700, color: '#fff',
-                                cursor: 'pointer', position: 'relative', border: '3px solid var(--border-color)',
                             }}
                             onClick={() => fileRef.current?.click()}
                             title="Clique para trocar a foto"
                         >
                             {!user?.photoUrl && initials}
                             {uploadingPhoto && (
-                                <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <div className="profile-avatar__overlay">
                                     <div className="spinner" style={{ width: 24, height: 24 }} />
                                 </div>
                             )}
@@ -203,21 +197,21 @@ export default function MyProfilePage() {
                         <label className="form-label">Endereço</label>
                         <input className="form-input" value={address} onChange={e => setAddress(e.target.value)} placeholder="Rua, Número, Complemento" />
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16, marginBottom: 16 }}>
-                        <div className="form-group" style={{ marginBottom: 0 }}>
+                    <div className="profile-grid-city-uf">
+                        <div className="form-group">
                             <label className="form-label">Cidade</label>
                             <input className="form-input" value={city} onChange={e => setCity(e.target.value)} placeholder="Cidade" />
                         </div>
-                        <div className="form-group" style={{ marginBottom: 0 }}>
+                        <div className="form-group">
                             <label className="form-label">UF</label>
                             <input className="form-input" value={state} onChange={e => setState(e.target.value)} placeholder="UF" maxLength={2} />
                         </div>
                     </div>
                     <div className="form-group">
                         <label className="form-label">Instagram</label>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-secondary)', padding: '0 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
-                            <span style={{ color: 'var(--text-muted)' }}>@</span>
-                            <input className="form-input" style={{ border: 'none', padding: '10px 0', background: 'transparent' }} value={instagram} onChange={e => setInstagram(e.target.value)} placeholder="usuario" />
+                        <div className="profile-input-adorned">
+                            <span className="profile-input-adorned__prefix">@</span>
+                            <input className="form-input" value={instagram} onChange={e => setInstagram(e.target.value)} placeholder="usuario" />
                         </div>
                     </div>
                     <div className="form-group">
@@ -227,12 +221,12 @@ export default function MyProfilePage() {
                     <div className="form-group">
                         <label className="form-label">Notificações</label>
                         <ToggleSwitch checked={essentialOnly} onChange={setEssentialOnly} label="Apenas notificações essenciais" disabled={saving} />
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 6 }}>
+                        <div className="profile-hint">
                             Receba só avisos importantes (pagamentos e perda de crédito). Lembretes e dicas ficam silenciados.
                         </div>
                     </div>
 
-                    <button className="btn btn-primary" onClick={handleSave} disabled={saving} style={{ width: '100%', marginTop: 8, gap: 8 }}>
+                    <button className="btn btn-primary profile-save-btn" onClick={handleSave} disabled={saving}>
                         {saving ? <><Loader2 size={16} className="login-spinner" /> Salvando…</> : <><Save size={16} /> Salvar perfil</>}
                     </button>
                 </div>
