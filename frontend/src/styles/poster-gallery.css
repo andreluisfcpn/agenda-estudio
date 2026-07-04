@@ -125,3 +125,7 @@
   filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6));
 }
 .poster-card__nets svg { display: block; }
+
+/* Status do chip da capa (antes: color inline no MyBookingsPage) */
+.poster-chip--ok { color: #34d399; }
+.poster-chip--miss { color: #fca5a5; }

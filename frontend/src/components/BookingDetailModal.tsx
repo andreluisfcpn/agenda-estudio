@@ -10,9 +10,14 @@ import { PLATFORMS, PLATFORM_BY_KEY, METRIC_FIELDS, parsePlatforms, parsePlatfor
 import {
     CalendarDays, Clock, Tag, FileText, Sparkles, Plus, Check, ChevronLeft, RefreshCw,
     ImageIcon, Upload, Youtube, Instagram, Facebook, Music2, FolderOpen, Radio, ExternalLink,
+    CreditCard,
     type LucideIcon,
 } from 'lucide-react';
 import { formatBRL } from '../utils/format';
+import { GRID_ROWS } from './calendar/calendarShared';
+
+// Horários de início da grade do estúdio — o reagendamento só faz sentido neles.
+const SLOT_TIMES = GRID_ROWS.filter(r => r.type === 'SLOT').map(r => r.time);
 
 export interface BookingDetailData {
     id: string;
@@ -424,7 +429,12 @@ export default function BookingDetailModal({
                             <div className="reschedule-panel__form">
                                 <input type="date" className="form-input" value={rescheduleDate} onChange={e => setRescheduleDate(e.target.value)}
                                     min={new Date().toISOString().split('T')[0]} max={new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]} style={{ flex: 1 }} />
-                                <input type="time" className="form-input" value={rescheduleTime} onChange={e => setRescheduleTime(e.target.value)} step={3600} style={{ width: 120 }} />
+                                {/* Select com os horários REAIS da grade: o input time com step 3600
+                                    travava os minutos em :00 — 15:30 e 20:30 eram inescolhíveis. */}
+                                <select className="form-input" value={rescheduleTime} onChange={e => setRescheduleTime(e.target.value)} style={{ width: 120 }}>
+                                    <option value="">Horário…</option>
+                                    {SLOT_TIMES.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
                                 <button className="btn btn-primary btn-sm" onClick={handleReschedule} disabled={rescheduling || !rescheduleDate || !rescheduleTime}>Confirmar</button>
                             </div>
                             {rescheduleError && <div className="error-message" style={{ marginTop: 8 }}>{rescheduleError}</div>}
@@ -434,7 +444,7 @@ export default function BookingDetailModal({
                     {/* Footer */}
                     <div className="bdm-footer">
                         {src.status === 'RESERVED' && src.holdExpiresAt && new Date(src.holdExpiresAt).getTime() > Date.now() ? (
-                            <button className="btn btn-primary" onClick={() => { onClose(); navigate('/meus-pagamentos'); }}>💳 Pagar agora</button>
+                            <button className="btn btn-primary" onClick={() => { onClose(); navigate('/meus-pagamentos'); }}><CreditCard size={15} /> Pagar agora</button>
                         ) : (
                             <>
                                 {canReschedule() && (

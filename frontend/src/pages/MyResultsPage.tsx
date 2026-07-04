@@ -44,15 +44,12 @@ export default function MyResultsPage() {
                     <button className="results-back" onClick={() => navigate('/my-bookings')} aria-label="Voltar">
                         <ArrowLeft size={18} />
                     </button>
-                    <div className="client-hero__icon-wrapper" style={{
-                        background: 'linear-gradient(135deg, rgba(139,92,246,0.2), rgba(139,92,246,0.05))',
-                        borderColor: 'rgba(139,92,246,0.25)', boxShadow: '0 0 20px rgba(139,92,246,0.12)', color: '#8b5cf6',
-                    }}>
+                    <div className="client-hero__icon-wrapper client-hero__icon-wrapper--violet">
                         <BarChart3 size={22} />
                     </div>
                     <div>
-                        <h2 className="client-hero__greeting" style={{ margin: 0 }}>Resultados</h2>
-                        <p className="client-hero__message" style={{ margin: '4px 0 0 0' }}>Evolução das suas transmissões</p>
+                        <h2 className="client-hero__greeting">Resultados</h2>
+                        <p className="client-hero__message">Evolução das suas transmissões</p>
                     </div>
                 </div>
             </div>
@@ -85,12 +82,12 @@ export default function MyResultsPage() {
                 <>
                     {/* KPIs */}
                     <div className="client-stats-grid stagger-enter">
-                        <StatCard icon={Clapperboard} label="Sessões" value={fmt(overall!.sessions)} accent="#8b5cf6" index={0} />
-                        <StatCard icon={Eye} label="Visualizações" value={fmt(overall!.views)} accent="#3b82f6" index={1} />
-                        <StatCard icon={TrendingUp} label="Pico médio" value={fmt(overall!.avgPeak)} accent="#ef4444" index={2} />
-                        <StatCard icon={Users} label="Inscritos" value={fmt(overall!.subscribers)} accent="#a855f7" index={3} />
-                        <StatCard icon={Heart} label="Curtidas" value={fmt(overall!.likes)} accent="#ec4899" index={4} />
-                        <StatCard icon={MessageCircle} label="Comentários" value={fmt(overall!.comments)} accent="#10b981" index={5} />
+                        <StatCard icon={Clapperboard} label="Sessões" value={fmt(overall!.sessions)} accent="var(--client-accent-violet)" index={0} />
+                        <StatCard icon={Eye} label="Visualizações" value={fmt(overall!.views)} accent="var(--client-accent-blue)" index={1} />
+                        <StatCard icon={TrendingUp} label="Pico médio" value={fmt(overall!.avgPeak)} accent="var(--danger)" index={2} />
+                        <StatCard icon={Users} label="Inscritos" value={fmt(overall!.subscribers)} accent="var(--client-accent-purple)" index={3} />
+                        <StatCard icon={Heart} label="Curtidas" value={fmt(overall!.likes)} accent="var(--client-accent-pink)" index={4} />
+                        <StatCard icon={MessageCircle} label="Comentários" value={fmt(overall!.comments)} accent="var(--success)" index={5} />
                     </div>
 
                     {/* Evolution chart */}

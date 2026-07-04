@@ -65,15 +65,12 @@ export default function MyBookingsPage() {
             <div className="client-hero client-hero--default animate-card-enter">
                 <HeroAmbient variant="gravacoes" />
                 <div className="client-hero__header" style={{ marginBottom: '16px' }}>
-                    <div className="client-hero__icon-wrapper" style={{
-                        background: 'linear-gradient(135deg, rgba(139,92,246,0.2), rgba(139,92,246,0.05))',
-                        borderColor: 'rgba(139,92,246,0.25)', boxShadow: '0 0 20px rgba(139,92,246,0.12)', color: '#8b5cf6',
-                    }}>
+                    <div className="client-hero__icon-wrapper client-hero__icon-wrapper--violet">
                         <Clapperboard size={22} />
                     </div>
                     <div>
-                        <h2 className="client-hero__greeting" style={{ margin: 0 }}>Minhas Gravações</h2>
-                        <p className="client-hero__message" style={{ margin: '4px 0 0 0' }}>
+                        <h2 className="client-hero__greeting">Minhas Gravações</h2>
+                        <p className="client-hero__message">
                             {loading ? 'Carregando…' : `${completedRecs.length} ${completedRecs.length === 1 ? 'gravação realizada' : 'gravações realizadas'}`}
                         </p>
                     </div>
@@ -88,10 +85,10 @@ export default function MyBookingsPage() {
             {/* Stats */}
             {!loading && (
                 <div className="client-stats-grid stagger-enter">
-                    <StatCard icon={Clapperboard} label="Realizadas" value={fmtNum(completedRecs.length)} accent="#8b5cf6" index={0} />
-                    <StatCard icon={Eye} label="Visualizações" value={fmtNum(agg.views)} accent="#3b82f6" index={1} />
-                    <StatCard icon={TrendingUp} label="Pico ao vivo" value={fmtNum(agg.peak)} accent="#ef4444" index={2} />
-                    <StatCard icon={Heart} label="Curtidas" value={fmtNum(agg.likes)} accent="#ec4899" index={3} />
+                    <StatCard icon={Clapperboard} label="Realizadas" value={fmtNum(completedRecs.length)} accent="var(--client-accent-violet)" index={0} />
+                    <StatCard icon={Eye} label="Visualizações" value={fmtNum(agg.views)} accent="var(--client-accent-blue)" index={1} />
+                    <StatCard icon={TrendingUp} label="Pico ao vivo" value={fmtNum(agg.peak)} accent="var(--danger)" index={2} />
+                    <StatCard icon={Heart} label="Curtidas" value={fmtNum(agg.likes)} accent="var(--client-accent-pink)" index={3} />
                 </div>
             )}
 
@@ -142,7 +139,7 @@ export default function MyBookingsPage() {
                                     coverUrl={b.coverImageUrl}
                                     placeholder={<Clapperboard size={46} strokeWidth={1.25} />}
                                     badgeTopLeft={b.isLivestream ? <span className="poster-chip poster-chip--live"><Radio size={10} /> AO VIVO</span> : undefined}
-                                    badgeTopRight={<span className="poster-chip poster-chip--status" style={{ color: b.status === 'COMPLETED' ? '#34d399' : '#fca5a5' }}>{statusLabel(b.status)}</span>}
+                                    badgeTopRight={<span className={`poster-chip poster-chip--status ${b.status === 'COMPLETED' ? 'poster-chip--ok' : 'poster-chip--miss'}`}>{statusLabel(b.status)}</span>}
                                     eyebrow={<><span style={{ textTransform: 'capitalize' }}>{dateLabel}</span> · {b.startTime}</>}
                                     title={title}
                                     ariaLabel={a11yLabel}

@@ -40,7 +40,10 @@ export function ResultsByContract({ data }: { data: { name: string; views: numbe
                 <Tooltip cursor={{ fill: 'rgba(255,255,255,0.04)' }} contentStyle={TOOLTIP_STYLE}
                     labelStyle={{ color: 'var(--text-primary)' }} formatter={(v: unknown) => [Number(v).toLocaleString('pt-BR'), 'Visualizações']} />
                 <Bar dataKey="views" radius={[0, 6, 6, 0]} maxBarSize={28}>
-                    {data.map((_, i) => <Cell key={i} fill={BAR_COLORS[i % BAR_COLORS.length]} />)}
+                    {/* key pelo nome do contrato: com key={i}, remover/reordenar contratos
+                        reaproveitava a Cell errada (cor trocada). Hex ficam: var() não é
+                        confiável em presentation attribute de SVG via prop do recharts. */}
+                    {data.map((d, i) => <Cell key={d.name} fill={BAR_COLORS[i % BAR_COLORS.length]} />)}
                 </Bar>
             </BarChart>
         </ResponsiveContainer>

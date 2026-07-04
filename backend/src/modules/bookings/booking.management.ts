@@ -360,19 +360,30 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
 
         if (hasMetricsPayload) {
             if (targetStatus !== 'COMPLETED') {
-                res.status(400).json({ error: 'Métricas de evento só podem ser editadas quando a gravação estiver como REALIZADA (COMPLETED).' });
-                return;
+                // Os forms de notas mandam os campos de métrica como null junto do
+                // texto — isso NÃO é edição de métrica. Só bloqueia quando algum
+                // campo traz valor real; senão salvar observação de um agendamento
+                // futuro levava 400 e o PATCH inteiro era rejeitado.
+                const hasRealMetricValues = data.durationMinutes != null || data.peakViewers != null
+                    || data.chatMessages != null || data.audienceOrigin != null
+                    || data.isLivestream != null || data.streamMetrics != null;
+                if (hasRealMetricValues) {
+                    res.status(400).json({ error: 'Métricas de evento só podem ser editadas quando a gravação estiver como REALIZADA (COMPLETED).' });
+                    return;
+                }
+                // Só nulls: ignora as métricas e deixa notas/plataformas passarem.
+            } else {
+                if (data.durationMinutes !== undefined) updateData.durationMinutes = data.durationMinutes;
+                if (data.audienceOrigin !== undefined) updateData.audienceOrigin = data.audienceOrigin;
+                if (data.isLivestream !== undefined) updateData.isLivestream = data.isLivestream;
+                if (data.streamMetrics !== undefined) updateData.streamMetrics = data.streamMetrics;
+                // Legacy aggregates: explicit value wins, else derived from the per-network metrics.
+                const agg = deriveStreamAggregates(data.streamMetrics !== undefined ? data.streamMetrics : booking.streamMetrics);
+                const peak = data.peakViewers != null ? data.peakViewers : agg.peakViewers;
+                const comments = data.chatMessages != null ? data.chatMessages : agg.chatMessages;
+                if (peak != null) updateData.peakViewers = peak;
+                if (comments != null) updateData.chatMessages = comments;
             }
-            if (data.durationMinutes !== undefined) updateData.durationMinutes = data.durationMinutes;
-            if (data.audienceOrigin !== undefined) updateData.audienceOrigin = data.audienceOrigin;
-            if (data.isLivestream !== undefined) updateData.isLivestream = data.isLivestream;
-            if (data.streamMetrics !== undefined) updateData.streamMetrics = data.streamMetrics;
-            // Legacy aggregates: explicit value wins, else derived from the per-network metrics.
-            const agg = deriveStreamAggregates(data.streamMetrics !== undefined ? data.streamMetrics : booking.streamMetrics);
-            const peak = data.peakViewers != null ? data.peakViewers : agg.peakViewers;
-            const comments = data.chatMessages != null ? data.chatMessages : agg.chatMessages;
-            if (peak != null) updateData.peakViewers = peak;
-            if (comments != null) updateData.chatMessages = comments;
         }
 
         if (data.date) {
@@ -442,13 +453,20 @@ router.patch('/:id/client-update', authenticate, async (req: Request, res: Respo
 
         if (hasMetricsPayload) {
             if (booking.status !== 'COMPLETED') {
-                res.status(400).json({ error: 'Métricas de evento só podem ser editadas quando a gravação estiver como REALIZADA.' });
-                return;
+                // Mesma regra do PATCH admin: null não é edição de métrica — só
+                // bloqueia valor real, senão salvar notas de booking futuro dava 400.
+                const hasRealMetricValues = data.durationMinutes != null || data.peakViewers != null
+                    || data.chatMessages != null || data.audienceOrigin != null;
+                if (hasRealMetricValues) {
+                    res.status(400).json({ error: 'Métricas de evento só podem ser editadas quando a gravação estiver como REALIZADA.' });
+                    return;
+                }
+            } else {
+                if (data.durationMinutes !== undefined) updateData.durationMinutes = data.durationMinutes;
+                if (data.peakViewers !== undefined) updateData.peakViewers = data.peakViewers;
+                if (data.chatMessages !== undefined) updateData.chatMessages = data.chatMessages;
+                if (data.audienceOrigin !== undefined) updateData.audienceOrigin = data.audienceOrigin;
             }
-            if (data.durationMinutes !== undefined) updateData.durationMinutes = data.durationMinutes;
-            if (data.peakViewers !== undefined) updateData.peakViewers = data.peakViewers;
-            if (data.chatMessages !== undefined) updateData.chatMessages = data.chatMessages;
-            if (data.audienceOrigin !== undefined) updateData.audienceOrigin = data.audienceOrigin;
         }
 
         const updated = await prisma.booking.update({
