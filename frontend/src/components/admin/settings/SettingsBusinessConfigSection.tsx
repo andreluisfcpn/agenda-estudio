@@ -11,7 +11,7 @@ import ColorField from '../../ui/fields/ColorField';
 import UrlField from '../../ui/fields/UrlField';
 import EmailField from '../../ui/fields/EmailField';
 import type { LucideIcon } from 'lucide-react';
-import { Package, ClipboardCheck, CreditCard, Clock, Landmark, Building2, Info } from 'lucide-react';
+import { Package, ClipboardCheck, CreditCard, Clock, Landmark, Building2, Info, Cloud, Clapperboard } from 'lucide-react';
 
 /**
  * Group metadata copied verbatim from AdminPricingPage so the section headers,
@@ -24,6 +24,8 @@ const GROUP_LABELS: Record<string, { label: string; icon: LucideIcon; desc: stri
     schedule: { label: 'Horários & Grade',       icon: Clock, desc: 'Slots de atendimento, dias de funcionamento e duração dos blocos', color: '#3b82f6' },
     gateway:  { label: 'Taxas de Gateway',       icon: Landmark, desc: 'Taxas de processamento dos meios de pagamento (Stripe e Cora)', color: '#ef4444' },
     studio:   { label: 'Estúdio & Branding',     icon: Building2, desc: 'Nome, logo, e-mail e imagens do estúdio', color: '#f97316' },
+    ambient:  { label: 'Ambiente do Hero',       icon: Cloud, desc: 'Animação por aba e clima/dia-noite no topo das telas do cliente', color: '#38bdf8' },
+    recordings: { label: 'Gravações & Transmissão', icon: Clapperboard, desc: 'Plataformas de transmissão oferecidas ao cliente', color: '#a78bfa' },
 };
 
 /**
@@ -125,23 +127,26 @@ export default function SettingsBusinessConfigSection({ groups, title, subtitle,
                             padding: '24px', borderRadius: '16px',
                             background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
                         }}>
-                            {/* Group header */}
-                            <div style={{ marginBottom: '20px', paddingBottom: '14px', borderBottom: '1px solid var(--border-color)' }}>
-                                <h3 style={{
-                                    fontSize: '0.9375rem', fontWeight: 700, marginBottom: '4px',
-                                    display: 'flex', alignItems: 'center', gap: '8px',
-                                }}>
-                                    <span style={{
-                                        width: 28, height: 28, borderRadius: '8px',
-                                        background: `${groupMeta.color}15`, display: 'inline-flex',
-                                        alignItems: 'center', justifyContent: 'center', fontSize: '0.9375rem',
+                            {/* Group header — só quando há vários grupos na mesma seção; em seção
+                                de grupo único o h2/subtitle da página já dizem o mesmo (evita duplicata). */}
+                            {visibleGroups.length > 1 && (
+                                <div style={{ marginBottom: '20px', paddingBottom: '14px', borderBottom: '1px solid var(--border-color)' }}>
+                                    <h3 style={{
+                                        fontSize: '0.9375rem', fontWeight: 700, marginBottom: '4px',
+                                        display: 'flex', alignItems: 'center', gap: '8px',
                                     }}>
-                                        {(() => { const GI = groupMeta.icon; return <GI size={15} aria-hidden="true" style={{ color: groupMeta.color }} />; })()}
-                                    </span>
-                                    {groupMeta.label}
-                                </h3>
-                                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '36px' }}>{groupMeta.desc}</p>
-                            </div>
+                                        <span style={{
+                                            width: 28, height: 28, borderRadius: '8px',
+                                            background: `${groupMeta.color}15`, display: 'inline-flex',
+                                            alignItems: 'center', justifyContent: 'center', fontSize: '0.9375rem',
+                                        }}>
+                                            {(() => { const GI = groupMeta.icon; return <GI size={15} aria-hidden="true" style={{ color: groupMeta.color }} />; })()}
+                                        </span>
+                                        {groupMeta.label}
+                                    </h3>
+                                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '36px' }}>{groupMeta.desc}</p>
+                                </div>
+                            )}
 
                             {/* `schedule` gets a fully visual editor (toggles, time pickers, steppers)
                                 instead of the generic input grid below. */}
