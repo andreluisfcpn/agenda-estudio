@@ -3,6 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { couponsApi, usersApi, ApiError, Coupon, CouponInput, CouponUserRef, UserSummary } from '../../../api/client';
 import { useUI } from '../../../context/UIContext';
 import BottomSheetModal from '../../BottomSheetModal';
+import SectionHeader from '../SectionHeader';
+import { TicketPercent, NotebookPen, CircleDollarSign, Percent, Banknote, Coins, RefreshCw, Users, Target, Sparkles, Search, X, Save } from 'lucide-react';
 
 type Eligibility = 'ALL' | 'SPECIFIC' | 'NEW';
 
@@ -76,13 +78,6 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
     const fieldErrorStyle = {
         fontSize: '0.6875rem', color: '#ef4444', fontWeight: 600, marginTop: '4px', paddingLeft: '4px',
     };
-
-    const sectionHeader = (num: number, text: string, color: string) => (
-        <div style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ width: 18, height: 18, borderRadius: '50%', background: color, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.5rem', fontWeight: 800 }}>{num}</span>
-            {text}
-        </div>
-    );
 
     // ─── Validação local field-by-field ───
     const validate = (): Record<string, string> => {
@@ -158,7 +153,7 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
             {/* --- HEADER --- */}
             <div style={{ padding: '28px 32px 0' }}>
                 <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span style={{ width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-gradient-go)', fontSize: '1rem' }}>🎟️</span>
+                    <span style={{ width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-gradient-go)', fontSize: '1rem' }}><TicketPercent size={18} aria-hidden="true" style={{ color: '#fff' }} /></span>
                     {isEdit ? 'Editar Cupom' : 'Novo Cupom'}
                 </h2>
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px', marginBottom: 0 }}>
@@ -173,13 +168,13 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
 
                 {/* --- SEÇÃO 1: Identificação --- */}
                 <div style={{ marginBottom: '20px' }}>
-                    {sectionHeader(1, 'Identificação', '#10b981')}
+                    <SectionHeader num={1} label="Identificação" color="#10b981" />
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div className="admin-grid-2" style={{ gap: '12px' }}>
                         <div>
                             <label style={labelStyle}>Código *</label>
                             <div style={{ position: 'relative' }}>
-                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🎟️</span>
+                                <TicketPercent size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                 <input
                                     value={code}
                                     onChange={e => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ''))}
@@ -196,7 +191,7 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
                         <div>
                             <label style={labelStyle}>Descrição</label>
                             <div style={{ position: 'relative' }}>
-                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>📝</span>
+                                <NotebookPen size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                 <input
                                     value={description}
                                     onChange={e => setDescription(e.target.value)}
@@ -212,12 +207,12 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
 
                 {/* --- SEÇÃO 2: Desconto --- */}
                 <div style={{ marginBottom: '20px' }}>
-                    {sectionHeader(2, 'Desconto', 'var(--accent-text)')}
+                    <SectionHeader num={2} label="Desconto" color="var(--accent-text)" />
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+                    <div className="admin-grid-2" style={{ gap: '8px', marginBottom: '12px' }}>
                         {[
-                            { key: 'VALOR' as const, icon: '💰', label: 'Valor fixo (R$)', desc: 'Desconta um valor exato em reais' },
-                            { key: 'PERCENTUAL' as const, icon: '📊', label: 'Percentual (%)', desc: 'Desconta uma porcentagem do total' },
+                            { key: 'VALOR' as const, icon: CircleDollarSign, label: 'Valor fixo (R$)', desc: 'Desconta um valor exato em reais' },
+                            { key: 'PERCENTUAL' as const, icon: Percent, label: 'Percentual (%)', desc: 'Desconta uma porcentagem do total' },
                         ].map(t => (
                             <button key={t.key} onClick={() => { setDiscountType(t.key); setValueText(''); }}
                                 style={{
@@ -226,7 +221,7 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
                                     border: `1.5px solid ${discountType === t.key ? 'rgba(129,140,248,0.3)' : 'var(--border-default)'}`,
                                     transition: 'all 0.15s',
                                 }}>
-                                <div style={{ fontSize: '0.875rem', fontWeight: 700, color: discountType === t.key ? 'var(--accent-text)' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>{t.icon} {t.label}</div>
+                                <div style={{ fontSize: '0.875rem', fontWeight: 700, color: discountType === t.key ? 'var(--accent-text)' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>{(() => { const TI = t.icon; return <TI size={15} aria-hidden="true" />; })()} {t.label}</div>
                                 <div style={{ fontSize: '0.5625rem', color: 'var(--text-muted)', marginTop: '3px' }}>{t.desc}</div>
                             </button>
                         ))}
@@ -235,7 +230,7 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
                     <div>
                         <label style={labelStyle}>{discountType === 'VALOR' ? 'Valor do desconto (R$) *' : 'Percentual de desconto (%) *'}</label>
                         <div style={{ position: 'relative' }}>
-                            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>{discountType === 'VALOR' ? '💵' : '％'}</span>
+                            {discountType === 'VALOR' ? <Banknote size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} /> : <Percent size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />}
                             {discountType === 'VALOR' ? (
                                 <input
                                     value={valueText}
@@ -264,12 +259,12 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
 
                 {/* --- SEÇÃO 3: Aplicação --- */}
                 <div style={{ marginBottom: '20px' }}>
-                    {sectionHeader(3, 'Aplicação', '#f59e0b')}
+                    <SectionHeader num={3} label="Aplicação" color="#f59e0b" />
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         {[
-                            { key: 'FIRST_PAYMENT' as const, icon: '1️⃣', label: 'Só a 1ª cobrança', hint: 'O desconto vale para a primeira fatura do contrato' },
-                            { key: 'ALL_INSTALLMENTS' as const, icon: '🔁', label: 'Todas as parcelas', hint: 'O desconto se repete em todas as mensalidades' },
+                            { key: 'FIRST_PAYMENT' as const, icon: Coins, label: 'Só a 1ª cobrança', hint: 'O desconto vale para a primeira fatura do contrato' },
+                            { key: 'ALL_INSTALLMENTS' as const, icon: RefreshCw, label: 'Todas as parcelas', hint: 'O desconto se repete em todas as mensalidades' },
                         ].map(s => (
                             <button key={s.key} onClick={() => setScope(s.key)}
                                 style={{
@@ -286,7 +281,7 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
                                     boxShadow: scope === s.key ? 'inset 0 0 0 2.5px var(--bg-elevated)' : 'none',
                                 }} />
                                 <span>
-                                    <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: scope === s.key ? '#f59e0b' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>{s.icon} {s.label}</span>
+                                    <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: scope === s.key ? '#f59e0b' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>{(() => { const SI = s.icon; return <SI size={15} aria-hidden="true" />; })()} {s.label}</span>
                                     <span style={{ fontSize: '0.5625rem', color: 'var(--text-muted)', display: 'block', marginTop: '2px' }}>{s.hint}</span>
                                 </span>
                             </button>
@@ -296,9 +291,9 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
 
                 {/* --- SEÇÃO 4: Limites --- */}
                 <div style={{ marginBottom: '20px' }}>
-                    {sectionHeader(4, 'Limites', '#2dd4bf')}
+                    <SectionHeader num={4} label="Limites" color="#2dd4bf" />
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                    <div className="admin-grid-2" style={{ gap: '12px', marginBottom: '12px' }}>
                         <div>
                             <label style={labelStyle}>Expira em</label>
                             <input
@@ -326,7 +321,7 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
                         </div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                    <div className="admin-grid-2" style={{ gap: '12px', marginBottom: '12px' }}>
                         <div>
                             <label style={labelStyle}>Limite por cliente</label>
                             <input
@@ -371,13 +366,13 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
 
                 {/* --- SEÇÃO 5: Elegibilidade --- */}
                 <div style={{ marginBottom: '20px' }}>
-                    {sectionHeader(5, 'Elegibilidade', 'var(--warning)')}
+                    <SectionHeader num={5} label="Elegibilidade" color="var(--warning)" />
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         {[
-                            { key: 'ALL' as const, icon: '👥', label: 'Todos os clientes', hint: 'Qualquer cliente pode usar este cupom' },
-                            { key: 'SPECIFIC' as const, icon: '🎯', label: 'Apenas clientes específicos', hint: 'Escolha quem pode usar o cupom' },
-                            { key: 'NEW' as const, icon: '✨', label: 'Apenas clientes novos', hint: 'Clientes que nunca fizeram nenhum pagamento.' },
+                            { key: 'ALL' as const, icon: Users, label: 'Todos os clientes', hint: 'Qualquer cliente pode usar este cupom' },
+                            { key: 'SPECIFIC' as const, icon: Target, label: 'Apenas clientes específicos', hint: 'Escolha quem pode usar o cupom' },
+                            { key: 'NEW' as const, icon: Sparkles, label: 'Apenas clientes novos', hint: 'Clientes que nunca fizeram nenhum pagamento.' },
                         ].map(o => (
                             <button key={o.key} onClick={() => setEligibility(o.key)}
                                 style={{
@@ -394,7 +389,7 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
                                     boxShadow: eligibility === o.key ? 'inset 0 0 0 2.5px var(--bg-elevated)' : 'none',
                                 }} />
                                 <span>
-                                    <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: eligibility === o.key ? 'var(--warning)' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>{o.icon} {o.label}</span>
+                                    <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: eligibility === o.key ? 'var(--warning)' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>{(() => { const OI = o.icon; return <OI size={15} aria-hidden="true" />; })()} {o.label}</span>
                                     <span style={{ fontSize: '0.5625rem', color: 'var(--text-muted)', display: 'block', marginTop: '2px' }}>{o.hint}</span>
                                 </span>
                             </button>
@@ -416,8 +411,8 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
                                             <button
                                                 onClick={() => setSelectedUsers(prev => prev.filter(s => s.id !== u.id))}
                                                 aria-label={`Remover ${u.name}`}
-                                                style={{ background: 'none', border: 'none', color: 'var(--warning)', cursor: 'pointer', padding: 0, fontSize: '0.75rem', lineHeight: 1 }}>
-                                                ✕
+                                                style={{ background: 'none', border: 'none', color: 'var(--warning)', cursor: 'pointer', padding: 0, display: 'inline-flex', alignItems: 'center' }}>
+                                                <X size={12} aria-hidden="true" />
                                             </button>
                                         </span>
                                     ))}
@@ -426,7 +421,7 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
 
                             {/* Busca */}
                             <div style={{ position: 'relative', marginBottom: '8px' }}>
-                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🔎</span>
+                                <Search size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                 <input
                                     value={clientSearch}
                                     onChange={e => setClientSearch(e.target.value)}
@@ -492,7 +487,7 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
                             opacity: canSave && !saving ? 1 : 0.5,
                             display: 'flex', alignItems: 'center', gap: '8px',
                         }}>
-                        {saving ? '⏳ Salvando...' : isEdit ? '💾 Salvar Alterações' : '🎟️ Criar Cupom'}
+                        {saving ? 'Salvando...' : isEdit ? <><Save size={16} aria-hidden="true" /> Salvar Alterações</> : <><TicketPercent size={16} aria-hidden="true" /> Criar Cupom</>}
                     </button>
                 </div>
             </div>

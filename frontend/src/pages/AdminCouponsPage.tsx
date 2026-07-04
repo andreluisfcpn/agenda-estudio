@@ -1,6 +1,6 @@
 import { getErrorMessage } from '../utils/errors';
 import { useState, useMemo } from 'react';
-import { TicketPercent, CheckCircle, Clock, XCircle, Ban } from 'lucide-react';
+import { TicketPercent, CheckCircle, Clock, XCircle, Ban, TrendingUp, FilterX, Sparkles, Target, Users, Pencil, Pause, Play, Trash2 } from 'lucide-react';
 import { couponsApi, Coupon } from '../api/client';
 import { useUI } from '../context/UIContext';
 import { useAdminCoupons, CouponStatusFilter } from '../hooks/useAdminCoupons';
@@ -108,14 +108,15 @@ export default function AdminCouponsPage() {
             {/* --- KPI CARDS --- */}
             <div className="admin-kpi-grid" style={{ marginBottom: '24px' }}>
                 {([
-                    { key: 'ALL' as CouponStatusFilter, label: 'Total', count: coupons.length, desc: 'cupons cadastrados', icon: '🎟️', color: '#11819B', gradient: 'rgba(17,129,155,0.10)', clickable: true },
-                    { key: 'ACTIVE' as CouponStatusFilter, label: 'Ativos', count: activeCount, desc: 'prontos para uso', icon: '✅', color: '#10b981', gradient: 'rgba(16,185,129,0.08)', clickable: true },
-                    { key: 'EXPIRED' as CouponStatusFilter, label: 'Expirados', count: expiredCount, desc: 'validade vencida', icon: '⏰', color: '#f59e0b', gradient: 'rgba(245,158,11,0.08)', clickable: true },
-                    { key: 'EXHAUSTED' as CouponStatusFilter, label: 'Esgotados', count: exhaustedCount, desc: 'limite de usos atingido', icon: '🚫', color: '#94a3b8', gradient: 'rgba(148,163,184,0.08)', clickable: true },
-                    { key: 'USES' as const, label: 'Usos', count: totalUses, desc: 'usos registrados', icon: '📈', color: '#2dd4bf', gradient: 'rgba(45,212,191,0.08)', clickable: false },
+                    { key: 'ALL' as CouponStatusFilter, label: 'Total', count: coupons.length, desc: 'cupons cadastrados', icon: TicketPercent, color: '#11819B', gradient: 'rgba(17,129,155,0.10)', clickable: true },
+                    { key: 'ACTIVE' as CouponStatusFilter, label: 'Ativos', count: activeCount, desc: 'prontos para uso', icon: CheckCircle, color: '#10b981', gradient: 'rgba(16,185,129,0.08)', clickable: true },
+                    { key: 'EXPIRED' as CouponStatusFilter, label: 'Expirados', count: expiredCount, desc: 'validade vencida', icon: Clock, color: '#f59e0b', gradient: 'rgba(245,158,11,0.08)', clickable: true },
+                    { key: 'EXHAUSTED' as CouponStatusFilter, label: 'Esgotados', count: exhaustedCount, desc: 'limite de usos atingido', icon: Ban, color: '#94a3b8', gradient: 'rgba(148,163,184,0.08)', clickable: true },
+                    { key: 'USES' as const, label: 'Usos', count: totalUses, desc: 'usos registrados', icon: TrendingUp, color: '#2dd4bf', gradient: 'rgba(45,212,191,0.08)', clickable: false },
                 ]).map(card => {
                     const isSelected = card.clickable && statusFilter === card.key;
                     const Tag = card.clickable ? 'button' : 'div';
+                    const Icon = card.icon;
                     return (
                         <Tag key={card.key} {...(card.clickable ? { type: 'button' as const, 'aria-pressed': isSelected } : {})}
                             className="admin-kpi-card"
@@ -129,7 +130,7 @@ export default function AdminCouponsPage() {
                         >
                             {/* Top row: icon + label */}
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
-                                <span style={{ fontSize: '0.9rem' }}>{card.icon}</span>
+                                <Icon size={15} aria-hidden="true" style={{ color: isSelected ? card.color : 'var(--text-muted)', transition: 'color 0.2s' }} />
                                 <span style={{
                                     fontSize: '0.6875rem', fontWeight: 700, color: isSelected ? card.color : 'var(--text-muted)',
                                     textTransform: 'uppercase', letterSpacing: '0.08em',
@@ -164,7 +165,7 @@ export default function AdminCouponsPage() {
                     display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap'
                 }}>
                     <button className="admin-filter-clear" onClick={() => setStatusFilter('ALL')}>
-                        🗑️ Limpar filtro
+                        <FilterX size={14} aria-hidden="true" /> Limpar filtro
                     </button>
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', padding: '4px 10px', background: 'var(--bg-elevated)', borderRadius: '8px' }}>
                         {filtered.length} resultado{filtered.length !== 1 ? 's' : ''}
@@ -175,10 +176,10 @@ export default function AdminCouponsPage() {
             {/* --- COUPONS TABLE --- */}
             <div style={{ borderRadius: '16px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', overflow: 'hidden' }}>
                 {filtered.length === 0 ? (
-                    <div style={{ padding: '48px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                        <div style={{ fontSize: '2.5rem', marginBottom: '12px', opacity: 0.4 }}>🎟️</div>
-                        <div style={{ fontWeight: 600 }}>Nenhum cupom encontrado</div>
-                        <div style={{ fontSize: '0.8125rem', marginTop: '4px' }}>
+                    <div className="admin-empty">
+                        <TicketPercent size={44} className="admin-empty__icon" aria-hidden="true" />
+                        <div className="admin-empty__title">Nenhum cupom encontrado</div>
+                        <div className="admin-empty__hint">
                             {coupons.length === 0 ? 'Crie seu primeiro cupom de desconto' : 'Tente ajustar os filtros'}
                         </div>
                     </div>
@@ -213,7 +214,7 @@ export default function AdminCouponsPage() {
                                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                                                         fontSize: '1rem', flexShrink: 0,
                                                         border: `1px solid ${meta.color}22`,
-                                                    }}>🎟️</div>
+                                                    }}><TicketPercent size={18} aria-hidden="true" style={{ color: meta.color }} /></div>
                                                     <div style={{ minWidth: 0 }}>
                                                         <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-primary)' }}>
                                                             {c.code}
@@ -258,7 +259,7 @@ export default function AdminCouponsPage() {
                                                         background: 'var(--warning-bg)', border: '1px solid rgba(245,158,11,0.3)', color: 'var(--warning)',
                                                         whiteSpace: 'nowrap',
                                                     }}>
-                                                        ✨ Só novos clientes
+                                                        <Sparkles size={11} aria-hidden="true" style={{ verticalAlign: '-1px' }} /> Só novos clientes
                                                     </span>
                                                 ) : c.eligibleUsers.length > 0 ? (
                                                     <span
@@ -268,7 +269,7 @@ export default function AdminCouponsPage() {
                                                             background: 'var(--info-bg)', border: '1px solid rgba(59,130,246,0.3)', color: 'var(--info)',
                                                             whiteSpace: 'nowrap', cursor: 'help',
                                                         }}>
-                                                        🎯 {c.eligibleUsers.length} cliente{c.eligibleUsers.length !== 1 ? 's' : ''}
+                                                        <Target size={11} aria-hidden="true" style={{ verticalAlign: '-1px' }} /> {c.eligibleUsers.length} cliente{c.eligibleUsers.length !== 1 ? 's' : ''}
                                                     </span>
                                                 ) : (
                                                     <span style={{
@@ -276,7 +277,7 @@ export default function AdminCouponsPage() {
                                                         background: 'rgba(148,163,184,0.1)', border: '1px solid rgba(148,163,184,0.2)', color: 'var(--text-secondary)',
                                                         whiteSpace: 'nowrap',
                                                     }}>
-                                                        👥 Todos
+                                                        <Users size={11} aria-hidden="true" style={{ verticalAlign: '-1px' }} /> Todos
                                                     </span>
                                                 )}
                                             </td>
@@ -315,15 +316,15 @@ export default function AdminCouponsPage() {
                                                 <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
                                                     <button className="admin-icon-btn admin-icon-btn--success"
                                                     aria-label={`Editar cupom ${c.code}`}
-                                                    onClick={() => setEditCoupon(c)}>✏️</button>
+                                                    onClick={() => setEditCoupon(c)}><Pencil size={16} aria-hidden="true" /></button>
 
                                                     <button className="admin-icon-btn"
                                                     aria-label={c.active ? `Desativar cupom ${c.code}` : `Ativar cupom ${c.code}`}
-                                                    onClick={() => handleToggle(c)}>{c.active ? '⏸️' : '▶️'}</button>
+                                                    onClick={() => handleToggle(c)}>{c.active ? <Pause size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}</button>
 
                                                     <button className="admin-icon-btn admin-icon-btn--danger"
                                                     aria-label={`Excluir cupom ${c.code}`}
-                                                    onClick={() => confirmDelete(c)}>🗑️</button>
+                                                    onClick={() => confirmDelete(c)}><Trash2 size={16} aria-hidden="true" /></button>
                                                 </div>
                                             </td>
                                         </tr>
