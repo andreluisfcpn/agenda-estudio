@@ -2,6 +2,7 @@ import { getErrorMessage } from '../../../utils/errors';
 import React, { useState, useEffect } from 'react';
 import { usersApi, UserSummary, ApiError } from '../../../api/client';
 import BottomSheetModal from '../../BottomSheetModal';
+import { Pencil, UserRound, Mail, Lock, Smartphone, IdCard, Globe, MapPin, Building2, Map, NotebookPen, ShieldCheck, Save } from 'lucide-react';
 import { maskPhone, maskCpfCnpj, maskEmail, translateError } from '../../../utils/mask';
 
 interface EditClientModalProps {
@@ -117,7 +118,7 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                         <span style={{
                             width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
                             background: 'var(--accent-gradient-go)', fontSize: '1rem'
-                        }}>✏️</span>
+                        }}><Pencil size={18} aria-hidden="true" style={{ color: '#fff' }} /></span>
                         Editar Cliente
                     </h2>
                     <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px', marginBottom: 0 }}>
@@ -148,7 +149,7 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                             <div>
                                 <label style={editLabelStyle}>Nome *</label>
                                 <div style={{ position: 'relative' }}>
-                                    <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>👤</span>
+                                    <UserRound size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                     <input
                                         value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })}
                                         placeholder="Nome completo"
@@ -161,7 +162,7 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                             <div>
                                 <label style={editLabelStyle}>CPF / CNPJ</label>
                                 <div style={{ position: 'relative' }}>
-                                    <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🪪</span>
+                                    <IdCard size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                     <input
                                         value={editForm.cpfCnpj} onChange={e => setEditForm({ ...editForm, cpfCnpj: maskCpfCnpj(e.target.value) })}
                                         placeholder="000.000.000-00"
@@ -194,7 +195,7 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                         <div style={{ marginTop: '14px' }}>
                             <label style={editLabelStyle}>Tipo de conta</label>
                             <div style={{ display: 'flex', gap: '6px' }}>
-                                {[{ key: 'CLIENTE', label: '👤 Cliente', desc: 'Acesso ao painel do cliente' }, { key: 'ADMIN', label: '🛡️ Admin', desc: 'Acesso total ao sistema' }].map(r => (
+                                {[{ key: 'CLIENTE', icon: UserRound, label: 'Cliente', desc: 'Acesso ao painel do cliente' }, { key: 'ADMIN', icon: ShieldCheck, label: 'Admin', desc: 'Acesso total ao sistema' }].map(r => (
                                     <button key={r.key}
                                         onClick={() => setEditForm({ ...editForm, role: r.key })}
                                         style={{
@@ -204,7 +205,7 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                                             border: `1px solid ${editForm.role === r.key ? 'rgba(16,185,129,0.3)' : 'var(--border-default)'}`,
                                             transition: 'all 0.15s',
                                         }}>
-                                        <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: editForm.role === r.key ? '#10b981' : 'var(--text-primary)' }}>{r.label}</span>
+                                        <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: editForm.role === r.key ? '#10b981' : 'var(--text-primary)', display: 'inline-flex', alignItems: 'center', gap: 5 }}>{(() => { const RI = r.icon; return <RI size={14} aria-hidden="true" />; })()} {r.label}</span>
                                         <span style={{ fontSize: '0.5625rem', color: 'var(--text-muted)' }}>{r.desc}</span>
                                     </button>
                                 ))}
@@ -224,7 +225,7 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                             <div>
                                 <label style={editLabelStyle}>E-mail *</label>
                                 <div style={{ position: 'relative' }}>
-                                    <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>📧</span>
+                                    <Mail size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                     <input
                                         type="email" value={editForm.email}
                                         onChange={e => setEditForm({ ...editForm, email: maskEmail(e.target.value) })}
@@ -238,7 +239,7 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                             <div>
                                 <label style={editLabelStyle}>Telefone</label>
                                 <div style={{ position: 'relative' }}>
-                                    <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>📱</span>
+                                    <Smartphone size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                     <input
                                         value={editForm.phone}
                                         onChange={e => setEditForm({ ...editForm, phone: maskPhone(e.target.value) })}
@@ -255,7 +256,7 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                         <div style={{ marginBottom: '12px' }}>
                             <label style={editLabelStyle}>Redes Sociais</label>
                             <div style={{ position: 'relative' }}>
-                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🌐</span>
+                                <Globe size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                 <input
                                     value={editForm.socialLinks}
                                     onChange={e => setEditForm({ ...editForm, socialLinks: e.target.value })}
@@ -270,7 +271,7 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                         <div style={{ marginBottom: '12px' }}>
                             <label style={editLabelStyle}>Endereço</label>
                             <div style={{ position: 'relative' }}>
-                                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>📍</span>
+                                <MapPin size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                 <input
                                     value={editForm.address}
                                     onChange={e => setEditForm({ ...editForm, address: e.target.value })}
@@ -286,7 +287,7 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                             <div>
                                 <label style={editLabelStyle}>Cidade</label>
                                 <div style={{ position: 'relative' }}>
-                                    <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🏙️</span>
+                                    <Building2 size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                     <input
                                         value={editForm.city}
                                         onChange={e => setEditForm({ ...editForm, city: e.target.value })}
@@ -299,7 +300,7 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                             <div>
                                 <label style={editLabelStyle}>UF</label>
                                 <div style={{ position: 'relative' }}>
-                                    <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🗺️</span>
+                                    <Map size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                     <input
                                         value={editForm.state}
                                         onChange={e => setEditForm({ ...editForm, state: e.target.value })}
@@ -325,7 +326,7 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                             <div style={{ marginBottom: '12px' }}>
                                 <label style={editLabelStyle}>Nova Senha <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0, color: 'var(--text-muted)' }}>(vazio = manter atual)</span></label>
                                 <div style={{ position: 'relative' }}>
-                                    <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🔒</span>
+                                    <Lock size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                     <input
                                         type="password" value={editForm.password}
                                         onChange={e => setEditForm({ ...editForm, password: e.target.value })}
@@ -339,7 +340,7 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
 
                             {/* Notes */}
                             <div>
-                                <label style={editLabelStyle}>📝 Notas internas</label>
+                                <label style={editLabelStyle}><NotebookPen size={12} aria-hidden="true" style={{ verticalAlign: '-2px' }} /> Notas internas</label>
                                 <textarea
                                     value={editForm.notes}
                                     onChange={e => setEditForm({ ...editForm, notes: e.target.value })}
@@ -369,7 +370,7 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                                 opacity: !editLoading ? 1 : 0.5,
                                 display: 'flex', alignItems: 'center', gap: '8px',
                             }}>
-                            {editLoading ? '⏳ Salvando...' : '💾 Salvar Alterações'}
+                            {editLoading ? 'Salvando...' : <><Save size={16} aria-hidden="true" /> Salvar Alterações</>}
                         </button>
                     </div>
                 </div>

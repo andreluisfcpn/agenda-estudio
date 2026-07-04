@@ -1,7 +1,7 @@
 import { getErrorMessage } from '../utils/errors';
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users } from 'lucide-react';
+import { Users, CheckCircle2, UserMinus, Inbox, Puzzle, Search, FilterX, X, Pencil, Trash2 } from 'lucide-react';
 import { usersApi, UserSummary } from '../api/client';
 import { useUI } from '../context/UIContext';
 import { useAdminClients } from '../hooks/useAdminClients';
@@ -97,13 +97,14 @@ export default function AdminClientsPage() {
             {/* --- KPI CARDS (clicáveis = filtro) --- */}
             <div className="admin-kpi-grid" style={{ marginBottom: '24px' }}>
                 {([
-                    { key: 'ALL' as const, label: 'Total', count: clientUsers.length, desc: 'clientes cadastrados', icon: '👥', color: '#11819B', gradient: 'rgba(17,129,155,0.10)' },
-                    { key: 'ACTIVE' as const, label: 'Ativos', count: activeCount, desc: 'com contrato ativo', icon: '✅', color: '#10b981', gradient: 'rgba(16,185,129,0.08)' },
-                    { key: 'EX_CLIENT' as const, label: 'Ex-clientes', count: exClientCount, desc: 'contrato expirado', icon: '👋', color: '#f59e0b', gradient: 'rgba(245,158,11,0.08)' },
-                    { key: 'NO_CONTRACT' as const, label: 'Sem Contrato', count: noContractCount, desc: 'nunca contrataram', icon: '📭', color: '#94a3b8', gradient: 'rgba(148,163,184,0.08)' },
-                    { key: 'NO_ADDON' as const, label: 'Sem Add-on', count: noAddonCount, desc: 'sem serviço extra', icon: '🧩', color: '#2dd4bf', gradient: 'rgba(45,212,191,0.08)' },
+                    { key: 'ALL' as const, label: 'Total', count: clientUsers.length, desc: 'clientes cadastrados', icon: Users, color: '#11819B', gradient: 'rgba(17,129,155,0.10)' },
+                    { key: 'ACTIVE' as const, label: 'Ativos', count: activeCount, desc: 'com contrato ativo', icon: CheckCircle2, color: '#10b981', gradient: 'rgba(16,185,129,0.08)' },
+                    { key: 'EX_CLIENT' as const, label: 'Ex-clientes', count: exClientCount, desc: 'contrato expirado', icon: UserMinus, color: '#f59e0b', gradient: 'rgba(245,158,11,0.08)' },
+                    { key: 'NO_CONTRACT' as const, label: 'Sem Contrato', count: noContractCount, desc: 'nunca contrataram', icon: Inbox, color: '#94a3b8', gradient: 'rgba(148,163,184,0.08)' },
+                    { key: 'NO_ADDON' as const, label: 'Sem Add-on', count: noAddonCount, desc: 'sem serviço extra', icon: Puzzle, color: '#2dd4bf', gradient: 'rgba(45,212,191,0.08)' },
                 ] as const).map(card => {
                     const isActive = typeFilter === card.key;
+                    const Icon = card.icon;
                     return (
                         <button key={card.key} type="button"
                             className="admin-kpi-card"
@@ -118,7 +119,7 @@ export default function AdminClientsPage() {
                         >
                             {/* Top row: icon + label */}
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
-                                <span style={{ fontSize: '0.9rem' }} aria-hidden="true">{card.icon}</span>
+                                <Icon size={15} aria-hidden="true" style={{ color: isActive ? card.color : 'var(--text-muted)', transition: 'color 0.2s' }} />
                                 <span style={{
                                     fontSize: '0.6875rem', fontWeight: 700, color: isActive ? card.color : 'var(--text-muted)',
                                     textTransform: 'uppercase', letterSpacing: '0.08em',
@@ -153,18 +154,18 @@ export default function AdminClientsPage() {
                         aria-label="Buscar por nome, e-mail ou telefone"
                         value={search} onChange={e => setSearch(e.target.value)}
                     />
-                    <span className="admin-search__icon" aria-hidden="true">🔎</span>
+                    <Search size={14} className="admin-search__icon" aria-hidden="true" />
                 </div>
                 {search && (
                     <button onClick={() => setSearch('')} aria-label="Limpar busca"
-                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem', minWidth: 36, minHeight: 36 }}>
-                        ✖️
+                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 36, minHeight: 36 }}>
+                        <X size={16} aria-hidden="true" />
                     </button>
                 )}
 
                 {typeFilter !== 'ALL' && (
                     <button className="admin-filter-clear" onClick={() => setTypeFilter('ALL')}>
-                        🗑️ Limpar filtro
+                        <FilterX size={14} aria-hidden="true" /> Limpar filtro
                     </button>
                 )}
 
@@ -176,10 +177,10 @@ export default function AdminClientsPage() {
             {/* --- CLIENTS TABLE --- */}
             <div style={{ borderRadius: '16px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', overflow: 'hidden' }}>
                 {filtered.length === 0 ? (
-                    <div style={{ padding: '48px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                        <div style={{ fontSize: '2.5rem', marginBottom: '12px', opacity: 0.4 }}>🔍</div>
-                        <div style={{ fontWeight: 600 }}>Nenhum cliente encontrado</div>
-                        <div style={{ fontSize: '0.8125rem', marginTop: '4px' }}>Tente ajustar busca ou filtros</div>
+                    <div className="admin-empty">
+                        <Search size={44} className="admin-empty__icon" aria-hidden="true" />
+                        <div className="admin-empty__title">Nenhum cliente encontrado</div>
+                        <div className="admin-empty__hint">Tente ajustar busca ou filtros</div>
                     </div>
                 ) : (
                     <div className="table-container" style={{ margin: 0 }}>
@@ -286,12 +287,12 @@ export default function AdminClientsPage() {
                                                 <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
                                                     <button className="admin-icon-btn admin-icon-btn--success"
                                                         aria-label={`Editar ${u.name}`}
-                                                        onClick={() => setEditUser(u)}>✏️</button>
+                                                        onClick={() => setEditUser(u)}><Pencil size={16} aria-hidden="true" /></button>
 
                                                     {u.role !== 'ADMIN' && (
                                                         <button className="admin-icon-btn admin-icon-btn--danger"
                                                             aria-label={`Excluir ${u.name}`}
-                                                            onClick={() => confirmDelete(u)}>🗑️</button>
+                                                            onClick={() => confirmDelete(u)}><Trash2 size={16} aria-hidden="true" /></button>
                                                     )}
                                                 </div>
                                             </td>

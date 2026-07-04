@@ -2,6 +2,7 @@ import { getErrorMessage } from '../../../utils/errors';
 import React, { useState } from 'react';
 import { usersApi, ApiError } from '../../../api/client';
 import BottomSheetModal from '../../BottomSheetModal';
+import { UserPlus, UserRound, Mail, Lock, Smartphone, IdCard, Globe, NotebookPen, ShieldCheck, ChevronDown, Plus } from 'lucide-react';
 import { maskPhone, maskEmail, maskCpfCnpj, translateError } from '../../../utils/mask';
 
 interface CreateClientModalProps {
@@ -82,7 +83,7 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                         <span style={{
                             width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
                             background: 'var(--accent-gradient-go)', fontSize: '1rem'
-                        }}>➕</span>
+                        }}><UserPlus size={18} aria-hidden="true" style={{ color: '#fff' }} /></span>
                         Novo Cliente
                     </h2>
                     <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px', marginBottom: 0 }}>
@@ -107,7 +108,7 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                             <div>
                                 <label style={labelStyle}>Nome *</label>
                                 <div style={{ position: 'relative' }}>
-                                    <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>👤</span>
+                                    <UserRound size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                     <input
                                         value={createForm.name} onChange={e => setCreateForm({ ...createForm, name: e.target.value })}
                                         placeholder="Nome completo" autoFocus
@@ -120,7 +121,7 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                             <div>
                                 <label style={labelStyle}>E-mail *</label>
                                 <div style={{ position: 'relative' }}>
-                                    <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>📧</span>
+                                    <Mail size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                     <input
                                         type="email" value={createForm.email}
                                         onChange={e => setCreateForm({ ...createForm, email: maskEmail(e.target.value) })}
@@ -138,7 +139,7 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                             <div>
                                 <label style={labelStyle}>Senha *</label>
                                 <div style={{ position: 'relative' }}>
-                                    <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🔒</span>
+                                    <Lock size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                     <input
                                         type="password" value={createForm.password}
                                         onChange={e => setCreateForm({ ...createForm, password: e.target.value })}
@@ -152,7 +153,7 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                             <div>
                                 <label style={labelStyle}>Telefone</label>
                                 <div style={{ position: 'relative' }}>
-                                    <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>📱</span>
+                                    <Smartphone size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                     <input
                                         value={createForm.phone}
                                         onChange={e => setCreateForm({ ...createForm, phone: maskPhone(e.target.value) })}
@@ -169,7 +170,7 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                         <div style={{ marginTop: '14px' }}>
                             <label style={labelStyle}>Tipo de conta</label>
                             <div style={{ display: 'flex', gap: '6px' }}>
-                                {[{ key: 'CLIENTE', label: '👤 Cliente', desc: 'Acesso ao painel do cliente' }, { key: 'ADMIN', label: '🛡️ Admin', desc: 'Acesso total ao sistema' }].map(r => (
+                                {[{ key: 'CLIENTE', icon: UserRound, label: 'Cliente', desc: 'Acesso ao painel do cliente' }, { key: 'ADMIN', icon: ShieldCheck, label: 'Admin', desc: 'Acesso total ao sistema' }].map(r => (
                                     <button key={r.key}
                                         onClick={() => setCreateForm({ ...createForm, role: r.key })}
                                         style={{
@@ -179,7 +180,7 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                                             border: `1px solid ${createForm.role === r.key ? 'rgba(16,185,129,0.3)' : 'var(--border-default)'}`,
                                             transition: 'all 0.15s',
                                         }}>
-                                        <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: createForm.role === r.key ? '#10b981' : 'var(--text-primary)' }}>{r.label}</span>
+                                        <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: createForm.role === r.key ? '#10b981' : 'var(--text-primary)', display: 'inline-flex', alignItems: 'center', gap: 5 }}>{(() => { const RI = r.icon; return <RI size={14} aria-hidden="true" />; })()} {r.label}</span>
                                         <span style={{ fontSize: '0.5625rem', color: 'var(--text-muted)' }}>{r.desc}</span>
                                     </button>
                                 ))}
@@ -202,7 +203,7 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                                 <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Dados Adicionais</span>
                                 <span style={{ fontSize: '0.5625rem', color: 'var(--text-muted)', fontWeight: 500, textTransform: 'none', letterSpacing: '0' }}>(opcional)</span>
                             </span>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', transition: 'transform 0.2s', transform: showAdvanced ? 'rotate(180deg)' : 'rotate(0)' }}>▼</span>
+                            <ChevronDown size={14} aria-hidden="true" style={{ color: 'var(--text-muted)', transition: 'transform 0.2s', transform: showAdvanced ? 'rotate(180deg)' : 'rotate(0)' }} />
                         </button>
 
                         {showAdvanced && (
@@ -212,7 +213,7 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                                     <div>
                                         <label style={labelStyle}>CPF/CNPJ</label>
                                         <div style={{ position: 'relative' }}>
-                                            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🪪</span>
+                                            <IdCard size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                             <input
                                                 value={createForm.cpfCnpj}
                                                 onChange={e => setCreateForm({ ...createForm, cpfCnpj: maskCpfCnpj(e.target.value) })}
@@ -245,7 +246,7 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                                 <div style={{ marginBottom: '12px' }}>
                                     <label style={labelStyle}>Redes Sociais</label>
                                     <div style={{ position: 'relative' }}>
-                                        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>🌐</span>
+                                        <Globe size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                         <input
                                             value={createForm.socialLinks}
                                             onChange={e => setCreateForm({ ...createForm, socialLinks: e.target.value })}
@@ -258,7 +259,7 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
 
                                 {/* Notes */}
                                 <div>
-                                    <label style={labelStyle}>📝 Notas internas</label>
+                                    <label style={labelStyle}><NotebookPen size={12} aria-hidden="true" style={{ verticalAlign: '-2px' }} /> Notas internas</label>
                                     <textarea
                                         value={createForm.notes}
                                         onChange={e => setCreateForm({ ...createForm, notes: e.target.value })}
@@ -289,7 +290,7 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                                 opacity: canCreate && !creating ? 1 : 0.5,
                                 display: 'flex', alignItems: 'center', gap: '8px',
                             }}>
-                            {creating ? '⏳ Criando...' : '➕ Cadastrar Cliente'}
+                            {creating ? 'Criando...' : <><Plus size={16} aria-hidden="true" /> Cadastrar Cliente</>}
                         </button>
                     </div>
                 </div>
