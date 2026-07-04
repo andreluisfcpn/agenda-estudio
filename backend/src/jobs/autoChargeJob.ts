@@ -68,6 +68,20 @@ export async function runAutoChargeJob(): Promise<void> {
                     where: { id: p.id },
                     data: { provider: 'STRIPE', providerRef: result.paymentIntentId },
                 });
+                // 3DS off-session: o webhook NÃO vai concluir sozinho — sem avisar,
+                // o cliente ficava no limbo achando que a cobrança automática passou.
+                if (result.status === 'requires_action') {
+                    await createNotification({
+                        userId: p.userId,
+                        type: 'PAYMENT_FAILED',
+                        severity: 'warning',
+                        title: 'Cobrança automática requer sua confirmação',
+                        message: 'Seu banco pediu autenticação para a cobrança automática. Pague manualmente na aba Pagamentos para concluir.',
+                        entityType: 'payment',
+                        entityId: p.id,
+                        actionUrl: '/meus-pagamentos',
+                    }).catch(() => {});
+                }
             }
         } catch (err) {
             failed++;
@@ -81,7 +95,9 @@ export async function runAutoChargeJob(): Promise<void> {
                 message: 'Não conseguimos cobrar sua parcela no cartão cadastrado. Pague manualmente na aba Pagamentos ou atualize seu cartão.',
                 entityType: 'payment',
                 entityId: p.id,
-                actionUrl: '/my-payments',
+                // Era '/my-payments' — rota inexistente (o app usa /meus-pagamentos);
+                // o deep-link da notificação caía no redirect padrão do dashboard.
+                actionUrl: '/meus-pagamentos',
             }).catch(() => {});
         }
     }

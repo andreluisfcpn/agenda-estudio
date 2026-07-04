@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCountdown } from '../../hooks/useCountdown';
 
 interface AwaitingPaymentBannerProps {
     paymentDeadline: string | null;
@@ -7,31 +7,14 @@ interface AwaitingPaymentBannerProps {
 }
 
 export default function AwaitingPaymentBanner({ paymentDeadline, onPay, onExpire }: AwaitingPaymentBannerProps) {
-    const [remaining, setRemaining] = useState(() => {
-        if (!paymentDeadline) return 600;
-        const diff = new Date(paymentDeadline).getTime() - Date.now();
-        return Math.max(0, Math.floor(diff / 1000));
-    });
-
-    useEffect(() => {
-        if (!paymentDeadline) return;
-        const timer = setInterval(() => {
-            const diff = new Date(paymentDeadline).getTime() - Date.now();
-            const secs = Math.max(0, Math.floor(diff / 1000));
-            setRemaining(secs);
-            if (secs <= 0) {
-                clearInterval(timer);
-                onExpire?.();
-            }
-        }, 1000);
-        return () => clearInterval(timer);
-    }, [paymentDeadline, onExpire]);
+    // useCountdown guarda o onExpire em ref (interval não recicla por prop nova).
+    const remaining = useCountdown(paymentDeadline, onExpire) ?? 600;
 
     const mins = Math.floor(remaining / 60);
     const secs = remaining % 60;
     const totalDuration = 600; // 10 min
     const pct = Math.max(0, (remaining / totalDuration) * 100);
-    const timerColor = remaining <= 60 ? '#ef4444' : remaining <= 180 ? '#f59e0b' : '#d97706';
+    const timerColor = remaining <= 60 ? 'var(--danger)' : remaining <= 180 ? 'var(--warning)' : 'var(--warning-strong)';
 
     return (
         <div className="awaiting-banner" onClick={e => e.stopPropagation()}>

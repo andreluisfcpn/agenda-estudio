@@ -20,6 +20,10 @@ export default function ToggleSwitch({ checked, onChange, label, disabled = fals
     return (
         <label className="toggle-switch" htmlFor={switchId}>
             {label && <span className="toggle-switch__label">{label}</span>}
+            {/* SEM onClick aqui: o clique já chega via <label htmlFor> → input →
+                onChange. Com onClick no track, 1 clique disparava onChange DUAS
+                vezes (2 PATCHs idênticos — ex.: cobrança automática). Teclado
+                continua no onKeyDown. */}
             <div
                 className={`toggle-switch__track ${checked ? 'toggle-switch__track--on' : ''} ${disabled ? 'toggle-switch__track--disabled' : ''}`}
                 role="switch"
@@ -27,7 +31,6 @@ export default function ToggleSwitch({ checked, onChange, label, disabled = fals
                 aria-label={label || 'Toggle'}
                 tabIndex={disabled ? -1 : 0}
                 onKeyDown={handleKeyDown}
-                onClick={() => !disabled && onChange(!checked)}
             >
                 <div className="toggle-switch__thumb" />
             </div>

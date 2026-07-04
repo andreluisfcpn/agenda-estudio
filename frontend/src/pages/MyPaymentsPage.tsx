@@ -17,6 +17,7 @@ import ToggleSwitch from '../components/ui/ToggleSwitch';
 import StatCard from '../components/ui/StatCard';
 import StatusBadge from '../components/ui/StatusBadge';
 import { formatBRL, formatDate } from '../utils/format';
+import { useCountdown } from '../hooks/useCountdown';
 import { PaymentsSkeleton } from '../components/ui/SkeletonLoader';
 import '../styles/my-payments.css';
 
@@ -66,26 +67,13 @@ function PendingPaymentCard({ payment: p, index: i, isOverdue, isFailed, onPay, 
     const deadline = p.paymentDeadline ? new Date(p.paymentDeadline).getTime() : null;
     const hasTimer = !!deadline && deadline > Date.now();
 
-    const [remaining, setRemaining] = useState(() => {
-        if (!deadline) return -1;
-        return Math.max(0, Math.floor((deadline - Date.now()) / 1000));
-    });
     const [fading, setFading] = useState(false);
-
-    useEffect(() => {
-        if (!deadline) return;
-        const timer = setInterval(() => {
-            const diff = deadline - Date.now();
-            const secs = Math.max(0, Math.floor(diff / 1000));
-            setRemaining(secs);
-            if (secs <= 0) {
-                clearInterval(timer);
-                setFading(true);
-                setTimeout(() => onExpired(), 800);
-            }
-        }, 1000);
-        return () => clearInterval(timer);
-    }, [deadline, onExpired]);
+    // useCountdown guarda o onExpire em ref — o interval não recicla quando o
+    // pai re-renderiza e recria a prop onExpired.
+    const remaining = useCountdown(deadline, () => {
+        setFading(true);
+        setTimeout(() => onExpired(), 800);
+    }) ?? -1;
 
     if (fading) {
         return (
@@ -99,7 +87,7 @@ function PendingPaymentCard({ payment: p, index: i, isOverdue, isFailed, onPay, 
 
     const mins = Math.floor(remaining / 60);
     const secs = remaining % 60;
-    const timerColor = remaining <= 60 ? '#ef4444' : remaining <= 180 ? '#f59e0b' : '#10b981';
+    const timerColor = remaining <= 60 ? 'var(--danger)' : remaining <= 180 ? 'var(--warning)' : 'var(--success)';
 
     return (
         <div
@@ -345,19 +333,12 @@ export default function MyPaymentsPage() {
             <div className={`client-hero ${hasOverdue ? 'client-hero--alert' : 'client-hero--default'} animate-card-enter`}>
                 <HeroAmbient variant="pagar" />
                 <div className="client-hero__header" style={{ marginBottom: '16px' }}>
-                    <div className="client-hero__icon-wrapper" style={{
-                        background: hasOverdue
-                            ? 'linear-gradient(135deg, rgba(239,68,68,0.2), rgba(239,68,68,0.05))'
-                            : 'linear-gradient(135deg, rgba(16,185,129,0.2), rgba(16,185,129,0.05))',
-                        borderColor: hasOverdue ? 'rgba(239,68,68,0.25)' : 'rgba(16,185,129,0.25)',
-                        boxShadow: hasOverdue ? '0 0 20px rgba(239,68,68,0.12)' : '0 0 20px rgba(16,185,129,0.12)',
-                        color: hasOverdue ? '#ef4444' : '#10b981',
-                    }}>
+                    <div className={`client-hero__icon-wrapper ${hasOverdue ? 'client-hero__icon-wrapper--danger' : 'client-hero__icon-wrapper--success'}`}>
                         <Landmark size={22} />
                     </div>
                     <div>
-                        <h2 className="client-hero__greeting" style={{ margin: 0 }}>Pagamentos</h2>
-                        <p className="client-hero__message" style={{ margin: '4px 0 0 0' }}>{heroMessage}</p>
+                        <h2 className="client-hero__greeting">Pagamentos</h2>
+                        <p className="client-hero__message">{heroMessage}</p>
                     </div>
                 </div>
                 <div className="client-cta-stack">
@@ -379,7 +360,7 @@ export default function MyPaymentsPage() {
                     label="Pendente"
                     value={formatBRL(totalPending)}
                     detail={overdueCount > 0 ? `${overdueCount} em atraso` : pendingPayments.length > 0 ? 'No prazo' : 'Tudo em dia'}
-                    accent={overdueCount > 0 ? '#ef4444' : '#10b981'}
+                    accent={overdueCount > 0 ? 'var(--danger)' : 'var(--success)'}
                     index={0}
                 />
                 <StatCard
@@ -387,7 +368,7 @@ export default function MyPaymentsPage() {
                     label="Total Pago"
                     value={formatBRL(totalPaid)}
                     detail={`${paidPayments.length} pagamento(s)`}
-                    accent="#2dd4bf"
+                    accent="var(--client-accent-teal)"
                     index={1}
                 />
             </div>
@@ -447,7 +428,7 @@ export default function MyPaymentsPage() {
                 <div className={`autocharge-card animate-card-enter ${autoCharge ? 'autocharge-card--active' : ''}`} style={{ '--i': 0 } as React.CSSProperties}>
                     <div className="autocharge-card__info">
                         <h3 className="autocharge-card__title">
-                            <Shield size={18} style={{ color: autoCharge ? '#10b981' : 'var(--text-muted)' }} />
+                            <Shield size={18} style={{ color: autoCharge ? 'var(--success)' : 'var(--text-muted)' }} />
                             Cobrança Automática
                         </h3>
                         <p className="autocharge-card__desc">
