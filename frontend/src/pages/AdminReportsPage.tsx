@@ -4,7 +4,7 @@ import {
     TierBreakdownItem, AudienceMetrics, ClientRankItem,
 } from '../api/client';
 import { useNavigate } from 'react-router-dom';
-import { BarChart3 } from 'lucide-react';
+import { BarChart3, Download, Eye, Trophy, MessageCircle, Timer } from 'lucide-react';
 import AdminPageHeader from '../components/admin/AdminPageHeader';
 import { HeroSkeleton, TableSkeleton } from '../components/ui/SkeletonLoader';
 import { TIER_META, getMeta } from '../constants/adminMeta';
@@ -112,8 +112,8 @@ export default function AdminReportsPage() {
                                 </button>
                             ))}
                         </div>
-                        <button onClick={handleExportCSV} className="btn-admin-ghost" style={{ fontSize: '0.6875rem', padding: '6px 14px' }}>
-                            📥 Exportar CSV
+                        <button onClick={handleExportCSV} className="btn-admin-ghost" style={{ fontSize: '0.6875rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <Download size={13} aria-hidden="true" /> Exportar CSV
                         </button>
                     </div>
                 }
@@ -244,23 +244,23 @@ export default function AdminReportsPage() {
                     </h3>
                     {!audienceMetrics || audienceMetrics.totalCompleted === 0 ? (
                         <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
-                            <div style={{ fontSize: '2.5rem', marginBottom: '8px', opacity: 0.4 }}>📊</div>
+                            <BarChart3 size={40} aria-hidden="true" style={{ opacity: 0.4, marginBottom: 8 }} />
                             <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>Sem dados de audiência</div>
                             <div style={{ fontSize: '0.75rem', marginTop: '4px' }}>Nenhuma sessão concluída neste período</div>
                         </div>
                     ) : (
                         <div className="admin-grid-2" style={{ gap: '12px' }}>
                             {[
-                                { icon: '👁️', label: 'Média de Viewers', value: audienceMetrics.avgViewers.toLocaleString('pt-BR'), color: 'var(--accent-text)' },
-                                { icon: '🏆', label: 'Pico Máximo', value: audienceMetrics.maxViewers.toLocaleString('pt-BR'), color: 'var(--warning)' },
-                                { icon: '💬', label: 'Média de Chat', value: audienceMetrics.avgChat.toLocaleString('pt-BR'), color: 'var(--success)' },
-                                { icon: '⏱️', label: 'Duração Média', value: audienceMetrics.avgDuration > 0 ? `${audienceMetrics.avgDuration}min` : '—', color: 'var(--info)' },
+                                { icon: Eye, label: 'Média de Viewers', value: audienceMetrics.avgViewers.toLocaleString('pt-BR'), color: 'var(--accent-text)' },
+                                { icon: Trophy, label: 'Pico Máximo', value: audienceMetrics.maxViewers.toLocaleString('pt-BR'), color: 'var(--warning)' },
+                                { icon: MessageCircle, label: 'Média de Chat', value: audienceMetrics.avgChat.toLocaleString('pt-BR'), color: 'var(--success)' },
+                                { icon: Timer, label: 'Duração Média', value: audienceMetrics.avgDuration > 0 ? `${audienceMetrics.avgDuration}min` : '—', color: 'var(--info)' },
                             ].map(m => (
                                 <div key={m.label} style={{
                                     padding: '16px', borderRadius: '12px', textAlign: 'center',
                                     background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)',
                                 }}>
-                                    <div style={{ fontSize: '1.25rem', marginBottom: '4px' }}>{m.icon}</div>
+                                    <div style={{ marginBottom: '6px', color: m.color, display: 'flex', justifyContent: 'center' }}>{(() => { const MI = m.icon; return <MI size={20} aria-hidden="true" />; })()}</div>
                                     <div style={{ fontSize: '0.5625rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)', marginBottom: '4px', fontWeight: 700 }}>{m.label}</div>
                                     <div style={{ fontSize: '1.25rem', fontWeight: 800, color: m.color }}>{m.value}</div>
                                 </div>
@@ -275,13 +275,13 @@ export default function AdminReportsPage() {
                 <div style={{ padding: '20px 24px 0', marginBottom: '16px' }}>
                     <h3 style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <span style={{ width: 16, height: 2, background: 'var(--warning)', borderRadius: 1 }} />
-                        🏆 Ranking de Clientes — Top 10 por Receita
+                        <Trophy size={15} aria-hidden="true" /> Ranking de Clientes — Top 10 por Receita
                     </h3>
                 </div>
                 {clientRanking.length === 0 ? (
-                    <div style={{ padding: '48px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                        <div style={{ fontSize: '2.5rem', marginBottom: '12px', opacity: 0.4 }}>🏆</div>
-                        <div style={{ fontWeight: 600 }}>Nenhum dado de cliente neste período</div>
+                    <div className="admin-empty">
+                        <Trophy size={44} className="admin-empty__icon" aria-hidden="true" />
+                        <div className="admin-empty__title">Nenhum dado de cliente neste período</div>
                     </div>
                 ) : (
                     <div className="table-container" style={{ margin: 0 }}>
