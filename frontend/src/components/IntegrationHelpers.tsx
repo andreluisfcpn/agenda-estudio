@@ -227,7 +227,7 @@ export function CredsTabs({ editEnv, onChange, sandboxOk, productionOk }: {
       onClick={() => onChange(env)}
       aria-pressed={editEnv === env}>
       {label}
-      <span className={`int-creds-tab-dot ${ok ? 'int-creds-tab-dot--ok' : ''}`} aria-label={ok ? 'configurado' : 'sem credenciais'}>
+      <span className={`int-creds-tab-dot ${ok ? 'int-creds-tab-dot--ok' : ''}`} role="img" aria-label={ok ? 'configurado' : 'sem credenciais'}>
         {ok ? <Icons.Check size={10} /> : '—'}
       </span>
     </button>

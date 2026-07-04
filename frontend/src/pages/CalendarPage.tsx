@@ -570,7 +570,7 @@ export default function CalendarPage() {
                     title="Agenda"
                     subtitle="Visão completa da agenda do estúdio"
                     actions={
-                        <div className="agenda-hero-stats" aria-label="Resumo da semana">
+                        <div className="agenda-hero-stats" role="group" aria-label="Resumo da semana">
                             <div className="agenda-hero-stat">
                                 <div className="agenda-hero-stat__value agenda-hero-stat__value--success">{weekSummary.booked}</div>
                                 <div className="agenda-hero-stat__label">Agendados</div>

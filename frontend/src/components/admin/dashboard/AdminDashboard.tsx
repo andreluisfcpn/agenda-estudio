@@ -289,7 +289,7 @@ export default function AdminDashboard() {
                                     <AlertCircle size={18} className="dash-alert__icon" aria-hidden="true" />
                                     <div className="dash-alert__body">
                                         <div className="dash-alert__title">
-                                            Contrato de <span className="dash-inline-link" onClick={() => c.user?.id && navigate(`/admin/clients/${c.user.id}`)}>{c.user?.name}</span> expira em {daysUntil(c.endDate)} dia(s)
+                                            Contrato de <button type="button" className="dash-inline-link" onClick={() => c.user?.id && navigate(`/admin/clients/${c.user.id}`)}>{c.user?.name}</button> expira em {daysUntil(c.endDate)} dia(s)
                                         </div>
                                         <div className="dash-alert__sub">{c.type} · {c.tier}</div>
                                     </div>
@@ -301,7 +301,7 @@ export default function AdminDashboard() {
                                     <AlertTriangle size={18} className="dash-alert__icon" aria-hidden="true" />
                                     <div className="dash-alert__body">
                                         <div className="dash-alert__title">
-                                            Cancelamento pendente: <span className="dash-inline-link" onClick={() => navigate('/admin/contracts')}>{c.user?.name}</span>
+                                            Cancelamento pendente: <button type="button" className="dash-inline-link" onClick={() => navigate('/admin/contracts')}>{c.user?.name}</button>
                                         </div>
                                         <div className="dash-alert__sub">Aguardando resolução (multa ou isenção)</div>
                                     </div>

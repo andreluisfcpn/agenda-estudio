@@ -21,6 +21,16 @@ const saveIntegrationSchema = z.object({
     config: z.record(z.string(), z.any()),
 });
 
+/** Um sub-config de ambiente tem as credenciais obrigatórias do provider? */
+function envCredsComplete(provider: string, envCfg: Record<string, any> | undefined): boolean {
+    if (!envCfg) return false;
+    return provider === 'CORA'
+        ? !!(envCfg.clientId && envCfg.certificatePem && envCfg.privateKeyPem)
+        : !!(envCfg.secretKey && envCfg.publishableKey);
+}
+
+const envLabel = (env: string) => (env === 'production' ? 'produção' : 'sandbox');
+
 export function registerIntegrationRoutes(router: Router) {
 
 // ─── GET /api/integrations ──────────────────────────────
@@ -180,14 +190,22 @@ router.put('/:provider', authenticate, authorize('ADMIN'), async (req: Request, 
 
                 const hasDualFormat = data.config.sandbox || data.config.production;
                 if (hasDualFormat) {
-                    // Dual format (Cora or Stripe): merge each environment sub-object individually
-                    mergedConfig = { ...existingConfig };
+                    // Dual format (Cora or Stripe): merge each environment sub-object individually.
+                    // Se o existente ainda é FLAT (legado), migra as credenciais para o ambiente que
+                    // estava ativo — senão o topo flat viraria lixo e o runtime dual leria um
+                    // sub-objeto vazio (quebrando PIX/Boleto/Cartão silenciosamente).
+                    const existingIsFlat = !existingConfig.sandbox && !existingConfig.production;
+                    let base: Record<string, any> = existingConfig;
+                    if (existingIsFlat && Object.keys(existingConfig).length > 0) {
+                        const activeEnv = existing.environment === 'production' ? 'production' : 'sandbox';
+                        base = { [activeEnv]: existingConfig };
+                    }
+                    mergedConfig = {};
                     for (const env of ['sandbox', 'production'] as const) {
+                        const existingSub = (base[env] || {}) as Record<string, any>;
                         const incoming = data.config[env] as Record<string, any> | undefined;
-                        if (!incoming) continue;
-                        const existingSub = (existingConfig[env] || {}) as Record<string, any>;
                         const merged: Record<string, any> = { ...existingSub };
-                        for (const [key, value] of Object.entries(incoming)) {
+                        for (const [key, value] of Object.entries(incoming || {})) {
                             // Skip empty, null, undefined values
                             if (value === undefined || value === null || value === '') continue;
                             // Skip masked values sent back from the frontend (e.g. 'int-1bk...bsHJ', '***CERTIFICATE_CONFIGURED***')
@@ -206,6 +224,20 @@ router.put('/:provider', authenticate, authorize('ADMIN'), async (req: Request, 
                     }
                 }
             } catch { /* existing config parse failed, use new config */ }
+        }
+
+        // Guarda: não persistir um estado que deixaria a integração LIGADA apontando para um
+        // ambiente ativo SEM credenciais (o checkout ofereceria o método mas falharia ao cobrar).
+        // O fluxo legítimo "seleciono produção e colo as chaves no mesmo Salvar" passa, pois aqui
+        // já checamos o config MESCLADO (com o que acabou de ser digitado).
+        const willBeEnabled = data.enabled ?? existing?.enabled ?? false;
+        const isDualMerged = !!((mergedConfig as any).sandbox || (mergedConfig as any).production);
+        if (willBeEnabled && isDualMerged) {
+            const activeEnv = data.environment === 'production' ? 'production' : 'sandbox';
+            if (!envCredsComplete(provider, (mergedConfig as any)[activeEnv])) {
+                res.status(400).json({ error: `Não é possível ativar o ambiente de ${envLabel(activeEnv)} sem as credenciais. Preencha-as ou desligue a integração antes de trocar de ambiente.` });
+                return;
+            }
         }
 
         const encryptedConfig = encryptCredentials(JSON.stringify(mergedConfig));
@@ -323,22 +355,23 @@ router.post('/:provider/toggle', authenticate, authorize('ADMIN'), async (req: R
     }
 
     // Guarda: só liga se o AMBIENTE ATIVO tiver as credenciais obrigatórias —
-    // ligar sem elas quebraria o checkout silenciosamente. Config flat legado
-    // (sem sandbox/production) fica isento, espelhando o fallback do runtime.
+    // ligar sem elas ofereceria o método no checkout mas falharia ao cobrar.
     if (enabled) {
         let cfg: Record<string, any> | null = null;
-        try { cfg = JSON.parse(decryptConfigSafe(integration.config)); } catch { /* config ilegível → não bloqueia */ }
+        let readable = true;
+        try { cfg = JSON.parse(decryptConfigSafe(integration.config)); } catch { readable = false; }
+        // Config ilegível (ex.: ENCRYPTION_KEY rotacionada) → fail-closed: o runtime também
+        // rejeitaria a cobrança, então não deixamos ligar mostrando um estado saudável.
+        if (!readable) {
+            res.status(400).json({ error: 'Não foi possível ler as credenciais salvas. Salve-as novamente antes de ativar.' });
+            return;
+        }
         const env = integration.environment === 'production' ? 'production' : 'sandbox';
         const isDual = !!(cfg && (cfg.sandbox || cfg.production));
-        if (isDual) {
-            const envCfg = cfg?.[env] || {};
-            const complete = provider === 'CORA'
-                ? !!(envCfg.clientId && envCfg.certificatePem && envCfg.privateKeyPem)
-                : !!(envCfg.secretKey && envCfg.publishableKey);
-            if (!complete) {
-                res.status(400).json({ error: `Ative somente após configurar as credenciais de ${env === 'production' ? 'produção' : 'sandbox'} (ambiente ativo).` });
-                return;
-            }
+        // Config flat legado fica isento (espelha o fallback do runtime).
+        if (isDual && !envCredsComplete(provider, cfg?.[env])) {
+            res.status(400).json({ error: `Ative somente após configurar as credenciais de ${envLabel(env)} (ambiente ativo).` });
+            return;
         }
     }
 

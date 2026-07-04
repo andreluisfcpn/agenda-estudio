@@ -1035,16 +1035,17 @@ button.admin-kpi-card:active { transform: scale(0.99); }
 }
 .dash-panel__list--lg { gap: 10px; }
 .dash-count-badge {
-    color: #fff;
     font-size: 0.7rem;
-    font-weight: 700;
+    font-weight: 800;
     padding: 2px 8px;
     border-radius: 10px;
     min-width: 20px;
     text-align: center;
 }
-.dash-count-badge--danger { background: var(--danger); }
-.dash-count-badge--warning { background: var(--warning); }
+/* Texto escuro sobre o fundo saturado → contraste AA no dígito de 11px
+   (branco sobre âmbar/vermelho ficava ~2-3.8:1, abaixo de 4.5:1). */
+.dash-count-badge--danger { background: var(--danger); color: #2a0606; }
+.dash-count-badge--warning { background: var(--warning); color: #2a1a00; }
 .dash-agenda-card {
     border-top: 3px solid var(--accent-primary);
     margin-bottom: var(--space-6);
@@ -1154,7 +1155,16 @@ button.admin-kpi-card:active { transform: scale(0.99); }
 .dash-alert__body { flex: 1; }
 .dash-alert__title { font-size: 0.8125rem; font-weight: 600; }
 .dash-alert__sub { font-size: 0.7rem; color: var(--text-muted); }
-.dash-inline-link { cursor: pointer; color: var(--accent-text); }
+/* Link inline dentro do texto de alerta — é <button> p/ ser acessível por teclado. */
+.dash-inline-link {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    cursor: pointer;
+    color: var(--accent-text);
+}
+.dash-inline-link:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; border-radius: 2px; }
 
 /* Barras de Ocupação da Semana */
 .dash-occ {
@@ -1755,12 +1765,14 @@ button.admin-kpi-card:active { transform: scale(0.99); }
     opacity: 0.6;
     cursor: help;
 }
-.calendar-cell--mine {
+/* Especificidade 0-2-0 (dobra a classe) p/ vencer .calendar-cell.occupied
+   {cursor:default} e .calendar-cell:hover {background} de index.css — antes
+   isso era inline e sempre ganhava; a migração precisa empatar+vir depois. */
+.calendar-cell.calendar-cell--mine {
     background: linear-gradient(135deg, rgba(52, 211, 153, 0.25), rgba(16, 185, 129, 0.15));
     border: 1px solid var(--tier-comercial);
     cursor: pointer;
 }
-.calendar-cell--past { cursor: not-allowed; }
 .calendar-cell--void { opacity: 0.3; }
 
 /* Chip que preenche a célula */
