@@ -1,6 +1,6 @@
 import { getErrorMessage } from '../utils/errors';
 import React, { useState, useEffect, useMemo } from 'react';
-import { Wallet, CheckCircle2, Clock } from 'lucide-react';
+import { Wallet, CheckCircle2, Clock, ChevronLeft, ChevronRight, Scissors, FileText, Search, Moon } from 'lucide-react';
 import { financeApi, FinanceClosingResponse, EnrichedPayment } from '../api/client';
 import { useUI } from '../context/UIContext';
 import AdminPageHeader from '../components/admin/AdminPageHeader';
@@ -108,9 +108,10 @@ export default function AdminFinancePage() {
                     }}>
                         <button onClick={() => goMonth(-1)} aria-label="Mês anterior" className="admin-hover-bg" style={{
                             background: 'none', border: 'none', color: 'var(--text-secondary)',
-                            padding: '10px 14px', minWidth: 44, minHeight: 44, cursor: 'pointer', fontSize: '1rem',
+                            padding: '10px 14px', minWidth: 44, minHeight: 44, cursor: 'pointer',
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                         }}>
-                            ‹
+                            <ChevronLeft size={18} aria-hidden="true" />
                         </button>
                         <div style={{
                             padding: '10px 20px', fontWeight: 700, fontSize: '0.9375rem',
@@ -123,9 +124,10 @@ export default function AdminFinancePage() {
                         </div>
                         <button onClick={() => goMonth(1)} aria-label="Próximo mês" className="admin-hover-bg" style={{
                             background: 'none', border: 'none', color: 'var(--text-secondary)',
-                            padding: '10px 14px', minWidth: 44, minHeight: 44, cursor: 'pointer', fontSize: '1rem',
+                            padding: '10px 14px', minWidth: 44, minHeight: 44, cursor: 'pointer',
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                         }}>
-                            ›
+                            <ChevronRight size={18} aria-hidden="true" />
                         </button>
                     </div>
                 }
@@ -167,7 +169,7 @@ export default function AdminFinancePage() {
                                 <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
                                     Taxas Retidas
                                 </div>
-                                <span style={{ fontSize: '1.5rem', opacity: 0.6 }}>✂️</span>
+                                <Scissors size={22} aria-hidden="true" style={{ opacity: 0.6 }} />
                             </div>
                             <div style={{ fontSize: '1.875rem', fontWeight: 800, color: 'var(--danger)', marginTop: '10px' }}>
                                 - {formatBRL(data.metrics.totalFees)}
@@ -241,7 +243,7 @@ export default function AdminFinancePage() {
                             borderBottom: '1px solid var(--border-color)'
                         }}>
                             <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                📄 Faturas
+                                <FileText size={17} aria-hidden="true" /> Faturas
                                 <span style={{
                                     fontSize: '0.6875rem', fontWeight: 600, padding: '2px 8px',
                                     borderRadius: '10px', background: 'var(--bg-elevated)', color: 'var(--text-muted)'
@@ -260,7 +262,7 @@ export default function AdminFinancePage() {
                                         value={searchTerm}
                                         onChange={e => setSearchTerm(e.target.value)}
                                     />
-                                    <span className="admin-search__icon" aria-hidden="true">🔎</span>
+                                    <Search size={14} className="admin-search__icon" aria-hidden="true" />
                                 </div>
 
                                 {/* Status Filter Pills */}
@@ -284,10 +286,10 @@ export default function AdminFinancePage() {
                         </div>
 
                         {filteredPayments.length === 0 ? (
-                            <div style={{ padding: '48px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                                <div style={{ fontSize: '2.5rem', marginBottom: '12px', opacity: 0.4 }}>😴</div>
-                                <div style={{ fontWeight: 600 }}>Nenhuma fatura encontrada</div>
-                                <div style={{ fontSize: '0.8125rem', marginTop: '4px' }}>Tente ajustar os filtros ou período</div>
+                            <div className="admin-empty">
+                                <Moon size={44} className="admin-empty__icon" aria-hidden="true" />
+                                <div className="admin-empty__title">Nenhuma fatura encontrada</div>
+                                <div className="admin-empty__hint">Tente ajustar os filtros ou período</div>
                             </div>
                         ) : (
                             <>
