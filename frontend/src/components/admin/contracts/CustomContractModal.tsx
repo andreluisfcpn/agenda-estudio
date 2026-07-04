@@ -377,7 +377,7 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
                                             background: freq === fm.key ? 'rgba(59,130,246,0.12)' : 'transparent',
                                             transition: 'all 0.15s',
                                         }}>
-                                        {(() => { const FI = fm.icon; return <FI size={15} aria-hidden="true" />; })()}
+                                        {(() => { const FI = fm.icon; return <FI size={15} aria-hidden="true" style={{ color: freq === fm.key ? '#3b82f6' : 'var(--text-secondary)' }} />; })()}
                                         <span style={{ fontSize: '0.5625rem', fontWeight: 700, color: freq === fm.key ? '#3b82f6' : 'var(--text-muted)' }}>{fm.label}</span>
                                     </button>
                                 ))}

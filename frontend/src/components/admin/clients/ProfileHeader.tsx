@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { UserDetail } from '../../../api/client';
-import { ShieldCheck, UserRound } from 'lucide-react';
+import { ShieldCheck, UserRound, Mail, Phone, IdCard } from 'lucide-react';
+import { maskPhone } from '../../../utils/mask';
 
 const ROLE_META: Record<string, { icon: typeof ShieldCheck; label: string }> = {
     ADMIN: { icon: ShieldCheck, label: 'Administrador' },
@@ -36,9 +37,21 @@ export default function ProfileHeader({ user }: { user: UserDetail }) {
                 )}
                 <div style={{ flex: 1 }}>
                     <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>{user.name}</h1>
-                    <div style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: '4px' }}>
-                        {user.email} · {user.phone || 'Sem telefone'}
-                        {user.cpfCnpj && <> · <span style={{ fontFamily: 'monospace' }}>{user.cpfCnpj}</span></>}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', color: 'var(--text-secondary)', fontSize: '0.8125rem', marginTop: '6px' }}>
+                        <a href={`mailto:${user.email}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'inherit', textDecoration: 'none', minWidth: 0 }}>
+                            <Mail size={14} aria-hidden="true" style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.email}</span>
+                        </a>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <Phone size={14} aria-hidden="true" style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                            {user.phone ? maskPhone(user.phone) : 'Sem telefone'}
+                        </span>
+                        {user.cpfCnpj && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                <IdCard size={14} aria-hidden="true" style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                                <span style={{ fontFamily: 'monospace' }}>{user.cpfCnpj}</span>
+                            </span>
+                        )}
                     </div>
                     <div style={{ marginTop: '8px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                         <span className={`badge ${user.role === 'ADMIN' ? 'badge-sabado' : 'badge-comercial'}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
