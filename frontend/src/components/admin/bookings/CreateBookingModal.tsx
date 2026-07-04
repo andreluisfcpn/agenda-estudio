@@ -12,6 +12,7 @@ import ChargeNowSheet from '../ChargeNowSheet';
 import {
     Search, FileText, CalendarDays, Zap, Wallet, TicketPercent, Sparkles,
     CreditCard, Check, NotebookPen, CheckCircle2, Clock as ClockIcon, AlertTriangle,
+    Plus, Pin, RefreshCw,
 } from 'lucide-react';
 
 
@@ -163,7 +164,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                 {/* --- HEADER --- */}
                 <div className="admin-modal-head">
                     <h2 className="admin-modal-title">
-                        <span className="admin-modal-title__icon">➕</span>
+                        <span className="admin-modal-title__icon"><Plus size={18} aria-hidden="true" /></span>
                         Novo Agendamento
                     </h2>
 
@@ -350,7 +351,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                                             fontSize: '0.5625rem', fontWeight: 600, padding: '1px 6px', borderRadius: '4px',
                                                             background: c.type === 'FIXO' ? 'rgba(245,158,11,0.1)' : 'rgba(59,130,246,0.1)',
                                                             color: c.type === 'FIXO' ? 'var(--warning)' : 'var(--info)',
-                                                        }}>{c.type === 'FIXO' ? '📌 Fixo' : '🔄 Flex'}</span>
+                                                        }}>{c.type === 'FIXO' ? <><Pin size={10} aria-hidden="true" style={{ verticalAlign: '-1px' }} /> Fixo</> : <><RefreshCw size={10} aria-hidden="true" style={{ verticalAlign: '-1px' }} /> Flex</>}</span>
                                                     </div>
                                                     <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                                                         {c.type === 'FIXO' && c.fixedDayOfWeek != null && (
@@ -376,7 +377,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                             background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.15)',
                                             color: 'var(--warning)', fontSize: '0.8125rem', fontWeight: 600,
                                         }}>
-                                            ⚠️ Cliente sem contratos ativos · Será criado contrato avulso
+                                            <AlertTriangle size={13} aria-hidden="true" style={{ verticalAlign: '-2px' }} /> Cliente sem contratos ativos · Será criado contrato avulso
                                         </div>
                                     )}
                                 </div>

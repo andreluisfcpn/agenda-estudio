@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { contractsApi, Contract } from '../api/client';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import { useUI } from '../context/UIContext';
-import { FileText, Search, X, Inbox, Link2, FolderOpen, Pencil, CircleDollarSign, HandCoins, Ban, RefreshCw, Pause, Play, CreditCard } from 'lucide-react';
+import { FileText, Search, X, Inbox, Link2, FolderOpen, Pencil, CircleDollarSign, HandCoins, Ban, RefreshCw, Pause, Play, CreditCard, Sparkles } from 'lucide-react';
 import BottomSheetModal from '../components/BottomSheetModal';
 import AdminPageHeader from '../components/admin/AdminPageHeader';
 import { HeroSkeleton, TableSkeleton } from '../components/ui/SkeletonLoader';
@@ -145,7 +145,7 @@ export default function AdminContractsPage() {
                                 border: '1px solid rgba(45,212,191,0.3)', color: 'var(--accent-text)', cursor: 'pointer',
                                 fontSize: '0.875rem', transition: 'background 0.2s ease, border-color 0.2s ease',
                             }}>
-                            <span style={{ fontSize: '1.1rem' }}>✨</span> Contrato Personalizado
+                            <Sparkles size={16} aria-hidden="true" /> Contrato Personalizado
                         </button>
                     </>
                 }

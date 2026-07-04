@@ -4,7 +4,8 @@ import { contractsApi, pricingApi, UserSummary, PricingConfig, AddOnConfig, Coup
 import BottomSheetModal from '../../BottomSheetModal';
 import WizardSteps from '../WizardSteps';
 import ChargeNowSheet from '../ChargeNowSheet';
-import { Wand2 } from 'lucide-react';
+import { Wand2, UserRound, NotebookPen, Timer, CalendarDays, CalendarRange, CalendarClock, Sparkles, X, ArrowRight, AlertTriangle, Wallet, TicketPercent } from 'lucide-react';
+import { TIER_META, getMeta } from '../../../constants/adminMeta';
 import CouponField from '../../CouponField';
 import { getPaymentMethods } from '../../../constants/paymentMethods';
 
@@ -268,7 +269,7 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
                             <div style={{ marginBottom: '12px' }}>
                                 <label style={cusLabelStyle}>Cliente *</label>
                                 <div style={{ position: 'relative' }}>
-                                    <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>👤</span>
+                                    <UserRound size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                     <select value={customForm.userId} onChange={e => setCustomForm(f => ({ ...f, userId: e.target.value }))}
                                         style={{ ...cusInputStyle(), appearance: 'none', cursor: 'pointer', paddingRight: '32px', background: `var(--bg-elevated) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23888' stroke-width='1.5' fill='none'/%3E%3C/svg%3E") right 12px center no-repeat` }}>
                                         <option value="">Selecione um cliente...</option>
@@ -283,7 +284,7 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
                             <div style={{ marginBottom: '12px' }}>
                                 <label style={cusLabelStyle}>Nome do Contrato *</label>
                                 <div style={{ position: 'relative' }}>
-                                    <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>📝</span>
+                                    <NotebookPen size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                     <input value={customForm.name} onChange={e => setCustomForm(f => ({ ...f, name: e.target.value }))}
                                         placeholder='Ex: Podcast Verão 2x/semana' style={cusInputStyle()}
                                         onFocus={e => e.currentTarget.style.borderColor = '#2dd4bf'}
@@ -296,7 +297,7 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
                             <div style={{ marginBottom: '12px' }}>
                                 <label style={cusLabelStyle}>Faixa Horária</label>
                                 <div style={{ display: 'flex', gap: '6px' }}>
-                                    {[{ key: 'COMERCIAL', emoji: '🏢', label: 'Comercial', desc: 'Até 17:30' }, { key: 'AUDIENCIA', emoji: '🎤', label: 'Audiência', desc: 'Até 23:00' }, { key: 'SABADO', emoji: '🌟', label: 'Sábado', desc: 'Sáb exclusivo' }].map(t => (
+                                    {[{ key: 'COMERCIAL', label: 'Comercial', desc: 'Até 17:30' }, { key: 'AUDIENCIA', label: 'Audiência', desc: 'Até 23:00' }, { key: 'SABADO', label: 'Sábado', desc: 'Sáb exclusivo' }].map(t => (
                                         <button key={t.key} onClick={() => setCustomForm(f => ({ ...f, tier: t.key, selectedDays: [], dayTimes: {} }))}
                                             style={{
                                                 flex: 1, padding: '10px 8px', borderRadius: '10px', cursor: 'pointer',
@@ -305,7 +306,7 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
                                                 border: `1px solid ${customForm.tier === t.key ? 'rgba(45,212,191,0.3)' : 'var(--border-default)'}`,
                                                 transition: 'all 0.15s',
                                             }}>
-                                            <span style={{ fontSize: '1.25rem' }}>{t.emoji}</span>
+                                            {(() => { const TI = getMeta(TIER_META, t.key).icon; return <TI size={20} strokeWidth={1.8} aria-hidden="true" style={{ color: customForm.tier === t.key ? '#2dd4bf' : 'var(--text-secondary)' }} />; })()}
                                             <span style={{ fontSize: '0.75rem', fontWeight: 700, color: customForm.tier === t.key ? '#2dd4bf' : 'var(--text-primary)' }}>{t.label}</span>
                                             <span style={{ fontSize: '0.5625rem', color: 'var(--text-muted)' }}>{t.desc} — {formatBRL(pricing.find(p => p.tier === t.key)?.price || 0)}</span>
                                         </button>
@@ -314,11 +315,11 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
                             </div>
 
                             {/* Duration + Start date */}
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                            <div className="admin-grid-2" style={{ gap: '12px' }}>
                                 <div>
                                     <label style={cusLabelStyle}>Duração (meses)</label>
                                     <div style={{ position: 'relative' }}>
-                                        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>⏱️</span>
+                                        <Timer size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                         <select value={customForm.durationMonths} onChange={e => setCustomForm(f => ({ ...f, durationMonths: Number(e.target.value) }))}
                                             style={{ ...cusInputStyle(), appearance: 'none', cursor: 'pointer', paddingRight: '32px', background: `var(--bg-elevated) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23888' stroke-width='1.5' fill='none'/%3E%3C/svg%3E") right 12px center no-repeat` }}>
                                             {[1, 2, 3, 4, 5, 6, 9, 12].map(m => (<option key={m} value={m}>{m} {m === 1 ? 'mês' : 'meses'}</option>))}
@@ -328,7 +329,7 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
                                 <div>
                                     <label style={cusLabelStyle}>Data Início</label>
                                     <div style={{ position: 'relative' }}>
-                                        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.75rem', opacity: 0.5 }}>📅</span>
+                                        <CalendarDays size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                         <input type="date" value={customForm.startDate} onChange={e => setCustomForm(f => ({ ...f, startDate: e.target.value }))}
                                             style={cusInputStyle()}
                                             onFocus={e => e.currentTarget.style.borderColor = '#2dd4bf'}
@@ -347,7 +348,7 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
                                         color: canStep1 ? '#fff' : 'var(--text-muted)', opacity: canStep1 ? 1 : 0.5,
                                         display: 'flex', alignItems: 'center', gap: '8px',
                                     }}>
-                                    Próximo ➡️
+                                    Próximo <ArrowRight size={15} aria-hidden="true" />
                                 </button>
                             </div>
                         </div>
@@ -364,10 +365,10 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
                             {/* Frequency tabs */}
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '4px', marginBottom: '16px', background: 'var(--bg-elevated)', borderRadius: '10px', padding: '3px', border: '1px solid var(--border-default)' }}>
                                 {([
-                                    { key: 'WEEKLY', emoji: '📅', label: 'Semanal' },
-                                    { key: 'BIWEEKLY', emoji: '🗓️', label: 'Quinzenal' },
-                                    { key: 'MONTHLY', emoji: '📆', label: 'Mensal' },
-                                    { key: 'CUSTOM', emoji: '✨', label: 'Datas Livres' },
+                                    { key: 'WEEKLY', icon: CalendarDays, label: 'Semanal' },
+                                    { key: 'BIWEEKLY', icon: CalendarRange, label: 'Quinzenal' },
+                                    { key: 'MONTHLY', icon: CalendarClock, label: 'Mensal' },
+                                    { key: 'CUSTOM', icon: Sparkles, label: 'Datas Livres' },
                                 ] as const).map(fm => (
                                     <button key={fm.key} onClick={() => setCustomForm(f => ({ ...f, frequency: fm.key, selectedDays: [], dayTimes: {}, customDates: [] }))}
                                         style={{
@@ -376,7 +377,7 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
                                             background: freq === fm.key ? 'rgba(59,130,246,0.12)' : 'transparent',
                                             transition: 'all 0.15s',
                                         }}>
-                                        <span style={{ fontSize: '0.875rem' }}>{fm.emoji}</span>
+                                        {(() => { const FI = fm.icon; return <FI size={15} aria-hidden="true" />; })()}
                                         <span style={{ fontSize: '0.5625rem', fontWeight: 700, color: freq === fm.key ? '#3b82f6' : 'var(--text-muted)' }}>{fm.label}</span>
                                     </button>
                                 ))}
@@ -527,7 +528,7 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
                                                                 style={{ padding: '3px 6px', borderRadius: '6px', fontSize: '0.6875rem', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-primary)', outline: 'none', cursor: 'pointer' }}>
                                                                 {(POSSIBLE_SLOTS[customForm.tier] || []).map(t => (<option key={t} value={t}>{t}</option>))}
                                                             </select>
-                                                            <button onClick={() => toggleCalDate(cd.date)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '0.75rem', padding: '2px 4px' }}>✕</button>
+                                                            <button onClick={() => toggleCalDate(cd.date)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '0.75rem', padding: '2px 4px' }}><X size={12} aria-hidden="true" /></button>
                                                         </div>
                                                     );
                                                 })}
@@ -584,7 +585,7 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
                                         color: canStep2 ? '#fff' : 'var(--text-muted)', opacity: canStep2 ? 1 : 0.5,
                                         display: 'flex', alignItems: 'center', gap: '8px',
                                     }}>
-                                    Próximo ➡️
+                                    Próximo <ArrowRight size={15} aria-hidden="true" />
                                 </button>
                             </div>
                         </div>
@@ -629,7 +630,7 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
                                 </div>
                                 {discountPct < 30 && (
                                     <div style={{ fontSize: '0.5625rem', color: '#f59e0b', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        <span>⚠️</span>
+                                        <AlertTriangle size={12} aria-hidden="true" />
                                         Faltam {formatBRL(threshold30 - grossTotalValue)} para 30% de desconto
                                     </div>
                                 )}
@@ -717,7 +718,7 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
                                         color: '#fff',
                                         display: 'flex', alignItems: 'center', gap: '8px',
                                     }}>
-                                    Próximo ➡️
+                                    Próximo <ArrowRight size={15} aria-hidden="true" />
                                 </button>
                             </div>
                         </div>
@@ -752,7 +753,7 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
 
                             {/* Financial summary */}
                             <div style={{ padding: '16px', borderRadius: '10px', background: 'rgba(16,185,129,0.04)', border: '1px solid rgba(16,185,129,0.1)', marginBottom: '16px' }}>
-                                <div style={{ fontSize: '0.625rem', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '10px' }}>💰 Resumo Financeiro</div>
+                                <div style={{ fontSize: '0.625rem', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '10px' }}><Wallet size={12} aria-hidden="true" style={{ verticalAlign: '-1px' }} /> Resumo Financeiro</div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.8125rem' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                         <span style={{ color: 'var(--text-muted)' }}>Base/sessão</span>
@@ -783,7 +784,7 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
                                     </div>
                                     {appliedCoupon && (
                                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span style={{ color: '#10b981', fontWeight: 700 }}>🎟️ Cupom {appliedCoupon.code}</span>
+                                            <span style={{ color: '#10b981', fontWeight: 700 }}><TicketPercent size={12} aria-hidden="true" style={{ verticalAlign: '-1px' }} /> Cupom {appliedCoupon.code}</span>
                                             <span style={{ color: '#10b981', fontWeight: 700 }}>−{formatBRL(appliedCoupon.discountAmount)}</span>
                                         </div>
                                     )}
@@ -808,7 +809,7 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
 
                             {/* Schedule summary */}
                             <div style={{ padding: '12px 14px', borderRadius: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', marginBottom: '16px', fontSize: '0.75rem' }}>
-                                <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px' }}>📅 Agenda</div>
+                                <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px' }}><CalendarDays size={13} aria-hidden="true" style={{ verticalAlign: '-2px' }} /> Agenda</div>
                                 {freq === 'CUSTOM' ? (
                                     <div style={{ color: 'var(--text-muted)' }}>{customForm.customDates.length} datas personalizadas</div>
                                 ) : (

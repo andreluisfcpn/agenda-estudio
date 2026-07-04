@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     Clapperboard, CheckCircle2, ChevronRight, CalendarDays, Flag, XCircle,
     AlertCircle, Ban, UserRound, Save, Radio, Timer, Eye, MessageCircle, Globe,
+    Moon,
 } from 'lucide-react';
 import { bookingsApi, BookingWithUser } from '../api/client';
 import { useUI } from '../context/UIContext';
@@ -185,7 +186,7 @@ export default function AdminTodayPage() {
                     padding: '64px 24px', textAlign: 'center', borderRadius: '16px',
                     background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
                 }}>
-                    <div style={{ fontSize: '4rem', marginBottom: '16px' }}>😴</div>
+                    <Moon size={56} aria-hidden="true" style={{ marginBottom: '16px', opacity: 0.5 }} />
                     <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>Estúdio fechado aos domingos</div>
                     <p style={{ color: 'var(--text-muted)', marginTop: '8px', fontSize: '0.9375rem' }}>Descanse bem. A semana começa amanhã! 🎉</p>
                 </div>

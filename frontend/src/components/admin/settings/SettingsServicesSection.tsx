@@ -100,7 +100,7 @@ function AddonCard({ initial, siblingKeys, onSaved, onDeleted }: {
                 />
             </div>
 
-            <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '1fr 1fr' }}>
+            <div className="admin-grid-2" style={{ gap: 12 }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">Nome</label>
                     <input className="form-input" value={draft.name} onChange={e => set({ name: e.target.value })} />
@@ -119,7 +119,7 @@ function AddonCard({ initial, siblingKeys, onSaved, onDeleted }: {
             </div>
 
             {/* Display: icon + order + landing */}
-            <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '1fr 1fr', marginTop: 12, alignItems: 'end' }}>
+            <div className="admin-grid-2" style={{ gap: 12, marginTop: 12, alignItems: 'end' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">Ícone</label>
                     <select className="form-input" value={SERVICE_ICON_OPTIONS.includes(draft.icon || '') ? (draft.icon || 'Sparkles') : 'Sparkles'}
