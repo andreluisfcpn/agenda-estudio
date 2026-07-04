@@ -810,3 +810,49 @@
   border-radius: var(--radius-lg);
   padding: 22px 20px 24px;
 }
+
+/* ── Rodada 4: acentos da identidade do cliente ───────────────────
+   Valores EXATOS que estavam hardcoded nas páginas (migração 1:1 —
+   zero mudança de visual percebido). Zona livre do cliente. */
+:root {
+  --client-accent-violet: #8b5cf6;
+  --client-accent-teal: #2dd4bf;
+  --client-accent-blue: #3b82f6;
+  --client-accent-pink: #ec4899;
+  --client-accent-purple: #a855f7;
+  --client-accent-cyan: #33c4e0;
+}
+
+/* Tons do icon-wrapper do hero (antes: style={{}} inline por página).
+   Cada modifier reproduz byte-a-byte o gradiente/borda/sombra que a
+   página aplicava — conferir com git blame antes de alterar valores. */
+.client-hero__icon-wrapper--success {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(16, 185, 129, 0.05));
+  border-color: rgba(16, 185, 129, 0.25);
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.12);
+  color: var(--success);
+}
+.client-hero__icon-wrapper--danger {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(239, 68, 68, 0.05));
+  border-color: rgba(239, 68, 68, 0.25);
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.12);
+  color: var(--danger);
+}
+.client-hero__icon-wrapper--violet {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(139, 92, 246, 0.05));
+  border-color: rgba(139, 92, 246, 0.25);
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.12);
+  color: var(--client-accent-violet);
+}
+.client-hero__icon-wrapper--teal {
+  background: linear-gradient(135deg, rgba(17, 129, 155, 0.22), rgba(17, 129, 155, 0.06));
+  border-color: rgba(17, 129, 155, 0.25);
+  box-shadow: 0 0 20px rgba(17, 129, 155, 0.15);
+  color: var(--accent-primary);
+}
+.client-hero__icon-wrapper--cyan {
+  background: linear-gradient(135deg, rgba(17, 129, 155, 0.22), rgba(17, 129, 155, 0.05));
+  border-color: rgba(17, 129, 155, 0.25);
+  box-shadow: 0 0 20px rgba(17, 129, 155, 0.12);
+  color: var(--client-accent-cyan);
+}

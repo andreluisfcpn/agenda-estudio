@@ -50,8 +50,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     }
 
     if (!res.ok) {
-        const body = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
-        throw new ApiError(body.error || `HTTP ${res.status}`, res.status, body.details);
+        // Fallback vazio (não truthy): quando o corpo não é JSON (proxy 502, rate-limit
+        // em texto), a mensagem cai no status HTTP real em vez de "Erro desconhecido".
+        const body = await res.json().catch(() => ({} as { error?: string; details?: unknown }));
+        throw new ApiError(body.error || `Erro ${res.status} do servidor`, res.status, body.details);
     }
 
     return res.json();

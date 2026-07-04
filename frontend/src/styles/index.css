@@ -104,6 +104,8 @@
   --success-bg: rgba(16, 185, 129, 0.12);
   --warning: #f59e0b;
   --warning-bg: rgba(245, 158, 11, 0.12);
+  /* Âmbar escuro: estado "calmo" dos timers de hold/pagamento (>3min restantes). */
+  --warning-strong: #d97706;
   --danger: #ef4444;
   --danger-bg: rgba(239, 68, 68, 0.12);
   --info: #3b82f6;
@@ -1447,4 +1449,30 @@ tr:hover td {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ── Error Boundary (chrome do app — cliente e admin) ─────────── */
+.error-boundary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  min-height: 50vh;
+  padding: var(--space-8) var(--space-4);
+  text-align: center;
+}
+.error-boundary__icon { color: var(--warning); }
+.error-boundary__title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+.error-boundary__message {
+  margin: 0 0 var(--space-3);
+  max-width: 420px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
 }

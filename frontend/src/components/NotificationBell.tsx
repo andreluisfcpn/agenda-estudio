@@ -4,6 +4,7 @@ import { notificationsApi, NotificationItem, NotificationSummary } from '../api/
 import { useNavigate } from 'react-router-dom';
 import { Bell, CheckCheck } from 'lucide-react';
 import BottomSheetModal from './BottomSheetModal';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 const SEVERITY_META: Record<string, { color: string; bg: string; icon: string }> = {
     critical: { color: '#dc2626', bg: 'rgba(220,38,38,0.08)', icon: '🔴' },
@@ -41,18 +42,6 @@ if (typeof document !== 'undefined' && !document.getElementById(styleId)) {
     document.head.appendChild(style);
 }
 
-/** Tracks whether the viewport is mobile-sized (drives bottom-sheet vs dropdown). */
-function useIsMobile(query = '(max-width: 768px)') {
-    const [isMobile, setIsMobile] = useState(() =>
-        typeof window !== 'undefined' && window.matchMedia(query).matches);
-    useEffect(() => {
-        const mq = window.matchMedia(query);
-        const onChange = () => setIsMobile(mq.matches);
-        mq.addEventListener('change', onChange);
-        return () => mq.removeEventListener('change', onChange);
-    }, [query]);
-    return isMobile;
-}
 
 export default function NotificationBell() {
     const navigate = useNavigate();

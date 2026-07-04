@@ -13,19 +13,9 @@ import { PosterGallery, PosterCard } from '../components/client/PosterGallery';
 import Skeleton from '../components/ui/SkeletonLoader';
 import AdminPageHeader from '../components/admin/AdminPageHeader';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { studioSlotDate, todayStrSaoPaulo } from '../utils/time';
 import { CalendarDays, ChevronLeft, ChevronRight, Mic, Clock, List } from 'lucide-react';
-
-function useIsMobile(breakpoint = 768) {
-    const [isMobile, setIsMobile] = useState(() => window.innerWidth <= breakpoint);
-    useEffect(() => {
-        const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
-        const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-        mq.addEventListener('change', handler);
-        return () => mq.removeEventListener('change', handler);
-    }, [breakpoint]);
-    return isMobile;
-}
 
 const DAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 

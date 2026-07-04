@@ -12,6 +12,7 @@ import BottomTabBar from './components/BottomTabBar';
 import { PageTransitionLoader } from './components/PageTransitionLoader';
 import OfflineIndicator from './components/OfflineIndicator';
 import UpdateBanner from './components/UpdateBanner';
+import ErrorBoundary from './components/ErrorBoundary';
 import { usePushSubscription } from './hooks/usePushSubscription';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { loadPaymentMethods } from './constants/paymentMethods';
@@ -99,9 +100,12 @@ function Layout({ children }: { children: React.ReactNode }) {
             <Sidebar collapsed={sidebarCollapsed} />
 
             <main className="main-content">
-                <Suspense fallback={<PageTransitionLoader />}>
-                    {children}
-                </Suspense>
+                {/* Barreira por página: um crash na tela mantém o shell (sidebar/topbar) vivo */}
+                <ErrorBoundary>
+                    <Suspense fallback={<PageTransitionLoader />}>
+                        {children}
+                    </Suspense>
+                </ErrorBoundary>
             </main>
 
             <UpdateBanner />
@@ -198,7 +202,10 @@ export default function App() {
                 <BrowserRouter>
                     <AuthProvider>
                         <NavigationProvider>
-                            <AppRoutes />
+                            {/* Barreira global: última linha de defesa contra tela branca */}
+                            <ErrorBoundary>
+                                <AppRoutes />
+                            </ErrorBoundary>
                         </NavigationProvider>
                     </AuthProvider>
                 </BrowserRouter>
