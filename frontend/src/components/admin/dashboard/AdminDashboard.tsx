@@ -154,68 +154,55 @@ export default function AdminDashboard() {
                 title="Centro de Comando"
                 subtitle={new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
             />
-            <div style={{ height: 24 }} />
-
             {/* ── SECTION 1: Agenda do Dia (Hero) ────────────────── */}
-            <div className="admin-card admin-card--lg" style={{ marginBottom: '24px', borderTop: '3px solid var(--accent-primary)' }}>
+            <div className="admin-card admin-card--lg dash-agenda-card">
                 <div className="dash-card-head">
                     <div className="dash-card-head__title">
-                        <h2 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <h2 className="dash-panel__title dash-panel__title--lg">
                             <CalendarDays size={18} style={{ color: 'var(--accent-primary)' }} aria-hidden="true" /> Agenda de Hoje
                         </h2>
-                        <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                        <p className="dash-panel__sub">
                             {todaysBookings.length} de 5 slots ocupados
                         </p>
                     </div>
-                    <button onClick={() => navigate('/calendar')} className="dash-card-head__action btn-admin-ghost" style={{ minHeight: 38, padding: '8px 16px', fontSize: '0.75rem' }}>
+                    <button onClick={() => navigate('/calendar')} className="dash-card-head__action btn-admin-ghost btn-admin-ghost--compact">
                         Ver Agenda Completa →
                     </button>
                 </div>
 
                 {isSunday ? (
-                    <div className="admin-empty" style={{ padding: '32px 20px' }}>
+                    <div className="admin-empty">
                         <Moon size={40} className="admin-empty__icon" aria-hidden="true" />
                         <div className="admin-empty__title">Estúdio fechado aos domingos</div>
                     </div>
                 ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div className="dash-panel__list">
                         {todaySlots.map(slot => {
                             const b = slot.booking;
                             const isPast = new Date(`${today}T${slot.end}:00`) < now;
                             return (
-                                <div key={slot.time} style={{
-                                    display: 'flex', alignItems: 'center', gap: '12px',
-                                    padding: '12px 16px', borderRadius: '12px',
-                                    background: b ? 'rgba(255,255,255,0.03)' : 'transparent',
-                                    border: `1px solid ${b ? 'var(--border-color)' : 'var(--border-subtle)'}`,
-                                    opacity: isPast && !b ? 0.4 : 1,
-                                    transition: 'background 0.2s ease, border-color 0.2s ease',
-                                }}>
+                                <div key={slot.time} className={`dash-slot${b ? ' dash-slot--filled' : ''}${isPast && !b ? ' dash-slot--past' : ''}`}>
                                     {/* Time column */}
-                                    <div style={{ minWidth: 110, fontWeight: 700, fontSize: '0.9375rem', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
-                                        {slot.label}
-                                    </div>
+                                    <div className="dash-slot__time">{slot.label}</div>
 
                                     {/* Divider */}
-                                    <div style={{ width: 3, height: 32, borderRadius: 2, background: b ? 'var(--accent-primary)' : 'var(--border-subtle)' }} />
+                                    <div className="dash-slot__bar" />
 
                                     {/* Content */}
-                                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                    <div className="dash-slot__main">
                                         {b ? (
                                             <>
-                                                <button style={{ fontWeight: 600, cursor: 'pointer', color: 'var(--text-primary)', background: 'none', border: 'none', padding: 0, fontFamily: 'inherit', fontSize: '0.875rem', textAlign: 'left' }}
+                                                <button className="dash-name-btn"
                                                     title={`Abrir perfil de ${b.user.name}`}
                                                     onClick={() => navigate(`/admin/clients/${b.user.id}`)}>
                                                     {b.user.name}
                                                 </button>
                                                 <StatusBadge meta={getMeta(TIER_META, b.tierApplied)} />
                                                 <StatusBadge meta={getMeta(BOOKING_STATUS_META, b.status)} />
-                                                <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginLeft: 'auto', fontVariantNumeric: 'tabular-nums' }}>
-                                                    {formatBRL(b.price)}
-                                                </span>
+                                                <span className="dash-slot__price">{formatBRL(b.price)}</span>
                                             </>
                                         ) : (
-                                            <span style={{ color: 'var(--text-muted)', fontSize: '0.8125rem', fontStyle: 'italic' }}>
+                                            <span className="dash-slot__free">
                                                 {isPast ? 'Horário encerrado' : '— Disponível —'}
                                             </span>
                                         )}
@@ -223,14 +210,12 @@ export default function AdminDashboard() {
 
                                     {/* Quick Actions */}
                                     {b && b.status === 'RESERVED' && !isPast && (
-                                        <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-                                            <button className="btn btn-sm" title="Check-in (Confirmar Presença)"
-                                                style={{ background: 'var(--info-bg)', color: 'var(--info)', border: 'none', padding: '6px 12px', minHeight: 34, borderRadius: '6px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                                        <div className="dash-slot__actions">
+                                            <button className="today-action-btn today-action-btn--info" title="Check-in (Confirmar Presença)"
                                                 onClick={() => handleQuickAction(b.id, 'checkin')}>
                                                 <ClipboardCheck size={14} aria-hidden="true" /> Check-in
                                             </button>
-                                            <button className="btn btn-sm" title="Registrar Falta"
-                                                style={{ background: 'var(--danger-bg)', color: 'var(--danger)', border: 'none', padding: '6px 12px', minHeight: 34, borderRadius: '6px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                                            <button className="today-action-btn today-action-btn--danger" title="Registrar Falta"
                                                 aria-label="Registrar falta"
                                                 onClick={() => handleQuickAction(b.id, 'falta')}>
                                                 <XCircle size={15} aria-hidden="true" />
@@ -238,14 +223,12 @@ export default function AdminDashboard() {
                                         </div>
                                     )}
                                     {b && b.status === 'CONFIRMED' && !isPast && (
-                                        <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-                                            <button className="btn btn-sm" title="Finalizar Sessão"
-                                                style={{ background: 'var(--success-bg)', color: 'var(--success)', border: 'none', padding: '6px 12px', minHeight: 34, borderRadius: '6px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                                        <div className="dash-slot__actions">
+                                            <button className="today-action-btn today-action-btn--success" title="Finalizar Sessão"
                                                 onClick={() => handleQuickAction(b.id, 'complete')}>
                                                 <Flag size={14} aria-hidden="true" /> Finalizar
                                             </button>
-                                            <button className="btn btn-sm" title="Registrar Falta"
-                                                style={{ background: 'var(--danger-bg)', color: 'var(--danger)', border: 'none', padding: '6px 12px', minHeight: 34, borderRadius: '6px', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                                            <button className="today-action-btn today-action-btn--danger" title="Registrar Falta"
                                                 aria-label="Registrar falta"
                                                 onClick={() => handleQuickAction(b.id, 'falta')}>
                                                 <XCircle size={15} aria-hidden="true" />
@@ -254,10 +237,10 @@ export default function AdminDashboard() {
                                     )}
 
                                     {b && b.status === 'COMPLETED' && (
-                                        <span style={{ fontSize: '0.75rem', color: 'var(--success)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}><Flag size={13} aria-hidden="true" /> Concluído</span>
+                                        <span className="dash-status-chip dash-status-chip--success"><Flag size={13} aria-hidden="true" /> Concluído</span>
                                     )}
                                     {b && b.status === 'FALTA' && (
-                                        <span style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}><XCircle size={13} aria-hidden="true" /> Falta</span>
+                                        <span className="dash-status-chip dash-status-chip--danger"><XCircle size={13} aria-hidden="true" /> Falta</span>
                                     )}
                                 </div>
                             );
@@ -266,18 +249,18 @@ export default function AdminDashboard() {
                 )}
             </div>
 
-            {/* ── SECTION 2: KPIs (2 colunas mobile · 4 desktop) ─── */}
+            {/* ── SECTION 2: KPIs (2 colunas mobile · 4 desktop; padrão .admin-kpi-card) ─── */}
             <div className="dash-kpi-grid">
                 {[
-                    { label: 'RECEITA DO MÊS', value: formatBRL(monthRevenue), sub: `${monthBookings.length} agendamentos`, accent: 'var(--success)', bg: 'var(--success-bg)', border: 'rgba(16,185,129,0.2)' },
-                    { label: 'OCUPAÇÃO HOJE', value: isSunday ? '—' : `${todaysBookings.length}/5`, sub: isSunday ? 'Fechado' : `${Math.round((todaysBookings.length / 5) * 100)}% dos slots`, accent: todaysBookings.length >= 4 ? 'var(--success)' : todaysBookings.length >= 2 ? 'var(--warning)' : 'var(--text-secondary)', bg: 'var(--info-bg)', border: 'rgba(59,130,246,0.2)' },
-                    { label: 'TAXA DE PRESENÇA', value: `${attendanceRate}%`, sub: `${completedThisMonth} concluídas, ${noShowsThisMonth} faltas`, accent: attendanceRate >= 80 ? 'var(--success)' : attendanceRate >= 60 ? 'var(--warning)' : 'var(--danger)', bg: attendanceRate >= 80 ? 'var(--success-bg)' : 'var(--danger-bg)', border: attendanceRate >= 80 ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)' },
-                    { label: 'CONTRATOS ATIVOS', value: `${activeContracts.length}`, sub: `${allUsers.filter(u => u.role !== 'ADMIN').length} clientes cadastrados`, accent: 'var(--accent-text)', bg: 'rgba(17,129,155,0.08)', border: 'rgba(17,129,155,0.2)' },
+                    { label: 'Receita do Mês', value: formatBRL(monthRevenue), sub: `${monthBookings.length} agendamentos`, mod: ' admin-kpi-card--success' },
+                    { label: 'Ocupação Hoje', value: isSunday ? '—' : `${todaysBookings.length}/5`, sub: isSunday ? 'Fechado' : `${Math.round((todaysBookings.length / 5) * 100)}% dos slots`, mod: '' },
+                    { label: 'Taxa de Presença', value: `${attendanceRate}%`, sub: `${completedThisMonth} concluídas, ${noShowsThisMonth} faltas`, mod: attendanceRate >= 80 ? ' admin-kpi-card--success' : ' admin-kpi-card--danger' },
+                    { label: 'Contratos Ativos', value: `${activeContracts.length}`, sub: `${allUsers.filter(u => u.role !== 'ADMIN').length} clientes cadastrados`, mod: ' admin-kpi-card--accent' },
                 ].map((kpi, i) => (
-                    <div key={i} className="dash-kpi-card" style={{ '--card-bg': kpi.bg, '--card-border': kpi.border, '--card-accent': kpi.accent } as React.CSSProperties}>
-                        <div className="dash-kpi-card__label">{kpi.label}</div>
-                        <div className="dash-kpi-card__value">{kpi.value}</div>
-                        <div className="dash-kpi-card__sub">{kpi.sub}</div>
+                    <div key={i} className={`admin-kpi-card${kpi.mod}`}>
+                        <div className="admin-kpi-card__label">{kpi.label}</div>
+                        <div className="admin-kpi-card__value admin-kpi-card__value--sm">{kpi.value}</div>
+                        <div className="admin-kpi-card__caption">{kpi.sub}</div>
                     </div>
                 ))}
             </div>
@@ -286,56 +269,54 @@ export default function AdminDashboard() {
             <div className="admin-grid-2" style={{ marginBottom: '24px' }}>
 
                 {/* Alerts */}
-                <div className="admin-card">
-                    <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div className="admin-card dash-panel">
+                    <h3 className="dash-panel__title">
                         <AlertTriangle size={18} style={{ color: 'var(--danger)' }} aria-hidden="true" /> Alertas
                         {totalAlerts > 0 && (
-                            <span style={{ background: 'var(--danger)', color: '#fff', fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: '10px', minWidth: 20, textAlign: 'center' }}>
-                                {totalAlerts}
-                            </span>
+                            <span className="dash-count-badge dash-count-badge--danger">{totalAlerts}</span>
                         )}
                     </h3>
 
                     {totalAlerts === 0 ? (
-                        <div className="admin-empty" style={{ padding: '20px' }}>
+                        <div className="admin-empty">
                             <CheckCircle2 size={36} className="admin-empty__icon" aria-hidden="true" />
                             <div className="admin-empty__title">Tudo em ordem!</div>
                         </div>
                     ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        <div className="dash-panel__list dash-panel__list--lg">
                             {expiringContracts.map(c => (
-                                <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '10px', background: 'var(--danger-bg)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-                                    <AlertCircle size={18} style={{ color: 'var(--danger)', flexShrink: 0 }} aria-hidden="true" />
-                                    <div style={{ flex: 1 }}>
-                                        <div style={{ fontSize: '0.8125rem', fontWeight: 600 }}>
-                                            Contrato de <span style={{ cursor: 'pointer', color: 'var(--accent-text)' }} onClick={() => c.user?.id && navigate(`/admin/clients/${c.user.id}`)}>{c.user?.name}</span> expira em {daysUntil(c.endDate)} dia(s)
+                                <div key={c.id} className="dash-alert dash-alert--danger">
+                                    <AlertCircle size={18} className="dash-alert__icon" aria-hidden="true" />
+                                    <div className="dash-alert__body">
+                                        <div className="dash-alert__title">
+                                            Contrato de <span className="dash-inline-link" onClick={() => c.user?.id && navigate(`/admin/clients/${c.user.id}`)}>{c.user?.name}</span> expira em {daysUntil(c.endDate)} dia(s)
                                         </div>
-                                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{c.type} · {c.tier}</div>
+                                        <div className="dash-alert__sub">{c.type} · {c.tier}</div>
                                     </div>
                                 </div>
                             ))}
 
                             {pendingCancellations.map(c => (
-                                <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '10px', background: 'var(--warning-bg)', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
-                                    <AlertTriangle size={18} style={{ color: 'var(--warning)', flexShrink: 0 }} aria-hidden="true" />
-                                    <div style={{ flex: 1 }}>
-                                        <div style={{ fontSize: '0.8125rem', fontWeight: 600 }}>
-                                            Cancelamento pendente: <span style={{ cursor: 'pointer', color: 'var(--accent-text)' }} onClick={() => navigate('/admin/contracts')}>{c.user?.name}</span>
+                                <div key={c.id} className="dash-alert dash-alert--warning">
+                                    <AlertTriangle size={18} className="dash-alert__icon" aria-hidden="true" />
+                                    <div className="dash-alert__body">
+                                        <div className="dash-alert__title">
+                                            Cancelamento pendente: <span className="dash-inline-link" onClick={() => navigate('/admin/contracts')}>{c.user?.name}</span>
                                         </div>
-                                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Aguardando resolução (multa ou isenção)</div>
+                                        <div className="dash-alert__sub">Aguardando resolução (multa ou isenção)</div>
                                     </div>
                                 </div>
                             ))}
 
                             {unconfirmedToday.map(b => (
-                                <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '10px', background: 'var(--warning-bg)', border: '1px solid rgba(245, 158, 11, 0.15)' }}>
-                                    <Clock size={18} style={{ color: 'var(--warning)', flexShrink: 0 }} aria-hidden="true" />
-                                    <div style={{ flex: 1 }}>
-                                        <div style={{ fontSize: '0.8125rem', fontWeight: 600 }}>
+                                <div key={b.id} className="dash-alert dash-alert--warning">
+                                    <Clock size={18} className="dash-alert__icon" aria-hidden="true" />
+                                    <div className="dash-alert__body">
+                                        <div className="dash-alert__title">
                                             {b.user.name} às {b.startTime} — ainda sem confirmação
                                         </div>
                                     </div>
-                                    <button className="btn btn-sm" style={{ background: 'var(--success-bg)', color: 'var(--success)', border: 'none', padding: '6px 12px', minHeight: 34, borderRadius: '6px', fontWeight: 700, fontSize: '0.7rem', cursor: 'pointer' }}
+                                    <button className="today-action-btn today-action-btn--success"
                                         onClick={() => handleQuickAction(b.id, 'checkin')}>
                                         Confirmar
                                     </button>
@@ -346,24 +327,23 @@ export default function AdminDashboard() {
                 </div>
 
                 {/* Weekly Occupancy */}
-                <div className="admin-card">
-                    <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}><TrendingUp size={18} style={{ color: 'var(--accent-text)' }} aria-hidden="true" /> Ocupação da Semana</h3>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div className="admin-card dash-panel">
+                    <h3 className="dash-panel__title"><TrendingUp size={18} style={{ color: 'var(--accent-text)' }} aria-hidden="true" /> Ocupação da Semana</h3>
+                    <div className="dash-panel__list dash-panel__list--lg">
                         {weekOccupancy.map(d => (
-                            <div key={d.date} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <span style={{ minWidth: 32, fontWeight: 600, fontSize: '0.8125rem', color: d.date === today ? 'var(--accent-primary)' : 'var(--text-secondary)' }}>
+                            <div key={d.date} className="dash-occ">
+                                <span className={`dash-occ__day${d.date === today ? ' dash-occ__day--today' : ''}`}>
                                     {d.day}
                                 </span>
-                                <div style={{ flex: 1, height: 20, borderRadius: 10, background: 'var(--bg-elevated)', overflow: 'hidden', position: 'relative' }}>
+                                <div className="dash-occ__track">
                                     {!d.closed && (
-                                        <div style={{
-                                            width: `${d.pct}%`, height: '100%', borderRadius: 10,
-                                            background: d.pct > 80 ? 'linear-gradient(90deg, #dc2626, var(--danger))' : d.pct > 60 ? 'linear-gradient(90deg, #d97706, var(--warning))' : 'linear-gradient(90deg, #10b981, #34d399)',
-                                            transition: 'width 0.3s ease',
-                                        }} />
+                                        <div
+                                            className={`dash-occ__fill ${d.pct > 80 ? 'dash-occ__fill--high' : d.pct > 60 ? 'dash-occ__fill--mid' : 'dash-occ__fill--low'}`}
+                                            style={{ width: `${d.pct}%` }}
+                                        />
                                     )}
                                 </div>
-                                <span style={{ minWidth: 45, textAlign: 'right', fontSize: '0.75rem', fontWeight: 700, color: d.closed ? 'var(--text-muted)' : 'var(--text-secondary)' }}>
+                                <span className={`dash-occ__count${d.closed ? ' dash-occ__count--closed' : ''}`}>
                                     {d.closed ? 'Fech.' : `${d.count}/${d.total}`}
                                 </span>
                             </div>
@@ -376,30 +356,26 @@ export default function AdminDashboard() {
             <div className="admin-grid-2">
 
                 {/* Next Bookings */}
-                <div className="admin-card">
-                    <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}><CalendarClock size={18} style={{ color: 'var(--accent-text)' }} aria-hidden="true" /> Próximos Agendamentos</h3>
+                <div className="admin-card dash-panel">
+                    <h3 className="dash-panel__title"><CalendarClock size={18} style={{ color: 'var(--accent-text)' }} aria-hidden="true" /> Próximos Agendamentos</h3>
                     {futureBookings.length === 0 ? (
-                        <div className="admin-empty" style={{ padding: '20px' }}>
+                        <div className="admin-empty">
                             <CalendarDays size={36} className="admin-empty__icon" aria-hidden="true" />
                             <div className="admin-empty__title">Nenhum agendamento futuro</div>
-                            <button className="btn-admin-ghost" style={{ minHeight: 36, padding: '6px 14px', fontSize: '0.75rem' }} onClick={() => navigate('/calendar')}>
+                            <button className="btn-admin-ghost btn-admin-ghost--compact" onClick={() => navigate('/calendar')}>
                                 Abrir agenda
                             </button>
                         </div>
                     ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div className="dash-panel__list">
                             {futureBookings.map(b => (
-                                <div key={b.id} style={{
-                                    display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px',
-                                    borderRadius: '10px', background: 'rgba(255,255,255,0.02)',
-                                    border: '1px solid var(--border-color)',
-                                }}>
-                                    <div style={{ minWidth: 55, fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                                <div key={b.id} className="dash-row">
+                                    <div className="dash-row__date">
                                         {new Date(b.date).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit' })}
                                     </div>
-                                    <div style={{ fontWeight: 700, fontSize: '0.8125rem', minWidth: 42 }}>{b.startTime}</div>
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                        <button style={{ fontWeight: 600, fontSize: '0.8125rem', cursor: 'pointer', color: 'var(--text-primary)', background: 'none', border: 'none', padding: 0, fontFamily: 'inherit', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}
+                                    <div className="dash-row__time">{b.startTime}</div>
+                                    <div className="dash-row__body">
+                                        <button className="dash-name-btn dash-name-btn--sm dash-name-btn--ellipsis"
                                             title={`Abrir perfil de ${b.user.name}`}
                                             onClick={() => navigate(`/admin/clients/${b.user.id}`)}>
                                             {b.user.name}
@@ -413,40 +389,34 @@ export default function AdminDashboard() {
                 </div>
 
                 {/* Churn Risk */}
-                <div className="admin-card">
-                    <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div className="admin-card dash-panel">
+                    <h3 className="dash-panel__title">
                         <AlertTriangle size={18} style={{ color: 'var(--warning)' }} aria-hidden="true" /> Clientes em Risco
                         {churnRisk.length > 0 && (
-                            <span style={{ background: 'var(--warning)', color: '#fff', fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: '10px' }}>
-                                {churnRisk.length}
-                            </span>
+                            <span className="dash-count-badge dash-count-badge--warning">{churnRisk.length}</span>
                         )}
                     </h3>
                     {churnRisk.length === 0 ? (
-                        <div className="admin-empty" style={{ padding: '20px' }}>
+                        <div className="admin-empty">
                             <Target size={36} className="admin-empty__icon" aria-hidden="true" />
                             <div className="admin-empty__title">Todos os clientes engajados!</div>
                         </div>
                     ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div className="dash-panel__list">
                             {churnRisk.slice(0, 5).map(u => {
                                 const userContract = activeContracts.find(c => c.user?.id === u.id);
                                 const userBookings = allBookings.filter(b => b.user?.id === u.id && b.status !== 'CANCELLED').sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
                                 const lastDate = userBookings[0] ? new Date(userBookings[0].date).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit' }) : 'Nunca agendou';
 
                                 return (
-                                    <div key={u.id} style={{
-                                        display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px',
-                                        borderRadius: '10px', background: 'var(--warning-bg)',
-                                        border: '1px solid rgba(245, 158, 11, 0.15)',
-                                    }}>
+                                    <div key={u.id} className="dash-row dash-row--warning">
                                         <div className="admin-avatar">{getInitials(u.name)}</div>
-                                        <div style={{ flex: 1 }}>
-                                            <div style={{ fontWeight: 600, fontSize: '0.8125rem', cursor: 'pointer', color: 'var(--text-primary)' }}
+                                        <div className="dash-row__body">
+                                            <button className="dash-name-btn dash-name-btn--sm"
                                                 onClick={() => navigate(`/admin/clients/${u.id}`)}>
                                                 {u.name}
-                                            </div>
-                                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                            </button>
+                                            <div className="dash-row__sub">
                                                 Último agendamento: {lastDate} · {userContract?.type || '—'}
                                             </div>
                                         </div>

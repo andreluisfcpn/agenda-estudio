@@ -1006,35 +1006,221 @@ button.admin-kpi-card:active { transform: scale(0.99); }
         gap: 16px;
     }
 }
-.dash-kpi-card {
-    padding: 18px 16px;
-    border-radius: 14px;
-    text-align: center;
-    min-width: 0;
-    border: 1px solid var(--card-border, var(--border-color));
-    background: var(--card-bg, var(--bg-secondary));
+/* ── Dashboard — polimento rodada 3 (KPIs viraram .admin-kpi-card;
+   painéis inline → classes). .dash-panel centra empty states no card
+   esticado pelo grid (o "vazio" do painel Alertas em desktop). */
+.dash-panel {
+    display: flex;
+    flex-direction: column;
 }
-.dash-kpi-card__label {
-    font-size: 0.5625rem;
+.dash-panel > .admin-empty { margin: auto 0; }
+.dash-panel__title {
+    font-size: 0.9375rem;
     font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-bottom: 8px;
-    color: var(--card-accent, var(--text-muted));
+    margin: 0 0 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
-.dash-kpi-card__value {
-    font-size: 1.5rem;
-    font-weight: 800;
-    font-variant-numeric: tabular-nums;
-    color: var(--card-accent, var(--text-primary));
-    line-height: 1.1;
-}
-.dash-kpi-card__sub {
-    font-size: 0.6875rem;
+.dash-panel__title--lg { font-size: 1.125rem; margin-bottom: 0; }
+.dash-panel__sub {
+    font-size: 0.8125rem;
     color: var(--text-muted);
-    margin-top: 6px;
-    line-height: 1.35;
+    margin-top: 4px;
 }
+.dash-panel__list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.dash-panel__list--lg { gap: 10px; }
+.dash-count-badge {
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+    min-width: 20px;
+    text-align: center;
+}
+.dash-count-badge--danger { background: var(--danger); }
+.dash-count-badge--warning { background: var(--warning); }
+.dash-agenda-card {
+    border-top: 3px solid var(--accent-primary);
+    margin-bottom: var(--space-6);
+}
+.btn-admin-ghost--compact {
+    min-height: 36px;
+    padding: 6px 14px;
+    font-size: 0.75rem;
+}
+
+/* Slot rows da "Agenda de Hoje" */
+.dash-slot {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 12px;
+    background: transparent;
+    border: 1px solid var(--border-subtle);
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+.dash-slot--filled {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: var(--border-color);
+}
+.dash-slot--past { opacity: 0.4; }
+.dash-slot__time {
+    min-width: 110px;
+    font-weight: 700;
+    font-size: 0.9375rem;
+    font-family: monospace;
+    color: var(--text-secondary);
+}
+.dash-slot__bar {
+    width: 3px;
+    height: 32px;
+    border-radius: 2px;
+    background: var(--border-subtle);
+    flex-shrink: 0;
+}
+.dash-slot--filled .dash-slot__bar { background: var(--accent-primary); }
+.dash-slot__main {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.dash-slot__price {
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+}
+.dash-slot__free {
+    color: var(--text-muted);
+    font-size: 0.8125rem;
+    font-style: italic;
+}
+.dash-slot__actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+.dash-name-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    font-family: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+    text-align: left;
+}
+.dash-name-btn--sm { font-size: 0.8125rem; }
+.dash-name-btn--ellipsis {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+.dash-status-chip {
+    font-size: 0.75rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.dash-status-chip--success { color: var(--success); }
+.dash-status-chip--danger { color: var(--danger); }
+
+/* Itens do painel Alertas */
+.dash-alert {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+}
+.dash-alert--danger { background: var(--danger-bg); border-color: rgba(239, 68, 68, 0.2); }
+.dash-alert--warning { background: var(--warning-bg); border-color: rgba(245, 158, 11, 0.2); }
+.dash-alert__icon { flex-shrink: 0; }
+.dash-alert--danger .dash-alert__icon { color: var(--danger); }
+.dash-alert--warning .dash-alert__icon { color: var(--warning); }
+.dash-alert__body { flex: 1; }
+.dash-alert__title { font-size: 0.8125rem; font-weight: 600; }
+.dash-alert__sub { font-size: 0.7rem; color: var(--text-muted); }
+.dash-inline-link { cursor: pointer; color: var(--accent-text); }
+
+/* Barras de Ocupação da Semana */
+.dash-occ {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.dash-occ__day {
+    min-width: 32px;
+    font-weight: 600;
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+}
+.dash-occ__day--today { color: var(--accent-primary); }
+.dash-occ__track {
+    flex: 1;
+    height: 20px;
+    border-radius: 10px;
+    background: var(--bg-elevated);
+    overflow: hidden;
+    position: relative;
+}
+.dash-occ__fill {
+    height: 100%;
+    border-radius: 10px;
+    transition: width 0.3s ease;
+}
+.dash-occ__fill--high { background: linear-gradient(90deg, #dc2626, var(--danger)); }
+.dash-occ__fill--mid { background: linear-gradient(90deg, #d97706, var(--warning)); }
+.dash-occ__fill--low { background: linear-gradient(90deg, var(--success), #34d399); }
+.dash-occ__count {
+    min-width: 45px;
+    text-align: right;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+}
+.dash-occ__count--closed { color: var(--text-muted); }
+
+/* Linhas dos painéis Próximos Agendamentos + Clientes em Risco */
+.dash-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color);
+}
+.dash-row--warning {
+    background: var(--warning-bg);
+    border-color: rgba(245, 158, 11, 0.15);
+}
+.dash-row__date {
+    min-width: 55px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-family: monospace;
+}
+.dash-row__time {
+    min-width: 42px;
+    font-size: 0.8125rem;
+    font-weight: 700;
+}
+.dash-row__body { flex: 1; min-width: 0; }
+.dash-row__sub { font-size: 0.7rem; color: var(--text-muted); }
 
 /* Cabeçalho de card com título + ação (quebra no mobile em vez de espremer). */
 .dash-card-head {
