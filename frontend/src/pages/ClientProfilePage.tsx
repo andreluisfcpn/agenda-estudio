@@ -7,6 +7,7 @@ import StatusBadge from '../components/ui/StatusBadge';
 import SavedCardItem from '../components/ui/SavedCardItem';
 import ProfileHeader from '../components/admin/clients/ProfileHeader';
 import ClientDataCard from '../components/admin/clients/ClientDataCard';
+import ClientHealthCards from '../components/admin/clients/ClientHealthCards';
 import { TIER_META, BOOKING_STATUS_META, CONTRACT_STATUS_META, CONTRACT_TYPE_META, getMeta } from '../constants/adminMeta';
 
 import { formatBRL } from '../utils/format';
@@ -222,99 +223,7 @@ export default function ClientProfilePage() {
 
             <ClientDataCard user={user} onSaved={loadUser} />
 
-            {/* Financial Summary & Health Score — side by side */}
-            {(() => {
-                const payments = user.payments || [];
-                const paid = payments.filter(p => p.status === 'PAID').reduce((s, p) => s + p.amount, 0);
-                const pending = payments.filter(p => p.status === 'PENDING').reduce((s, p) => s + p.amount, 0);
-                const now = new Date();
-                const overdue = payments.filter(p => p.status === 'PENDING' && p.dueDate && new Date(p.dueDate) < now).reduce((s, p) => s + p.amount, 0);
-
-                // Health Score (0-100)
-                const bookings = user.bookings || [];
-                const completed = bookings.filter(b => b.status === 'COMPLETED').length;
-                const total = bookings.length;
-                const faltas = bookings.filter(b => b.status === 'FALTA' || b.status === 'NAO_REALIZADO').length;
-                const attendanceRate = total > 0 ? ((completed / total) * 100) : 100;
-                const paymentScore = payments.length > 0 ? (payments.filter(p => p.status === 'PAID').length / payments.length) * 100 : 100;
-                const hasActiveContract = user.contracts.some(c => c.status === 'ACTIVE');
-                const contractScore = hasActiveContract ? 100 : user.contracts.length > 0 ? 40 : 20;
-                const lastBooking = bookings[0];
-                const daysSinceLast = lastBooking ? Math.floor((now.getTime() - new Date(lastBooking.date).getTime()) / 86400000) : 999;
-                const recencyScore = daysSinceLast <= 7 ? 100 : daysSinceLast <= 30 ? 70 : daysSinceLast <= 90 ? 40 : 10;
-                const healthScore = Math.round((attendanceRate * 0.3) + (paymentScore * 0.35) + (contractScore * 0.2) + (recencyScore * 0.15));
-                const healthColor = healthScore >= 80 ? '#10b981' : healthScore >= 50 ? '#f59e0b' : '#ef4444';
-                const healthLabel = healthScore >= 80 ? 'Excelente' : healthScore >= 60 ? 'Bom' : healthScore >= 40 ? 'Atenção' : 'Crítico';
-
-                return (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px', marginBottom: '16px' }}>
-                        {/* Financial Summary */}
-                        <div className="card" style={{ padding: '20px' }}>
-                            <h2 style={{ fontSize: '1.0625rem', fontWeight: 700, marginBottom: '16px' }}>💰 Resumo Financeiro</h2>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                                <div style={{ padding: '12px', background: 'rgba(16,185,129,0.08)', borderRadius: 'var(--radius-sm)', textAlign: 'center' }}>
-                                    <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Total Pago</div>
-                                    <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--success)', marginTop: '4px' }}>{formatBRL(paid)}</div>
-                                </div>
-                                <div style={{ padding: '12px', background: 'rgba(217,119,6,0.08)', borderRadius: 'var(--radius-sm)', textAlign: 'center' }}>
-                                    <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Pendente</div>
-                                    <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--warning)', marginTop: '4px' }}>{formatBRL(pending)}</div>
-                                </div>
-                                {overdue > 0 && (
-                                    <div style={{ padding: '12px', background: 'rgba(220,38,38,0.08)', borderRadius: 'var(--radius-sm)', textAlign: 'center', gridColumn: 'span 2' }}>
-                                        <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>⚠️ Vencido</div>
-                                        <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--danger)', marginTop: '4px' }}>{formatBRL(overdue)}</div>
-                                    </div>
-                                )}
-                            </div>
-                            <div style={{ marginTop: '12px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                {payments.length} pagamento{payments.length !== 1 ? 's' : ''} registrado{payments.length !== 1 ? 's' : ''}
-                                {total > 0 && <> · {completed} sessão{completed !== 1 ? 'ões' : ''} concluída{completed !== 1 ? 's' : ''} de {total}</>}
-                            </div>
-                        </div>
-
-                        {/* Health Score */}
-                        <div className="card" style={{ padding: '20px' }}>
-                            <h2 style={{ fontSize: '1.0625rem', fontWeight: 700, marginBottom: '16px' }}>🏥 Health Score</h2>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-                                {/* Circular gauge */}
-                                <div style={{ position: 'relative', width: 80, height: 80, flexShrink: 0 }}>
-                                    <svg viewBox="0 0 36 36" style={{ width: 80, height: 80, transform: 'rotate(-90deg)' }}>
-                                        <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--border-color)" strokeWidth="3" />
-                                        <circle cx="18" cy="18" r="15.5" fill="none" stroke={healthColor} strokeWidth="3"
-                                            strokeDasharray={`${healthScore * 0.97} 100`} strokeLinecap="round" />
-                                    </svg>
-                                    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.125rem', fontWeight: 800, color: healthColor }}>
-                                        {healthScore}
-                                    </div>
-                                </div>
-                                <div style={{ flex: 1, fontSize: '0.75rem' }}>
-                                    <div style={{ fontWeight: 700, fontSize: '0.875rem', color: healthColor, marginBottom: '8px' }}>{healthLabel}</div>
-                                    <div style={{ display: 'grid', gap: '4px' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span style={{ color: 'var(--text-muted)' }}>Pagamentos</span>
-                                            <span style={{ fontWeight: 600 }}>{Math.round(paymentScore)}%</span>
-                                        </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span style={{ color: 'var(--text-muted)' }}>Presença</span>
-                                            <span style={{ fontWeight: 600 }}>{Math.round(attendanceRate)}%</span>
-                                        </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span style={{ color: 'var(--text-muted)' }}>Contrato</span>
-                                            <span style={{ fontWeight: 600 }}>{contractScore}%</span>
-                                        </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span style={{ color: 'var(--text-muted)' }}>Recência</span>
-                                            <span style={{ fontWeight: 600 }}>{recencyScore}%</span>
-                                        </div>
-                                        {faltas > 0 && <div style={{ color: 'var(--danger)', marginTop: '4px' }}>⚠ {faltas} falta{faltas > 1 ? 's' : ''}</div>}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                );
-            })()}
+            <ClientHealthCards user={user} />
 
             {/* Payment: auto-charge + saved cards + upcoming installments (admin view) */}
             {payOverview && (
