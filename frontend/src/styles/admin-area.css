@@ -1611,3 +1611,197 @@ button.admin-kpi-card:active { transform: scale(0.99); }
 @media (max-width: 600px) {
     .today-next { margin-left: 0; width: 100%; }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   Agenda (CalendarPage) — rodada 3. Classes ADITIVAS: a grade
+   desktop é compartilhada admin+cliente; admin-area.css carrega
+   depois de index.css, então estas regras vencem empates. */
+
+/* Mini-stats no hero do admin (Agendados / Disponíveis / Ocupação) */
+.agenda-hero-stats {
+    display: flex;
+    align-items: center;
+}
+.agenda-hero-stat {
+    text-align: center;
+    padding: 0 16px;
+}
+.agenda-hero-stat + .agenda-hero-stat {
+    border-left: 1px solid var(--border-color);
+}
+.agenda-hero-stat__value {
+    font-size: 1.25rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+.agenda-hero-stat__value--success { color: var(--success); }
+.agenda-hero-stat__value--info { color: var(--info); }
+.agenda-hero-stat__value--warning { color: var(--warning); }
+.agenda-hero-stat__value--muted { color: var(--text-muted); }
+.agenda-hero-stat__label {
+    font-size: 0.5625rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+/* Toolbar da grade desktop (botão Hoje + navegação de semana) */
+.calendar-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+}
+.calendar-toolbar__today {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    padding: 5px 12px;
+    border-radius: 8px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    min-height: 44px;
+}
+.calendar-toolbar__nav-group {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+.calendar-toolbar__nav {
+    width: 44px;
+    height: 44px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background var(--transition-base), border-color var(--transition-base);
+}
+@media (hover: hover) {
+    .calendar-toolbar__nav:hover { background: var(--bg-card-hover); }
+}
+.calendar-toolbar__range {
+    text-align: center;
+    min-width: 180px;
+}
+.calendar-toolbar__range-dates {
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+.calendar-toolbar__range-month {
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    text-transform: capitalize;
+}
+.calendar-toolbar__spacer { width: 60px; }
+
+/* Grade desktop */
+.calendar-grid--scroll {
+    max-height: 70vh;
+    overflow-y: auto;
+}
+.calendar-day-header--sticky {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+.calendar-day-header__dow {
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+.calendar-day-header__num {
+    font-size: 1rem;
+    font-weight: 800;
+    color: var(--text-primary);
+}
+.calendar-day-header.today .calendar-day-header__num { color: var(--success); }
+
+/* Rótulo de horário (coluna da esquerda) */
+.calendar-time-cell {
+    font-size: 0.75rem;
+    color: var(--text-primary);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 0;
+}
+.calendar-time-cell--ghost { opacity: 0; }
+.calendar-time-cell__start { font-weight: 600; }
+.calendar-time-cell__end {
+    font-size: 0.65rem;
+    opacity: 0.6;
+    margin-top: -2px;
+}
+
+/* Células */
+.calendar-cell--break {
+    /* Hachurado dos intervalos (o var(--bg-hover) antigo não existia →
+       renderizava transparente; restaurado com o token real). */
+    background: repeating-linear-gradient(45deg, var(--bg-card-hover), var(--bg-card-hover) 10px, transparent 10px, transparent 20px);
+    border-right: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.6;
+    cursor: help;
+}
+.calendar-cell--mine {
+    background: linear-gradient(135deg, rgba(52, 211, 153, 0.25), rgba(16, 185, 129, 0.15));
+    border: 1px solid var(--tier-comercial);
+    cursor: pointer;
+}
+.calendar-cell--past { cursor: not-allowed; }
+.calendar-cell--void { opacity: 0.3; }
+
+/* Chip que preenche a célula */
+.calendar-slot--fill {
+    height: 100%;
+    font-size: 0.75rem;
+    font-weight: 600;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+.calendar-cell--mine .calendar-slot--fill { font-weight: 800; }
+.calendar-slot__sub {
+    font-size: 0.65rem;
+    font-weight: 400;
+    opacity: 0.8;
+}
+/* Slot passado/indisponível — legível (antes: opacity .5 + grayscale = ilegível) */
+.calendar-slot--off {
+    background: var(--neutral-bg);
+    color: var(--text-muted);
+    border-left: 3px solid var(--neutral);
+}
+
+/* Conteúdo de célula disponível (cores do tier ficam inline — dinâmicas) */
+.calendar-cell__free {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+}
+.calendar-cell__free-title {
+    font-weight: 700;
+    font-size: 0.8125rem;
+}
+.calendar-cell__free-tier {
+    font-size: 0.625rem;
+    font-weight: 600;
+    opacity: 0.8;
+}

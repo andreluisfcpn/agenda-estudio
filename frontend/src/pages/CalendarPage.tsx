@@ -11,6 +11,7 @@ import CustomContractWizard from '../components/CustomContractWizard';
 import BottomSheetModal from '../components/BottomSheetModal';
 import { PosterGallery, PosterCard } from '../components/client/PosterGallery';
 import Skeleton from '../components/ui/SkeletonLoader';
+import AdminPageHeader from '../components/admin/AdminPageHeader';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import { studioSlotDate, todayStrSaoPaulo } from '../utils/time';
 import { CalendarDays, ChevronLeft, ChevronRight, Mic, Clock, List } from 'lucide-react';
@@ -28,10 +29,10 @@ function useIsMobile(breakpoint = 768) {
 
 const DAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
-const TIER_COLORS: Record<string, { color: string; bg: string; label: string; emoji: string }> = {
-    comercial: { color: '#10b981', bg: 'rgba(16,185,129,0.10)', label: 'Comercial', emoji: '' },
-    audiencia: { color: '#2dd4bf', bg: 'rgba(45,212,191,0.10)', label: 'Audiência', emoji: '' },
-    sabado:    { color: '#fbbf24', bg: 'rgba(245,158,11,0.10)', label: 'Sábado', emoji: '' },
+const TIER_COLORS: Record<string, { color: string; bg: string; label: string }> = {
+    comercial: { color: '#10b981', bg: 'rgba(16,185,129,0.10)', label: 'Comercial' },
+    audiencia: { color: '#2dd4bf', bg: 'rgba(45,212,191,0.10)', label: 'Audiência' },
+    sabado:    { color: '#fbbf24', bg: 'rgba(245,158,11,0.10)', label: 'Sábado' },
 };
 
 function getWeekDates(baseDate: Date): Date[] {
@@ -564,30 +565,27 @@ export default function CalendarPage() {
             )}
             
             {isAdmin && (
-                <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-                    <div>
-                        <h1 className="page-title">Agenda</h1>
-                        <p className="page-subtitle">Visão completa da agenda do estúdio</p>
-                    </div>
-                    {!isMobile && (
-                        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-                            <div style={{ textAlign: 'center' }}>
-                                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#10b981' }}>{weekSummary.booked}</div>
-                                <div style={{ fontSize: '0.5625rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Agendados</div>
+                <AdminPageHeader
+                    icon={CalendarDays}
+                    title="Agenda"
+                    subtitle="Visão completa da agenda do estúdio"
+                    actions={
+                        <div className="agenda-hero-stats" aria-label="Resumo da semana">
+                            <div className="agenda-hero-stat">
+                                <div className="agenda-hero-stat__value agenda-hero-stat__value--success">{weekSummary.booked}</div>
+                                <div className="agenda-hero-stat__label">Agendados</div>
                             </div>
-                            <div style={{ width: 1, height: 28, background: 'var(--border-color)' }} />
-                            <div style={{ textAlign: 'center' }}>
-                                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#3b82f6' }}>{weekSummary.available}</div>
-                                <div style={{ fontSize: '0.5625rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Disponíveis</div>
+                            <div className="agenda-hero-stat">
+                                <div className="agenda-hero-stat__value agenda-hero-stat__value--info">{weekSummary.available}</div>
+                                <div className="agenda-hero-stat__label">Disponíveis</div>
                             </div>
-                            <div style={{ width: 1, height: 28, background: 'var(--border-color)' }} />
-                            <div style={{ textAlign: 'center' }}>
-                                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: weekSummary.pct >= 70 ? '#10b981' : weekSummary.pct >= 30 ? '#f59e0b' : 'var(--text-muted)' }}>{weekSummary.pct}%</div>
-                                <div style={{ fontSize: '0.5625rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Ocupação</div>
+                            <div className="agenda-hero-stat">
+                                <div className={`agenda-hero-stat__value agenda-hero-stat__value--${weekSummary.pct >= 70 ? 'success' : weekSummary.pct >= 30 ? 'warning' : 'muted'}`}>{weekSummary.pct}%</div>
+                                <div className="agenda-hero-stat__label">Ocupação</div>
                             </div>
                         </div>
-                    )}
-                </div>
+                    }
+                />
             )}
 
             {/* ─── TAB CONTENT WRAPPER ─── */}
@@ -846,75 +844,47 @@ export default function CalendarPage() {
             /* ─── DESKTOP GRID VIEW ─── */
             <div className="calendar-container" style={{ borderRadius: '16px', overflow: 'hidden' }}>
                 {/* Navigation Bar */}
-                <div className="calendar-header" style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '12px 20px', background: 'var(--bg-secondary)',
-                    borderBottom: '1px solid var(--border-color)',
-                }}>
-                    <button className="btn btn-ghost" onClick={goToday}
-                        style={{
-                            fontSize: '0.6875rem', fontWeight: 700, padding: '5px 12px', borderRadius: '8px',
-                            background: 'var(--bg-elevated)', border: '1px solid var(--border-color)',
-                            minHeight: '44px',
-                        }}>
+                <div className="calendar-header calendar-toolbar">
+                    <button className="btn btn-ghost calendar-toolbar__today" onClick={goToday}>
                         Hoje
                     </button>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                        <button onClick={() => navigateWeek(-1)} style={{
-                            width: 44, height: 44, border: '1px solid var(--border-color)', borderRadius: '10px',
-                            background: 'var(--bg-elevated)', color: 'var(--text-secondary)',
-                            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '0.875rem', transition: 'all 0.2s',
-                        }}><ChevronLeft size={18} /></button>
+                    <div className="calendar-toolbar__nav-group">
+                        <button className="calendar-toolbar__nav" aria-label="Semana anterior" onClick={() => navigateWeek(-1)}><ChevronLeft size={18} /></button>
 
-                        <div style={{ textAlign: 'center', minWidth: 180 }}>
-                            <div style={{ fontSize: '0.9375rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                        <div className="calendar-toolbar__range">
+                            <div className="calendar-toolbar__range-dates">
                                 {weekDates.length > 0 && `${formatDateShort(weekDates[0])} — ${formatDateShort(weekDates[5])}`}
                             </div>
-                            <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>{displayMonth}</div>
+                            <div className="calendar-toolbar__range-month">{displayMonth}</div>
                         </div>
 
-                        <button onClick={() => navigateWeek(1)} style={{
-                            width: 44, height: 44, border: '1px solid var(--border-color)', borderRadius: '10px',
-                            background: 'var(--bg-elevated)', color: 'var(--text-secondary)',
-                            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '0.875rem', transition: 'all 0.2s',
-                        }}><ChevronRight size={18} /></button>
+                        <button className="calendar-toolbar__nav" aria-label="Próxima semana" onClick={() => navigateWeek(1)}><ChevronRight size={18} /></button>
                     </div>
                     {/* Spacer to balance */}
-                    <div style={{ width: 60 }} />
+                    <div className="calendar-toolbar__spacer" />
                 </div>
 
                 {loading ? (
                     <div className="loading-spinner"><div className="spinner" /></div>
                 ) : (
-                    <div className="calendar-grid" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
-                        <div className="calendar-day-header" style={{ position: 'sticky', top: 0, zIndex: 2 }}></div>
+                    <div className="calendar-grid calendar-grid--scroll">
+                        <div className="calendar-day-header calendar-day-header--sticky"></div>
                         {weekDates.map((d, i) => (
-                            <div key={i} className={`calendar-day-header ${formatDate(d) === today ? 'today' : ''}`}
-                                style={{ position: 'sticky', top: 0, zIndex: 2 }}>
-                                <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', fontWeight: 600 }}>{DAYS[i]}</span>
+                            <div key={i} className={`calendar-day-header calendar-day-header--sticky ${formatDate(d) === today ? 'today' : ''}`}>
+                                <span className="calendar-day-header__dow">{DAYS[i]}</span>
                                 <br />
-                                <span style={{ fontSize: '1rem', fontWeight: 800, color: formatDate(d) === today ? '#10b981' : 'var(--text-primary)' }}>
-                                    {d.getDate()}
-                                </span>
+                                <span className="calendar-day-header__num">{d.getDate()}</span>
                             </div>
                         ))}
 
                         {GRID_ROWS.map(row => (
                             <React.Fragment key={row.id}>
-                                <div className="calendar-time-label" style={{
-                                    height: row.height,
-                                    fontSize: '0.75rem',
-                                    color: 'var(--text-primary)',
-                                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                                    textAlign: 'center',
-                                    opacity: row.type === 'TRANSITION' ? 0 : 1
-                                }}>
+                                <div className={`calendar-time-label calendar-time-cell${row.type === 'TRANSITION' ? ' calendar-time-cell--ghost' : ''}`}
+                                    style={{ height: row.height }}>
                                     {row.type === 'SLOT' && (
                                         <>
-                                            <span style={{ fontWeight: 600 }}>{row.time}</span>
-                                            <span style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: -2 }}>até {row.timeEnd}</span>
+                                            <span className="calendar-time-cell__start">{row.time}</span>
+                                            <span className="calendar-time-cell__end">até {row.timeEnd}</span>
                                         </>
                                     )}
                                 </div>
@@ -923,15 +893,9 @@ export default function CalendarPage() {
 
                                     if (row.type === 'TRANSITION') {
                                         return (
-                                            <div key={`${dateStr}-${row.id}`} style={{
-                                                background: 'repeating-linear-gradient(45deg, var(--bg-hover), var(--bg-hover) 10px, transparent 10px, transparent 20px)',
-                                                borderRight: '1px solid var(--border-subtle)',
-                                                borderBottom: '1px solid var(--border-subtle)',
-                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                height: row.height,
-                                                opacity: 0.6,
-                                                cursor: 'help'
-                                            }} title={`${row.time} - ${row.timeEnd}: ${row.label}`}>
+                                            <div key={`${dateStr}-${row.id}`} className="calendar-cell--break"
+                                                style={{ height: row.height }}
+                                                title={`${row.time} - ${row.timeEnd}: ${row.label}`}>
                                             </div>
                                         );
                                     }
@@ -964,21 +928,13 @@ export default function CalendarPage() {
                                         return (
                                             <div
                                                 key={`${dateStr}-${row.id}`}
-                                                className="calendar-cell occupied"
+                                                className={`calendar-cell occupied${info.isMine ? ' calendar-cell--mine' : ''}`}
                                                 onClick={() => slot && handleSlotClick(dateStr, row.time, slot, info)}
-                                                style={{
-                                                    height: row.height, padding: '4px',
-                                                    background: info.isMine
-                                                        ? 'linear-gradient(135deg, rgba(52,211,153,0.25), rgba(16,185,129,0.15))'
-                                                        : undefined,
-                                                    border: info.isMine ? '1px solid var(--tier-comercial)' : undefined,
-                                                    cursor: info.isMine ? 'pointer' : 'default',
-                                                }}
+                                                style={{ height: row.height, padding: '4px' }}
                                             >
-                                                <div className={`calendar-slot tier-${info.tier}`}
-                                                    style={{ height: '100%', fontWeight: info.isMine ? 800 : 600, fontSize: '0.75rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center' }}>
+                                                <div className={`calendar-slot calendar-slot--fill tier-${info.tier}`}>
                                                     <div>{info.label}</div>
-                                                    <div style={{ fontSize: '0.65rem', fontWeight: 400, opacity: 0.8 }}>{row.label}</div>
+                                                    <div className="calendar-slot__sub">{row.label}</div>
                                                 </div>
                                             </div>
                                         );
@@ -996,7 +952,7 @@ export default function CalendarPage() {
                                     return (
                                         <div
                                             key={`${dateStr}-${row.id}`}
-                                            className={`calendar-cell ${(slotNotAvailable || isPast) ? 'occupied' : ''}`}
+                                            className={`calendar-cell ${(slotNotAvailable || isPast) ? 'occupied' : ''}${isPast ? ' calendar-cell--past' : ''}${!slot?.tier ? ' calendar-cell--void' : ''}`}
                                             onClick={() => {
                                                 if (isPast) {
                                                     setShowPastSlotAlert(true);
@@ -1013,28 +969,29 @@ export default function CalendarPage() {
                                                 borderLeft: (isAvailable && !isPast && tierMeta)
                                                     ? `3px solid ${tierMeta.color}`
                                                     : undefined,
-                                                opacity: !slot?.tier ? 0.3 : isPast ? 0.5 : 1,
                                                 cursor: (isAvailable && !isPast) ? 'pointer' : isPast ? 'not-allowed' : 'default',
                                                 transition: 'background 0.2s',
                                             }}
                                         >
                                             {(slotNotAvailable || isPast) && !info ? (
-                                                <div className={`calendar-slot tier-${slot?.tier?.toLowerCase() || 'blocked'}`}
-                                                    style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', filter: isPast ? 'grayscale(100%) opacity(0.8)' : 'none' }}>
-                                                    {isPast ? 'Indisponível' : 'Ocupado'}
-                                                </div>
+                                                isPast ? (
+                                                    <div className="calendar-slot calendar-slot--fill calendar-slot--off">
+                                                        Indisponível
+                                                    </div>
+                                                ) : (
+                                                    <div className={`calendar-slot calendar-slot--fill tier-${slot?.tier?.toLowerCase() || 'blocked'}`}>
+                                                        Ocupado
+                                                    </div>
+                                                )
                                             ) : (
                                                 (isAvailable && !isPast && !info) && (
-                                                    <div style={{
-                                                        height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                                                        gap: '2px',
-                                                    }}>
-                                                        <span style={{ fontWeight: 700, fontSize: '0.8125rem', color: tierMeta?.color || 'var(--text-primary)' }}>
+                                                    <div className="calendar-cell__free">
+                                                        <span className="calendar-cell__free-title" style={{ color: tierMeta?.color || 'var(--text-primary)' }}>
                                                             Disponível
                                                         </span>
                                                         {tierMeta && (
-                                                            <span style={{ fontSize: '0.625rem', color: tierMeta.color, opacity: 0.8, fontWeight: 600 }}>
-                                                                {tierMeta.emoji} {tierMeta.label}
+                                                            <span className="calendar-cell__free-tier" style={{ color: tierMeta.color }}>
+                                                                {tierMeta.label}
                                                             </span>
                                                         )}
                                                     </div>
@@ -1059,7 +1016,7 @@ export default function CalendarPage() {
                 {Object.entries(TIER_COLORS).map(([key, meta]) => (
                     <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.6875rem', fontWeight: 600 }}>
                         <span style={{ width: 10, height: 10, borderRadius: 3, background: meta.color, display: 'inline-block' }} />
-                        <span style={{ color: meta.color }}>{meta.emoji} {meta.label}</span>
+                        <span style={{ color: meta.color }}>{meta.label}</span>
                     </div>
                 ))}
                 {!isAdmin && (
