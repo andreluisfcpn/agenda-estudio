@@ -1,7 +1,11 @@
 import { useState, useEffect } from 'react';
 import { UserDetail } from '../../../api/client';
+import { ShieldCheck, UserRound } from 'lucide-react';
 
-const ROLE_LABELS: Record<string, string> = { ADMIN: '🛡️ Administrador', CLIENTE: '👤 Cliente' };
+const ROLE_META: Record<string, { icon: typeof ShieldCheck; label: string }> = {
+    ADMIN: { icon: ShieldCheck, label: 'Administrador' },
+    CLIENTE: { icon: UserRound, label: 'Cliente' },
+};
 
 /** Cabeçalho do perfil do cliente: foto (com fallback p/ iniciais), nome,
  *  contatos e badges de papel/status/tags. */
@@ -37,8 +41,8 @@ export default function ProfileHeader({ user }: { user: UserDetail }) {
                         {user.cpfCnpj && <> · <span style={{ fontFamily: 'monospace' }}>{user.cpfCnpj}</span></>}
                     </div>
                     <div style={{ marginTop: '8px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                        <span className={`badge ${user.role === 'ADMIN' ? 'badge-sabado' : 'badge-comercial'}`}>
-                            {ROLE_LABELS[user.role]}
+                        <span className={`badge ${user.role === 'ADMIN' ? 'badge-sabado' : 'badge-comercial'}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            {(() => { const RI = (ROLE_META[user.role] || ROLE_META.CLIENTE).icon; return <RI size={12} aria-hidden="true" />; })()} {(ROLE_META[user.role] || ROLE_META.CLIENTE).label}
                         </span>
                         <span className="badge" style={{
                             background: user.clientStatus === 'ACTIVE' ? 'rgba(16,185,129,0.15)' : user.clientStatus === 'BLOCKED' ? 'rgba(220,38,38,0.15)' : 'rgba(107,114,128,0.15)',

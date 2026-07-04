@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Contract } from '../../../api/client';
 import { useBusinessConfig } from '../../../hooks/useBusinessConfig';
-import { FolderOpen, FileText } from 'lucide-react';
+import { FolderOpen, FileText, ClipboardCheck } from 'lucide-react';
 import StatusBadge from '../../ui/StatusBadge';
 import { TIER_META, CONTRACT_STATUS_META, CONTRACT_TYPE_META, getMeta } from '../../../constants/adminMeta';
 
@@ -12,7 +12,7 @@ export default function ClientContractsCard({ contracts }: { contracts: Contract
 
     return (
         <div className="card" style={{ padding: '20px', marginBottom: '16px' }}>
-            <h2 style={{ fontSize: '1.0625rem', fontWeight: 700, marginBottom: '16px' }}>📋 Contratos ({contracts.length})</h2>
+            <h2 style={{ fontSize: '1.0625rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: 8 }}><ClipboardCheck size={17} aria-hidden="true" /> Contratos ({contracts.length})</h2>
             {contracts.length === 0 ? (
                 <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Nenhum contrato</div>
             ) : (

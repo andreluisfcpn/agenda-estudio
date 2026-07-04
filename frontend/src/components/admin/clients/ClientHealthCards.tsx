@@ -1,6 +1,7 @@
 import { UserDetail } from '../../../api/client';
 import { computeClientHealth } from '../../../utils/clientHealth';
 import { formatBRL } from '../../../utils/format';
+import { Wallet, HeartPulse, AlertTriangle } from 'lucide-react';
 
 /** Resumo Financeiro + Health Score lado a lado (um único cálculo alimenta
  *  os dois cards — por isso não são componentes separados). */
@@ -11,7 +12,7 @@ export default function ClientHealthCards({ user }: { user: UserDetail }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px', marginBottom: '16px' }}>
             {/* Financial Summary */}
             <div className="card" style={{ padding: '20px' }}>
-                <h2 style={{ fontSize: '1.0625rem', fontWeight: 700, marginBottom: '16px' }}>💰 Resumo Financeiro</h2>
+                <h2 style={{ fontSize: '1.0625rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: 8 }}><Wallet size={17} aria-hidden="true" /> Resumo Financeiro</h2>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     <div style={{ padding: '12px', background: 'rgba(16,185,129,0.08)', borderRadius: 'var(--radius-sm)', textAlign: 'center' }}>
                         <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Total Pago</div>
@@ -23,7 +24,7 @@ export default function ClientHealthCards({ user }: { user: UserDetail }) {
                     </div>
                     {h.overdue > 0 && (
                         <div style={{ padding: '12px', background: 'rgba(220,38,38,0.08)', borderRadius: 'var(--radius-sm)', textAlign: 'center', gridColumn: 'span 2' }}>
-                            <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>⚠️ Vencido</div>
+                            <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3 }}><AlertTriangle size={11} aria-hidden="true" /> Vencido</div>
                             <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--danger)', marginTop: '4px' }}>{formatBRL(h.overdue)}</div>
                         </div>
                     )}
@@ -36,7 +37,7 @@ export default function ClientHealthCards({ user }: { user: UserDetail }) {
 
             {/* Health Score */}
             <div className="card" style={{ padding: '20px' }}>
-                <h2 style={{ fontSize: '1.0625rem', fontWeight: 700, marginBottom: '16px' }}>🏥 Health Score</h2>
+                <h2 style={{ fontSize: '1.0625rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: 8 }}><HeartPulse size={17} aria-hidden="true" /> Health Score</h2>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
                     {/* Circular gauge */}
                     <div style={{ position: 'relative', width: 80, height: 80, flexShrink: 0 }}>
@@ -68,7 +69,7 @@ export default function ClientHealthCards({ user }: { user: UserDetail }) {
                                 <span style={{ color: 'var(--text-muted)' }}>Recência</span>
                                 <span style={{ fontWeight: 600 }}>{h.recencyScore}%</span>
                             </div>
-                            {h.faltas > 0 && <div style={{ color: 'var(--danger)', marginTop: '4px' }}>⚠ {h.faltas} falta{h.faltas > 1 ? 's' : ''}</div>}
+                            {h.faltas > 0 && <div style={{ color: 'var(--danger)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: 3 }}><AlertTriangle size={11} aria-hidden="true" /> {h.faltas} falta{h.faltas > 1 ? 's' : ''}</div>}
                         </div>
                     </div>
                 </div>

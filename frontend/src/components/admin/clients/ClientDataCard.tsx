@@ -2,6 +2,7 @@ import { usersApi, UserDetail } from '../../../api/client';
 import FieldItem from './FieldItem';
 import TagsEditor from './TagsEditor';
 import SocialLinksEditor from './SocialLinksEditor';
+import { IdCard } from 'lucide-react';
 
 interface ClientDataCardProps {
     user: UserDetail;
@@ -13,7 +14,7 @@ interface ClientDataCardProps {
 export default function ClientDataCard({ user, onSaved }: ClientDataCardProps) {
     return (
         <div className="card" style={{ padding: '20px', marginBottom: '16px' }}>
-            <h2 style={{ fontSize: '1.0625rem', fontWeight: 700, marginBottom: '16px' }}>📇 Dados do Cliente</h2>
+            <h2 style={{ fontSize: '1.0625rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: 8 }}><IdCard size={17} aria-hidden="true" /> Dados do Cliente</h2>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
                 <FieldItem label="CPF/CNPJ" value={user.cpfCnpj} field="cpfCnpj" userId={user.id} onSaved={onSaved} />
                 <FieldItem label="Endereço" value={user.address} field="address" userId={user.id} onSaved={onSaved} />

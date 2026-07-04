@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { usersApi } from '../../../api/client';
 import { useUI } from '../../../context/UIContext';
+import { X } from 'lucide-react';
 
 const SAVE_ERROR = { message: 'Não foi possível salvar. Tente novamente.', type: 'error' as const };
 
@@ -10,7 +11,7 @@ interface TagsEditorProps {
     onSaved: () => void;
 }
 
-/** Editor de tags do cliente (adicionar no Enter/blur, remover no ✕). */
+/** Editor de tags do cliente (adicionar no Enter/blur, remover no X). */
 export default function TagsEditor({ tags, userId, onSaved }: TagsEditorProps) {
     const { showToast } = useUI();
     const [newTag, setNewTag] = useState('');
@@ -30,7 +31,7 @@ export default function TagsEditor({ tags, userId, onSaved }: TagsEditorProps) {
                     <span key={t} style={{ fontSize: '0.6875rem', padding: '2px 8px', borderRadius: '999px', background: 'rgba(17,129,155,0.15)', color: 'var(--accent-text)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                         #{t}
                         <button onClick={() => removeTag(t)} aria-label={`Remover tag ${t}`}
-                            style={{ cursor: 'pointer', opacity: 0.6, background: 'none', border: 'none', color: 'inherit', padding: '2px 4px', fontSize: 'inherit', fontFamily: 'inherit' }}>✕</button>
+                            style={{ cursor: 'pointer', opacity: 0.6, background: 'none', border: 'none', color: 'inherit', padding: '2px 4px', display: 'inline-flex', alignItems: 'center' }}><X size={12} aria-hidden="true" /></button>
                     </span>
                 ))}
                 <input placeholder="+ tag" aria-label="Adicionar tag" value={newTag} onChange={e => setNewTag(e.target.value)} onKeyDown={e => e.key === 'Enter' && addTag()} onBlur={addTag}
