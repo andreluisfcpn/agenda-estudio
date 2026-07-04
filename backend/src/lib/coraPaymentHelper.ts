@@ -28,8 +28,12 @@ export interface CoraPaymentResponse {
 
 // ─── Address Parser ──────────────────────────────────────
 
-function parseUserAddress(user: { address?: string | null; city?: string | null; state?: string | null }) {
-    if (user.address) {
+function parseUserAddress(user: {
+    address?: string | null; addressNumber?: string | null; complement?: string | null;
+    neighborhood?: string | null; zipCode?: string | null; city?: string | null; state?: string | null;
+}) {
+    // Back-compat: linhas antigas guardavam um blob JSON no campo `address`.
+    if (user.address && user.address.trim().startsWith('{')) {
         try {
             const addr = JSON.parse(user.address);
             return {
@@ -37,18 +41,19 @@ function parseUserAddress(user: { address?: string | null; city?: string | null;
                 number: addr.number || 'S/N',
                 district: addr.district || 'Centro',
                 city: addr.city || user.city || 'Cidade',
-                state: addr.state || user.state || 'RJ',
-                zipCode: (addr.zipCode || addr.cep || '00000000').replace(/\D/g, ''),
+                state: (addr.state || user.state || 'RJ').slice(0, 2).toUpperCase(),
+                zipCode: (addr.zipCode || addr.cep || '00000000').replace(/\D/g, '') || '00000000',
             };
-        } catch { /* fall through */ }
+        } catch { /* fall through para os campos estruturados */ }
     }
+    // Formato atual: colunas separadas (address = logradouro).
     return {
-        street: 'N/A',
-        number: 'S/N',
-        district: 'Centro',
+        street: user.address || 'N/A',
+        number: user.addressNumber || 'S/N',
+        district: user.neighborhood || 'Centro',
         city: user.city || 'Cidade',
-        state: user.state || 'RJ',
-        zipCode: '00000000',
+        state: (user.state || 'RJ').slice(0, 2).toUpperCase(),
+        zipCode: (user.zipCode || '00000000').replace(/\D/g, '') || '00000000',
     };
 }
 

@@ -17,7 +17,10 @@ const fromUser = (u: UserDetail): AddressValues => ({
 export default function AddressEditor({ user, onSaved }: { user: UserDetail; onSaved: () => void }) {
     const { showToast } = useUI();
     const [form, setForm] = useState<AddressValues>(() => fromUser(user));
-    useEffect(() => { setForm(fromUser(user)); }, [user]);
+    // Só reinicializa quando troca de cliente (user.id). Reagir a cada novo objeto `user`
+    // (refetch silencioso, edição de nota de booking) sobrescreveria edição em andamento.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useEffect(() => { setForm(fromUser(user)); }, [user.id]);
 
     const persist = async (patch: Partial<Record<keyof AddressValues, string | null>>) => {
         try { await usersApi.update(user.id, patch); onSaved(); }

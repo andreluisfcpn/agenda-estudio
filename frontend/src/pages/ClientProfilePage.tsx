@@ -34,15 +34,17 @@ export default function ClientProfilePage() {
         finally { setAutoSaving(false); }
     };
 
-    const loadUser = async () => {
-        setLoading(true);
+    // silent=true: refetch após um save inline — NÃO pisca o skeleton (evita
+    // desmontar/reinicializar os editores e perder edição em andamento).
+    const loadUser = async (silent = false) => {
+        if (!silent) setLoading(true);
         try {
             const res = await usersApi.getById(id!);
             setUser(res.user);
             setNotes(res.user.notes || '');
             usersApi.paymentOverview(id!).then(setPayOverview).catch(() => setPayOverview(null));
         } catch (err) { console.error(err); }
-        finally { setLoading(false); }
+        finally { if (!silent) setLoading(false); }
     };
 
     const handleNotesChange = (value: string) => {
@@ -75,7 +77,7 @@ export default function ClientProfilePage() {
 
             <ProfileHeader user={user} />
 
-            <ClientDataCard user={user} onSaved={loadUser} />
+            <ClientDataCard user={user} onSaved={() => loadUser(true)} />
 
             <ClientHealthCards user={user} />
 

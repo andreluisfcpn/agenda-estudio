@@ -18,8 +18,12 @@ export interface CepResult {
 export async function lookupCep(cep: string): Promise<CepResult | null> {
     const digits = cep.replace(/\D/g, '');
     if (digits.length !== 8) return null;
+    // Timeout de 8s — sem isso, uma conexão pendurada (nem resolve nem rejeita)
+    // deixaria o spinner girando para sempre.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
     try {
-        const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
+        const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`, { signal: controller.signal });
         if (!res.ok) return null;
         const data = await res.json();
         if (data.erro) return null;
@@ -30,6 +34,8 @@ export async function lookupCep(cep: string): Promise<CepResult | null> {
             state: data.uf || '',
         };
     } catch {
-        return null;
+        return null; // erro de rede / timeout / abort → trata como preenchimento manual
+    } finally {
+        clearTimeout(timer);
     }
 }

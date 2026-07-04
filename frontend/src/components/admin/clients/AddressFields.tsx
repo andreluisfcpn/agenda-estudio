@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react';
+import { useState, useRef, useId, type CSSProperties } from 'react';
 import { maskCep, lookupCep } from '../../../utils/cep';
 import { MapPin, Search, Loader2 } from 'lucide-react';
 
@@ -28,14 +28,19 @@ const inputStyle: CSSProperties = { fontSize: '0.8125rem', padding: '8px 10px' }
  */
 export default function AddressFields({ values, onChange, onFieldBlur, onCepFilled, heading = true }: AddressFieldsProps) {
     const [cepLoading, setCepLoading] = useState(false);
+    const uid = useId();
+    // Último CEP já consultado — evita refetch e reverter edições manuais ao re-blurar sem mudar.
+    const lastCepRef = useRef('');
 
     const handleCepBlur = async () => {
         const digits = values.zipCode.replace(/\D/g, '');
         if (digits.length !== 8) { onFieldBlur?.('zipCode'); return; }
+        if (digits === lastCepRef.current) return; // mesmo CEP → não refaz nem sobrescreve edições
+        lastCepRef.current = digits;
         setCepLoading(true);
         const res = await lookupCep(digits);
         setCepLoading(false);
-        if (!res) { onFieldBlur?.('zipCode'); return; }
+        if (!res) { lastCepRef.current = ''; onFieldBlur?.('zipCode'); return; }
         // Preserva o que o admin já digitou; só preenche o que veio do ViaCEP.
         const patch: Partial<AddressValues> = {
             address: res.street || values.address,
@@ -49,8 +54,8 @@ export default function AddressFields({ values, onChange, onFieldBlur, onCepFill
 
     const field = (f: keyof AddressValues, label: string, placeholder: string) => (
         <div>
-            <label style={labelStyle}>{label}</label>
-            <input className="form-input" value={values[f]} placeholder={placeholder}
+            <label htmlFor={`${uid}-${f}`} style={labelStyle}>{label}</label>
+            <input id={`${uid}-${f}`} className="form-input" value={values[f]} placeholder={placeholder}
                 onChange={e => onChange({ [f]: e.target.value } as Partial<AddressValues>)}
                 onBlur={() => onFieldBlur?.(f)}
                 style={inputStyle} />
@@ -67,9 +72,9 @@ export default function AddressFields({ values, onChange, onFieldBlur, onCepFill
             <div style={{ display: 'grid', gap: '10px' }}>
                 {/* CEP com autopreenchimento (ViaCEP) */}
                 <div style={{ maxWidth: 220 }}>
-                    <label style={labelStyle}>CEP</label>
+                    <label htmlFor={`${uid}-zipCode`} style={labelStyle}>CEP</label>
                     <div style={{ position: 'relative' }}>
-                        <input className="form-input" value={values.zipCode} inputMode="numeric" placeholder="00000-000"
+                        <input id={`${uid}-zipCode`} className="form-input" value={values.zipCode} inputMode="numeric" placeholder="00000-000"
                             aria-label="CEP (preenche o endereço automaticamente)"
                             onChange={e => onChange({ zipCode: maskCep(e.target.value) })}
                             onBlur={handleCepBlur}
@@ -89,8 +94,8 @@ export default function AddressFields({ values, onChange, onFieldBlur, onCepFill
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 76px', gap: '10px' }}>
                     {field('city', 'Cidade', 'Rio de Janeiro')}
                     <div>
-                        <label style={labelStyle}>UF</label>
-                        <input className="form-input" value={values.state} placeholder="RJ" maxLength={2}
+                        <label htmlFor={`${uid}-state`} style={labelStyle}>UF</label>
+                        <input id={`${uid}-state`} className="form-input" value={values.state} placeholder="RJ" maxLength={2}
                             onChange={e => onChange({ state: e.target.value.toUpperCase() })}
                             onBlur={() => onFieldBlur?.('state')}
                             style={{ ...inputStyle, textTransform: 'uppercase' }} />
