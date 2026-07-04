@@ -1,5 +1,10 @@
 /* â”€â”€â”€ Design Tokens â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 :root {
+  /* App é dark-only: faz os controles NATIVOS (indicador de date/time picker,
+     dropdown de select, scrollbar do Firefox) renderizarem na paleta escura.
+     Sem isso o ícone do picker sai PRETO sobre o fundo escuro. */
+  color-scheme: dark;
+
   /* Colors - BÃºzios Digital Corporate Palette (Formal) */
   --bg-primary: #001e26;
   --bg-secondary: #00252d;
