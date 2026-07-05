@@ -21,7 +21,7 @@ interface ToastOptions {
 
 interface UIContextType {
     showAlert: (options: ModalOptions | string) => void;
-    showConfirm: (options: { title?: string; message: string; onConfirm: () => void; onCancel?: () => void }) => void;
+    showConfirm: (options: { title?: string; message: string; confirmLabel?: string; onConfirm: () => void; onCancel?: () => void }) => void;
     showToast: (options: ToastOptions | string) => void;
     closeModal: () => void;
 }
@@ -29,7 +29,7 @@ interface UIContextType {
 const UIContext = createContext<UIContextType | undefined>(undefined);
 
 export function UIProvider({ children }: { children: React.ReactNode }) {
-    const [modal, setModal] = useState<(ModalOptions & { isConfirm?: boolean; onCancel?: () => void }) | null>(null);
+    const [modal, setModal] = useState<(ModalOptions & { isConfirm?: boolean; confirmLabel?: string; onCancel?: () => void }) | null>(null);
     const [toast, setToast] = useState<ToastOptions | null>(null);
 
     const showAlert = useCallback((options: ModalOptions | string) => {
@@ -40,7 +40,7 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
         }
     }, []);
 
-    const showConfirm = useCallback((options: { title?: string; message: string; onConfirm: () => void; onCancel?: () => void }) => {
+    const showConfirm = useCallback((options: { title?: string; message: string; confirmLabel?: string; onConfirm: () => void; onCancel?: () => void }) => {
         setModal({ ...options, type: 'warning', isConfirm: true });
     }, []);
 
@@ -103,7 +103,7 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
                             </button>
                         )}
                         <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleConfirm}>
-                            {modal?.isConfirm ? 'Confirmar' : 'Entendido'}
+                            {modal?.isConfirm ? (modal.confirmLabel || 'Confirmar') : 'Entendido'}
                         </button>
                     </div>
                 </div>

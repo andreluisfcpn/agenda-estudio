@@ -585,6 +585,43 @@ export const notificationsApi = {
     remove: (id: string) => request<{ message: string }>(`/notifications/${id}`, { method: 'DELETE' }),
 };
 
+// ─── Notifications Admin (event templates + broadcast) ──
+export interface NotificationEventVariable { name: string; label: string; example: string; }
+export interface NotificationEventDef {
+    eventKey: string;
+    label: string;
+    description: string;
+    group: 'pagamentos' | 'sessoes' | 'contratos' | 'creditos' | 'admin';
+    audience: 'client' | 'admin';
+    kind: 'persisted' | 'computed';
+    type: string;
+    variables: NotificationEventVariable[];
+    defaults: { title: string; message: string; severity: string; pushDefault: boolean; actionUrl: string };
+    effective: { enabled: boolean; title: string; message: string; severity: string; pushEnabled: boolean };
+    overrides: { enabled: boolean; title: string | null; message: string | null; severity: string | null; pushEnabled: boolean | null } | null;
+    isCustomized: boolean;
+}
+export interface TemplateUpdate {
+    enabled?: boolean;
+    title?: string | null;
+    message?: string | null;
+    severity?: 'critical' | 'warning' | 'info' | null;
+    pushEnabled?: boolean | null;
+}
+export interface BroadcastBatch { batchId: string; title: string; message: string; severity: string; createdAt: string; recipients: number; readCount: number; }
+export const notificationsAdminApi = {
+    getEvents: () => request<{ events: NotificationEventDef[] }>('/notifications/admin/events'),
+    updateTemplate: (eventKey: string, data: TemplateUpdate) =>
+        request<{ message: string }>(`/notifications/admin/templates/${eventKey}`, { method: 'PUT', body: JSON.stringify(data) }),
+    resetTemplate: (eventKey: string) =>
+        request<{ message: string }>(`/notifications/admin/templates/${eventKey}`, { method: 'DELETE' }),
+    test: (eventKey: string) =>
+        request<{ message: string }>(`/notifications/admin/templates/${eventKey}/test`, { method: 'POST', body: JSON.stringify({ nonce: Date.now() }) }),
+    broadcast: (data: { title: string; message: string; severity: 'critical' | 'warning' | 'info'; target: 'all' | string[]; sendPush: boolean }) =>
+        request<{ batchId: string; sent: number; skipped: number; message: string }>('/notifications/admin/broadcast', { method: 'POST', body: JSON.stringify(data) }),
+    getBroadcasts: () => request<{ broadcasts: BroadcastBatch[] }>('/notifications/admin/broadcasts'),
+};
+
 // ─── Reports ────────────────────────────────────────────
 export interface ReportSummary {
     totalBookings: number; completedBookings: number; faltaBookings: number;

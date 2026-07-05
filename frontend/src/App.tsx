@@ -35,6 +35,7 @@ const AdminFinancePage = React.lazy(() => import('./pages/AdminFinancePage'));
 const AdminCouponsPage = React.lazy(() => import('./pages/AdminCouponsPage'));
 const AdminReportsPage = React.lazy(() => import('./pages/AdminReportsPage'));
 const AdminSettingsPage = React.lazy(() => import('./pages/AdminSettingsPage'));
+const AdminNotificationsPage = React.lazy(() => import('./pages/AdminNotificationsPage'));
 const ClientProfilePage = React.lazy(() => import('./pages/ClientProfilePage'));
 
 // Preload the page chunks while the browser is idle so navigation is instant
@@ -60,6 +61,7 @@ function preloadPages() {
         () => import('./pages/AdminCouponsPage'),
         () => import('./pages/AdminReportsPage'),
         () => import('./pages/AdminSettingsPage'),
+        () => import('./pages/AdminNotificationsPage'),
         () => import('./pages/ClientProfilePage'),
     ];
     // Stagger so we don't compete with the initial render's network/CPU.
@@ -188,6 +190,7 @@ function AppRoutes() {
             <Route path="/admin/cupons" element={<ProtectedRoute><AdminRoute><AdminCouponsPage /></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/reports" element={<ProtectedRoute><AdminRoute><AdminReportsPage /></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/configuracoes" element={<ProtectedRoute><AdminRoute><AdminSettingsPage /></AdminRoute></ProtectedRoute>} />
+            <Route path="/admin/notificacoes" element={<ProtectedRoute><AdminRoute><AdminNotificationsPage /></AdminRoute></ProtectedRoute>} />
 
             {/* Legacy redirects */}
             {/* Rotas antigas em inglês (R4): bookmarks, atalhos da PWA instalada e

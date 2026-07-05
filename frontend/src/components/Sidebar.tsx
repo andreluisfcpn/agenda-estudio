@@ -20,6 +20,7 @@ import {
     LogOut,
     Wallet,
     Settings,
+    BellRing,
 } from 'lucide-react';
 
 interface NavItemProps {
@@ -279,6 +280,7 @@ export default function Sidebar({ collapsed }: SidebarProps) {
                         <NavItem to="/admin/reports" icon={BarChart3} label="Relatórios" collapsed={collapsed} />
 
                         <SidebarSection label="Sistema" />
+                        <NavItem to="/admin/notificacoes" icon={BellRing} label="Notificações" collapsed={collapsed} />
                         <ExpandableNavItem
                             to="/admin/configuracoes"
                             icon={Settings}
