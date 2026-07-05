@@ -10,8 +10,13 @@ import {
     getUserNotifications,
 } from './notificationService.js';
 import { getAllEffectiveEvents, renderTemplate, EffectiveEvent } from './templateStore.js';
+import adminRouter from './admin.js';
 
 const router = Router();
+
+// Admin sub-router (templates + broadcast). Mounted before the /:id param routes
+// so /admin/* is never captured by them.
+router.use('/admin', adminRouter);
 
 const fmtBRL = (cents: number) => `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
 
