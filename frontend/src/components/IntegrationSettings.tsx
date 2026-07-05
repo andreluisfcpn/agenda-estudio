@@ -3,7 +3,7 @@ import { integrationsApi } from '../api/client';
 import { getErrorMessage } from '../utils/errors';
 import {
   Icons, StatusBadge, Toggle, TestInfo, WebhookUrlBox,
-  FileUploadZone, EnvToggle, CredsTabs, envConfigured,
+  FileUploadZone, EnvSelector, envConfigured,
   type IntegrationSummary,
 } from './IntegrationHelpers';
 import '../styles/integration-settings.css';
@@ -264,26 +264,20 @@ export default function IntegrationSettings() {
                 </div>
               )}
 
-              <EnvToggle
+              <EnvSelector
                 env={coraForm.environment as 'sandbox' | 'production'}
-                onChange={v => setCoraForm(f => ({ ...f, environment: v }))}
+                onChange={v => { setCoraForm(f => ({ ...f, environment: v })); setCoraEditEnv(v); }}
                 labels={{ sandbox: 'Sandbox', production: 'Produção' }}
-                title="Ambiente ativo no checkout"
-                hint={`Define quais credenciais são usadas nas cobranças. Clique em Salvar para aplicar.${cora?.environment && coraForm.environment !== cora.environment ? ' • Alteração pendente — ainda não salva.' : ''}`}
+                sandboxOk={coraEnvOk('sandbox')} productionOk={coraEnvOk('production')}
+                pendingSave={!!(cora?.environment && coraForm.environment !== cora.environment)}
               />
 
               {coraForm.environment === 'production' && !coraEnvOk('production') && (
                 <div className="int-warn" role="alert">
                   <Icons.Info size={15} />
-                  <div>
-                    Produção selecionada, mas as credenciais de produção estão vazias — com a integração ativa, o checkout não conseguirá cobrar.
-                    {' '}<button type="button" className="int-warn-link" onClick={() => setCoraEditEnv('production')}>Editar credenciais de produção</button>
-                  </div>
+                  <div>Produção selecionada, mas as credenciais de produção estão vazias — preencha-as abaixo antes de salvar/ativar, senão o checkout não conseguirá cobrar.</div>
                 </div>
               )}
-
-              <CredsTabs editEnv={coraEditEnv} onChange={setCoraEditEnv}
-                sandboxOk={coraEnvOk('sandbox')} productionOk={coraEnvOk('production')} />
 
               {/* Client ID + Chave PIX — short fields side-by-side on tablet+ */}
               <div className="int-field-row">
@@ -404,26 +398,20 @@ export default function IntegrationSettings() {
                 </div>
               )}
 
-              <EnvToggle
+              <EnvSelector
                 env={stripeForm.environment as 'sandbox' | 'production'}
-                onChange={v => setStripeForm(f => ({ ...f, environment: v }))}
+                onChange={v => { setStripeForm(f => ({ ...f, environment: v })); setStripeEditEnv(v); }}
                 labels={{ sandbox: 'Teste (sk_test)', production: 'Produção (sk_live)' }}
-                title="Ambiente ativo no checkout"
-                hint={`Define quais credenciais são usadas nas cobranças. Clique em Salvar para aplicar.${stripe?.environment && stripeForm.environment !== stripe.environment ? ' • Alteração pendente — ainda não salva.' : ''}`}
+                sandboxOk={stripeEnvOk('sandbox')} productionOk={stripeEnvOk('production')}
+                pendingSave={!!(stripe?.environment && stripeForm.environment !== stripe.environment)}
               />
 
               {stripeForm.environment === 'production' && !stripeEnvOk('production') && (
                 <div className="int-warn" role="alert">
                   <Icons.Info size={15} />
-                  <div>
-                    Produção selecionada, mas as credenciais de produção estão vazias — com a integração ativa, o checkout não conseguirá cobrar.
-                    {' '}<button type="button" className="int-warn-link" onClick={() => setStripeEditEnv('production')}>Editar credenciais de produção</button>
-                  </div>
+                  <div>Produção selecionada, mas as credenciais de produção estão vazias — preencha-as abaixo antes de salvar/ativar, senão o checkout não conseguirá cobrar.</div>
                 </div>
               )}
-
-              <CredsTabs editEnv={stripeEditEnv} onChange={setStripeEditEnv}
-                sandboxOk={stripeEnvOk('sandbox')} productionOk={stripeEnvOk('production')} />
 
               {/* Secret + Publishable Key — credentials pair side-by-side on tablet+ */}
               <div className="int-field-row">

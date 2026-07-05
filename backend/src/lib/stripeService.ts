@@ -54,6 +54,17 @@ async function getStripeConfig(): Promise<{ config: StripeCredentials; environme
 
         if (isDualConfig(parsed)) {
             credentials = parsed[environment];
+            // Self-heal: recover flat credentials orphaned at the top level by the (briefly
+            // buggy) dual-format merge — see the matching note in coraService.getCoraConfig.
+            if (!credentials?.secretKey && (parsed as any).secretKey) {
+                const flat = parsed as StripeCredentials;
+                credentials = {
+                    secretKey: flat.secretKey,
+                    publishableKey: flat.publishableKey,
+                    webhookSecret: flat.webhookSecret,
+                    ...(credentials || {}),
+                };
+            }
             if (!credentials?.secretKey) {
                 console.warn(`[Stripe] No credentials configured for environment "${environment}"`);
                 return null;

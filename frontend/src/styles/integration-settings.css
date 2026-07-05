@@ -363,6 +363,76 @@
   color: #ef4444;
 }
 
+/* ─── Env Selector (um controle: ambiente ativo + credenciais editadas) ─── */
+.int-env-selector {
+  margin-bottom: 16px;
+}
+.int-env-selector-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+.int-env-selector-seg {
+  display: flex;
+  gap: 6px;
+  padding: 3px;
+  background: var(--bg-elevated);
+  border-radius: 10px;
+}
+.int-env-seg {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 12px;
+  min-height: 44px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.int-env-seg:hover { color: var(--text-secondary); }
+.int-env-seg--active {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+/* Produção ativa: sinal visual vermelho */
+.int-env-seg--active:last-child {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.35);
+}
+.int-env-seg-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+}
+.int-env-seg-dot--ok {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.12);
+}
+.int-env-selector-hint {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  margin-top: 8px;
+  line-height: 1.4;
+}
+.int-env-selector-hint strong { color: #f59e0b; }
+
 /* ─── Form Fields ─── */
 .int-field {
   margin-bottom: 14px;

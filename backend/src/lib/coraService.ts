@@ -130,6 +130,21 @@ async function getCoraConfig(): Promise<{ config: CoraCredentials; environment: 
         if (isDualConfig(parsed)) {
             // New format: pick credentials for the active environment
             credentials = parsed[environment];
+            // Self-heal: the dual-format redesign shipped (briefly) with a merge bug that
+            // left the WORKING flat credentials orphaned at the TOP LEVEL while writing an
+            // empty {environment} sub-object — silently breaking auth. If the active sub-object
+            // is incomplete but flat creds still sit at the top, recover them.
+            if (!credentials?.clientId && (parsed as any).clientId) {
+                const flat = parsed as CoraCredentials;
+                credentials = {
+                    clientId: flat.clientId,
+                    certificatePem: flat.certificatePem,
+                    privateKeyPem: flat.privateKeyPem,
+                    pixKey: flat.pixKey,
+                    webhookSecret: flat.webhookSecret,
+                    ...(credentials || {}),
+                };
+            }
             if (!credentials?.clientId) {
                 console.warn(`[Cora] No credentials configured for environment "${environment}"`);
                 return null;
@@ -544,11 +559,14 @@ export async function coraTestConnection(): Promise<{ success: boolean; message:
         if (msg.includes('ECONNREFUSED')) {
             return { success: false, message: 'Conexão recusada. Verifique se o ambiente (sandbox/produção) está correto.' };
         }
-        if (msg.includes('certificate') || msg.includes('key')) {
-            return { success: false, message: 'Erro no certificado mTLS. Verifique se o certificado e chave privada estão corretos e no formato PEM.' };
+        if (msg.includes('certificate') || msg.includes('key') || msg.includes('SSL') || msg.includes('TLS') || msg.includes('EPROTO')) {
+            return { success: false, message: `Erro no certificado mTLS: o Cora não aceitou o certificado/chave (verifique se estão corretos, no formato PEM e não expirados). Detalhe: ${msg}` };
         }
-        if (msg.includes('client_id') || msg.includes('401')) {
-            return { success: false, message: 'Client ID inválido ou não autorizado. Verifique suas credenciais no painel Cora.' };
+        if (msg.includes('client_id') || msg.includes('invalid_client') || msg.includes('401') || msg.includes('403')) {
+            // mTLS handshake succeeded (chegamos ao endpoint de token e recebemos 4xx), mas o
+            // Cora recusou o client_id → app/credencial do ambiente ativo inválido, revogado ou
+            // expirado no painel Cora. Não é problema de código/certificado.
+            return { success: false, message: `O Cora recusou o Client ID do ambiente ativo (o certificado mTLS foi aceito). Verifique/renove as credenciais do app no painel Cora. Detalhe: ${msg}` };
         }
         return { success: false, message: `Falha na autenticação: ${msg}` };
     }

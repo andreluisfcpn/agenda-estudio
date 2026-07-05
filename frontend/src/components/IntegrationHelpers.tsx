@@ -179,64 +179,43 @@ export function FileUploadZone({
   );
 }
 
-/* ═══ Environment Toggle (Sandbox ↔ Produção) ═══
-   Com `title`/`hint` vira o seletor rotulado de "Ambiente ativo". */
-export function EnvToggle({ env, onChange, labels, title, hint }: {
+/* ═══ Seletor de ambiente (UM controle) ═══
+   Junta o antigo "Ambiente ativo" + as abas de credenciais: clicar em
+   Sandbox/Produção troca DE UMA VEZ o ambiente ativo no checkout E as
+   credenciais mostradas/editadas abaixo. Cada opção mostra ✓/— se aquele
+   ambiente já tem credenciais completas. */
+export function EnvSelector({ env, onChange, labels, sandboxOk, productionOk, pendingSave }: {
   env: 'sandbox' | 'production';
   onChange: (v: 'sandbox' | 'production') => void;
   labels: { sandbox: string; production: string };
-  title?: string;
-  hint?: string;
-}) {
-  const isProd = env === 'production';
-  return (
-    <div className="int-env-toggle-wrap">
-      {title && <div className="int-env-title">{title}</div>}
-      <button
-        type="button"
-        className={`int-env-toggle ${isProd ? 'int-env-toggle--prod' : ''}`}
-        onClick={() => onChange(isProd ? 'sandbox' : 'production')}
-        role="switch"
-        aria-checked={isProd}
-        aria-label={title || 'Ambiente'}
-      >
-        <span className={`int-env-toggle-option ${!isProd ? 'int-env-toggle-option--active' : ''}`}>
-          <Icons.Flask size={13} /> {labels.sandbox}
-        </span>
-        <span className={`int-env-toggle-option ${isProd ? 'int-env-toggle-option--active' : ''}`}>
-          <Icons.Rocket size={13} /> {labels.production}
-        </span>
-        <span className="int-env-toggle-slider" />
-      </button>
-      {hint && <div className="int-env-hint">{hint}</div>}
-    </div>
-  );
-}
-
-/* ═══ Abas de EDIÇÃO de credenciais (desacopladas do ambiente ativo) ═══
-   Cada aba indica se aquele ambiente já tem credenciais (✓) ou não (—). */
-export function CredsTabs({ editEnv, onChange, sandboxOk, productionOk }: {
-  editEnv: 'sandbox' | 'production';
-  onChange: (v: 'sandbox' | 'production') => void;
   sandboxOk: boolean;
   productionOk: boolean;
+  pendingSave: boolean;
 }) {
-  const tab = (env: 'sandbox' | 'production', label: string, ok: boolean) => (
+  const seg = (value: 'sandbox' | 'production', label: string, ok: boolean, Icon: (p: any) => React.ReactElement) => (
     <button type="button"
-      className={`int-creds-tab ${editEnv === env ? 'int-creds-tab--active' : ''}`}
-      onClick={() => onChange(env)}
-      aria-pressed={editEnv === env}>
-      {label}
-      <span className={`int-creds-tab-dot ${ok ? 'int-creds-tab-dot--ok' : ''}`} role="img" aria-label={ok ? 'configurado' : 'sem credenciais'}>
+      className={`int-env-seg ${env === value ? 'int-env-seg--active' : ''}`}
+      onClick={() => onChange(value)}
+      role="radio" aria-checked={env === value}
+      aria-label={`${label} — ${ok ? 'credenciais configuradas' : 'sem credenciais'}`}>
+      <Icon size={14} />
+      <span className="int-env-seg-label">{label}</span>
+      <span className={`int-env-seg-dot ${ok ? 'int-env-seg-dot--ok' : ''}`} aria-hidden="true">
         {ok ? <Icons.Check size={10} /> : '—'}
       </span>
     </button>
   );
   return (
-    <div className="int-creds-tabs" role="group" aria-label="Editar credenciais de qual ambiente">
-      <span className="int-creds-tabs-label">Credenciais:</span>
-      {tab('sandbox', 'Sandbox', sandboxOk)}
-      {tab('production', 'Produção', productionOk)}
+    <div className="int-env-selector">
+      <div className="int-env-selector-title">Ambiente ativo no checkout</div>
+      <div className="int-env-selector-seg" role="radiogroup" aria-label="Ambiente ativo no checkout">
+        {seg('sandbox', labels.sandbox, sandboxOk, Icons.Flask)}
+        {seg('production', labels.production, productionOk, Icons.Rocket)}
+      </div>
+      <div className="int-env-selector-hint">
+        Define o ambiente usado nas cobranças e as credenciais editadas abaixo.
+        {pendingSave && <strong> • Alteração pendente — clique em Salvar para aplicar.</strong>}
+      </div>
     </div>
   );
 }
