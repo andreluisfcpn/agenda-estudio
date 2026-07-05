@@ -1,6 +1,6 @@
 # Minhas Gravações
 
-> Rota: **`/my-bookings`** · Menu: **Minhas Gravações**
+> Rota: **`/minhas-gravacoes`** · Menu: **Minhas Gravações**
 
 Veja suas gravações (próximas e passadas), os preparativos e as **métricas de transmissão** de cada uma.
 
@@ -9,7 +9,7 @@ Veja suas gravações (próximas e passadas), os preparativos e as **métricas d
 Suas sessões em ordem cronológica, com status (confirmada, concluída, cancelada, falta) e preço.
 
 ![Lista de gravações](../images/cliente/gravacoes-01-lista.png)
-<!-- TODO screenshot: /my-bookings lista -->
+<!-- TODO screenshot: /minhas-gravacoes lista -->
 
 ## Detalhe de uma gravação
 

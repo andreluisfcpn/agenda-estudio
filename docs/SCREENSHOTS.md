@@ -30,14 +30,14 @@ Este arquivo lista **todas as imagens de passo a passo** referenciadas pelos gui
 | `contrato-02-wizard-agenda.png` | wizard | Passo 2 (Fixa/Flex + data do 1º episódio) |
 | `contrato-03-wizard-extras.png` | wizard | Passo 3 (serviços extras por gravação) |
 | `contrato-04-wizard-pagamento.png` | wizard | Passo 4 (resumo + plano de pagamento + termos) |
-| `contrato-05-lista.png` | `/my-contracts` | Lista de contratos com abas ativos/arquivados |
-| `contrato-06-parcela-modal.png` | `/my-contracts` | Modal "Pagar parcela" aberto sobre o contrato |
-| `contrato-07-renovar.png` | `/my-contracts` | Modal de renovação |
-| `contrato-08-cancelar.png` | `/my-contracts` | Modal de solicitação de cancelamento |
-| `contrato-09-servico.png` | `/my-contracts` | Modal de contratação de serviço (ex.: Gestão de Redes) |
-| `gravacoes-01-lista.png` | `/my-bookings` | Lista de gravações (próximas e passadas) |
-| `gravacoes-02-detalhe-metricas.png` | `/my-bookings` | Detalhe expandido com aba de métricas |
-| `gravacoes-03-grafico.png` | `/my-bookings` | Gráfico de métricas por rede (recharts) |
+| `contrato-05-lista.png` | `/meus-contratos` | Lista de contratos com abas ativos/arquivados |
+| `contrato-06-parcela-modal.png` | `/meus-contratos` | Modal "Pagar parcela" aberto sobre o contrato |
+| `contrato-07-renovar.png` | `/meus-contratos` | Modal de renovação |
+| `contrato-08-cancelar.png` | `/meus-contratos` | Modal de solicitação de cancelamento |
+| `contrato-09-servico.png` | `/meus-contratos` | Modal de contratação de serviço (ex.: Gestão de Redes) |
+| `gravacoes-01-lista.png` | `/minhas-gravacoes` | Lista de gravações (próximas e passadas) |
+| `gravacoes-02-detalhe-metricas.png` | `/minhas-gravacoes` | Detalhe expandido com aba de métricas |
+| `gravacoes-03-grafico.png` | `/minhas-gravacoes` | Gráfico de métricas por rede (recharts) |
 | `pagamentos-01-faturas.png` | `/meus-pagamentos` | Faturas em aberto + histórico |
 | `pagamentos-02-cartoes.png` | `/meus-pagamentos` | Cartões salvos (definir padrão / remover) |
 | `pagamentos-03-modal-pix.png` | `/meus-pagamentos` | Modal de pagamento na aba PIX (QR code) |

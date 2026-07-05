@@ -1,6 +1,6 @@
 # Contratos
 
-> Rota: **`/my-contracts`** · Menu: **Meus Contratos**
+> Rota: **`/meus-contratos`** · Menu: **Meus Contratos**
 
 Aqui você contrata um plano, acompanha créditos e parcelas, paga, renova, cancela e contrata serviços extras.
 
@@ -33,7 +33,7 @@ O assistente de contratação (ContractWizard) começa pela [Agenda](agenda-e-ag
 A página lista seus contratos em abas (ativos / arquivados / cancelados). Cada card mostra tier, tipo, duração, status, créditos (Flex), serviços e a lista de parcelas.
 
 ![Lista de contratos](../images/cliente/contrato-05-lista.png)
-<!-- TODO screenshot: /my-contracts lista -->
+<!-- TODO screenshot: /meus-contratos lista -->
 
 ## Pagar uma parcela (na hora)
 
