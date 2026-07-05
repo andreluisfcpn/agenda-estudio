@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma.js';
 import { redis } from '../lib/redis.js';
 import { saoPauloParts } from '../lib/spTime.js';
-import { createNotification } from '../modules/notifications/notificationService.js';
+import { notifyEvent } from '../modules/notifications/notificationService.js';
 
 /**
  * Daily Confirmation Job — fires once per day at 07:00 (America/Sao_Paulo).
@@ -96,33 +96,16 @@ export async function runDailyConfirmationJob(opts?: { force?: boolean; forceDat
         // Date-scoped dedup identity, independent of the 5-min push job's BOOKING_* keys.
         const dedupId = `daily-confirm:${b.userId}:${b.id}:${dateStr}`;
         try {
-            if (paid) {
-                await createNotification({
+            await notifyEvent(
+                paid ? 'daily_confirmation_paid' : 'daily_confirmation_unpaid',
+                {
                     userId: b.userId,
-                    type: 'BOOKING_CONFIRMED',
-                    severity: 'info',
-                    title: '✅ Gravação confirmada',
-                    message: `Sua gravação de hoje às ${b.startTime} está confirmada. Até logo!`,
+                    vars: { hora: b.startTime },
                     entityType: 'BOOKING',
                     entityId: b.id,
-                    actionUrl: '/minhas-gravacoes',
-                    sendPush: true,
                     dedupKey: dedupId,
-                });
-            } else {
-                await createNotification({
-                    userId: b.userId,
-                    type: 'BOOKING_UNCONFIRMED',
-                    severity: 'warning',
-                    title: '💳 Pague para confirmar',
-                    message: `Sua gravação de hoje às ${b.startTime} ainda não está paga. Pague para confirmar.`,
-                    entityType: 'BOOKING',
-                    entityId: b.id,
-                    actionUrl: '/meus-pagamentos',
-                    sendPush: true,
-                    dedupKey: dedupId,
-                });
-            }
+                },
+            );
             sent++;
         } catch (err) {
             console.error(`[DAILY-CONFIRM] Failed for booking ${b.id}:`, err);

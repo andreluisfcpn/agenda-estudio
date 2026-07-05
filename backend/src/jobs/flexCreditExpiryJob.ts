@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma.js';
-import { createNotification } from '../modules/notifications/notificationService.js';
+import { notifyEvent } from '../modules/notifications/notificationService.js';
 import { computeFlexState, targetForfeit } from '../lib/flexCredits.js';
 
 /**
@@ -66,17 +66,12 @@ export async function runFlexCreditExpiryJob(): Promise<void> {
             const lost = newForfeited - c.flexCreditsForfeited;
             forfeitedContracts++;
             try {
-                await createNotification({
+                await notifyEvent('flex_credit_lost', {
                     userId: c.user.id,
-                    type: 'FLEX_CREDITS_LOW',
-                    severity: 'critical',
-                    title: '⚠️ Crédito de gravação perdido',
-                    message: `Você perdeu ${lost} crédito(s) do contrato "${c.name}" por não gravar dentro da semana. Restam ${canonicalRemaining}.`,
+                    vars: { quantidade: lost, contrato: c.name, restantes: canonicalRemaining },
                     entityType: 'CONTRACT',
                     // Distinct per forfeiture level so a later loss isn't deduped away.
                     entityId: `${c.id}:lvl${newForfeited}`,
-                    actionUrl: '/meus-contratos',
-                    sendPush: true,
                 });
             } catch (err) { console.error(`[FLEX-EXPIRY] notify forfeit ${c.id}:`, err); }
             continue;
@@ -86,16 +81,11 @@ export async function runFlexCreditExpiryJob(): Promise<void> {
         if (state.currentWindowIndex != null && (state.daysLeftInWindow ?? 99) <= 2
             && !state.recordedThisWindow && (c.flexCreditsRemaining ?? 0) > 0) {
             try {
-                await createNotification({
+                await notifyEvent('flex_credit_at_risk', {
                     userId: c.user.id,
-                    type: 'FLEX_CREDITS_LOW',
-                    severity: 'warning',
-                    title: '⏳ Grave esta semana para não perder o crédito',
-                    message: `Faltam ${state.daysLeftInWindow} dia(s) para fechar a semana do contrato "${c.name}". Agende sua gravação para não perder 1 crédito.`,
+                    vars: { dias: state.daysLeftInWindow ?? 0, contrato: c.name },
                     entityType: 'CONTRACT',
                     entityId: `${c.id}:w${state.currentWindowIndex}`,
-                    actionUrl: '/meus-contratos',
-                    sendPush: true,
                 });
                 warned++;
             } catch (err) { console.error(`[FLEX-EXPIRY] notify risk ${c.id}:`, err); }

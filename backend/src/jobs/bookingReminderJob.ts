@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma.js';
-import { createNotification } from '../modules/notifications/notificationService.js';
+import { notifyEvent } from '../modules/notifications/notificationService.js';
 import { spDaysFromToday, spDdMm } from '../lib/spTime.js';
 
 /**
@@ -55,30 +55,22 @@ export async function runBookingReminderJob(): Promise<void> {
                 const ddmm = spDdMm(booking.date);
                 const daysAhead = spDaysFromToday(booking.date, now);
                 // SP-calendar label at creation time; date always explicit.
-                const dayLabel = daysAhead === 0 ? 'hoje' : daysAhead === 1 ? 'amanhã' : `em ${ddmm}`;
+                const rawLabel = daysAhead === 0 ? 'hoje' : daysAhead === 1 ? 'amanhã' : `em ${ddmm}`;
+                // "amanhã (12/07)" / "em 12/07" / "hoje (12/07)" — date always explicit.
+                const diaLabel = rawLabel === `em ${ddmm}` ? rawLabel : `${rawLabel} (${ddmm})`;
 
-                const title = window.label === '2h'
-                    ? '🎙️ Sessão em 2 horas!'
-                    : daysAhead === 1 ? `📅 Sessão amanhã (${ddmm})` : `📅 Lembrete de sessão (${ddmm})`;
-
-                const message = window.label === '2h'
-                    ? `Sua gravação começa às ${booking.startTime} — prepare-se!`
-                    : `Lembrete: você tem sessão ${dayLabel === 'em ' + ddmm ? dayLabel : `${dayLabel} (${ddmm})`} às ${booking.startTime}`;
-
-                await createNotification({
-                    userId: booking.user.id,
-                    type: 'BOOKING_REMINDER',
-                    severity: window.severity,
-                    title,
-                    message,
-                    entityType: 'BOOKING',
-                    entityId: booking.id,
-                    actionUrl: '/minhas-gravacoes',
-                    sendPush: true,
-                    // Per-window identity — without it the 24h reminder's dedup (TTL 24h)
-                    // suppressed the 2h reminder (same type+entity default key).
-                    dedupKey: `reminder:${window.label}:${booking.id}:${booking.date.toISOString().slice(0, 10)}`,
-                });
+                await notifyEvent(
+                    window.label === '2h' ? 'booking_reminder_2h' : 'booking_reminder_24h',
+                    {
+                        userId: booking.user.id,
+                        vars: { diaLabel, data: ddmm, hora: booking.startTime },
+                        entityType: 'BOOKING',
+                        entityId: booking.id,
+                        // Per-window identity — without it the 24h reminder's dedup (TTL 24h)
+                        // suppressed the 2h reminder (same type+entity default key).
+                        dedupKey: `reminder:${window.label}:${booking.id}:${booking.date.toISOString().slice(0, 10)}`,
+                    },
+                );
 
                 totalSent++;
             } catch (err) {

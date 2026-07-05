@@ -9,9 +9,12 @@
 // later. Centralizing the effects guarantees parity across providers.
 
 import { prisma } from './prisma.js';
-import { createNotification } from '../modules/notifications/notificationService.js';
+import { notifyEvent } from '../modules/notifications/notificationService.js';
 import { fulfillContractFromPayment } from './contractFulfillment.js';
 import { confirmCouponRedemption, releaseCouponForPayments } from './couponService.js';
+
+/** R$ formatter for notification variables. */
+const fmtBRL = (cents: number) => `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
 
 type PaymentLike = {
     id: string;
@@ -186,32 +189,23 @@ export async function generateBookingsForRenewedContract(contractId: string): Pr
  * otherwise never push — this is the single most important event for the user).
  */
 export async function notifyPaymentConfirmed(payment: PaymentLike): Promise<void> {
-    createNotification({
+    notifyEvent('payment_confirmed', {
         userId: payment.userId,
-        type: 'PAYMENT_CONFIRMED',
-        severity: 'info',
-        sendPush: true,
-        title: '✅ Pagamento Confirmado',
-        message: `Seu pagamento de R$ ${(payment.amount / 100).toFixed(2).replace('.', ',')} foi confirmado!`,
+        vars: { valor: fmtBRL(payment.amount) },
         entityType: 'PAYMENT',
         entityId: payment.id,
-        actionUrl: '/meus-pagamentos',
     }).catch(() => {});
 }
 
 /**
- * Send the "payment failed" notification (critical → already pushes).
+ * Send the "PIX/boleto expired or was cancelled" notification. Distinct from a
+ * card decline (payment_failed) — different copy, own eventKey.
  */
-export async function notifyPaymentFailed(payment: PaymentLike, message = 'Seu pagamento foi recusado. Tente novamente em Meus Pagamentos.'): Promise<void> {
-    createNotification({
+export async function notifyPaymentExpired(payment: PaymentLike): Promise<void> {
+    notifyEvent('payment_expired', {
         userId: payment.userId,
-        type: 'PAYMENT_FAILED',
-        severity: 'critical',
-        title: '❌ Pagamento Não Concluído',
-        message,
         entityType: 'PAYMENT',
         entityId: payment.id,
-        actionUrl: '/meus-pagamentos',
     }).catch(() => {});
 }
 

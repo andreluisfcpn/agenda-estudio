@@ -8,7 +8,7 @@ import { getBasePriceDynamic, applyDiscount, calculateEndTime, addMonths, addBil
 import { getConfig } from './businessConfig.js';
 import { createPayment as gatewayCreatePayment, updatePaymentWithGatewayResult, getProviderForMethod } from './paymentGateway.js';
 import { computeAddonsCost, filterPerEpisodeAddons } from './contractPricing.js';
-import { createNotification } from '../modules/notifications/notificationService.js';
+import { notifyEvent } from '../modules/notifications/notificationService.js';
 import { computeCouponDiscount } from './couponService.js';
 
 /** Coupon info persisted in the contract draft when the coupon's scope is
@@ -164,15 +164,11 @@ async function fulfillServiceFromPayment(payment: FulfillablePayment, data: Serv
         }
     }
 
-    createNotification({
+    notifyEvent('service_activated', {
         userId,
-        type: 'CONTRACT_ACTIVATED',
-        severity: 'info',
-        title: '🎉 Serviço Ativado!',
-        message: `Seu serviço "${data.name}" foi ativado com sucesso!`,
+        vars: { servico: data.name },
         entityType: 'CONTRACT',
         entityId: contract.id,
-        actionUrl: '/meus-contratos',
     }).catch(() => {});
 
     console.log(`[Fulfill] Service contract ${contract.id} activated for user ${userId}`);
@@ -410,15 +406,11 @@ export async function fulfillContractFromPayment(paymentId: string): Promise<voi
     } // end: skip remaining installments when contract is paid in FULL
 
     // ── Notification ──
-    createNotification({
+    notifyEvent('contract_activated', {
         userId,
-        type: 'CONTRACT_ACTIVATED',
-        severity: 'info',
-        title: '🎉 Contrato Ativado!',
-        message: `Seu contrato "${data.name}" foi ativado com sucesso! Seus agendamentos já estão confirmados.`,
+        vars: { contrato: data.name },
         entityType: 'CONTRACT',
         entityId: contract.id,
-        actionUrl: '/meus-contratos',
     }).catch(() => {});
 
     console.log(`[Fulfill] Contract ${contract.id} created with bookings for user ${userId}`);

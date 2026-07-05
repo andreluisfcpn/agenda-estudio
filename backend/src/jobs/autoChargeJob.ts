@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma.js';
-import { createNotification } from '../modules/notifications/notificationService.js';
+import { notifyEvent } from '../modules/notifications/notificationService.js';
 import { stripeChargeOffSession } from '../lib/stripeService.js';
 import { onPaymentConfirmed } from '../lib/paymentEffects.js';
 
@@ -85,15 +85,10 @@ export async function runAutoChargeJob(): Promise<void> {
                         data: { provider: 'STRIPE', providerRef: piId },
                     }).catch(() => {});
                 }
-                await createNotification({
+                await notifyEvent('auto_charge_authentication', {
                     userId: p.userId,
-                    type: 'PAYMENT_FAILED',
-                    severity: 'warning',
-                    title: 'Cobrança automática requer sua confirmação',
-                    message: 'Seu banco pediu autenticação para a cobrança automática. Pague manualmente na aba Pagamentos para concluir.',
                     entityType: 'payment',
                     entityId: p.id,
-                    actionUrl: '/meus-pagamentos',
                 }).catch(() => {});
                 continue; // não conta como falha genérica
             }
@@ -101,17 +96,10 @@ export async function runAutoChargeJob(): Promise<void> {
             failed++;
             const msg = err instanceof Error ? err.message : 'Falha na cobrança automática.';
             console.error(`[AUTO-CHARGE] Payment ${p.id} failed:`, msg);
-            await createNotification({
+            await notifyEvent('auto_charge_failed', {
                 userId: p.userId,
-                type: 'PAYMENT_FAILED',
-                severity: 'critical',
-                title: 'Cobrança automática não concluída',
-                message: 'Não conseguimos cobrar sua parcela no cartão cadastrado. Pague manualmente na aba Pagamentos ou atualize seu cartão.',
                 entityType: 'payment',
                 entityId: p.id,
-                // Era '/my-payments' — rota inexistente (o app usa /meus-pagamentos);
-                // o deep-link da notificação caía no redirect padrão do dashboard.
-                actionUrl: '/meus-pagamentos',
             }).catch(() => {});
         }
     }

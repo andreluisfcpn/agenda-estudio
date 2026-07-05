@@ -8,7 +8,7 @@
 
 import { prisma } from './prisma.js';
 import { coraGetBoleto } from './coraService.js';
-import { onPaymentConfirmed, notifyPaymentFailed } from './paymentEffects.js';
+import { onPaymentConfirmed, notifyPaymentExpired } from './paymentEffects.js';
 import { releaseCouponForPayment } from './couponService.js';
 
 const CORA_PAID_STATUSES = new Set(['PAID', 'SETTLED', 'CLOSED', 'RECEIVED']);
@@ -108,7 +108,7 @@ export async function reconcileCoraCancellation(paymentId: string): Promise<bool
 
     await releaseCouponForPayment(payment.id);
     console.log(`[Cora-Reconcile] Payment ${payment.id} marked FAILED (invoice ${payment.providerRef} cancelled/expired)`);
-    await notifyPaymentFailed(payment, 'Seu boleto/PIX foi cancelado ou expirou. Gere um novo em Meus Pagamentos.');
+    await notifyPaymentExpired(payment);
     return true;
 }
 

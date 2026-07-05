@@ -7,7 +7,7 @@ import { stripeGetPaymentIntent } from '../../lib/stripeService.js';
 import { getPackageSlots } from '../../utils/pricing.js';
 import { BookingStatus } from '../../generated/prisma/client.js';
 import { restoreCredit } from './booking.service.js';
-import { createNotification } from '../notifications/notificationService.js';
+import { notifyEvent } from '../notifications/notificationService.js';
 import { completeBookingSchema } from './validators.js';
 import { deriveStreamAggregates } from '../../lib/streamMetrics.js';
 
@@ -186,18 +186,15 @@ router.patch('/:id/confirm', authenticate, async (req: Request, res: Response) =
 
     // Instant push: notify admin that a booking was confirmed
     const admins = await prisma.user.findMany({ where: { role: 'ADMIN' }, select: { id: true } });
+    const clientName = (await prisma.user.findUnique({ where: { id: booking.userId }, select: { name: true } }))?.name || 'Cliente';
     const bookingDate = booking.date.toISOString().split('T')[0];
     const [dd, mm] = [bookingDate.slice(8, 10), bookingDate.slice(5, 7)];
     for (const admin of admins) {
-        createNotification({
+        notifyEvent('admin_booking_confirmed', {
             userId: admin.id,
-            type: 'BOOKING_CONFIRMED',
-            severity: 'info',
-            title: '✅ Sessão Confirmada',
-            message: `Cliente confirmou sessão de ${dd}/${mm} às ${booking.startTime}`,
+            vars: { cliente: clientName, data: `${dd}/${mm}`, hora: booking.startTime },
             entityType: 'BOOKING',
             entityId: booking.id,
-            actionUrl: '/admin/today',
         }).catch(() => {});
     }
 });
@@ -236,18 +233,15 @@ router.put('/:id/client-cancel', authenticate, async (req: Request, res: Respons
 
         // Instant push: notify admin of cancellation
         const admins = await prisma.user.findMany({ where: { role: 'ADMIN' }, select: { id: true } });
+        const clientName = (await prisma.user.findUnique({ where: { id: booking.userId }, select: { name: true } }))?.name || 'Cliente';
         const cancelDate = booking.date.toISOString().split('T')[0];
         const [cdd, cmm] = [cancelDate.slice(8, 10), cancelDate.slice(5, 7)];
         for (const admin of admins) {
-            createNotification({
+            notifyEvent('admin_booking_cancelled', {
                 userId: admin.id,
-                type: 'BOOKING_CANCELLED',
-                severity: 'warning',
-                title: '🚫 Sessão Cancelada',
-                message: `Cliente cancelou sessão de ${cdd}/${cmm} às ${booking.startTime}`,
+                vars: { cliente: clientName, data: `${cdd}/${cmm}`, hora: booking.startTime },
                 entityType: 'BOOKING',
                 entityId: booking.id,
-                actionUrl: '/admin/today',
             }).catch(() => {});
         }
 

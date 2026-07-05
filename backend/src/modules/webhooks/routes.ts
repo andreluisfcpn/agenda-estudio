@@ -7,7 +7,7 @@ import { prisma } from '../../lib/prisma.js';
 import { stripeVerifyWebhook } from '../../lib/stripeService.js';
 import { decryptConfigSafe } from '../../utils/crypto.js';
 import crypto from 'node:crypto';
-import { createNotification } from '../notifications/notificationService.js';
+import { notifyEvent } from '../notifications/notificationService.js';
 import { onPaymentConfirmed } from '../../lib/paymentEffects.js';
 import { releaseCouponForPayment, releaseCouponForPayments } from '../../lib/couponService.js';
 
@@ -212,15 +212,10 @@ router.post('/stripe', async (req: Request, res: Response) => {
                     if (failed.count > 0) await releaseCouponForPayment(paymentId);
 
                     // Instant push: payment failed
-                    createNotification({
+                    notifyEvent('payment_failed', {
                         userId: payment.userId,
-                        type: 'PAYMENT_FAILED',
-                        severity: 'critical',
-                        title: '❌ Pagamento Recusado',
-                        message: 'Seu pagamento foi recusado. Tente novamente em Meus Pagamentos.',
                         entityType: 'PAYMENT',
                         entityId: payment.id,
-                        actionUrl: '/meus-pagamentos',
                     }).catch(() => {});
                 }
             }
