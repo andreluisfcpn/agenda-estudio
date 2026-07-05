@@ -1,83 +1,29 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { notificationsApi, NotificationItem, NotificationSummary } from '../api/client';
+import { NotificationItem } from '../api/client';
 import { useNavigate } from 'react-router-dom';
-import { Bell, CheckCheck } from 'lucide-react';
+import { Bell, CheckCheck, Check, ArrowRight, CheckCircle } from 'lucide-react';
 import BottomSheetModal from './BottomSheetModal';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useNotifications } from '../hooks/useNotifications';
+import { resolveNotifMeta, formatTimeAgo } from '../utils/notificationMeta';
 
-const SEVERITY_META: Record<string, { color: string; bg: string; icon: string }> = {
-    critical: { color: '#dc2626', bg: 'rgba(220,38,38,0.08)', icon: '🔴' },
-    warning: { color: '#d97706', bg: 'rgba(217,119,6,0.06)', icon: '🟡' },
-    info: { color: '#3b82f6', bg: 'rgba(59,130,246,0.06)', icon: '🔵' },
-};
-
-const styleId = 'notification-bell-styles';
-if (typeof document !== 'undefined' && !document.getElementById(styleId)) {
-    const style = document.createElement('style');
-    style.id = styleId;
-    style.textContent = `
-        @keyframes bellShake {
-            0%, 100% { transform: rotate(0); }
-            15% { transform: rotate(12deg); }
-            30% { transform: rotate(-10deg); }
-            45% { transform: rotate(8deg); }
-            60% { transform: rotate(-6deg); }
-            75% { transform: rotate(3deg); }
-        }
-        .notif-bell-shake { animation: bellShake 0.6s ease-in-out; }
-        @keyframes badgePulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.15); }
-        }
-        .notif-badge-pulse { animation: badgePulse 2s infinite; }
-        .notif-item { transition: background 0.2s; cursor: pointer; border-left: 3px solid transparent; }
-        .notif-item:hover { background: rgba(17,129,155,0.06) !important; }
-        .notif-item-read { opacity: 0.55; }
-        .notif-item-unread { background: rgba(17,129,155,0.03); }
-        @media (prefers-reduced-motion: reduce) {
-            .notif-bell-shake, .notif-badge-pulse { animation: none; }
-        }
-    `;
-    document.head.appendChild(style);
-}
-
+const PREVIEW_COUNT = 5;
 
 export default function NotificationBell() {
     const navigate = useNavigate();
     const isMobile = useIsMobile();
-    const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-    const [summary, setSummary] = useState<NotificationSummary>({ total: 0, unread: 0, critical: 0, warning: 0, info: 0 });
     const [open, setOpen] = useState(false);
     const [shake, setShake] = useState(false);
     const panelRef = useRef<HTMLDivElement>(null);
     const bellRef = useRef<HTMLButtonElement>(null);
-    const prevUnreadRef = useRef(0);
 
-    const loadNotifications = useCallback(async () => {
-        try {
-            const res = await notificationsApi.getAll();
-            setNotifications(res.notifications);
-            setSummary(res.summary);
-            if (res.summary.unread > prevUnreadRef.current && prevUnreadRef.current > 0) {
-                setShake(true);
-                setTimeout(() => setShake(false), 700);
-            }
-            prevUnreadRef.current = res.summary.unread;
-        } catch (err) {
-            // Falha de poll é transitória (backend reiniciando, rede) — o próximo
-            // tick em 60s recupera sozinho. Logar só em dev evita spam no console.
-            if (import.meta.env.DEV) console.error('Erro ao carregar notificações:', err);
-        }
-    }, []);
+    const { notifications, summary, markRead, markAllRead } = useNotifications({
+        poll: true,
+        onBump: () => { setShake(true); setTimeout(() => setShake(false), 700); },
+    });
 
-    useEffect(() => {
-        loadNotifications();
-        const interval = setInterval(loadNotifications, 60_000);
-        return () => clearInterval(interval);
-    }, [loadNotifications]);
-
-    // Close the DESKTOP dropdown on outside click (the mobile bottom-sheet handles its own close).
+    // Close the desktop dropdown on outside click (the sheet closes itself).
     useEffect(() => {
         if (!open || isMobile) return;
         function handleClick(e: MouseEvent) {
@@ -90,94 +36,82 @@ export default function NotificationBell() {
         return () => document.removeEventListener('mousedown', handleClick);
     }, [open, isMobile]);
 
-    // Backend agora registra leitura também das computadas (Redis) — sem branch por source,
-    // senão elas ressuscitavam não-lidas no próximo poll.
-    const handleMarkRead = async (id: string, _source: string, e: React.MouseEvent) => {
-        e.stopPropagation();
-        try {
-            await notificationsApi.markAsRead(id);
-            setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-            setSummary(prev => ({ ...prev, unread: Math.max(0, prev.unread - 1) }));
-        } catch { }
-    };
-
-    const handleMarkAllRead = async () => {
-        try {
-            await notificationsApi.markAllAsRead();
-            setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-            setSummary(prev => ({ ...prev, unread: 0, critical: 0, warning: 0, info: 0 }));
-        } catch { }
-    };
-
-    const unreadNotifications = notifications.filter(n => !n.read);
     const unreadCount = summary.unread;
-    const criticalCount = unreadNotifications.filter(n => n.severity === 'critical').length;
-    const warningCount = unreadNotifications.filter(n => n.severity === 'warning').length;
+    const criticalCount = summary.critical;
+    const warningCount = summary.warning;
 
     const onItemClick = (n: NotificationItem) => {
+        if (!n.read) markRead(n.id);        // clicking an item reads it (expected)
         if (n.actionUrl) { navigate(n.actionUrl); setOpen(false); }
     };
 
-    // ── Shared content: actions bar + list (used by both bottom-sheet and dropdown) ──
+    const preview = notifications.slice(0, PREVIEW_COUNT);
+
+    // ── Shared body (dropdown + sheet) ──
     const body = (
-        <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
-            <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-default)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                <div style={{ display: 'flex', gap: '4px' }}>
-                    {criticalCount > 0 && <span style={{ fontSize: '0.65rem', background: 'rgba(220,38,38,0.12)', color: '#dc2626', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>{criticalCount} 🔴</span>}
-                    {warningCount > 0 && <span style={{ fontSize: '0.65rem', background: 'rgba(217,119,6,0.1)', color: '#d97706', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>{warningCount} 🟡</span>}
-                    {criticalCount === 0 && warningCount === 0 && <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{unreadCount > 0 ? `${unreadCount} não lida${unreadCount !== 1 ? 's' : ''}` : 'Tudo em dia'}</span>}
+        <div className="notif-panel">
+            <div className="notif-panel__header">
+                <div className="notif-summary">
+                    {criticalCount > 0 && <span className="notif-summary-chip notif-summary-chip--critical">{criticalCount} crítica{criticalCount !== 1 ? 's' : ''}</span>}
+                    {warningCount > 0 && <span className="notif-summary-chip notif-summary-chip--warning">{warningCount} aviso{warningCount !== 1 ? 's' : ''}</span>}
+                    {criticalCount === 0 && warningCount === 0 && (
+                        <span className="notif-summary-muted">{unreadCount > 0 ? `${unreadCount} não lida${unreadCount !== 1 ? 's' : ''}` : 'Nenhuma pendente'}</span>
+                    )}
                 </div>
                 {unreadCount > 0 && (
-                    <button onClick={handleMarkAllRead} style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', fontSize: '0.72rem', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: '3px' }} title="Marcar todas como lidas">
+                    <button className="notif-mark-all" onClick={markAllRead} title="Marcar todas como lidas">
                         <CheckCheck size={14} /> Ler todas
                     </button>
                 )}
             </div>
 
-            <div style={{ overflowY: 'auto', flex: 1, WebkitOverflowScrolling: 'touch' }}>
+            <div className="notif-panel__list">
                 {notifications.length === 0 ? (
-                    <div style={{ padding: '40px 20px', textAlign: 'center' }}>
-                        <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>✅</div>
-                        <div style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--text-primary)' }}>Tudo em dia!</div>
-                        <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '4px' }}>Nenhum alerta pendente</p>
+                    <div className="notif-empty">
+                        <CheckCircle size={40} className="notif-empty__icon" aria-hidden="true" />
+                        <div className="notif-empty__title">Tudo em dia!</div>
+                        <p className="notif-empty__hint">Nenhum alerta pendente</p>
                     </div>
                 ) : (
-                    notifications.map(n => {
-                        const meta = SEVERITY_META[n.severity];
+                    preview.map(n => {
+                        const { Icon, tone } = resolveNotifMeta(n.type, n.severity);
                         return (
-                            <div
+                            <button
                                 key={n.id}
-                                className={`notif-item ${n.read ? 'notif-item-read' : 'notif-item-unread'}`}
-                                style={{
-                                    padding: '12px 16px',
-                                    borderBottom: '1px solid var(--border-subtle)',
-                                    borderLeftColor: n.read ? 'transparent' : meta.color,
-                                    display: 'flex', gap: '10px', alignItems: 'flex-start',
-                                }}
+                                type="button"
+                                className={`notif-item notif-tone--${tone} ${n.read ? 'notif-item--read' : 'notif-item--unread'}`}
                                 onClick={() => onItemClick(n)}
                             >
-                                <div style={{ width: 8, minWidth: 8, marginTop: '6px' }}>
-                                    {!n.read && <div style={{ width: 8, height: 8, borderRadius: '50%', background: meta.color }} />}
-                                </div>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '2px' }}>{n.title}</div>
-                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.4, wordBreak: 'break-word' }}>{n.message}</div>
+                                <span className="notif-item__icon"><Icon size={17} aria-hidden="true" /></span>
+                                <span className="notif-item__body">
+                                    <span className="notif-item__title">{n.title}</span>
+                                    <span className="notif-item__msg">{n.message}</span>
                                     {n.source === 'persisted' && n.createdAt && (
-                                        <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: '3px', opacity: 0.7 }}>{formatTimeAgo(n.createdAt)}</div>
+                                        <span className="notif-item__time">{formatTimeAgo(n.createdAt)}</span>
                                     )}
-                                </div>
+                                </span>
                                 {!n.read && (
-                                    <button
-                                        onClick={(e) => handleMarkRead(n.id, n.source, e)}
-                                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.95rem', padding: '4px', opacity: 0.6, flexShrink: 0, lineHeight: 1 }}
+                                    <span
+                                        role="button" tabIndex={0}
+                                        className="notif-item__read-btn"
+                                        onClick={(e) => { e.stopPropagation(); markRead(n.id); }}
+                                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); markRead(n.id); } }}
                                         title="Marcar como lida" aria-label="Marcar como lida"
-                                    >✕</button>
+                                    ><Check size={15} /></span>
                                 )}
-                            </div>
+                            </button>
                         );
                     })
                 )}
             </div>
+
+            {notifications.length > 0 && (
+                <div className="notif-panel__footer">
+                    <button className="notif-panel__see-all" onClick={() => { setOpen(false); navigate('/notificacoes'); }}>
+                        Ver todas{notifications.length > PREVIEW_COUNT ? ` (${notifications.length})` : ''} <ArrowRight size={14} />
+                    </button>
+                </div>
+            )}
         </div>
     );
 
@@ -210,21 +144,14 @@ export default function NotificationBell() {
                     Notificações
                 </span>
                 {unreadCount > 0 && (
-                    <span className={criticalCount > 0 ? 'notif-badge-pulse' : ''} style={{
-                        minWidth: 20, height: 20, borderRadius: 10,
-                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: '0.65rem', fontWeight: 800,
-                        background: criticalCount > 0 ? '#dc2626' : '#d97706',
-                        color: '#fff', padding: '0 5px',
-                    }}>
+                    <span className={`notif-badge ${criticalCount > 0 ? 'notif-badge--critical' : ''}`}>
                         {unreadCount}
                     </span>
                 )}
             </button>
 
-            {/* Mobile: bottom-sheet (legible, mobile-first). Desktop: animated dropdown. */}
             {isMobile ? (
-                <BottomSheetModal isOpen={open} onClose={() => setOpen(false)} title="🔔 Central de Alertas" maxWidth="520px">
+                <BottomSheetModal isOpen={open} onClose={() => setOpen(false)} title="Notificações" maxWidth="520px">
                     <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '70vh' }}>{body}</div>
                 </BottomSheetModal>
             ) : (
@@ -232,24 +159,13 @@ export default function NotificationBell() {
                     {open && (
                         <motion.div
                             ref={panelRef}
+                            className="notif-dropdown"
                             initial={{ opacity: 0, y: -8, scale: 0.98 }}
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, y: -8, scale: 0.98 }}
                             transition={{ duration: 0.18, ease: 'easeOut' }}
-                            style={{
-                                position: 'absolute', top: '100%', right: 0,
-                                width: 'min(360px, calc(100vw - 24px))', maxHeight: 480, marginTop: '8px',
-                                background: 'var(--bg-elevated)', borderRadius: 'var(--radius-lg)',
-                                border: '1px solid var(--border-default)',
-                                boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-                                zIndex: 1000, overflow: 'hidden',
-                                display: 'flex', flexDirection: 'column',
-                                transformOrigin: 'top right',
-                            }}
                         >
-                            <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-default)', fontWeight: 700, fontSize: '0.875rem', color: 'var(--text-primary)' }}>
-                                🔔 Central de Alertas
-                            </div>
+                            <div className="notif-panel__header notif-panel__title">Notificações</div>
                             {body}
                         </motion.div>
                     )}
@@ -257,15 +173,4 @@ export default function NotificationBell() {
             )}
         </div>
     );
-}
-
-function formatTimeAgo(isoDate: string): string {
-    const diff = Date.now() - new Date(isoDate).getTime();
-    const minutes = Math.floor(diff / 60000);
-    if (minutes < 1) return 'agora';
-    if (minutes < 60) return `há ${minutes}min`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `há ${hours}h`;
-    const days = Math.floor(hours / 24);
-    return `há ${days}d`;
 }

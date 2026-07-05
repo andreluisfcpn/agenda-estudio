@@ -20,6 +20,7 @@ import './styles/page-transition.css';
 import './styles/booking-fullscreen.css';
 import './styles/booking-detail-modal.css';
 import './styles/my-results.css';
+import './styles/notifications.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
