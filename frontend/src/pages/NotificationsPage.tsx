@@ -41,14 +41,17 @@ export default function NotificationsPage() {
         [notifications, filter],
     );
 
-    // Group by day, preserving the incoming (severity/unread) order within each group.
+    // Group by day (items keep the incoming severity/unread order within a group),
+    // then order the groups newest-day-first — the API sorts by severity/unread, not
+    // date, so insertion order alone could render "Ontem" above "Hoje".
     const groups = useMemo(() => {
         const map = new Map<string, NotificationItem[]>();
         for (const n of filtered) {
             const label = dayLabel(n.createdAt);
             (map.get(label) ?? map.set(label, []).get(label)!).push(n);
         }
-        return Array.from(map.entries());
+        const dayStart = (iso: string) => { const d = new Date(iso); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); };
+        return Array.from(map.entries()).sort((a, b) => dayStart(b[1][0].createdAt) - dayStart(a[1][0].createdAt));
     }, [filtered]);
 
     const onItemClick = (n: NotificationItem) => {

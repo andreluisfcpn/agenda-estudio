@@ -16,6 +16,9 @@ export function useNotifications(opts: { poll?: boolean; onBump?: () => void } =
     const prevUnreadRef = useRef(0);
     const onBumpRef = useRef(onBump);
     onBumpRef.current = onBump;
+    // Mirror the list so markRead can read an item's severity at call time.
+    const notifsRef = useRef<NotificationItem[]>([]);
+    notifsRef.current = notifications;
 
     const reload = useCallback(async () => {
         try {
@@ -43,8 +46,16 @@ export function useNotifications(opts: { poll?: boolean; onBump?: () => void } =
 
     const markRead = useCallback(async (id: string) => {
         // Optimistic; the backend records read-state for computed ids too (Redis).
+        const target = notifsRef.current.find(n => n.id === id);
+        if (target && !target.read) {
+            const sev = target.severity; // 'critical' | 'warning' | 'info' — a summary bucket
+            setSummary(prev => ({
+                ...prev,
+                unread: Math.max(0, prev.unread - 1),
+                [sev]: Math.max(0, prev[sev] - 1), // keep the bell's severity chips in sync (B5)
+            }));
+        }
         setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-        setSummary(prev => ({ ...prev, unread: Math.max(0, prev.unread - 1) }));
         try { await notificationsApi.markAsRead(id); } catch { /* best-effort */ }
     }, []);
 

@@ -101,6 +101,8 @@ export default function EventTemplateModal({ event, onClose, onSaved }: Props) {
 
     const previewTitle = renderPreview(title, event.variables);
     const previewMsg = renderPreview(message, event.variables);
+    // Backend requires non-empty title/message; guard here so Save/Test don't 400 opaquely.
+    const canSave = title.trim().length > 0 && message.trim().length > 0;
 
     return (
         <BottomSheetModal isOpen onClose={onClose} hideHeader size="md" className="admin-sheet" title={event.label}>
@@ -198,10 +200,10 @@ export default function EventTemplateModal({ event, onClose, onSaved }: Props) {
                     <button className="btn-admin-ghost" onClick={handleReset} disabled={saving || testing} title="Restaurar o texto padrão">
                         <RotateCcw size={15} /> Padrão
                     </button>
-                    <button className="btn-admin-ghost" onClick={handleTest} disabled={saving || testing}>
+                    <button className="btn-admin-ghost" onClick={handleTest} disabled={saving || testing || !canSave}>
                         <Send size={15} /> {testing ? 'Enviando…' : 'Enviar teste'}
                     </button>
-                    <button className="btn btn-primary" onClick={handleSave} disabled={saving || testing}>
+                    <button className="btn btn-primary" onClick={handleSave} disabled={saving || testing || !canSave}>
                         <Save size={16} /> {saving ? 'Salvando…' : 'Salvar'}
                     </button>
                 </div>

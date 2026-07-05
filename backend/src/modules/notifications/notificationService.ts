@@ -15,6 +15,7 @@ export interface CreateNotificationInput {
     actionUrl?: string;
     sendPush?: boolean; // default: true for critical/warning
     dedupKey?: string;  // override the default userId+type+entityId dedup identity
+    bypassEssentialFilter?: boolean; // deliver even to "essential only" users (admin self-tests)
 }
 
 /**
@@ -27,7 +28,7 @@ export async function createNotification(input: CreateNotificationInput): Promis
 
     // Respect the client's "essential only" preference: drop non-critical notifications
     // (no in-app, no push). Critical ones (payments, credit loss) always go through.
-    if (severity !== 'critical') {
+    if (severity !== 'critical' && !input.bypassEssentialFilter) {
         const pref = await prisma.user.findUnique({
             where: { id: userId },
             select: { essentialNotificationsOnly: true },

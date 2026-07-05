@@ -38,6 +38,9 @@ export default function BroadcastComposer() {
     ).slice(0, 30);
 
     const handleSend = () => {
+        // Snapshot the target now — onConfirm runs on a later tick, by when `selected`
+        // could have been cleared (a re-render would then crash on selected!.id).
+        const targetPayload: 'all' | string[] = target === 'all' ? 'all' : [selected!.id];
         const who = target === 'all' ? 'TODOS os clientes' : selected!.name;
         showConfirm({
             title: 'Enviar aviso?',
@@ -50,7 +53,7 @@ export default function BroadcastComposer() {
                         title: title.trim(),
                         message: message.trim(),
                         severity,
-                        target: target === 'all' ? 'all' : [selected!.id],
+                        target: targetPayload,
                         sendPush,
                     });
                     showToast(`Enviado para ${res.sent} cliente(s)${res.skipped ? ` (${res.skipped} com "só essenciais" ignorados)` : ''}.`);

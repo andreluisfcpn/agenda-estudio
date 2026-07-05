@@ -135,6 +135,8 @@ router.post('/templates/:eventKey/test', async (req: Request, res: Response) => 
             sendPush: eff.pushEnabled,
             // Unique key so repeated tests always go through (never deduped).
             dedupKey: `test:${eventKey}:${req.user!.userId}:${req.body?.nonce ?? Math.random().toString(36).slice(2)}`,
+            // An explicit self-test must land even if the admin has "essential only" on.
+            bypassEssentialFilter: true,
         });
         res.json({ message: 'Notificação de teste enviada para você.' });
     } catch (err) {
@@ -150,9 +152,9 @@ router.post('/broadcast', async (req: Request, res: Response) => {
         const data = broadcastSchema.parse(req.body);
         const batchId = randomUUID();
 
-        const recipients = data.target === 'all'
+        const recipients = [...new Set(data.target === 'all'
             ? (await prisma.user.findMany({ where: { role: 'CLIENTE' }, select: { id: true } })).map(u => u.id)
-            : data.target;
+            : data.target)];
         if (recipients.length === 0) {
             res.status(400).json({ error: 'Nenhum destinatário.' });
             return;
@@ -188,22 +190,55 @@ router.post('/broadcast', async (req: Request, res: Response) => {
 });
 
 // ─── GET /api/notifications/admin/broadcasts ────────────
-// Recent broadcast batches (grouped in JS; history is ephemeral — cleanup purges it).
+// Recent broadcast batches. Aggregated at the DB level (groupBy) so counts stay
+// correct at any scale — a raw findMany with a row cap undercounts recipients/
+// readCount once a single 'all' broadcast exceeds the cap. History is ephemeral
+// (the notification cleanup job purges it).
 router.get('/broadcasts', async (_req: Request, res: Response) => {
     try {
-        const rows = await prisma.notification.findMany({
-            where: { type: 'SYSTEM', entityType: 'BROADCAST' },
-            orderBy: { createdAt: 'desc' },
-            take: 1000,
+        const where = { type: 'SYSTEM' as const, entityType: 'BROADCAST' };
+        // Most-recent 20 batches by their newest row.
+        const batches = await prisma.notification.groupBy({
+            by: ['entityId'],
+            where,
+            _count: { _all: true },
+            _max: { createdAt: true },
+            orderBy: { _max: { createdAt: 'desc' } },
+            take: 20,
         });
-        const byBatch = new Map<string, { batchId: string; title: string; message: string; severity: string; createdAt: string; recipients: number; readCount: number }>();
-        for (const r of rows) {
-            const key = r.entityId || r.id;
-            const g = byBatch.get(key) ?? { batchId: key, title: r.title, message: r.message, severity: r.severity, createdAt: r.createdAt.toISOString(), recipients: 0, readCount: 0 };
-            g.recipients++; if (r.read) g.readCount++;
-            byBatch.set(key, g);
-        }
-        res.json({ broadcasts: Array.from(byBatch.values()).slice(0, 20) });
+        const ids = batches.map(b => b.entityId).filter((x): x is string => !!x);
+        if (ids.length === 0) { res.json({ broadcasts: [] }); return; }
+
+        // Read counts per batch and one representative row (title/message/severity).
+        const [readRows, samples] = await Promise.all([
+            prisma.notification.groupBy({
+                by: ['entityId'],
+                where: { ...where, entityId: { in: ids }, read: true },
+                _count: { _all: true },
+            }),
+            prisma.notification.findMany({
+                where: { ...where, entityId: { in: ids } },
+                distinct: ['entityId'],
+                orderBy: { createdAt: 'desc' },
+                select: { entityId: true, title: true, message: true, severity: true, createdAt: true },
+            }),
+        ]);
+        const readByBatch = new Map(readRows.map(r => [r.entityId, r._count._all]));
+        const sampleByBatch = new Map(samples.map(s => [s.entityId, s]));
+
+        const broadcasts = batches.map(b => {
+            const s = sampleByBatch.get(b.entityId);
+            return {
+                batchId: b.entityId!,
+                title: s?.title ?? '',
+                message: s?.message ?? '',
+                severity: s?.severity ?? 'info',
+                createdAt: (b._max.createdAt ?? s?.createdAt ?? new Date()).toISOString(),
+                recipients: b._count._all,
+                readCount: readByBatch.get(b.entityId) ?? 0,
+            };
+        });
+        res.json({ broadcasts });
     } catch (err) {
         console.error('[NOTIF-ADMIN] list broadcasts failed:', err);
         res.status(500).json({ error: 'Erro ao carregar o histórico.' });

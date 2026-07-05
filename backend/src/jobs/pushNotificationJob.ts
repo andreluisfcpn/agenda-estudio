@@ -110,8 +110,9 @@ async function computeUserEvents(userId: string, today: Date): Promise<PendingEv
             vars: { quantidade: overduePayments.length, total: fmtBRL(total), diasMax: maxDays },
             entityType: 'PAYMENT', entityId: 'agg',
             severityOverride: maxDays > 7 ? 'critical' : 'warning',
-            // count in the key → a newly-due invoice re-pushes; same count is deduped.
-            dedupKey: `overdue-agg:${userId}:${overduePayments.length}`,
+            // Stable key: recurs on the per-severity dedup TTL, but paying an invoice
+            // down no longer mints a fresh key that re-pushes immediately.
+            dedupKey: `overdue-agg:${userId}`,
         });
     }
 

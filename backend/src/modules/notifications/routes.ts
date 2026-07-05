@@ -135,9 +135,10 @@ async function buildComputedNotifications(userId: string, userRole: string): Pro
             for (const p of overduePayments) { total += p.amount; maxDays = Math.max(maxDays, daysOverdue(p)); }
             const vars = { quantidade: overduePayments.length, total: fmtBRL(total), diasMax: maxDays };
             notifications.push({
-                // count in the id → a newly-due invoice mints a fresh unread notification;
-                // still matches COMPUTED_ID_RE (prefix payment-overdue-).
-                id: `payment-overdue-agg-${overduePayments.length}`, type: 'PAYMENT_OVERDUE',
+                // Stable id (mirrors the admin `payment-overdue-<clientId>`): the text
+                // reflects the live count, but paying an invoice down no longer mints a
+                // fresh unread id that resurrects a read alert. Matches COMPUTED_ID_RE.
+                id: 'payment-overdue-agg', type: 'PAYMENT_OVERDUE',
                 severity: computedSeverity(overdueEff, maxDays > 7 ? 'critical' : 'warning'),
                 title: renderTemplate(overdueEff.title, vars),
                 message: renderTemplate(overdueEff.message, vars),
