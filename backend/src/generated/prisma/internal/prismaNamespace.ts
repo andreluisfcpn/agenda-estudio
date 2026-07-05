@@ -400,7 +400,8 @@ export const ModelName = {
   PaymentMethodConfig: 'PaymentMethodConfig',
   AuditLog: 'AuditLog',
   IntegrationConfig: 'IntegrationConfig',
-  Notification: 'Notification'
+  Notification: 'Notification',
+  NotificationTemplate: 'NotificationTemplate'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -416,7 +417,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "user" | "pushSubscription" | "contract" | "booking" | "payment" | "coupon" | "couponEligibleUser" | "couponRedemption" | "savedPaymentMethod" | "blockedSlot" | "pricingConfig" | "addOnConfig" | "businessConfig" | "paymentMethodConfig" | "auditLog" | "integrationConfig" | "notification"
+    modelProps: "user" | "pushSubscription" | "contract" | "booking" | "payment" | "coupon" | "couponEligibleUser" | "couponRedemption" | "savedPaymentMethod" | "blockedSlot" | "pricingConfig" | "addOnConfig" | "businessConfig" | "paymentMethodConfig" | "auditLog" | "integrationConfig" | "notification" | "notificationTemplate"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -1678,6 +1679,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    NotificationTemplate: {
+      payload: Prisma.$NotificationTemplatePayload<ExtArgs>
+      fields: Prisma.NotificationTemplateFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.NotificationTemplateFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$NotificationTemplatePayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.NotificationTemplateFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$NotificationTemplatePayload>
+        }
+        findFirst: {
+          args: Prisma.NotificationTemplateFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$NotificationTemplatePayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.NotificationTemplateFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$NotificationTemplatePayload>
+        }
+        findMany: {
+          args: Prisma.NotificationTemplateFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$NotificationTemplatePayload>[]
+        }
+        create: {
+          args: Prisma.NotificationTemplateCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$NotificationTemplatePayload>
+        }
+        createMany: {
+          args: Prisma.NotificationTemplateCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.NotificationTemplateCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$NotificationTemplatePayload>[]
+        }
+        delete: {
+          args: Prisma.NotificationTemplateDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$NotificationTemplatePayload>
+        }
+        update: {
+          args: Prisma.NotificationTemplateUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$NotificationTemplatePayload>
+        }
+        deleteMany: {
+          args: Prisma.NotificationTemplateDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.NotificationTemplateUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.NotificationTemplateUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$NotificationTemplatePayload>[]
+        }
+        upsert: {
+          args: Prisma.NotificationTemplateUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$NotificationTemplatePayload>
+        }
+        aggregate: {
+          args: Prisma.NotificationTemplateAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateNotificationTemplate>
+        }
+        groupBy: {
+          args: Prisma.NotificationTemplateGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.NotificationTemplateGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.NotificationTemplateCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.NotificationTemplateCountAggregateOutputType> | number
+        }
+      }
+    }
   }
 } & {
   other: {
@@ -2044,6 +2119,19 @@ export const NotificationScalarFieldEnum = {
 } as const
 
 export type NotificationScalarFieldEnum = (typeof NotificationScalarFieldEnum)[keyof typeof NotificationScalarFieldEnum]
+
+
+export const NotificationTemplateScalarFieldEnum = {
+  eventKey: 'eventKey',
+  enabled: 'enabled',
+  title: 'title',
+  message: 'message',
+  severity: 'severity',
+  pushEnabled: 'pushEnabled',
+  updatedAt: 'updatedAt'
+} as const
+
+export type NotificationTemplateScalarFieldEnum = (typeof NotificationTemplateScalarFieldEnum)[keyof typeof NotificationTemplateScalarFieldEnum]
 
 
 export const SortOrder = {
@@ -2464,6 +2552,7 @@ export type GlobalOmitConfig = {
   auditLog?: Prisma.AuditLogOmit
   integrationConfig?: Prisma.IntegrationConfigOmit
   notification?: Prisma.NotificationOmit
+  notificationTemplate?: Prisma.NotificationTemplateOmit
 }
 
 /* Types for Logging */

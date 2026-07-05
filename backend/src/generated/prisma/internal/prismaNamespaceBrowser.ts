@@ -67,7 +67,8 @@ export const ModelName = {
   PaymentMethodConfig: 'PaymentMethodConfig',
   AuditLog: 'AuditLog',
   IntegrationConfig: 'IntegrationConfig',
-  Notification: 'Notification'
+  Notification: 'Notification',
+  NotificationTemplate: 'NotificationTemplate'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -413,6 +414,19 @@ export const NotificationScalarFieldEnum = {
 } as const
 
 export type NotificationScalarFieldEnum = (typeof NotificationScalarFieldEnum)[keyof typeof NotificationScalarFieldEnum]
+
+
+export const NotificationTemplateScalarFieldEnum = {
+  eventKey: 'eventKey',
+  enabled: 'enabled',
+  title: 'title',
+  message: 'message',
+  severity: 'severity',
+  pushEnabled: 'pushEnabled',
+  updatedAt: 'updatedAt'
+} as const
+
+export type NotificationTemplateScalarFieldEnum = (typeof NotificationTemplateScalarFieldEnum)[keyof typeof NotificationTemplateScalarFieldEnum]
 
 
 export const SortOrder = {

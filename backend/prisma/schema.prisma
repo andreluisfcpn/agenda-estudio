@@ -532,3 +532,19 @@ model Notification {
   @@map("notifications")
 }
 
+// Per-event admin overrides for notification text/behavior. Defaults live in
+// code (config/notificationEventCatalog.ts) — a row here only stores what the
+// admin changed; a null column means "use the catalog default". Absence of a
+// row = fully default. Deleting a row restores the default.
+model NotificationTemplate {
+  eventKey    String   @id @map("event_key")
+  enabled     Boolean  @default(true)
+  title       String?
+  message     String?  @db.Text
+  severity    String? // null = catalog default (may be dynamic)
+  pushEnabled Boolean? @map("push_enabled") // null = catalog default
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("notification_templates")
+}
+

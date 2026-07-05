@@ -2,6 +2,7 @@ import { prisma } from '../../lib/prisma.js';
 import { redis } from '../../lib/redis.js';
 import { sendPushToUser, PushPayload } from '../push/pushService.js';
 import { NotificationType } from '../../generated/prisma/client.js';
+import { getEffectiveEvent, renderTemplate } from './templateStore.js';
 
 export interface CreateNotificationInput {
     userId: string;
@@ -66,6 +67,53 @@ export async function createNotification(input: CreateNotificationInput): Promis
     }
 
     return notification.id;
+}
+
+export interface NotifyEventOptions {
+    userId: string;
+    vars?: Record<string, string | number>;
+    entityType?: string;
+    entityId?: string;
+    actionUrl?: string;                                    // overrides the catalog default
+    severityOverride?: 'critical' | 'warning' | 'info';    // for 'dynamic' events
+    dedupKey?: string;
+    sendPush?: boolean;                                    // last-resort override (rare)
+}
+
+/**
+ * Emit a notification by EVENT KEY. Resolves the effective template (admin
+ * overrides over the code catalog), respects the per-event enabled flag, and
+ * interpolates {vars} before delegating to createNotification (dedup / essential
+ * pref / push all unchanged). A disabled event is skipped BEFORE the dedup write,
+ * so re-enabling it resumes immediately. An unknown eventKey is logged, not thrown.
+ */
+export async function notifyEvent(eventKey: string, opts: NotifyEventOptions): Promise<string> {
+    const eff = await getEffectiveEvent(eventKey);
+    if (!eff) {
+        console.error(`[NOTIF] Unknown eventKey "${eventKey}" — notification skipped.`);
+        return '';
+    }
+    if (!eff.enabled) return '';
+
+    // 'dynamic' in the catalog means the caller decides; an admin who pins a fixed
+    // severity (eff.severity !== 'dynamic') overrides that choice.
+    const severity: 'critical' | 'warning' | 'info' =
+        eff.severity !== 'dynamic'
+            ? eff.severity
+            : (opts.severityOverride ?? 'warning');
+
+    return createNotification({
+        userId: opts.userId,
+        type: eff.def.type,
+        severity,
+        title: renderTemplate(eff.title, opts.vars),
+        message: renderTemplate(eff.message, opts.vars),
+        entityType: opts.entityType,
+        entityId: opts.entityId,
+        actionUrl: opts.actionUrl ?? eff.def.actionUrl,
+        sendPush: opts.sendPush ?? eff.pushEnabled,
+        dedupKey: opts.dedupKey,
+    });
 }
 
 /** Create multiple notifications in batch. */

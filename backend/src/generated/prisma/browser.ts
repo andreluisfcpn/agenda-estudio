@@ -102,3 +102,8 @@ export type IntegrationConfig = Prisma.IntegrationConfigModel
  * 
  */
 export type Notification = Prisma.NotificationModel
+/**
+ * Model NotificationTemplate
+ * 
+ */
+export type NotificationTemplate = Prisma.NotificationTemplateModel
