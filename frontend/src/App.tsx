@@ -25,6 +25,7 @@ const MyResultsPage = React.lazy(() => import('./pages/MyResultsPage'));
 const MyContractsPage = React.lazy(() => import('./pages/MyContractsPage'));
 const MyPaymentsPage = React.lazy(() => import('./pages/MyPaymentsPage'));
 const MyProfilePage = React.lazy(() => import('./pages/MyProfilePage'));
+const NotificationsPage = React.lazy(() => import('./pages/NotificationsPage'));
 const AdminClientsPage = React.lazy(() => import('./pages/AdminClientsPage'));
 const AdminBookingsPage = React.lazy(() => import('./pages/AdminBookingsPage'));
 const AdminContractsPage = React.lazy(() => import('./pages/AdminContractsPage'));
@@ -49,6 +50,7 @@ function preloadPages() {
         () => import('./pages/MyContractsPage'),
         () => import('./pages/MyPaymentsPage'),
         () => import('./pages/MyProfilePage'),
+        () => import('./pages/NotificationsPage'),
         () => import('./pages/AdminTodayPage'),
         () => import('./pages/AdminBookingsPage'),
         () => import('./pages/AdminClientsPage'),
@@ -173,6 +175,7 @@ function AppRoutes() {
             <Route path="/meus-contratos" element={<ProtectedRoute><MyContractsPage /></ProtectedRoute>} />
             <Route path="/meus-pagamentos" element={<ProtectedRoute><MyPaymentsPage /></ProtectedRoute>} />
             <Route path="/perfil" element={<ProtectedRoute><MyProfilePage /></ProtectedRoute>} />
+            <Route path="/notificacoes" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
 
             {/* Admin routes */}
             <Route path="/admin/today" element={<ProtectedRoute><AdminRoute><AdminTodayPage /></AdminRoute></ProtectedRoute>} />
