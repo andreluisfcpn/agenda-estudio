@@ -165,8 +165,14 @@ export async function getUserNotifications(userId: string, limit = 50) {
     });
 }
 
+// Day-of / recurring signals that go stale fast: the session already happened,
+// or the push job re-derives the current state every 5 min. Keeping them for the
+// generic 30/90-day window left "Sessão em 2 horas!" lingering days later (B2).
+const EPHEMERAL_TYPES = ['BOOKING_REMINDER', 'BOOKING_CONFIRMED', 'BOOKING_UNCONFIRMED', 'PAYMENT_OVERDUE'] as const;
+const EPHEMERAL_MAX_AGE_MS = 48 * 3600 * 1000;
+
 /** Delete old notifications (cleanup job). */
-export async function cleanupOldNotifications(): Promise<{ readDeleted: number; unreadDeleted: number }> {
+export async function cleanupOldNotifications(): Promise<{ readDeleted: number; unreadDeleted: number; ephemeralDeleted: number }> {
     const now = new Date();
 
     const readCutoff = new Date(now);
@@ -183,5 +189,13 @@ export async function cleanupOldNotifications(): Promise<{ readDeleted: number; 
         where: { read: false, createdAt: { lt: unreadCutoff } },
     });
 
-    return { readDeleted: readResult.count, unreadDeleted: unreadResult.count };
+    // Ephemeral types: purge after 48h regardless of read state.
+    const ephemeralResult = await prisma.notification.deleteMany({
+        where: {
+            type: { in: EPHEMERAL_TYPES as unknown as NotificationType[] },
+            createdAt: { lt: new Date(now.getTime() - EPHEMERAL_MAX_AGE_MS) },
+        },
+    });
+
+    return { readDeleted: readResult.count, unreadDeleted: unreadResult.count, ephemeralDeleted: ephemeralResult.count };
 }
