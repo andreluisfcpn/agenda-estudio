@@ -252,6 +252,12 @@ export default function CalendarMobileView({
                         // Hold countdown
                         const hasActiveHold = info?.isMine && info.myBooking?.holdExpiresAt
                             && new Date(info.myBooking.holdExpiresAt).getTime() > Date.now();
+                        // Cinto de segurança: entre a expiração e o refetch reagendado, o
+                        // lookup pode ainda trazer um hold caducado. NÃO renderizar como
+                        // "Meu Agendamento" (verde/clicável) — o backend já liberou o slot.
+                        const isLapsedHold = info?.isMine && info.myBooking?.status === 'RESERVED'
+                            && info.myBooking.holdExpiresAt
+                            && new Date(info.myBooking.holdExpiresAt).getTime() <= Date.now();
 
                         let statusLabel = '';
                         let statusColor = 'var(--text-muted)';
@@ -265,7 +271,7 @@ export default function CalendarMobileView({
                             cardBg = 'rgba(245,158,11,0.06)';
                             borderColor = 'var(--warning)';
                             clickable = true;
-                        } else if (info) {
+                        } else if (info && !isLapsedHold) {
                             statusLabel = info.isMine ? 'Meu Agendamento' : 'Ocupado';
                             statusColor = info.isMine ? 'var(--success)' : 'var(--text-muted)';
                             cardBg = info.isMine ? 'rgba(16,185,129,0.06)' : 'var(--bg-secondary)';
@@ -294,7 +300,7 @@ export default function CalendarMobileView({
                                 onClick={() => {
                                     if (hasActiveHold && info?.myBooking && slot) {
                                         onSlotClick(selectedDateStr, row.time, slot, info);
-                                    } else if (info?.isMine && info.myBooking) {
+                                    } else if (info?.isMine && info.myBooking && !isLapsedHold) {
                                         onOpenDetail(info.myBooking, selectedDateStr);
                                     } else if (clickable && slot && isAvailable && !isPast) {
                                         onSlotClick(selectedDateStr, row.time, slot);

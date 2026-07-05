@@ -63,27 +63,41 @@ export async function runAutoChargeJob(): Promise<void> {
                     charged++;
                 }
             } else {
-                // requires_action / processing — record the ref and let the webhook finish it.
+                // 'processing' — record the ref and let the webhook finish it.
+                // (3DS off-session NÃO chega aqui: o Stripe LANÇA authentication_required
+                //  em confirm+off_session; esse caso é tratado no catch abaixo.)
                 await prisma.payment.update({
                     where: { id: p.id },
                     data: { provider: 'STRIPE', providerRef: result.paymentIntentId },
                 });
-                // 3DS off-session: o webhook NÃO vai concluir sozinho — sem avisar,
-                // o cliente ficava no limbo achando que a cobrança automática passou.
-                if (result.status === 'requires_action') {
-                    await createNotification({
-                        userId: p.userId,
-                        type: 'PAYMENT_FAILED',
-                        severity: 'warning',
-                        title: 'Cobrança automática requer sua confirmação',
-                        message: 'Seu banco pediu autenticação para a cobrança automática. Pague manualmente na aba Pagamentos para concluir.',
-                        entityType: 'payment',
-                        entityId: p.id,
-                        actionUrl: '/meus-pagamentos',
-                    }).catch(() => {});
-                }
             }
         } catch (err) {
+            // 3DS off-session: o Stripe LANÇA StripeCardError code 'authentication_required'
+            // (o PI vem em err.raw.payment_intent) — não retorna status 'requires_action'.
+            // Persiste o PI e avisa o cliente para autenticar/pagar manualmente, em vez da
+            // mensagem genérica de "cartão recusado".
+            const se = err as { code?: string; raw?: { payment_intent?: { id?: string } }; payment_intent?: { id?: string } };
+            if (se?.code === 'authentication_required') {
+                const piId = se.raw?.payment_intent?.id ?? se.payment_intent?.id;
+                if (piId) {
+                    await prisma.payment.update({
+                        where: { id: p.id },
+                        data: { provider: 'STRIPE', providerRef: piId },
+                    }).catch(() => {});
+                }
+                await createNotification({
+                    userId: p.userId,
+                    type: 'PAYMENT_FAILED',
+                    severity: 'warning',
+                    title: 'Cobrança automática requer sua confirmação',
+                    message: 'Seu banco pediu autenticação para a cobrança automática. Pague manualmente na aba Pagamentos para concluir.',
+                    entityType: 'payment',
+                    entityId: p.id,
+                    actionUrl: '/meus-pagamentos',
+                }).catch(() => {});
+                continue; // não conta como falha genérica
+            }
+
             failed++;
             const msg = err instanceof Error ? err.message : 'Falha na cobrança automática.';
             console.error(`[AUTO-CHARGE] Payment ${p.id} failed:`, msg);

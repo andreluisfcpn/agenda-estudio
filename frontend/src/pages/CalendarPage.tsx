@@ -207,8 +207,11 @@ export default function CalendarPage() {
     const today = formatDate(new Date());
 
     // Lookups por data memoizados: antes eram reconstruídos POR CÉLULA a cada
-    // render (30×/render na grade desktop). Holds expirados voltam a ser
-    // filtrados quando o onExpire dispara loadWeekData (muda os deps).
+    // render (30×/render na grade desktop). O filtro de hold expirado usa
+    // Date.now() no instante do memo — como o memo só recomputa quando os mapas
+    // mudam (fetch), agenda-se um refetch no momento da expiração mais próxima
+    // (useEffect abaixo) para o hold caducado sair sozinho — no mobile não há
+    // countdown e trocar de dia não refaz fetch.
     const bookingLookups = useMemo(() => {
         const lookups: Record<string, BookingLookup> = {};
         const dates = new Set([...Object.keys(myBookingsMap), ...Object.keys(bookingsMap)]);
@@ -233,6 +236,28 @@ export default function CalendarPage() {
         }
         return lookups;
     }, [myBookingsMap, bookingsMap, isAdmin, user?.name]);
+
+    // Reagenda um refetch para o instante da expiração de hold mais próxima —
+    // sem isso, um hold que caduca enquanto o cliente navega ficaria preso no
+    // lookup congelado (no mobile viraria "Meu Agendamento" verde/clicável; o
+    // weekSummary contaria como ocupado). Restaura o invariante pré-extração.
+    useEffect(() => {
+        const now = Date.now();
+        let earliest = Infinity;
+        const scan = (list: { status: string; holdExpiresAt?: string | null }[]) => {
+            for (const b of list) {
+                if (b.status === 'RESERVED' && b.holdExpiresAt) {
+                    const t = new Date(b.holdExpiresAt).getTime();
+                    if (t > now && t < earliest) earliest = t;
+                }
+            }
+        };
+        Object.values(myBookingsMap).forEach(scan);
+        if (isAdmin) Object.values(bookingsMap).forEach(scan);
+        if (earliest === Infinity) return;
+        const timer = setTimeout(() => loadWeekData(weekDates), earliest - now + 500);
+        return () => clearTimeout(timer);
+    }, [myBookingsMap, bookingsMap, isAdmin, weekDates, loadWeekData]);
 
     const buildBookingLookup = useCallback(
         (date: string): BookingLookup => bookingLookups[date] || {},
