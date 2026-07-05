@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { UIProvider } from './context/UIContext';
 import { NavigationProvider } from './context/NavigationContext';
@@ -68,6 +68,7 @@ function preloadPages() {
 
 function Layout({ children }: { children: React.ReactNode }) {
     usePushSubscription();
+    const location = useLocation();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
         try { return localStorage.getItem('sidebar-collapsed') === 'true'; } catch { return false; }
     });
@@ -100,8 +101,10 @@ function Layout({ children }: { children: React.ReactNode }) {
             <Sidebar collapsed={sidebarCollapsed} />
 
             <main className="main-content">
-                {/* Barreira por página: um crash na tela mantém o shell (sidebar/topbar) vivo */}
-                <ErrorBoundary>
+                {/* Barreira por página: um crash na tela mantém o shell (sidebar/topbar)
+                    vivo. key={pathname} REMONTA a barreira ao navegar — sem isso o
+                    fallback ficava preso mesmo trocando de página pela sidebar. */}
+                <ErrorBoundary key={location.pathname}>
                     <Suspense fallback={<PageTransitionLoader />}>
                         {children}
                     </Suspense>
