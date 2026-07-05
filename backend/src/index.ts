@@ -152,6 +152,16 @@ const couponLimiter = rateLimit({
     legacyHeaders: false,
 });
 
+// Manual broadcast fan-out is expensive (loops every recipient) — cap it hard.
+const broadcastLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 10,
+    store: rlStore('rl:broadcast:'),
+    message: { error: 'Muitos disparos de aviso. Aguarde um pouco.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
 // ─── Body Parsing ───────────────────────────────────────
 
 // Stripe webhooks need the raw body for signature verification.
@@ -191,6 +201,7 @@ app.use('/api/contracts/:id/subscribe', paymentLimiter);
 app.use('/api/contracts/:id/client-renew', paymentLimiter);
 app.use('/api/bookings/:id/complete-payment', paymentLimiter);
 app.use('/api/coupons/validate', couponLimiter);
+app.use('/api/notifications/admin/broadcast', broadcastLimiter);
 app.use('/api', apiLimiter);
 
 app.use('/api/auth', authRoutes);

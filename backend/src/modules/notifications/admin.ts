@@ -6,7 +6,8 @@ import { logAudit } from '../../lib/audit.js';
 import { createNotification } from './notificationService.js';
 import { getAllEffectiveEvents, invalidateTemplateCache, renderTemplate } from './templateStore.js';
 import { NOTIFICATION_EVENT_BY_KEY, extractPlaceholders } from '../../config/notificationEventCatalog.js';
-import { templateUpdateSchema } from './validators.js';
+import { templateUpdateSchema, broadcastSchema } from './validators.js';
+import { randomUUID } from 'node:crypto';
 
 const router = Router();
 router.use(authenticate, authorize('ADMIN'));
@@ -139,6 +140,73 @@ router.post('/templates/:eventKey/test', async (req: Request, res: Response) => 
     } catch (err) {
         console.error('[NOTIF-ADMIN] test template failed:', err);
         res.status(500).json({ error: 'Erro ao enviar o teste.' });
+    }
+});
+
+// ─── POST /api/notifications/admin/broadcast ────────────
+// Manual announcement to one client or all clients (bell + push).
+router.post('/broadcast', async (req: Request, res: Response) => {
+    try {
+        const data = broadcastSchema.parse(req.body);
+        const batchId = randomUUID();
+
+        const recipients = data.target === 'all'
+            ? (await prisma.user.findMany({ where: { role: 'CLIENTE' }, select: { id: true } })).map(u => u.id)
+            : data.target;
+        if (recipients.length === 0) {
+            res.status(400).json({ error: 'Nenhum destinatário.' });
+            return;
+        }
+
+        let sent = 0, skipped = 0;
+        for (const uid of recipients) {
+            const id = await createNotification({
+                userId: uid,
+                type: 'SYSTEM',
+                severity: data.severity,
+                title: data.title,
+                message: data.message,
+                entityType: 'BROADCAST',
+                entityId: batchId,
+                actionUrl: '/notificacoes',
+                sendPush: data.sendPush,
+                dedupKey: `broadcast:${batchId}:${uid}`,
+            });
+            if (id) sent++; else skipped++; // skipped = essentialNotificationsOnly dropped non-critical
+        }
+
+        await logAudit('NOTIFICATION_BROADCAST', batchId, 'SENT', req.user!.userId, { target: data.target === 'all' ? 'all' : recipients.length, sent, skipped });
+        res.json({ batchId, sent, skipped, message: `Aviso enviado para ${sent} destinatário(s).` });
+    } catch (err) {
+        if (err instanceof z.ZodError) {
+            res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
+            return;
+        }
+        console.error('[NOTIF-ADMIN] broadcast failed:', err);
+        res.status(500).json({ error: 'Erro ao enviar o aviso.' });
+    }
+});
+
+// ─── GET /api/notifications/admin/broadcasts ────────────
+// Recent broadcast batches (grouped in JS; history is ephemeral — cleanup purges it).
+router.get('/broadcasts', async (_req: Request, res: Response) => {
+    try {
+        const rows = await prisma.notification.findMany({
+            where: { type: 'SYSTEM', entityType: 'BROADCAST' },
+            orderBy: { createdAt: 'desc' },
+            take: 1000,
+        });
+        const byBatch = new Map<string, { batchId: string; title: string; message: string; severity: string; createdAt: string; recipients: number; readCount: number }>();
+        for (const r of rows) {
+            const key = r.entityId || r.id;
+            const g = byBatch.get(key) ?? { batchId: key, title: r.title, message: r.message, severity: r.severity, createdAt: r.createdAt.toISOString(), recipients: 0, readCount: 0 };
+            g.recipients++; if (r.read) g.readCount++;
+            byBatch.set(key, g);
+        }
+        res.json({ broadcasts: Array.from(byBatch.values()).slice(0, 20) });
+    } catch (err) {
+        console.error('[NOTIF-ADMIN] list broadcasts failed:', err);
+        res.status(500).json({ error: 'Erro ao carregar o histórico.' });
     }
 });
 
