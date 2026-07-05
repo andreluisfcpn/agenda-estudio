@@ -1,13 +1,32 @@
 import { prisma } from '../lib/prisma.js';
-import { saoPauloParts, spDaysFromToday, spDdMm } from '../lib/spTime.js';
-import { createNotification } from '../modules/notifications/notificationService.js';
-import { NotificationType } from '../generated/prisma/client.js';
+import { saoPauloParts } from '../lib/spTime.js';
+import { notifyEvent } from '../modules/notifications/notificationService.js';
 
 /**
  * Push Notification Job — runs every 5 minutes.
- * Computes notifications for each user with active push subscriptions,
- * persists them in DB, and sends push notifications.
+ * Delivers (push + persist) the SAME computed rule set that GET /notifications
+ * shows, using the shared event catalog/templates (single source of truth). It
+ * emits the deliverable subset: overdue (aggregated), today's unconfirmed
+ * sessions (admin), and expiring contracts.
+ *
+ * De-noised vs the pre-rodada-5 version:
+ *  - the "≤2 FLEX credits" info push was removed (it fired every poll and the
+ *    jun/2026 prune already dropped that signal from the bell);
+ *  - the client/admin "tomorrow unconfirmed" push was dropped — tomorrow is
+ *    already covered by the 24h bookingReminderJob, and the GET computed rule
+ *    is today-only. Push and bell now show exactly the same set.
  */
+const fmtBRL = (cents: number) => `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
+
+interface PendingEvent {
+    eventKey: string;
+    vars: Record<string, string | number>;
+    entityType: string;
+    entityId: string;
+    severityOverride?: 'critical' | 'warning' | 'info';
+    dedupKey?: string;
+}
+
 export async function runPushNotificationJob(): Promise<void> {
     const now = new Date();
     // São Paulo calendar day as 00:00Z (matches @db.Date + keeps day windows/labels correct
@@ -15,38 +34,31 @@ export async function runPushNotificationJob(): Promise<void> {
     const sp = saoPauloParts(now);
     const today = new Date(Date.UTC(sp.y, sp.m - 1, sp.day));
 
-    // Get all users with active push subscriptions
     const usersWithSubs = await prisma.pushSubscription.findMany({
         select: { userId: true },
         distinct: ['userId'],
     });
-
     if (usersWithSubs.length === 0) return;
 
     let totalSent = 0;
-
     for (const { userId } of usersWithSubs) {
         try {
-            const notifications = await computeUserNotifications(userId, now, today);
-
-            for (const notif of notifications) {
-                // Use createNotification for dedup + persistence + push
+            const events = await computeUserEvents(userId, today);
+            for (const e of events) {
                 try {
-                    await createNotification({
+                    // notifyEvent resolves the (admin-editable) template, respects enabled,
+                    // dedups and pushes. entityId matches the GET computed id so the two
+                    // never show as duplicates.
+                    const id = await notifyEvent(e.eventKey, {
                         userId,
-                        type: notif.type,
-                        severity: notif.severity,
-                        title: notif.title,
-                        message: notif.message,
-                        entityType: notif.entityType,
-                        entityId: notif.entityId,
-                        actionUrl: notif.actionUrl,
-                        sendPush: true,
+                        vars: e.vars,
+                        entityType: e.entityType,
+                        entityId: e.entityId,
+                        severityOverride: e.severityOverride,
+                        dedupKey: e.dedupKey,
                     });
-                    totalSent++;
-                } catch {
-                    // Dedup or other error — skip silently
-                }
+                    if (id) totalSent++;
+                } catch { /* dedup or other error — skip silently */ }
             }
         } catch (err) {
             console.error(`[PUSH-JOB] Error processing user ${userId}:`, err);
@@ -58,125 +70,84 @@ export async function runPushNotificationJob(): Promise<void> {
     }
 }
 
-interface ComputedNotification {
-    type: NotificationType;
-    severity: 'critical' | 'warning' | 'info';
-    title: string;
-    message: string;
-    entityType: string;
-    entityId: string;
-    actionUrl: string;
-}
-
-/** Compute notifications for a specific user. */
-async function computeUserNotifications(
-    userId: string,
-    now: Date,
-    today: Date,
-): Promise<ComputedNotification[]> {
-    const notifications: ComputedNotification[] = [];
+/** Compute the events to deliver for a specific user (mirrors GET computed rules). */
+async function computeUserEvents(userId: string, today: Date): Promise<PendingEvent[]> {
+    const events: PendingEvent[] = [];
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
-    if (!user) return notifications;
+    if (!user) return events;
 
     const isAdmin = user.role === 'ADMIN';
     const thresholdDays = isAdmin ? 7 : 15;
     const targetDate = new Date(today);
     targetDate.setDate(targetDate.getDate() + thresholdDays);
+    const daysOverdue = (p: { dueDate: Date | null }) => Math.ceil((today.getTime() - new Date(p.dueDate!).getTime()) / (1000 * 60 * 60 * 24));
 
-    // Overdue payments
+    // ── Overdue payments — AGGREGATED (B1) ──
     const overduePayments = await prisma.payment.findMany({
-        where: { status: 'PENDING', dueDate: { lt: today }, ...(!isAdmin ? { userId } : {}) },
+        where: { status: 'PENDING', dueDate: { lt: today }, ...(isAdmin ? {} : { userId }) },
         include: { user: { select: { name: true } } },
-        take: 5,
     });
-
-    for (const p of overduePayments) {
-        const daysOverdue = Math.ceil((today.getTime() - new Date(p.dueDate!).getTime()) / (1000 * 60 * 60 * 24));
-        notifications.push({
-            type: 'PAYMENT_OVERDUE',
-            severity: daysOverdue > 7 ? 'critical' : 'warning',
-            title: '💰 Pagamento Vencido',
-            message: isAdmin
-                ? `${p.user.name} — R$ ${(p.amount / 100).toFixed(2).replace('.', ',')} vencido há ${daysOverdue} dia(s)`
-                : `Você possui uma fatura atrasada (vencida há ${daysOverdue} dias)`,
-            entityType: 'PAYMENT',
-            entityId: p.id,
-            actionUrl: isAdmin ? '/admin/finance' : '/meus-pagamentos',
+    if (isAdmin) {
+        const byClient = new Map<string, { name: string; count: number; total: number; maxDays: number }>();
+        for (const p of overduePayments) {
+            const g = byClient.get(p.userId) ?? { name: p.user.name, count: 0, total: 0, maxDays: 0 };
+            g.count++; g.total += p.amount; g.maxDays = Math.max(g.maxDays, daysOverdue(p));
+            byClient.set(p.userId, g);
+        }
+        for (const [clientId, g] of byClient) {
+            events.push({
+                eventKey: 'computed_payment_overdue_admin',
+                vars: { cliente: g.name, quantidade: g.count, total: fmtBRL(g.total), diasMax: g.maxDays },
+                entityType: 'PAYMENT', entityId: clientId,
+                severityOverride: g.maxDays > 7 ? 'critical' : 'warning',
+            });
+        }
+    } else if (overduePayments.length > 0) {
+        let total = 0, maxDays = 0;
+        for (const p of overduePayments) { total += p.amount; maxDays = Math.max(maxDays, daysOverdue(p)); }
+        events.push({
+            eventKey: 'computed_payment_overdue',
+            vars: { quantidade: overduePayments.length, total: fmtBRL(total), diasMax: maxDays },
+            entityType: 'PAYMENT', entityId: 'agg',
+            severityOverride: maxDays > 7 ? 'critical' : 'warning',
+            // count in the key → a newly-due invoice re-pushes; same count is deduped.
+            dedupKey: `overdue-agg:${userId}:${overduePayments.length}`,
         });
     }
 
-    // Unconfirmed bookings (today or tomorrow) — ON THE SÃO PAULO CALENDAR. The old
-    // UTC-date comparison flipped to "tomorrow" at 21:00 SP, mislabeling HOJE/Amanhã.
-    const sp = saoPauloParts(now);
-    const spTodayUtc = new Date(Date.UTC(sp.y, sp.m - 1, sp.day));
-    const spTomorrowUtc = new Date(spTodayUtc.getTime() + 86_400_000);
-
-    const unconfirmedBookings = await prisma.booking.findMany({
-        where: { status: 'RESERVED', date: { gte: spTodayUtc, lte: spTomorrowUtc }, ...(!isAdmin ? { userId } : {}) },
-        include: { user: { select: { name: true } } },
-        take: 5,
-    });
-
-    for (const b of unconfirmedBookings) {
-        const isToday = spDaysFromToday(new Date(b.date), now) === 0;
-        // For clients, today's session signal is owned by the 7am dailyConfirmationJob
-        // (paid-aware). Avoid the 5-min job pre-empting that push and shadowing it.
-        if (isToday && !isAdmin) continue;
-        const dayLabel = isToday ? 'HOJE' : `amanhã (${spDdMm(new Date(b.date))})`;
-        notifications.push({
-            type: 'BOOKING_UNCONFIRMED',
-            severity: isToday ? 'critical' : 'warning',
-            title: '⏳ Sessão Não Confirmada',
-            message: isAdmin
-                ? `${b.user.name} — ${dayLabel} às ${b.startTime}`
-                : `Sua sessão de ${dayLabel} às ${b.startTime} precisa ser confirmada`,
-            entityType: 'BOOKING',
-            entityId: b.id,
-            actionUrl: isAdmin ? '/admin/today' : '/dashboard',
+    // ── Unconfirmed sessions — TODAY, ADMIN only (mirrors GET computed) ──
+    if (isAdmin) {
+        const tomorrow = new Date(today.getTime() + 86_400_000);
+        const unconfirmed = await prisma.booking.findMany({
+            where: { status: 'RESERVED', date: { gte: today, lt: tomorrow } },
+            include: { user: { select: { name: true } } },
+            take: 10,
         });
-    }
-
-    // Expiring contracts
-    const expiringContracts = await prisma.contract.findMany({
-        where: { status: 'ACTIVE', endDate: { gte: today, lte: targetDate }, ...(!isAdmin ? { userId } : {}) },
-        include: { user: { select: { name: true } } },
-        take: 3,
-    });
-
-    for (const c of expiringContracts) {
-        const daysLeft = Math.ceil((new Date(c.endDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-        notifications.push({
-            type: 'CONTRACT_EXPIRING',
-            severity: daysLeft <= 2 ? 'critical' : 'warning',
-            title: '📋 Contrato Expirando',
-            message: isAdmin
-                ? `${c.user.name} — "${c.name}" expira em ${daysLeft} dia(s)`
-                : `Seu contrato "${c.name}" expira em ${daysLeft} dia(s)`,
-            entityType: 'CONTRACT',
-            entityId: c.id,
-            actionUrl: isAdmin ? `/admin/clients/${c.userId}` : '/meus-contratos',
-        });
-    }
-
-    // Low flex credits (client only)
-    if (!isAdmin) {
-        const lowCredits = await prisma.contract.findMany({
-            where: { status: 'ACTIVE', type: 'FLEX', flexCreditsRemaining: { lte: 2, gt: 0 }, userId },
-            take: 2,
-        });
-
-        for (const c of lowCredits) {
-            notifications.push({
-                type: 'FLEX_CREDITS_LOW',
-                severity: 'info',
-                title: '🔄 Créditos Flex Baixos',
-                message: `Seu plano Flex tem apenas ${c.flexCreditsRemaining} crédito(s) restante(s).`,
-                entityType: 'CONTRACT',
-                entityId: c.id,
-                actionUrl: '/meus-contratos',
+        for (const b of unconfirmed) {
+            events.push({
+                eventKey: 'computed_booking_unconfirmed_admin',
+                vars: { cliente: b.user.name, hora: b.startTime, diaLabel: 'hoje' },
+                entityType: 'BOOKING', entityId: b.id,
+                severityOverride: 'critical',
             });
         }
     }
 
-    return notifications;
+    // ── Expiring contracts ──
+    const expiringContracts = await prisma.contract.findMany({
+        where: { status: 'ACTIVE', endDate: { gte: today, lte: targetDate }, ...(isAdmin ? {} : { userId }) },
+        include: { user: { select: { name: true } } },
+        take: 3,
+    });
+    for (const c of expiringContracts) {
+        const dias = Math.ceil((new Date(c.endDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        const vars: Record<string, string | number> = isAdmin ? { cliente: c.user.name, contrato: c.name, dias } : { contrato: c.name, dias };
+        events.push({
+            eventKey: isAdmin ? 'computed_contract_expiring_admin' : 'computed_contract_expiring',
+            vars, entityType: 'CONTRACT', entityId: c.id,
+            severityOverride: dias <= 2 ? 'critical' : 'warning',
+        });
+    }
+
+    return events;
 }

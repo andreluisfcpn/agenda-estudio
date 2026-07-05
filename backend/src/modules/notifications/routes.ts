@@ -9,8 +9,16 @@ import {
     deleteNotification,
     getUserNotifications,
 } from './notificationService.js';
+import { getAllEffectiveEvents, renderTemplate, EffectiveEvent } from './templateStore.js';
 
 const router = Router();
+
+const fmtBRL = (cents: number) => `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
+
+/** Effective severity for a computed rule: a pinned admin override wins over the dynamic value. */
+function computedSeverity(eff: EffectiveEvent, dynamic: 'critical' | 'warning' | 'info'): 'critical' | 'warning' | 'info' {
+    return eff.severity !== 'dynamic' ? eff.severity : dynamic;
+}
 
 interface ComputedNotification {
     id: string;
@@ -57,170 +65,170 @@ async function buildComputedNotifications(userId: string, userRole: string): Pro
     // day-based windows/labels correct after 21:00 SP (when the UTC date already flipped).
     const sp = saoPauloParts(now);
     const today = new Date(Date.UTC(sp.y, sp.m - 1, sp.day));
+    const isAdmin = userRole === 'ADMIN';
+    const iso = now.toISOString();
+
+    // Text/enabled/severity come from the template store (admin-editable); IDs and
+    // actionUrls stay in code (IDs drive the Redis read-state; must not change).
+    const events = await getAllEffectiveEvents();
+    const ev = (key: string) => events.get(key)!; // every catalog key is present
 
     // 1. Contracts expiring within threshold
-        const thresholdDays = userRole === 'ADMIN' ? 7 : 15;
+    const expiringEff = ev(isAdmin ? 'computed_contract_expiring_admin' : 'computed_contract_expiring');
+    if (expiringEff.enabled) {
+        const thresholdDays = isAdmin ? 7 : 15;
         const targetDateFromNow = new Date(today);
         targetDateFromNow.setDate(targetDateFromNow.getDate() + thresholdDays);
-
         const expiringContracts = await prisma.contract.findMany({
-            where: {
-                status: 'ACTIVE',
-                endDate: { gte: today, lte: targetDateFromNow },
-                ...(userRole !== 'ADMIN' ? { userId } : {}),
-            },
+            where: { status: 'ACTIVE', endDate: { gte: today, lte: targetDateFromNow }, ...(isAdmin ? {} : { userId }) },
             include: { user: { select: { name: true } } },
         });
-
         for (const c of expiringContracts) {
-            const daysLeft = Math.ceil((new Date(c.endDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            const dias = Math.ceil((new Date(c.endDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            const vars: Record<string, string | number> = isAdmin ? { cliente: c.user.name, contrato: c.name, dias } : { contrato: c.name, dias };
             notifications.push({
-                id: `contract-expiring-${c.id}`,
-                type: 'CONTRACT_EXPIRING',
-                severity: daysLeft <= 2 ? 'critical' : 'warning',
-                title: '📋 Contrato Expirando',
-                message: userRole === 'ADMIN' ? `${c.user.name} — "${c.name}" expira em ${daysLeft} dia${daysLeft !== 1 ? 's' : ''}` : `Seu contrato "${c.name}" expira em ${daysLeft} dia${daysLeft !== 1 ? 's' : ''}`,
+                id: `contract-expiring-${c.id}`, type: 'CONTRACT_EXPIRING',
+                severity: computedSeverity(expiringEff, dias <= 2 ? 'critical' : 'warning'),
+                title: renderTemplate(expiringEff.title, vars),
+                message: renderTemplate(expiringEff.message, vars),
                 entityType: 'CONTRACT', entityId: c.id,
-                actionUrl: userRole === 'ADMIN' ? `/admin/clients/${c.userId}` : '/meus-contratos',
-                createdAt: now.toISOString(),
-                read: false,
-                source: 'computed',
+                actionUrl: isAdmin ? `/admin/clients/${c.userId}` : '/meus-contratos',
+                createdAt: iso, read: false, source: 'computed',
             });
         }
+    }
 
-        // 2. Overdue payments
+    // 2. Overdue payments — AGGREGATED (B1): one per user (client) / per client (admin),
+    // instead of one identical row per invoice.
+    const overdueEff = ev(isAdmin ? 'computed_payment_overdue_admin' : 'computed_payment_overdue');
+    if (overdueEff.enabled) {
         const overduePayments = await prisma.payment.findMany({
-            where: {
-                status: 'PENDING',
-                dueDate: { lt: today },
-                ...(userRole !== 'ADMIN' ? { userId } : {}),
-            },
-            include: { user: { select: { name: true } }, contract: { select: { name: true } } },
-        });
-
-        for (const p of overduePayments) {
-            const daysOverdue = Math.ceil((today.getTime() - new Date(p.dueDate!).getTime()) / (1000 * 60 * 60 * 24));
-            notifications.push({
-                id: `payment-overdue-${p.id}`,
-                type: 'PAYMENT_OVERDUE',
-                severity: daysOverdue > 7 ? 'critical' : 'warning',
-                title: '💰 Pagamento Vencido',
-                message: userRole === 'ADMIN' ? `${p.user.name} — R$ ${(p.amount / 100).toFixed(2).replace('.', ',')} vencido há ${daysOverdue} dia${daysOverdue !== 1 ? 's' : ''}` : `Você possui uma fatura atrasada (vencida há ${daysOverdue} dias)`,
-                entityType: 'PAYMENT', entityId: p.id,
-                actionUrl: userRole === 'ADMIN' ? '/admin/finance' : '/meus-pagamentos',
-                createdAt: now.toISOString(),
-                read: false,
-                source: 'computed',
-            });
-        }
-
-        // 2b. Failed payments
-        const failedPayments = await prisma.payment.findMany({
-            where: {
-                status: 'FAILED',
-                ...(userRole !== 'ADMIN' ? { userId } : {}),
-            },
+            where: { status: 'PENDING', dueDate: { lt: today }, ...(isAdmin ? {} : { userId }) },
             include: { user: { select: { name: true } } },
         });
-
-        for (const p of failedPayments) {
+        const daysOverdue = (p: { dueDate: Date | null }) => Math.ceil((today.getTime() - new Date(p.dueDate!).getTime()) / (1000 * 60 * 60 * 24));
+        if (isAdmin) {
+            const byClient = new Map<string, { name: string; count: number; total: number; maxDays: number }>();
+            for (const p of overduePayments) {
+                const g = byClient.get(p.userId) ?? { name: p.user.name, count: 0, total: 0, maxDays: 0 };
+                g.count++; g.total += p.amount; g.maxDays = Math.max(g.maxDays, daysOverdue(p));
+                byClient.set(p.userId, g);
+            }
+            for (const [clientId, g] of byClient) {
+                const vars = { cliente: g.name, quantidade: g.count, total: fmtBRL(g.total), diasMax: g.maxDays };
+                notifications.push({
+                    id: `payment-overdue-${clientId}`, type: 'PAYMENT_OVERDUE',
+                    severity: computedSeverity(overdueEff, g.maxDays > 7 ? 'critical' : 'warning'),
+                    title: renderTemplate(overdueEff.title, vars),
+                    message: renderTemplate(overdueEff.message, vars),
+                    entityType: 'PAYMENT', entityId: clientId, actionUrl: '/admin/finance',
+                    createdAt: iso, read: false, source: 'computed',
+                });
+            }
+        } else if (overduePayments.length > 0) {
+            let total = 0, maxDays = 0;
+            for (const p of overduePayments) { total += p.amount; maxDays = Math.max(maxDays, daysOverdue(p)); }
+            const vars = { quantidade: overduePayments.length, total: fmtBRL(total), diasMax: maxDays };
             notifications.push({
-                id: `payment-failed-${p.id}`,
-                type: 'PAYMENT_OVERDUE',
-                severity: 'critical',
-                title: '❌ Pagamento Recusado',
-                message: userRole === 'ADMIN' ? `${p.user.name} teve um pagamento recusado (R$ ${(p.amount / 100).toFixed(2).replace('.', ',')})` : `Seu último pagamento via cartão falhou. Acesse Meus Pagamentos para tentar novamente.`,
-                entityType: 'PAYMENT', entityId: p.id,
-                actionUrl: userRole === 'ADMIN' ? '/admin/finance' : '/meus-pagamentos',
-                createdAt: now.toISOString(),
-                read: false,
-                source: 'computed',
+                // count in the id → a newly-due invoice mints a fresh unread notification;
+                // still matches COMPUTED_ID_RE (prefix payment-overdue-).
+                id: `payment-overdue-agg-${overduePayments.length}`, type: 'PAYMENT_OVERDUE',
+                severity: computedSeverity(overdueEff, maxDays > 7 ? 'critical' : 'warning'),
+                title: renderTemplate(overdueEff.title, vars),
+                message: renderTemplate(overdueEff.message, vars),
+                entityType: 'PAYMENT', entityId: 'agg', actionUrl: '/meus-pagamentos',
+                createdAt: iso, read: false, source: 'computed',
             });
         }
+    }
 
-        // 3. Unconfirmed bookings — TODAY only (action needed now). Tomorrow's session is
-        // already covered by the 24h BOOKING_REMINDER job, so we don't double-notify.
-        // ADMIN-only: for clients, the 7am dailyConfirmationJob owns today's session signal
-        // (paid → "confirmada" / unpaid → "pague para confirmar") and would otherwise be
-        // shadowed by this computed one (same type+entityId).
+    // 2b. Failed payments
+    const failedEff = ev(isAdmin ? 'computed_payment_failed_admin' : 'computed_payment_failed');
+    if (failedEff.enabled) {
+        const failedPayments = await prisma.payment.findMany({
+            where: { status: 'FAILED', ...(isAdmin ? {} : { userId }) },
+            include: { user: { select: { name: true } } },
+        });
+        for (const p of failedPayments) {
+            const vars: Record<string, string | number> = isAdmin ? { cliente: p.user.name, valor: fmtBRL(p.amount) } : {};
+            notifications.push({
+                id: `payment-failed-${p.id}`, type: 'PAYMENT_OVERDUE',
+                severity: computedSeverity(failedEff, 'critical'),
+                title: renderTemplate(failedEff.title, vars),
+                message: renderTemplate(failedEff.message, vars),
+                entityType: 'PAYMENT', entityId: p.id,
+                actionUrl: isAdmin ? '/admin/finance' : '/meus-pagamentos',
+                createdAt: iso, read: false, source: 'computed',
+            });
+        }
+    }
+
+    // 3. Unconfirmed bookings — TODAY only, ADMIN-only (the 7am dailyConfirmationJob owns
+    // the client signal; a computed one here would shadow it via same type+entityId).
+    const unconfEff = ev('computed_booking_unconfirmed_admin');
+    if (isAdmin && unconfEff.enabled) {
         const tomorrow = new Date(today);
         tomorrow.setDate(tomorrow.getDate() + 1);
-
-        const unconfirmedBookings = userRole === 'ADMIN'
-            ? await prisma.booking.findMany({
-                where: {
-                    status: 'RESERVED',
-                    date: { gte: today, lt: tomorrow },
-                },
-                include: { user: { select: { name: true } } },
-            })
-            : [];
-
+        const unconfirmedBookings = await prisma.booking.findMany({
+            where: { status: 'RESERVED', date: { gte: today, lt: tomorrow } },
+            include: { user: { select: { name: true } } },
+        });
         for (const b of unconfirmedBookings) {
+            const vars = { cliente: b.user.name, hora: b.startTime, diaLabel: 'hoje' };
             notifications.push({
-                id: `booking-unconfirmed-${b.id}`,
-                type: 'BOOKING_UNCONFIRMED',
-                severity: 'critical',
-                title: '⏳ Sessão Não Confirmada',
-                message: userRole === 'ADMIN' ? `${b.user.name} — HOJE às ${b.startTime}` : `Sua sessão de HOJE às ${b.startTime} precisa ser confirmada`,
-                entityType: 'BOOKING', entityId: b.id,
-                actionUrl: userRole === 'ADMIN' ? '/admin/today' : '/dashboard',
-                createdAt: now.toISOString(),
-                read: false,
-                source: 'computed',
+                id: `booking-unconfirmed-${b.id}`, type: 'BOOKING_UNCONFIRMED',
+                severity: computedSeverity(unconfEff, 'critical'),
+                title: renderTemplate(unconfEff.title, vars),
+                message: renderTemplate(unconfEff.message, vars),
+                entityType: 'BOOKING', entityId: b.id, actionUrl: '/admin/today',
+                createdAt: iso, read: false, source: 'computed',
             });
         }
+    }
 
-        // 4. Contracts pending cancellation
+    // 4. Contracts pending cancellation
+    const cancelEff = ev(isAdmin ? 'computed_cancellation_pending_admin' : 'computed_cancellation_pending');
+    if (cancelEff.enabled) {
         const pendingCancellations = await prisma.contract.findMany({
-            where: { status: 'PENDING_CANCELLATION', ...(userRole !== 'ADMIN' ? { userId } : {}) },
+            where: { status: 'PENDING_CANCELLATION', ...(isAdmin ? {} : { userId }) },
             include: { user: { select: { name: true } } },
         });
-
         for (const c of pendingCancellations) {
+            const vars: Record<string, string | number> = isAdmin ? { cliente: c.user.name, contrato: c.name } : { contrato: c.name };
             notifications.push({
-                id: `cancellation-pending-${c.id}`,
-                type: 'CANCELLATION_PENDING',
-                severity: 'warning',
-                title: '🚫 Cancelamento Pendente',
-                message: userRole === 'ADMIN' ? `${c.user.name} — "${c.name}" aguarda resolução` : `O cancelamento de "${c.name}" está sendo avaliado.`,
+                id: `cancellation-pending-${c.id}`, type: 'CANCELLATION_PENDING',
+                severity: computedSeverity(cancelEff, 'warning'),
+                title: renderTemplate(cancelEff.title, vars),
+                message: renderTemplate(cancelEff.message, vars),
                 entityType: 'CONTRACT', entityId: c.id,
-                actionUrl: userRole === 'ADMIN' ? '/admin/contracts' : '/meus-contratos',
-                createdAt: now.toISOString(),
-                read: false,
-                source: 'computed',
+                actionUrl: isAdmin ? '/admin/contracts' : '/meus-contratos',
+                createdAt: iso, read: false, source: 'computed',
             });
         }
+    }
 
-        // 4b. Contracts awaiting payment
+    // 4b. Contracts awaiting payment
+    const awaitEff = ev(isAdmin ? 'computed_contract_awaiting_admin' : 'computed_contract_awaiting');
+    if (awaitEff.enabled) {
         const awaitingPayment = await prisma.contract.findMany({
-            where: { status: 'AWAITING_PAYMENT', ...(userRole !== 'ADMIN' ? { userId } : {}) },
+            where: { status: 'AWAITING_PAYMENT', ...(isAdmin ? {} : { userId }) },
             include: { user: { select: { name: true } } },
         });
-
         for (const c of awaitingPayment) {
             const deadline = c.paymentDeadline ? new Date(c.paymentDeadline) : null;
-            const isUrgent = deadline && (deadline.getTime() - now.getTime()) < 30 * 60 * 1000;
+            const isUrgent = !!deadline && (deadline.getTime() - now.getTime()) < 30 * 60 * 1000;
+            const vars: Record<string, string | number> = isAdmin ? { cliente: c.user.name, contrato: c.name } : { contrato: c.name };
             notifications.push({
-                id: `contract-awaiting-${c.id}`,
-                type: 'CONTRACT_AWAITING_PAYMENT',
-                severity: isUrgent ? 'critical' : 'warning',
-                title: '💳 Pagamento Pendente',
-                message: userRole === 'ADMIN'
-                    ? `${c.user.name} — "${c.name}" aguardando pagamento`
-                    : `Seu contrato "${c.name}" está aguardando pagamento para ser ativado.`,
+                id: `contract-awaiting-${c.id}`, type: 'CONTRACT_AWAITING_PAYMENT',
+                severity: computedSeverity(awaitEff, isUrgent ? 'critical' : 'warning'),
+                title: renderTemplate(awaitEff.title, vars),
+                message: renderTemplate(awaitEff.message, vars),
                 entityType: 'CONTRACT', entityId: c.id,
-                actionUrl: userRole === 'ADMIN' ? `/admin/clients/${c.userId}` : '/meus-contratos',
-                createdAt: now.toISOString(),
-                read: false,
-                source: 'computed',
+                actionUrl: isAdmin ? `/admin/clients/${c.userId}` : '/meus-contratos',
+                createdAt: iso, read: false, source: 'computed',
             });
         }
-
-    // NOTE (notification pruning, jun/2026): the noisy "info" FLEX_CREDITS_LOW (≤2 credits)
-    // and the admin-only CLIENT_INACTIVE computed notifications were removed — they fired on
-    // every poll and added little value. The meaningful FLEX signals (crédito perdido =
-    // critical, "grave esta semana" = warning) still come from the jobs as persisted rows.
+    }
 
     return notifications;
 }
