@@ -5,6 +5,7 @@ import { authenticate } from '../../middleware/auth.js';
 import { getConfig } from '../../lib/businessConfig.js';
 import { createPayment as gatewayCreatePayment, updatePaymentWithGatewayResult, validatePaymentMethod, getProviderForMethod, PaymentMethodDisabledError } from '../../lib/paymentGateway.js';
 import { resolvePlanAmounts, type BillingCadence } from '../../lib/paymentPolicy.js';
+import { addMonths } from '../../utils/pricing.js';
 import { serviceContractSchema } from './validators.js';
 import { CouponError, validateCoupon, reserveCouponUse, releaseAndPurgeCouponsForPayments, type CouponQuote } from '../../lib/couponService.js';
 
@@ -90,40 +91,42 @@ router.post('/service', authenticate, async (req: Request, res: Response) => {
         }
         const chargeAmount = couponQuote ? couponQuote.finalAmount : firstAmount;
 
-        const contractData = {
-            kind: 'SERVICE' as const,
-            type: 'SERVICO' as const,
-            serviceKey: addon.key,
-            name: addon.name,
-            durationMonths: duration,
-            paymentMethod: data.paymentMethod,
-            paymentPlan: plan,
-            discountPct,
-            billingCadence: cadence,
-            // Persist the per-month base so installments 2..N never drift from month 1.
-            // Intentionally WITHOUT the coupon discount (FIRST_PAYMENT must not leak).
-            monthlyAmountResolved: servicePlan.monthlyAmount,
-            ...(couponQuote && couponQuote.coupon.scope === 'ALL_INSTALLMENTS' ? {
-                couponForInstallments: {
-                    couponId: couponQuote.coupon.id,
-                    couponCode: couponQuote.coupon.code,
-                    discountType: couponQuote.coupon.discountType,
-                    discountValue: couponQuote.coupon.discountValue,
-                },
-            } : {}),
-        };
+        // Create-then-pay: materialize the SERVICO contract already in AWAITING_PAYMENT plus its
+        // first payment, so it is payable/retryable from Meus Contratos even if the client closes
+        // the checkout. On confirmation, onPaymentConfirmed activates the contract and generates
+        // installments 2..N (derived from the first paid amount). Coupon reserved atomically.
+        const endDate = addMonths(startDate, duration);
+        const pDeadline = new Date(startDate);
+        pDeadline.setDate(pDeadline.getDate() + 3); // 3 dias para pagar (limpo pelo hold-cleanup)
 
-        // Create ONLY the first payment (no contract yet — materialized on confirmation),
-        // reserving the coupon use in the SAME transaction (atomic maxUses guard).
-        const firstPayment = await prisma.$transaction(async (tx) => {
+        const { contract, firstPayment } = await prisma.$transaction(async (tx) => {
+            const c = await tx.contract.create({
+                data: {
+                    userId,
+                    name: addon.name,
+                    type: 'SERVICO',
+                    tier: 'COMERCIAL',
+                    durationMonths: duration,
+                    discountPct,
+                    startDate,
+                    endDate,
+                    status: 'AWAITING_PAYMENT',
+                    paymentDeadline: pDeadline,
+                    paymentMethod: data.paymentMethod as any,
+                    paymentPlan: plan,
+                    addOns: [addon.key],
+                    flexCreditsTotal: 0,
+                    flexCreditsRemaining: 0,
+                },
+            });
             const p = await tx.payment.create({
                 data: {
                     userId,
+                    contractId: c.id,
                     provider: getProviderForMethod(data.paymentMethod),
                     amount: chargeAmount,
                     status: 'PENDING',
                     dueDate: startDate,
-                    metadata: { contractData },
                     ...(couponQuote ? {
                         couponId: couponQuote.coupon.id,
                         couponCode: couponQuote.coupon.code,
@@ -141,11 +144,11 @@ router.post('/service', authenticate, async (req: Request, res: Response) => {
                     maxUsesPerUser: couponQuote.coupon.maxUsesPerUser,
                 });
             }
-            return p;
+            return { contract: c, firstPayment: p };
         });
 
-        // 100% coupon → zero charge: skip the gateway and confirm immediately
-        // (materializes the SERVICO contract exactly like a webhook confirmation).
+        // 100% coupon → zero charge: skip the gateway and confirm immediately (activates the
+        // contract + generates installments exactly like a webhook confirmation).
         if (chargeAmount === 0) {
             await prisma.payment.updateMany({
                 where: { id: firstPayment.id, status: 'PENDING' },
@@ -154,6 +157,7 @@ router.post('/service', authenticate, async (req: Request, res: Response) => {
             const { onPaymentConfirmed } = await import('../../lib/paymentEffects.js');
             await onPaymentConfirmed(firstPayment.id);
             res.status(201).json({
+                contractId: contract.id,
                 firstPaymentId: firstPayment.id,
                 amount: 0,
                 alreadyPaid: true,
@@ -192,11 +196,14 @@ router.post('/service', authenticate, async (req: Request, res: Response) => {
                 if (result.clientSecret) clientSecret = result.clientSecret;
                 if (result.pixString) pixString = result.pixString;
             } catch (err) {
-                // Gateway failed (invalid CPF, Cora down, etc.). Don't leave an unpayable
-                // PENDING payment — give the coupon use back, delete it, surface a clear error.
+                // Gateway failed BEFORE any charge was generated (invalid CPF, Cora down, etc.).
+                // Nothing to pay yet, so roll back cleanly: release the coupon, drop the payment AND
+                // the just-created contract, and surface a clear error. (A charge that DID generate
+                // leaves the contract AWAITING for the client to pay later from Meus Contratos.)
                 console.error(`[Contract:Service] Gateway payment failed:`, err);
                 await releaseAndPurgeCouponsForPayments([firstPayment.id]);
                 await prisma.payment.delete({ where: { id: firstPayment.id } }).catch(() => {});
+                await prisma.contract.delete({ where: { id: contract.id } }).catch(() => {});
                 const msg = err instanceof Error ? err.message : 'Erro ao gerar o pagamento. Tente novamente ou use outro método.';
                 res.status(502).json({ error: msg });
                 return;
@@ -204,6 +211,7 @@ router.post('/service', authenticate, async (req: Request, res: Response) => {
         }
 
         res.status(201).json({
+            contractId: contract.id,
             firstPaymentId: firstPayment.id,
             amount: chargeAmount,
             ...(couponQuote && { couponDiscount: couponQuote.discountAmount }),

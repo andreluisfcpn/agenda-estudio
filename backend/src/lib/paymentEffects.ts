@@ -279,19 +279,20 @@ export async function voidContractPendingPayments(contractId: string): Promise<n
 }
 
 /**
- * Create the remaining monthly installments (months 2..N) for a RENEWED contract once its
- * first payment is confirmed. New (self/admin/custom) contracts get their installments at
- * creation/fulfillment; renewals create the contract upfront with NO installments, so this is
- * their equivalent — without it a renewed MONTHLY contract would only ever charge month 1.
+ * Create the remaining monthly installments (months 2..N) once a contract's first payment is
+ * confirmed, for the "create-then-pay" contracts that create the contract upfront with only the
+ * first installment: RENEWALS and the self-serve/SERVICO hire flows (contract born AWAITING_PAYMENT).
+ * Without it such a MONTHLY contract would only ever charge month 1.
  *
- * Idempotent & safe: only runs for renewals (renewedFromId set), skips FULL plans and AVULSO,
- * and bails if the contract already has >= durationMonths non-cancelled payments. Uses the first
- * PAID payment's amount as the per-month figure so every installment matches exactly.
+ * Idempotent & safe for EVERY flow: skips FULL plans and AVULSO, and bails when the contract already
+ * has >= durationMonths non-cancelled payments — which is exactly the case for admin/self/custom
+ * contracts that materialize all installments at fulfillment, so this is a no-op for them. Uses the
+ * first PAID payment's amount as the per-month figure so every installment matches exactly.
  */
-export async function generateRemainingInstallmentsForRenewal(contractId: string): Promise<void> {
+export async function generateRemainingInstallments(contractId: string): Promise<void> {
     try {
         const contract = await prisma.contract.findUnique({ where: { id: contractId } });
-        if (!contract || !contract.renewedFromId) return;        // renewals only
+        if (!contract) return;
         if (contract.paymentPlan === 'FULL') return;             // FULL = single upfront payment
         if (contract.type === 'AVULSO') return;                  // avulso has no installments
 
@@ -350,7 +351,14 @@ export async function generateRemainingInstallmentsForRenewal(contractId: string
             }
             if (remaining.length > 0) {
                 await prisma.payment.createMany({ data: remaining });
-                console.log(`[PaymentEffects] Generated ${remaining.length} remaining installment(s) for renewed contract ${contractId}`);
+                // A 100% ALL_INSTALLMENTS coupon makes later installments R$0 — the gateway
+                // can't process a zero charge, so settle them as PAID instead of leaving them
+                // stuck PENDING (mirrors the fulfillment path).
+                await prisma.payment.updateMany({
+                    where: { contractId, status: 'PENDING', amount: 0 },
+                    data: { status: 'PAID', paidAt: new Date() },
+                }).catch(() => {});
+                console.log(`[PaymentEffects] Generated ${remaining.length} remaining installment(s) for contract ${contractId}`);
             }
         } finally {
             await redis.del(lockKey);
@@ -456,10 +464,11 @@ export async function onPaymentConfirmed(paymentId: string): Promise<void> {
     // 3. Materialize a self-service contract whose data lives in payment.metadata (no-op otherwise)
     await fulfillContractFromPayment(payment.id);
 
-    // 4. Generate bookings + remaining installments for a renewed contract (no-ops for non-renewals)
+    // 4. Generate bookings + remaining installments for create-then-pay contracts
+    // (renewals + self/SERVICO hire born AWAITING_PAYMENT). No-op when installments already exist.
     if (payment.contractId) {
         await generateBookingsForRenewedContract(payment.contractId);
-        await generateRemainingInstallmentsForRenewal(payment.contractId);
+        await generateRemainingInstallments(payment.contractId);
     }
 
     // 5. Notify the user (with push)
