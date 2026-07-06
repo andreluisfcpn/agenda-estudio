@@ -9,7 +9,7 @@
 import { prisma } from './prisma.js';
 import https from 'https';
 import { URL } from 'node:url';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, X509Certificate } from 'node:crypto';
 import QRCode from 'qrcode';
 import { decryptConfigSafe } from '../utils/crypto.js';
 
@@ -547,13 +547,26 @@ export async function coraCancelBoleto(boletoId: string): Promise<void> {
 }
 
 /** Test connectivity — tries to authenticate and returns success/error */
+/** Resumo do certificado salvo (CN + validade) para o diagnóstico do "Testar conexão". */
+function certSummary(pem?: string): string {
+    if (!pem) return '';
+    try {
+        const x = new X509Certificate(pem.replace(/\\n/g, '\n'));
+        const cn = (x.subject.match(/CN=([^\n]+)/) || [])[1]?.trim() || '?';
+        const validTo = new Date(x.validTo);
+        const expired = validTo.getTime() < Date.now();
+        return ` [cert CN=${cn}, válido até ${validTo.toLocaleDateString('pt-BR')}${expired ? ' — EXPIRADO' : ''}]`;
+    } catch { return ''; }
+}
+
 export async function coraTestConnection(): Promise<{ success: boolean; message: string }> {
+    const setup = await getCoraConfig();
+    const certInfo = certSummary(setup?.config.certificatePem);
     try {
         await coraAuthenticate();
         _tokenCache = null; // Clear cache after test
-        const setup = await getCoraConfig();
         const env = setup?.environment || 'unknown';
-        return { success: true, message: `Autenticação Cora realizada com sucesso! (mTLS OK, ambiente: ${env})` };
+        return { success: true, message: `Autenticação Cora realizada com sucesso! (mTLS OK, ambiente: ${env})${certInfo}` };
     } catch (err) {
         const msg = err instanceof Error ? err.message : 'Erro desconhecido';
         // Provide more helpful error messages
@@ -561,15 +574,16 @@ export async function coraTestConnection(): Promise<{ success: boolean; message:
             return { success: false, message: 'Conexão recusada. Verifique se o ambiente (sandbox/produção) está correto.' };
         }
         if (msg.includes('certificate') || msg.includes('key') || msg.includes('SSL') || msg.includes('TLS') || msg.includes('EPROTO')) {
-            return { success: false, message: `Erro no certificado mTLS: o Cora não aceitou o certificado/chave (verifique se estão corretos, no formato PEM e não expirados). Detalhe: ${msg}` };
+            return { success: false, message: `Erro no certificado mTLS: o Cora não aceitou o certificado/chave (verifique se estão corretos, no formato PEM e não expirados).${certInfo} Detalhe: ${msg}` };
         }
-        if (msg.includes('client_id') || msg.includes('invalid_client') || msg.includes('401') || msg.includes('403')) {
+        if (msg.includes('client_id') || msg.includes('invalid_client') || msg.includes('Not authorized') || msg.includes('401') || msg.includes('403')) {
             // mTLS handshake succeeded (chegamos ao endpoint de token e recebemos 4xx), mas o
-            // Cora recusou o client_id → app/credencial do ambiente ativo inválido, revogado ou
-            // expirado no painel Cora. Não é problema de código/certificado.
-            return { success: false, message: `O Cora recusou o Client ID do ambiente ativo (o certificado mTLS foi aceito). Verifique/renove as credenciais do app no painel Cora. Detalhe: ${msg}` };
+            // gateway do Cora recusou o certificado/client_id → credencial do ambiente ativo NÃO
+            // habilitada/reconhecida no Cora (revogada, ou ambiente de homologação não liberado
+            // na conta). O certificado em si pode estar válido — não é problema de código.
+            return { success: false, message: `O Cora recusou a credencial do ambiente ativo no gateway (o certificado mTLS foi enviado).${certInfo} O certificado pode estar válido, mas o Cora não o reconhece nesse ambiente — verifique no painel se a credencial/ambiente (ex.: homologação) está habilitado. Detalhe: ${msg}` };
         }
-        return { success: false, message: `Falha na autenticação: ${msg}` };
+        return { success: false, message: `Falha na autenticação: ${msg}${certInfo}` };
     }
 }
 
