@@ -132,9 +132,10 @@ async function getCoraConfig(): Promise<{ config: CoraCredentials; environment: 
             credentials = parsed[environment];
             // Self-heal: the dual-format redesign shipped (briefly) with a merge bug that
             // left the WORKING flat credentials orphaned at the TOP LEVEL while writing an
-            // empty {environment} sub-object — silently breaking auth. If the active sub-object
-            // is incomplete but flat creds still sit at the top, recover them.
-            if (!credentials?.clientId && (parsed as any).clientId) {
+            // empty {environment} sub-object — silently breaking auth. Legacy flat creds are
+            // ALWAYS sandbox, so only recover them when sandbox is the active environment —
+            // never serve them as production.
+            if (environment === 'sandbox' && !credentials?.clientId && (parsed as any).clientId) {
                 const flat = parsed as CoraCredentials;
                 credentials = {
                     clientId: flat.clientId,

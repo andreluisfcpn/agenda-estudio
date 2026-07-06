@@ -303,10 +303,18 @@ export async function generateRemainingInstallments(contractId: string): Promise
         const lockKey = `cron:renewal-installments:${contractId}`;
         if ((await redis.set(lockKey, '1', 'EX', 30, 'NX')) !== 'OK') return;
         try {
-            const existing = await prisma.payment.count({
-                where: { contractId, status: { not: 'CANCELLED' } },
-            });
-            if (existing >= contract.durationMonths) return;     // already complete (idempotent)
+            // Materialize months 2..N ONLY at the moment the single first charge is confirmed:
+            // exactly one PAID payment and zero PENDING. This makes it a no-op once installments
+            // exist (admin/self/custom/legacy-service already create all N at fulfillment; a
+            // renewal/create-then-pay contract has just its first PAID). Crucially, it does NOT
+            // count "missing" installments — so a deliberately-CANCELLED installment is never
+            // resurrected (which a `>= durationMonths` non-cancelled count would wrongly refill on
+            // the next sibling confirmation), and a FAILED first attempt (excluded) doesn't block.
+            const [paidCount, pendingCount] = await Promise.all([
+                prisma.payment.count({ where: { contractId, status: 'PAID' } }),
+                prisma.payment.count({ where: { contractId, status: 'PENDING' } }),
+            ]);
+            if (paidCount !== 1 || pendingCount !== 0) return;
 
             const firstPaid = await prisma.payment.findFirst({
                 where: { contractId, status: 'PAID' },
@@ -333,7 +341,8 @@ export async function generateRemainingInstallments(contractId: string): Promise
             const advance = contract.type === 'SERVICO'
                 ? (i: number) => addMonths(start, i)
                 : (i: number) => addBillingCycles(start, i);
-            for (let i = existing; i < contract.durationMonths; i++) {
+            // Month 1 is the just-confirmed first charge (index 0); generate months 2..N.
+            for (let i = 1; i < contract.durationMonths; i++) {
                 const dueDate = advance(i);
                 remaining.push({
                     userId: contract.userId,

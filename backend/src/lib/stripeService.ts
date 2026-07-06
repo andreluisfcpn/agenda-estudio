@@ -56,7 +56,8 @@ async function getStripeConfig(): Promise<{ config: StripeCredentials; environme
             credentials = parsed[environment];
             // Self-heal: recover flat credentials orphaned at the top level by the (briefly
             // buggy) dual-format merge — see the matching note in coraService.getCoraConfig.
-            if (!credentials?.secretKey && (parsed as any).secretKey) {
+            // Legacy flat creds are ALWAYS sandbox → only recover them for the sandbox env.
+            if (environment === 'sandbox' && !credentials?.secretKey && (parsed as any).secretKey) {
                 const flat = parsed as StripeCredentials;
                 credentials = {
                     secretKey: flat.secretKey,

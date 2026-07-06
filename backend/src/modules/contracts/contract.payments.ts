@@ -44,7 +44,16 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
         // service add-on's price after discount, not sessions×tier (which would over-charge).
         let monthlyAmount: number;
         if (contract.type === 'SERVICO') {
-            monthlyAmount = await serviceMonthlyBase(contract);
+            const svcMonthly = await serviceMonthlyBase(contract);
+            // FULL-plan service is paid à-vista (all N months at once); MONTHLY charges one month.
+            // Without this, paying a FULL service via /pay would collect only 1/N and no
+            // installments 2..N are ever generated (the generator skips FULL).
+            if (contract.paymentPlan === 'FULL') {
+                const { computeFullContractTotal } = await import('../../lib/contractPricing.js');
+                monthlyAmount = await computeFullContractTotal(svcMonthly, contract.durationMonths, contract.paymentMethod || undefined);
+            } else {
+                monthlyAmount = svcMonthly;
+            }
         } else {
             const tierPrice = await getBasePriceDynamic(contract.tier);
             const discountedPrice = applyDiscount(tierPrice, contract.discountPct);
