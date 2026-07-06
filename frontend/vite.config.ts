@@ -13,6 +13,7 @@ export default defineConfig({
             includeAssets: [
                 'icons/icon-192.svg',
                 'icons/icon-512.svg',
+                'icons/icon-maskable.svg',
                 'offline.html',
             ],
             manifest: {
@@ -29,7 +30,7 @@ export default defineConfig({
                 icons: [
                     { src: '/icons/icon-192.svg', sizes: '192x192', type: 'image/svg+xml' },
                     { src: '/icons/icon-512.svg', sizes: '512x512', type: 'image/svg+xml' },
-                    { src: '/icons/icon-512.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'maskable' },
+                    { src: '/icons/icon-maskable.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'maskable' },
                 ],
                 shortcuts: [
                     {
