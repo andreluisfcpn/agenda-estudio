@@ -2,26 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
-import {
-    LayoutDashboard,
-    CalendarDays,
-    Clapperboard,
-    FileText,
-    MapPin,
-    ClipboardList,
-    Users,
-    FileSignature,
-    CreditCard,
-    TicketPercent,
-    BarChart3,
-    LucideIcon,
-    ChevronRight,
-    User,
-    LogOut,
-    Wallet,
-    Settings,
-    BellRing,
-} from 'lucide-react';
+import { LucideIcon, ChevronRight, User, LogOut } from 'lucide-react';
+import { ADMIN_NAV, CLIENT_NAV } from '../config/nav';
 
 interface NavItemProps {
     to: string;
@@ -59,18 +41,6 @@ function NavItem({ to, icon: Icon, label, collapsed }: NavItemProps) {
         </div>
     );
 }
-
-/** Sub-sections of the Settings page, mirrored from AdminSettingsPage's SECTIONS. */
-const SETTINGS_SUBITEMS: { sec: string; label: string }[] = [
-    { sec: 'gerais', label: 'Gerais' },
-    { sec: 'horarios', label: 'Horários' },
-    { sec: 'financeiro', label: 'Financeiro' },
-    { sec: 'politicas', label: 'Políticas' },
-    { sec: 'servicos', label: 'Serviços' },
-    { sec: 'pagamentos', label: 'Pagamentos' },
-    { sec: 'email', label: 'E-mail' },
-    { sec: 'integracoes', label: 'Integrações' },
-];
 
 /** Group header (reuses the existing divider markup; the label hides when collapsed via CSS). */
 function SidebarSection({ label }: { label: string }) {
@@ -255,41 +225,25 @@ export default function Sidebar({ collapsed }: SidebarProps) {
             </div>
 
             <nav className="sidebar-nav">
-                <NavItem to="/dashboard" icon={LayoutDashboard} label="Dashboard" collapsed={collapsed} />
-                <NavItem to="/calendar" icon={CalendarDays} label="Agenda" collapsed={collapsed} />
-
-                {!isAdmin && (
-                    <>
-                        <NavItem to="/minhas-gravacoes" icon={Clapperboard} label="Minhas Gravações" collapsed={collapsed} />
-                        <NavItem to="/meus-contratos" icon={FileText} label="Meus Contratos" collapsed={collapsed} />
-                        <NavItem to="/meus-pagamentos" icon={Wallet} label="Pagamentos" collapsed={collapsed} />
-                    </>
-                )}
-
-                {isAdmin && (
-                    <>
-                        <SidebarSection label="Operação" />
-                        <NavItem to="/admin/today" icon={MapPin} label="Hoje" collapsed={collapsed} />
-                        <NavItem to="/admin/bookings" icon={ClipboardList} label="Agendamentos" collapsed={collapsed} />
-                        <NavItem to="/admin/clients" icon={Users} label="Clientes" collapsed={collapsed} />
-
-                        <SidebarSection label="Gestão" />
-                        <NavItem to="/admin/contracts" icon={FileSignature} label="Contratos" collapsed={collapsed} />
-                        <NavItem to="/admin/finance" icon={CreditCard} label="Financeiro" collapsed={collapsed} />
-                        <NavItem to="/admin/cupons" icon={TicketPercent} label="Cupons" collapsed={collapsed} />
-                        <NavItem to="/admin/reports" icon={BarChart3} label="Relatórios" collapsed={collapsed} />
-
-                        <SidebarSection label="Sistema" />
-                        <NavItem to="/admin/notificacoes" icon={BellRing} label="Notificações" collapsed={collapsed} />
-                        <ExpandableNavItem
-                            to="/admin/configuracoes"
-                            icon={Settings}
-                            label="Configurações"
-                            collapsed={collapsed}
-                            subItems={SETTINGS_SUBITEMS}
-                        />
-                    </>
-                )}
+                {(isAdmin ? ADMIN_NAV : CLIENT_NAV).map((item, i, arr) => {
+                    const showDivider = !!item.section && item.section !== arr[i - 1]?.section;
+                    return (
+                        <React.Fragment key={item.to}>
+                            {showDivider && <SidebarSection label={item.section!} />}
+                            {item.subItems ? (
+                                <ExpandableNavItem
+                                    to={item.to}
+                                    icon={item.icon}
+                                    label={item.label}
+                                    collapsed={collapsed}
+                                    subItems={item.subItems}
+                                />
+                            ) : (
+                                <NavItem to={item.to} icon={item.icon} label={item.label} collapsed={collapsed} />
+                            )}
+                        </React.Fragment>
+                    );
+                })}
             </nav>
         </aside>
     );

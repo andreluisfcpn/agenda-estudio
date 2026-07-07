@@ -2,60 +2,19 @@ import { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
-import {
-    LayoutDashboard,
-    CalendarDays,
-    Clapperboard,
-    FileText,
-    Wallet,
-    MapPin,
-    Users,
-    CreditCard,
-    TicketPercent,
-    BarChart3,
-    BellRing,
-    Settings,
-    ChevronLeft,
-    ChevronRight,
-    type LucideIcon,
-} from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useDragScroll } from '../hooks/useDragScroll';
-
-interface TabItem {
-    to: string;
-    icon: LucideIcon;
-    label: string;
-}
-
-const CLIENT_TABS: TabItem[] = [
-    { to: '/dashboard', icon: LayoutDashboard, label: 'Início' },
-    { to: '/calendar', icon: CalendarDays, label: 'Agenda' },
-    { to: '/minhas-gravacoes', icon: Clapperboard, label: 'Gravações' },
-    { to: '/meus-contratos', icon: FileText, label: 'Contratos' },
-    { to: '/meus-pagamentos', icon: Wallet, label: 'Pagar' },
-];
-
-// All admin tabs live in a single horizontally-scrollable row (no "More" sheet).
-const ADMIN_TABS: TabItem[] = [
-    { to: '/dashboard', icon: LayoutDashboard, label: 'Início' },
-    { to: '/admin/today', icon: MapPin, label: 'Hoje' },
-    { to: '/calendar', icon: CalendarDays, label: 'Agenda' },
-    { to: '/admin/bookings', icon: Clapperboard, label: 'Agendamentos' },
-    { to: '/admin/clients', icon: Users, label: 'Clientes' },
-    { to: '/admin/contracts', icon: FileText, label: 'Contratos' },
-    { to: '/admin/finance', icon: CreditCard, label: 'Financeiro' },
-    { to: '/admin/cupons', icon: TicketPercent, label: 'Cupons' },
-    { to: '/admin/reports', icon: BarChart3, label: 'Relatórios' },
-    { to: '/admin/notificacoes', icon: BellRing, label: 'Notificações' },
-    { to: '/admin/configuracoes', icon: Settings, label: 'Config' },
-];
+// Nav items come from a single shared source so desktop (Sidebar) and mobile
+// (this bar) never drift. All admin tabs live in one horizontally-scrollable
+// row (no "More" sheet); labels/icons use the mobile-specific overrides.
+import { CLIENT_NAV, ADMIN_NAV } from '../config/nav';
 
 export default function BottomTabBar() {
     const { user } = useAuth();
     const { navigateTo, isTransitioning, pendingPath } = useNavigation();
     const location = useLocation();
     const isAdmin = user?.role === 'ADMIN';
-    const tabs = isAdmin ? ADMIN_TABS : CLIENT_TABS;
+    const items = isAdmin ? ADMIN_NAV : CLIENT_NAV;
 
     const { ref: barRef, showLeft, showRight, scrollByPage, updateArrows } = useDragScroll<HTMLElement>();
     const activeRef = useRef<HTMLButtonElement>(null);
@@ -87,24 +46,26 @@ export default function BottomTabBar() {
                 role="tablist"
                 aria-label="Navegação principal"
             >
-                {tabs.map(tab => {
+                {items.map(item => {
+                    const label = item.shortLabel ?? item.label;
+                    const Icon = item.mobileIcon ?? item.icon;
                     // Active state stays bound to the committed location so the highlight and the
                     // on-screen page switch together (no blink). A separate "pending" class gives
                     // immediate tap feedback on the target while the transition resolves.
-                    const isActive = location.pathname === tab.to;
-                    const isPending = isTransitioning && pendingPath === tab.to;
+                    const isActive = location.pathname === item.to;
+                    const isPending = isTransitioning && pendingPath === item.to;
                     return (
                         <button
-                            key={tab.to}
+                            key={item.to}
                             ref={isActive ? activeRef : undefined}
                             className={`btb-tab ${isActive ? 'btb-tab--active' : ''} ${isPending ? 'btb-tab--pending' : ''}`}
                             role="tab"
-                            aria-label={tab.label}
+                            aria-label={label}
                             aria-selected={isActive}
-                            onClick={() => navigateTo(tab.to)}
+                            onClick={() => navigateTo(item.to)}
                         >
-                            <tab.icon size={22} strokeWidth={1.8} className="btb-tab-icon" />
-                            <span className="btb-tab-label">{tab.label}</span>
+                            <Icon size={22} strokeWidth={1.8} className="btb-tab-icon" />
+                            <span className="btb-tab-label">{label}</span>
                         </button>
                     );
                 })}
