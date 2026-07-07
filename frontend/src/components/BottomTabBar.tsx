@@ -11,7 +11,9 @@ import {
     MapPin,
     Users,
     CreditCard,
+    TicketPercent,
     BarChart3,
+    BellRing,
     Settings,
     ChevronLeft,
     ChevronRight,
@@ -42,7 +44,9 @@ const ADMIN_TABS: TabItem[] = [
     { to: '/admin/clients', icon: Users, label: 'Clientes' },
     { to: '/admin/contracts', icon: FileText, label: 'Contratos' },
     { to: '/admin/finance', icon: CreditCard, label: 'Financeiro' },
+    { to: '/admin/cupons', icon: TicketPercent, label: 'Cupons' },
     { to: '/admin/reports', icon: BarChart3, label: 'Relatórios' },
+    { to: '/admin/notificacoes', icon: BellRing, label: 'Notificações' },
     { to: '/admin/configuracoes', icon: Settings, label: 'Config' },
 ];
 
