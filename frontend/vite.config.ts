@@ -14,6 +14,12 @@ export default defineConfig({
                 'icons/icon-192.svg',
                 'icons/icon-512.svg',
                 'icons/icon-maskable.svg',
+                'icons/icon-192.png',
+                'icons/icon-512.png',
+                'icons/icon-maskable.png',
+                'icons/apple-touch-icon.png',
+                'icons/favicon-32.png',
+                'icons/logo-branca.svg',
                 'offline.html',
             ],
             manifest: {
@@ -28,28 +34,29 @@ export default defineConfig({
                 start_url: '/',
                 categories: ['business', 'productivity'],
                 icons: [
-                    { src: '/icons/icon-192.svg', sizes: '192x192', type: 'image/svg+xml' },
-                    { src: '/icons/icon-512.svg', sizes: '512x512', type: 'image/svg+xml' },
-                    { src: '/icons/icon-maskable.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'maskable' },
+                    { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+                    { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+                    { src: '/icons/icon-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+                    { src: '/icons/icon-512.svg', sizes: 'any', type: 'image/svg+xml' },
                 ],
                 shortcuts: [
                     {
                         name: 'Agendar Sessão',
                         short_name: 'Agendar',
                         url: '/calendar',
-                        icons: [{ src: '/icons/icon-192.svg', sizes: '192x192' }],
+                        icons: [{ src: '/icons/icon-192.png', sizes: '192x192' }],
                     },
                     {
                         name: 'Minhas Gravações',
                         short_name: 'Gravações',
                         url: '/minhas-gravacoes',
-                        icons: [{ src: '/icons/icon-192.svg', sizes: '192x192' }],
+                        icons: [{ src: '/icons/icon-192.png', sizes: '192x192' }],
                     },
                     {
                         name: 'Meus Pagamentos',
                         short_name: 'Pagamentos',
                         url: '/meus-pagamentos',
-                        icons: [{ src: '/icons/icon-192.svg', sizes: '192x192' }],
+                        icons: [{ src: '/icons/icon-192.png', sizes: '192x192' }],
                     },
                 ],
                 screenshots: [
