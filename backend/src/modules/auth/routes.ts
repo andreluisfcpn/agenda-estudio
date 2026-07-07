@@ -485,7 +485,7 @@ router.post('/logout', (_req: Request, res: Response) => {
 router.get('/me', authenticate, async (req: Request, res: Response) => {
     const user = await prisma.user.findUnique({
         where: { id: req.user!.userId },
-        select: { id: true, email: true, name: true, phone: true, photoUrl: true, role: true, cpfCnpj: true, address: true, city: true, state: true, socialLinks: true, essentialNotificationsOnly: true },
+        select: { id: true, email: true, name: true, phone: true, photoUrl: true, role: true, cpfCnpj: true, address: true, addressNumber: true, complement: true, neighborhood: true, zipCode: true, city: true, state: true, socialLinks: true, essentialNotificationsOnly: true },
     });
 
     if (!user) {
@@ -504,6 +504,10 @@ const profileUpdateSchema = z.object({
     password: z.string().min(6).optional(),
     cpfCnpj: z.string().optional(),
     address: z.string().optional(),
+    addressNumber: z.string().optional(),
+    complement: z.string().optional(),
+    neighborhood: z.string().optional(),
+    zipCode: z.string().optional(),
     city: z.string().optional(),
     state: z.string().optional(),
     socialLinks: z.union([
@@ -535,6 +539,10 @@ router.patch('/profile', authenticate, async (req: Request, res: Response) => {
             updateData.cpfCnpj = digits || null;
         }
         if (data.address !== undefined) updateData.address = data.address;
+        if (data.addressNumber !== undefined) updateData.addressNumber = data.addressNumber;
+        if (data.complement !== undefined) updateData.complement = data.complement;
+        if (data.neighborhood !== undefined) updateData.neighborhood = data.neighborhood;
+        if (data.zipCode !== undefined) updateData.zipCode = data.zipCode;
         if (data.city !== undefined) updateData.city = data.city;
         if (data.state !== undefined) updateData.state = data.state;
         if (data.socialLinks !== undefined) updateData.socialLinks = JSON.stringify(data.socialLinks);
@@ -543,7 +551,7 @@ router.patch('/profile', authenticate, async (req: Request, res: Response) => {
         const user = await prisma.user.update({
             where: { id: req.user!.userId },
             data: updateData,
-            select: { id: true, email: true, name: true, phone: true, photoUrl: true, role: true, cpfCnpj: true, address: true, city: true, state: true, socialLinks: true, essentialNotificationsOnly: true },
+            select: { id: true, email: true, name: true, phone: true, photoUrl: true, role: true, cpfCnpj: true, address: true, addressNumber: true, complement: true, neighborhood: true, zipCode: true, city: true, state: true, socialLinks: true, essentialNotificationsOnly: true },
         });
 
         res.json({ user, message: 'Perfil atualizado com sucesso.' });

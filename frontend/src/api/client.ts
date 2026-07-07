@@ -73,7 +73,7 @@ export const authApi = {
 
     refresh: () => request<{ message: string }>('/auth/refresh', { method: 'POST' }),
     logout: () => request<{ message: string }>('/auth/logout', { method: 'POST' }),
-    updateProfile: (data: { name?: string; phone?: string; password?: string; cpfCnpj?: string; address?: string; city?: string; state?: string; socialLinks?: any; essentialNotificationsOnly?: boolean }) => request<{ user: User; message: string }>('/auth/profile', { method: 'PATCH', body: JSON.stringify(data) }),
+    updateProfile: (data: { name?: string; phone?: string; password?: string; cpfCnpj?: string; address?: string; addressNumber?: string; complement?: string; neighborhood?: string; zipCode?: string; city?: string; state?: string; socialLinks?: any; essentialNotificationsOnly?: boolean }) => request<{ user: User; message: string }>('/auth/profile', { method: 'PATCH', body: JSON.stringify(data) }),
     uploadPhoto: async (file: File): Promise<{ user: User; message: string }> => {
         // Falhas de rede transitórias ("Failed to fetch") apareciam cruas em inglês no
         // 1º envio. Timeout de 30s + 1 retry automático + mensagens sempre em pt-BR.
@@ -314,6 +314,7 @@ export const publicApi = {
 export interface User {
     id: string; email: string; name: string; role: 'ADMIN' | 'CLIENTE'; phone?: string | null; photoUrl?: string | null;
     cpfCnpj?: string | null; address?: string | null; city?: string | null; state?: string | null; socialLinks?: string | null;
+    addressNumber?: string | null; complement?: string | null; neighborhood?: string | null; zipCode?: string | null;
     essentialNotificationsOnly?: boolean;
 }
 export interface Slot {

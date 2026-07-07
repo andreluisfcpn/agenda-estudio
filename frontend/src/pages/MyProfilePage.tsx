@@ -6,6 +6,7 @@ import { maskCpfCnpj, isValidCpfCnpj } from '../utils/mask';
 import HeroAmbient from '../components/client/HeroAmbient';
 import ImageCropper from '../components/ImageCropper';
 import ToggleSwitch from '../components/ui/ToggleSwitch';
+import AddressFields, { type AddressValues } from '../components/admin/clients/AddressFields';
 import { ArrowLeft, UserRound, Camera, Save, Loader2, CheckCircle2 } from 'lucide-react';
 
 export default function MyProfilePage() {
@@ -16,9 +17,10 @@ export default function MyProfilePage() {
     const [phone, setPhone] = useState(user?.phone || '');
     const [password, setPassword] = useState('');
     const [cpfCnpj, setCpfCnpj] = useState(user?.cpfCnpj ? maskCpfCnpj(user.cpfCnpj) : '');
-    const [address, setAddress] = useState(user?.address || '');
-    const [city, setCity] = useState(user?.city || '');
-    const [state, setState] = useState(user?.state || '');
+    const [addr, setAddr] = useState<AddressValues>({
+        zipCode: user?.zipCode || '', address: user?.address || '', addressNumber: user?.addressNumber || '',
+        complement: user?.complement || '', neighborhood: user?.neighborhood || '', city: user?.city || '', state: user?.state || '',
+    });
 
     let initialInsta = '';
     let initialLink = '';
@@ -61,9 +63,9 @@ export default function MyProfilePage() {
                 }
                 data.cpfCnpj = cpfDigits;
             }
-            if (address !== (user?.address || '')) data.address = address;
-            if (city !== (user?.city || '')) data.city = city;
-            if (state !== (user?.state || '')) data.state = state;
+            (['zipCode', 'address', 'addressNumber', 'complement', 'neighborhood', 'city', 'state'] as const).forEach(f => {
+                if (addr[f] !== (user?.[f] || '')) data[f] = addr[f];
+            });
             if (instagram !== initialInsta || linkedin !== initialLink) {
                 data.socialLinks = JSON.stringify({ instagram, linkedin });
             }
@@ -194,18 +196,7 @@ export default function MyProfilePage() {
                         <input className="form-input" value={cpfCnpj} onChange={e => setCpfCnpj(maskCpfCnpj(e.target.value))} inputMode="numeric" placeholder="000.000.000-00" />
                     </div>
                     <div className="form-group">
-                        <label className="form-label">Endereço</label>
-                        <input className="form-input" value={address} onChange={e => setAddress(e.target.value)} placeholder="Rua, Número, Complemento" />
-                    </div>
-                    <div className="profile-grid-city-uf">
-                        <div className="form-group">
-                            <label className="form-label">Cidade</label>
-                            <input className="form-input" value={city} onChange={e => setCity(e.target.value)} placeholder="Cidade" />
-                        </div>
-                        <div className="form-group">
-                            <label className="form-label">UF</label>
-                            <input className="form-input" value={state} onChange={e => setState(e.target.value)} placeholder="UF" maxLength={2} />
-                        </div>
+                        <AddressFields values={addr} onChange={patch => setAddr(a => ({ ...a, ...patch }))} />
                     </div>
                     <div className="form-group">
                         <label className="form-label">Instagram</label>
