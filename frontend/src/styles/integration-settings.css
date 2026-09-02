@@ -1156,3 +1156,28 @@
 @media (max-width: 768px) {
   .int-creds-tab { min-height: 44px; }
 }
+
+/* ═══ Sicoob (accent teal da marca) ═══ */
+.int-card--sicoob {
+  border-top: 3px solid var(--border-color);
+}
+.int-card--sicoob.int-card--enabled {
+  border-top-color: #00ae9d;
+}
+.int-card-icon--sicoob {
+  background: rgba(0, 174, 157, 0.10);
+  border: 1px solid rgba(0, 174, 157, 0.2);
+  color: #00ae9d;
+}
+.int-input--sicoob:focus {
+  border-color: #00ae9d;
+  box-shadow: 0 0 0 3px rgba(0, 174, 157, 0.1);
+}
+.int-btn--save-sicoob {
+  background: linear-gradient(135deg, #00ae9d, #008b7d);
+  color: #fff;
+}
+.int-btn--save-sicoob:hover:not(:disabled) {
+  background: linear-gradient(135deg, #008b7d, #007266);
+  box-shadow: 0 4px 16px rgba(0, 174, 157, 0.3);
+}

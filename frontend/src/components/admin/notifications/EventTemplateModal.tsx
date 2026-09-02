@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useId } from 'react';
 import { notificationsAdminApi, NotificationEventDef } from '../../../api/client';
 import { useUI } from '../../../context/UIContext';
 import { getErrorMessage } from '../../../utils/errors';
@@ -20,6 +20,7 @@ function renderPreview(text: string, vars: { name: string; example: string }[]):
 }
 
 export default function EventTemplateModal({ event, onClose, onSaved }: Props) {
+    const uid = useId();
     const { showToast } = useUI();
     const isDynamic = event.defaults.severity === 'dynamic';
 
@@ -126,8 +127,9 @@ export default function EventTemplateModal({ event, onClose, onSaved }: Props) {
                 </div>
 
                 <div className="form-group">
-                    <label className="form-label">Título</label>
+                    <label className="form-label" htmlFor={`${uid}-titulo`}>Título</label>
                     <input
+                        id={`${uid}-titulo`}
                         ref={titleRef}
                         className="form-input"
                         value={title}
@@ -138,8 +140,9 @@ export default function EventTemplateModal({ event, onClose, onSaved }: Props) {
                 </div>
 
                 <div className="form-group">
-                    <label className="form-label">Mensagem</label>
+                    <label className="form-label" htmlFor={`${uid}-mensagem`}>Mensagem</label>
                     <textarea
+                        id={`${uid}-mensagem`}
                         ref={msgRef}
                         className="form-input"
                         rows={3}

@@ -35,10 +35,12 @@ export default function AdminReportsPage() {
     const [audienceMetrics, setAudienceMetrics] = useState<AudienceMetrics | null>(null);
     const [clientRanking, setClientRanking] = useState<ClientRankItem[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(false);
     const [period, setPeriod] = useState<Period>('30d');
 
     const loadData = useCallback(async () => {
         setLoading(true);
+        setError(false);
         try {
             const range = getDateRange(period);
             const [sumRes, occRes, tierRes, audRes, rankRes] = await Promise.all([
@@ -54,7 +56,7 @@ export default function AdminReportsPage() {
             setTierBreakdown(tierRes.tierBreakdown);
             setAudienceMetrics(audRes.audience);
             setClientRanking(rankRes.ranking);
-        } catch (err) { console.error(err); }
+        } catch (err) { console.error(err); setError(true); }
         finally { setLoading(false); }
     }, [period]);
 
@@ -84,7 +86,14 @@ export default function AdminReportsPage() {
         URL.revokeObjectURL(url);
     };
 
-    if (loading || !summary) return <div><HeroSkeleton /><TableSkeleton rows={6} cols={7} /></div>;
+    if (loading) return <div><HeroSkeleton /><TableSkeleton rows={6} cols={7} /></div>;
+
+    if (error || !summary) return (
+        <div style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--text-secondary)' }}>
+            <p style={{ marginBottom: 16 }}>Não foi possível carregar os relatórios.</p>
+            <button className="btn btn-primary" onClick={() => loadData()}>Tentar novamente</button>
+        </div>
+    );
 
     return (
         <div aria-label="Relatórios administrativos">

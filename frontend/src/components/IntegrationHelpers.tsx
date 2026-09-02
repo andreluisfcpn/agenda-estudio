@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useId } from 'react';
 import type { IntegrationSummary } from '../api/client';
 
 /* ═══ SVG Icons (Lucide-style, inline) ═══ */
@@ -43,7 +43,13 @@ export function StatusBadge({ provider }: { provider?: IntegrationSummary }) {
 }
 
 /* ═══ Credenciais configuradas? (por ambiente, sobre o config MASCARADO) ═══ */
-export function envConfigured(provider: 'CORA' | 'STRIPE', maskedCfg: Record<string, any> | undefined, env: 'sandbox' | 'production'): boolean {
+export function envConfigured(provider: 'CORA' | 'STRIPE' | 'SICOOB', maskedCfg: Record<string, any> | undefined, env: 'sandbox' | 'production'): boolean {
+  if (provider === 'SICOOB') {
+    // Sandbox do Sicoob usa credenciais PÚBLICAS de teste → sempre pronto.
+    if (env === 'sandbox') return true;
+    const cfg = maskedCfg?.production;
+    return !!(cfg && cfg.clientId && cfg.certificatePem && cfg.privateKeyPem && cfg.pixKey);
+  }
   const cfg = maskedCfg?.[env] ?? (env === 'sandbox' ? maskedCfg : undefined); // config flat legado = sandbox
   if (!cfg) return false;
   if (provider === 'CORA') return !!(cfg.clientId && cfg.certificatePem && cfg.privateKeyPem);
@@ -103,6 +109,8 @@ export function FileUploadZone({
   const [dragOver, setDragOver] = useState(false);
   const [fileName, setFileName] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+  const uid = useId();
+  const controlId = `${uid}-control`;
 
   const handleFile = useCallback((file: File) => {
     const reader = new FileReader();
@@ -129,7 +137,7 @@ export function FileUploadZone({
 
   return (
     <div className="int-field">
-      <label className="int-label"><Icons.FileText /> {label}</label>
+      <label className="int-label" htmlFor={controlId}><Icons.FileText /> {label}</label>
       <div className="int-upload-wrapper">
         <div className="int-upload-toggle">
           <button type="button" className={`int-upload-toggle-btn ${mode === 'upload' ? 'int-upload-toggle-btn--active' : ''}`}
@@ -164,11 +172,12 @@ export function FileUploadZone({
                   <span style={{ fontSize: '0.625rem' }}>{accept}</span>
                 </div>
               )}
-              <input ref={inputRef} type="file" accept={accept} className="int-upload-input" onChange={handleInputChange} />
+              <input ref={inputRef} id={controlId} type="file" accept={accept} className="int-upload-input" onChange={handleInputChange} />
             </div>
           </>
         ) : (
           <textarea
+            id={controlId}
             className={`int-input int-textarea int-input--${provider}`}
             placeholder={hasSaved ? '✅ Já configurado. Deixe em branco para manter, ou cole um novo.' : placeholder}
             value={value} onChange={e => onChange(e.target.value)}

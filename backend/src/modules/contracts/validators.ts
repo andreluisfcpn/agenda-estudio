@@ -41,7 +41,9 @@ export const checkFixoSchema = z.object({
 
 export const selfContractSchema = z.object({
     name: z.string().min(1, 'Nome do projeto é obrigatório'),
-    type: z.nativeEnum(ContractType),
+    // O hire self-serve (ContractWizard) só suporta FIXO e FLEX — o fulfillment só gera bookings
+    // para esses dois. Aceitar SERVICO/CUSTOM/AVULSO aqui criava contrato pago sem sessões/créditos.
+    type: z.enum([ContractType.FIXO, ContractType.FLEX]),
     tier: z.nativeEnum(Tier),
     durationMonths: z.number().refine(v => v === 3 || v === 6, 'Duração deve ser 3 ou 6 meses'),
     firstBookingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de data inválido'),

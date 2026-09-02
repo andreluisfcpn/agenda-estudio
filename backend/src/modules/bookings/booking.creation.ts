@@ -12,6 +12,7 @@ import {
     generateTimeSlots,
     getPackageSlots,
     calculateEndTime,
+    getSlotDuration,
     fitsInOperatingHours,
     isOperatingDay,
     studioDateTime,
@@ -21,6 +22,7 @@ import { getConfig } from '../../lib/businessConfig.js';
 import { getErrorMessage } from '../../utils/errors.js';
 import { createBookingSchema, bulkBookingSchema, adminCreateBookingSchema } from './validators.js';
 import { CouponError, validateCoupon, reserveCouponUse, repointCouponRedemption, type CouponQuote } from '../../lib/couponService.js';
+import { hasBlockedConflict } from './booking.service.js';
 
 export function registerCreationRoutes(router: Router) {
 
@@ -156,9 +158,10 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
             couponQuote = await validateCoupon({ code: data.couponCode, userId, baseAmount: price });
         }
 
-        // Get all slots covered by the 2h package
-        const packageSlots = getPackageSlots(data.startTime);
-        const endTime = calculateEndTime(data.startTime);
+        // Duração do pacote da config (slot_duration_hours) — consistente com a disponibilidade.
+        const slotDur = await getSlotDuration();
+        const packageSlots = getPackageSlots(data.startTime, slotDur);
+        const endTime = calculateEndTime(data.startTime, slotDur);
 
         // Acquire Redis locks for all slots
         const locked = await acquireMultiSlotLock(data.date, packageSlots, userId);
@@ -195,6 +198,13 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
             if (conflicting) {
                 await releaseMultiSlotLock(data.date, packageSlots, userId);
                 res.status(409).json({ error: 'Horário já reservado. Escolha outro.' });
+                return;
+            }
+
+            // Revalida bloqueios do admin no momento da reserva (a disponibilidade só os esconde na UI).
+            if (await hasBlockedConflict(dateObj, packageSlots)) {
+                await releaseMultiSlotLock(data.date, packageSlots, userId);
+                res.status(409).json({ error: 'Este horário está bloqueado (indisponível). Escolha outro.' });
                 return;
             }
 
@@ -597,10 +607,11 @@ router.post('/bulk', authenticate, async (req: Request, res: Response) => {
             return;
         }
 
-        const validBookings = [];
+        const validBookings: Prisma.BookingCreateManyInput[] = [];
         const locksAcquired: { date: string; slots: string[] }[] = [];
         const isAdmin = req.user!.role === 'ADMIN';
         const bulkMinHours = await getConfig('booking_min_advance_hours');
+        const bulkSlotDur = await getSlotDuration(); // duração do pacote da config (consistente c/ disponibilidade)
 
         try {
             for (const slot of data.slots) {
@@ -623,8 +634,8 @@ router.post('/bulk', authenticate, async (req: Request, res: Response) => {
                     throw new Error(`Seu plano ${contract.tier} não engloba o horário ${slot.startTime} (${slotTier}).`);
                 }
 
-                const packageSlots = getPackageSlots(slot.startTime);
-                const endTime = calculateEndTime(slot.startTime);
+                const packageSlots = getPackageSlots(slot.startTime, bulkSlotDur);
+                const endTime = calculateEndTime(slot.startTime, bulkSlotDur);
 
                 const locked = await acquireMultiSlotLock(slot.date, packageSlots, userId);
                 if (!locked) throw new Error(`Horário ${slot.startTime} no dia ${slot.date} já está sendo reservado. Tente novamente.`);
@@ -637,6 +648,7 @@ router.post('/bulk', authenticate, async (req: Request, res: Response) => {
                     }
                 });
                 if (conflicting) throw new Error(`Conflito na grade para o dia ${slot.date} às ${slot.startTime}.`);
+                if (await hasBlockedConflict(dateObj, packageSlots)) throw new Error(`O dia ${slot.date} às ${slot.startTime} está bloqueado (indisponível).`);
 
                 let price = applyDiscount(await getBasePriceDynamic(slotTier), contract.discountPct);
 
@@ -647,13 +659,19 @@ router.post('/bulk', authenticate, async (req: Request, res: Response) => {
                 });
             }
 
-            await prisma.$transaction([
-                prisma.booking.createMany({ data: validBookings }),
-                prisma.contract.update({
-                    where: { id: contract.id },
-                    data: { flexCreditsRemaining: contract.flexCreditsRemaining! - validBookings.length }
-                })
-            ]);
+            // FIX (C6): decremento ATÔMICO guardado (evita lost update entre /bulk concorrentes que
+            // furava o saldo de créditos). O guard gte re-avaliado pelo banco no commit; se outra
+            // transação consumiu os créditos, count===0 → throw → rollback (nenhum booking criado).
+            await prisma.$transaction(async (tx) => {
+                const dec = await tx.contract.updateMany({
+                    where: { id: contract.id, flexCreditsRemaining: { gte: validBookings.length } },
+                    data: { flexCreditsRemaining: { decrement: validBookings.length } },
+                });
+                if (dec.count === 0) {
+                    throw new Error('Saldo de créditos insuficiente (outra reserva consumiu os créditos). Tente novamente.');
+                }
+                await tx.booking.createMany({ data: validBookings });
+            });
 
             res.status(201).json({ message: `${validBookings.length} gravações agendadas com sucesso!` });
         } catch (err: unknown) {
@@ -697,7 +715,8 @@ router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res
             return;
         }
 
-        const endTime = calculateEndTime(data.startTime);
+        const adminSlotDur = await getSlotDuration();
+        const endTime = calculateEndTime(data.startTime, adminSlotDur);
         const basePrice = await getBasePriceDynamic(slotTier);
 
         // Resolve the linked contract once — used for the base discount AND the add-on
@@ -742,8 +761,16 @@ router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res
             adminCouponQuote = await validateCoupon({ code: data.couponCode, userId: data.userId, baseAmount: price });
         }
 
-        // Check for conflicts
-        const packageSlots = getPackageSlots(data.startTime);
+        // Check for conflicts. FIX (B3): tranca o slot durante a checagem+escrita (mesmo lock do
+        // POST /) para evitar TOCTOU/double-booking entre admin-create e reserva de cliente concorrentes.
+        // O lock tem TTL, então um erro entre acquire e o release final se auto-cura.
+        const packageSlots = getPackageSlots(data.startTime, adminSlotDur);
+        const adminLockOwner = req.user!.userId;
+        const adminLocked = await acquireMultiSlotLock(data.date, packageSlots, adminLockOwner);
+        if (!adminLocked) {
+            res.status(409).json({ error: 'Este horário está sendo reservado. Tente novamente em instantes.' });
+            return;
+        }
         const conflicting = await prisma.booking.findFirst({
             where: {
                 date: dateObj,
@@ -756,7 +783,15 @@ router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res
         });
 
         if (conflicting) {
+            await releaseMultiSlotLock(data.date, packageSlots, adminLockOwner);
             res.status(409).json({ error: 'Horário já reservado.' });
+            return;
+        }
+
+        // Não agendar por cima de um horário bloqueado (manutenção). Se for intencional, remova o bloqueio antes.
+        if (await hasBlockedConflict(dateObj, packageSlots)) {
+            await releaseMultiSlotLock(data.date, packageSlots, adminLockOwner);
+            res.status(409).json({ error: 'Este horário está bloqueado. Remova o bloqueio antes de agendar aqui.' });
             return;
         }
 
@@ -798,6 +833,9 @@ router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res
                 ...(data.adminNotes ? { adminNotes: data.adminNotes } : {}),
             },
         });
+
+        // Slot já ocupado pela linha do booking — pode liberar o lock (o resto é pagamento/notif).
+        await releaseMultiSlotLock(data.date, packageSlots, adminLockOwner);
 
         // Create Payment record for admin bookings (visible in financial reports)
         let createdPaymentId: string | null = null;

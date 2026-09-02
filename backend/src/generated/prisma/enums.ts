@@ -64,7 +64,8 @@ export type ContractStatus = (typeof ContractStatus)[keyof typeof ContractStatus
 
 export const PaymentProvider = {
   STRIPE: 'STRIPE',
-  CORA: 'CORA'
+  CORA: 'CORA',
+  SICOOB: 'SICOOB'
 } as const
 
 export type PaymentProvider = (typeof PaymentProvider)[keyof typeof PaymentProvider]

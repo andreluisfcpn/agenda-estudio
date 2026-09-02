@@ -9,6 +9,15 @@ export function maskCoraCredentials(creds: Record<string, any>): Record<string, 
     return masked;
 }
 
+export function maskSicoobCredentials(creds: Record<string, any>): Record<string, any> {
+    const masked = { ...creds };
+    if (masked.clientId) masked.clientId = maskString(masked.clientId);
+    if (masked.certificatePem) masked.certificatePem = '***CERTIFICATE_CONFIGURED***';
+    if (masked.privateKeyPem) masked.privateKeyPem = '***PRIVATE_KEY_CONFIGURED***';
+    // pixKey fica visível (não é segredo) para o admin conferir a chave do recebedor.
+    return masked;
+}
+
 export function maskStripeCredentials(creds: Record<string, any>): Record<string, any> {
     const masked = { ...creds };
     if (masked.secretKey) masked.secretKey = maskString(masked.secretKey);
@@ -29,6 +38,18 @@ export function maskConfig(provider: string, config: Record<string, any>): Recor
             masked.production = maskCoraCredentials(masked.production);
         }
         // Legacy flat format (backward-compat)
+        if (masked.clientId) masked.clientId = maskString(masked.clientId);
+        if (masked.certificatePem) masked.certificatePem = '***CERTIFICATE_CONFIGURED***';
+        if (masked.privateKeyPem) masked.privateKeyPem = '***PRIVATE_KEY_CONFIGURED***';
+    }
+
+    if (provider === 'SICOOB') {
+        if (masked.sandbox && typeof masked.sandbox === 'object') {
+            masked.sandbox = maskSicoobCredentials(masked.sandbox);
+        }
+        if (masked.production && typeof masked.production === 'object') {
+            masked.production = maskSicoobCredentials(masked.production);
+        }
         if (masked.clientId) masked.clientId = maskString(masked.clientId);
         if (masked.certificatePem) masked.certificatePem = '***CERTIFICATE_CONFIGURED***';
         if (masked.privateKeyPem) masked.privateKeyPem = '***PRIVATE_KEY_CONFIGURED***';

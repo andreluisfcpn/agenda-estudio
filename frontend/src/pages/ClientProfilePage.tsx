@@ -15,6 +15,7 @@ export default function ClientProfilePage() {
     const navigate = useNavigate();
     const [user, setUser] = useState<UserDetail | null>(null);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState(false);
     const [notes, setNotes] = useState('');
     const [notesSaving, setNotesSaving] = useState(false);
     const [notesSaved, setNotesSaved] = useState(false);
@@ -38,12 +39,13 @@ export default function ClientProfilePage() {
     // desmontar/reinicializar os editores e perder edição em andamento).
     const loadUser = async (silent = false) => {
         if (!silent) setLoading(true);
+        setLoadError(false);
         try {
             const res = await usersApi.getById(id!);
             setUser(res.user);
             setNotes(res.user.notes || '');
             usersApi.paymentOverview(id!).then(setPayOverview).catch(() => setPayOverview(null));
-        } catch (err) { console.error(err); }
+        } catch (err) { console.error(err); setLoadError(true); }
         finally { if (!silent) setLoading(false); }
     };
 
@@ -67,6 +69,14 @@ export default function ClientProfilePage() {
     };
 
     if (loading) return <div><HeroSkeleton /><TableSkeleton rows={4} cols={3} /></div>;
+    // U4: distinguish a load failure from a genuinely missing user — a network error must not
+    // read as "Usuário não encontrado" (which implies the client was deleted).
+    if (loadError && !user) return (
+        <div className="card"><div className="empty-state" role="alert">
+            <div className="empty-state-text">Não foi possível carregar o perfil do cliente.</div>
+            <button className="btn btn-primary btn-sm" style={{ marginTop: 10 }} onClick={() => loadUser()}>Tentar novamente</button>
+        </div></div>
+    );
     if (!user) return <div className="card"><div className="empty-state"><div className="empty-state-text">Usuário não encontrado</div></div></div>;
 
     return (

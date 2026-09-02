@@ -59,6 +59,15 @@
   opacity: 0.85;
 }
 
+/* Fallback textual caso o SVG do logo falhe ao carregar */
+.topbar-brand-fallback {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--text-primary, #fff);
+  white-space: nowrap;
+}
+
 /* ─── Right: Actions ─── */
 .topbar-right {
   display: flex;
@@ -121,11 +130,9 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: linear-gradient(
-    135deg,
-    var(--accent-primary),
-    var(--accent-secondary, #0e6b7a)
-  );
+  /* teal → teal-escuro (sólido). NÃO usar --accent-secondary aqui: ele é quase branco
+     (#F4F9FA), o que desbotava metade do avatar e sumia com as iniciais brancas. */
+  background: linear-gradient(135deg, var(--accent-primary), #0e6b7a);
   display: flex;
   align-items: center;
   justify-content: center;

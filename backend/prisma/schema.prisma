@@ -50,6 +50,7 @@ enum ContractStatus {
 enum PaymentProvider {
   STRIPE
   CORA
+  SICOOB
 }
 
 enum PaymentStatus {

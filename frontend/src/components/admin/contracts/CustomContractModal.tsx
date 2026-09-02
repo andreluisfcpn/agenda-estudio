@@ -1,5 +1,5 @@
 import { getErrorMessage } from '../../../utils/errors';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { contractsApi, pricingApi, UserSummary, PricingConfig, AddOnConfig, CouponValidation } from '../../../api/client';
 import BottomSheetModal from '../../BottomSheetModal';
 import WizardSteps from '../WizardSteps';
@@ -20,6 +20,7 @@ interface CustomContractModalProps {
 }
 
 export default function CustomContractModal({ isOpen, onClose, onCreated, users, pricing }: CustomContractModalProps) {
+    const uid = useId();
     const [customStep, setCustomStep] = useState<1 | 2 | 3 | 4>(1);
     const [customForm, setCustomForm] = useState({
         userId: '', name: '', tier: 'COMERCIAL' as string,
@@ -267,10 +268,10 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
 
                             {/* Client selector */}
                             <div style={{ marginBottom: '12px' }}>
-                                <label style={cusLabelStyle}>Cliente *</label>
+                                <label style={cusLabelStyle} htmlFor={`${uid}-userId`}>Cliente *</label>
                                 <div style={{ position: 'relative' }}>
                                     <UserRound size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
-                                    <select value={customForm.userId} onChange={e => setCustomForm(f => ({ ...f, userId: e.target.value }))}
+                                    <select id={`${uid}-userId`} value={customForm.userId} onChange={e => setCustomForm(f => ({ ...f, userId: e.target.value }))}
                                         style={{ ...cusInputStyle(), appearance: 'none', cursor: 'pointer', paddingRight: '32px', background: `var(--bg-elevated) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23888' stroke-width='1.5' fill='none'/%3E%3C/svg%3E") right 12px center no-repeat` }}>
                                         <option value="">Selecione um cliente...</option>
                                         {users.filter(u => u.role === 'CLIENTE').map(u => (
@@ -282,10 +283,10 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
 
                             {/* Contract name */}
                             <div style={{ marginBottom: '12px' }}>
-                                <label style={cusLabelStyle}>Nome do Contrato *</label>
+                                <label style={cusLabelStyle} htmlFor={`${uid}-name`}>Nome do Contrato *</label>
                                 <div style={{ position: 'relative' }}>
                                     <NotebookPen size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
-                                    <input value={customForm.name} onChange={e => setCustomForm(f => ({ ...f, name: e.target.value }))}
+                                    <input id={`${uid}-name`} value={customForm.name} onChange={e => setCustomForm(f => ({ ...f, name: e.target.value }))}
                                         placeholder='Ex: Podcast Verão 2x/semana' style={cusInputStyle()}
                                         onFocus={e => e.currentTarget.style.borderColor = '#2dd4bf'}
                                         onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
@@ -317,20 +318,20 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
                             {/* Duration + Start date */}
                             <div className="admin-grid-2" style={{ gap: '12px' }}>
                                 <div>
-                                    <label style={cusLabelStyle}>Duração (meses)</label>
+                                    <label style={cusLabelStyle} htmlFor={`${uid}-durationMonths`}>Duração (meses)</label>
                                     <div style={{ position: 'relative' }}>
                                         <Timer size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
-                                        <select value={customForm.durationMonths} onChange={e => setCustomForm(f => ({ ...f, durationMonths: Number(e.target.value) }))}
+                                        <select id={`${uid}-durationMonths`} value={customForm.durationMonths} onChange={e => setCustomForm(f => ({ ...f, durationMonths: Number(e.target.value) }))}
                                             style={{ ...cusInputStyle(), appearance: 'none', cursor: 'pointer', paddingRight: '32px', background: `var(--bg-elevated) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23888' stroke-width='1.5' fill='none'/%3E%3C/svg%3E") right 12px center no-repeat` }}>
                                             {[1, 2, 3, 4, 5, 6, 9, 12].map(m => (<option key={m} value={m}>{m} {m === 1 ? 'mês' : 'meses'}</option>))}
                                         </select>
                                     </div>
                                 </div>
                                 <div>
-                                    <label style={cusLabelStyle}>Data Início</label>
+                                    <label style={cusLabelStyle} htmlFor={`${uid}-startDate`}>Data Início</label>
                                     <div style={{ position: 'relative' }}>
                                         <CalendarDays size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
-                                        <input type="date" value={customForm.startDate} onChange={e => setCustomForm(f => ({ ...f, startDate: e.target.value }))}
+                                        <input id={`${uid}-startDate`} type="date" value={customForm.startDate} onChange={e => setCustomForm(f => ({ ...f, startDate: e.target.value }))}
                                             style={cusInputStyle()}
                                             onFocus={e => e.currentTarget.style.borderColor = '#2dd4bf'}
                                             onBlur={e => e.currentTarget.style.borderColor = 'var(--border-default)'}

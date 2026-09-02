@@ -1,5 +1,5 @@
 import { getErrorMessage } from '../../../utils/errors';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { pricingApi, PricingConfig, BusinessConfigItem } from '../../../api/client';
 import LoadingSpinner from '../../ui/LoadingSpinner';
 import SettingsSaveBar, { SettingsMessages } from './SettingsSaveBar';
@@ -19,6 +19,7 @@ const TIER_INFO: Record<string, { desc: string; color: string; bg: string }> = {
  * (read-only) so the discount preview matches the legacy behavior exactly.
  */
 export default function SettingsTiersSection() {
+    const uid = useId();
     const [pricing, setPricing] = useState<PricingConfig[]>([]);
     const [tierEdited, setTierEdited] = useState(false);
     const [configs, setConfigs] = useState<BusinessConfigItem[]>([]);
@@ -94,23 +95,23 @@ export default function SettingsTiersSection() {
                             </div>
 
                             <div className="form-group">
-                                <label className="form-label">Nome da Faixa</label>
-                                <input className="form-input" value={p.label} onChange={e => handleTierChange(p.tier, 'label', e.target.value)} />
+                                <label className="form-label" htmlFor={`${uid}-${p.tier}-label`}>Nome da Faixa</label>
+                                <input id={`${uid}-${p.tier}-label`} className="form-input" value={p.label} onChange={e => handleTierChange(p.tier, 'label', e.target.value)} />
                             </div>
 
                             <div className="form-group">
-                                <label className="form-label">Preço do Pacote 2h</label>
+                                <label className="form-label" htmlFor={`${uid}-${p.tier}-price`}>Preço do Pacote 2h</label>
                                 <div style={{ position: 'relative' }}>
                                     <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontWeight: 600 }}>R$</span>
-                                    <input className="form-input" style={{ paddingLeft: 40, fontSize: '1.25rem', fontWeight: 700 }}
+                                    <input id={`${uid}-${p.tier}-price`} className="form-input" style={{ paddingLeft: 40, fontSize: '1.25rem', fontWeight: 700 }}
                                         type="text" value={(p.price / 100).toFixed(2).replace('.', ',')}
                                         onChange={e => handleTierChange(p.tier, 'price', e.target.value)} />
                                 </div>
                             </div>
 
                             <div className="form-group">
-                                <label className="form-label">Descrição do Plano</label>
-                                <textarea className="form-input" style={{ minHeight: 80, resize: 'vertical', fontFamily: 'inherit', fontSize: '0.8125rem' }}
+                                <label className="form-label" htmlFor={`${uid}-${p.tier}-description`}>Descrição do Plano</label>
+                                <textarea id={`${uid}-${p.tier}-description`} className="form-input" style={{ minHeight: 80, resize: 'vertical', fontFamily: 'inherit', fontSize: '0.8125rem' }}
                                     placeholder="Descreva os benefícios deste plano..."
                                     value={p.description || ''} onChange={e => handleTierChange(p.tier, 'description', e.target.value)} />
                             </div>

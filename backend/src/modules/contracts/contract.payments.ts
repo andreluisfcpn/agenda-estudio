@@ -4,7 +4,7 @@ import { prisma } from '../../lib/prisma.js';
 import { authenticate } from '../../middleware/auth.js';
 import { getBasePriceDynamic, applyDiscount } from '../../utils/pricing.js';
 import { getConfig } from '../../lib/businessConfig.js';
-import { computeAddonsCost, serviceMonthlyBase } from '../../lib/contractPricing.js';
+import { computeAddonsCost, serviceMonthlyBase, computeMonthlyAmount } from '../../lib/contractPricing.js';
 import { validatePaymentMethod, PaymentMethodDisabledError } from '../../lib/paymentGateway.js';
 import { contractPaySchema, subscribeSchema, clientRenewSchema } from './validators.js';
 import { CouponError, validateCoupon, reserveCouponUse, releaseAndPurgeCouponsForPayments, type CouponQuote } from '../../lib/couponService.js';
@@ -68,15 +68,12 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
             orderBy: { createdAt: 'desc' },
         });
 
-        // Coupon: only when a NEW pending payment is being created — an existing pending
-        // (possibly with a Cora/Stripe artifact already issued) is never repriced.
+        // Coupon: only when a NEW pending payment is being created. ANY existing pending row
+        // is reused (C9: a pre-created installment 2..N, or one started under the other method) —
+        // its amount was locked when it was generated and is never repriced through /pay.
         let payCoupon: CouponQuote | null = null;
         if (data.couponCode) {
-            const willReuse = existingPending && (
-                (data.paymentMethod === 'PIX' && existingPending.provider === 'CORA' && existingPending.pixString) ||
-                (data.paymentMethod === 'CARTAO' && existingPending.provider === 'STRIPE' && existingPending.providerRef)
-            );
-            if (!willReuse) {
+            if (!existingPending) {
                 payCoupon = await validateCoupon({ code: data.couponCode, userId, baseAmount: monthlyAmount });
             }
         }
@@ -117,9 +114,9 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
         // ─── PIX: Cora ───────────────────────────────────────
         if (data.paymentMethod === 'PIX') {
             // If we already have a pending PIX payment with a pixString, return it
-            if (existingPending && existingPending.provider === 'CORA' && existingPending.pixString) {
+            if (existingPending && existingPending.pixString) {
                 res.json({
-                    provider: 'CORA',
+                    provider: existingPending.provider,
                     paymentId: existingPending.id,
                     pixString: existingPending.pixString,
                     amount: existingPending.amount,
@@ -128,10 +125,14 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
                 return;
             }
 
-            const { createCoraPayment } = await import('../../lib/coraPaymentHelper.js');
+            const { createPixPayment } = await import('../../lib/pixGateway.js');
 
-            // Create Payment record (+ atomic coupon reservation when present)
-            const payment = await prisma.$transaction(async (tx) => {
+            // C9: reuse the single pending row (a pre-created installment 2..N, or a pending
+            // started under the other method) instead of minting a duplicate charge. Its amount
+            // is the one locked at generation; only a brand-new row prices the coupon. A fresh
+            // Payment (+ atomic coupon reservation) is created ONLY when no pending exists.
+            const pixAmount = existingPending ? existingPending.amount : payChargeAmount;
+            const payment = existingPending ?? await prisma.$transaction(async (tx) => {
                 const p = await tx.payment.create({
                     data: {
                         userId,
@@ -155,9 +156,9 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
             });
 
             try {
-                const coraRes = await createCoraPayment({
+                const pixRes = await createPixPayment({
                     userId,
-                    amount: payChargeAmount,
+                    amount: pixAmount,
                     description: `PIX - Contrato "${contract.name}" - ${contract.tier}`,
                     withPixQrCode: true,
                     idempotencyKey: payment.id,
@@ -166,24 +167,28 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
                 await prisma.payment.update({
                     where: { id: payment.id },
                     data: {
-                        providerRef: coraRes.result.id,
-                        pixString: coraRes.pixString,
+                        providerRef: pixRes.result.id,
+                        provider: pixRes.provider,
+                        pixString: pixRes.pixString,
                     },
                 });
 
                 res.json({
-                    provider: 'CORA',
+                    provider: pixRes.provider,
                     paymentId: payment.id,
-                    pixString: coraRes.pixString,
-                    qrCodeBase64: coraRes.qrCodeBase64,
-                    amount: payChargeAmount,
+                    pixString: pixRes.pixString,
+                    qrCodeBase64: pixRes.qrCodeBase64,
+                    amount: pixAmount,
                     ...(payCoupon && { couponDiscount: payCoupon.discountAmount }),
                     message: 'QR Code PIX gerado. Escaneie para ativar o contrato.',
                 });
             } catch (e: unknown) {
-                // Cora failed — give the coupon use back and drop the unpayable row.
-                await releaseAndPurgeCouponsForPayments([payment.id]);
-                await prisma.payment.delete({ where: { id: payment.id } }).catch(() => {});
+                // Provider failed. Only purge a row WE just created — never delete a pre-existing
+                // installment we merely reused (that would erase a real debt).
+                if (!existingPending) {
+                    await releaseAndPurgeCouponsForPayments([payment.id]);
+                    await prisma.payment.delete({ where: { id: payment.id } }).catch(() => {});
+                }
                 const msg = e instanceof Error ? e.message : 'Erro ao gerar PIX.';
                 res.status(400).json({ error: msg });
             }
@@ -196,7 +201,6 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
         // (à-vista) plan, which is paid at contract creation — never through /pay.
         const installments = 1;
         const maxInstallments = 1;
-        const chargeAmount = payChargeAmount;
 
         const { stripeCreatePaymentIntent, stripeGetOrCreateCustomer, isStripeEnabled } = await import('../../lib/stripeService.js');
 
@@ -207,7 +211,7 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
 
         const customerId = await stripeGetOrCreateCustomer(userId);
 
-        // PAY-M1: Reuse existing pending Stripe payment if available
+        // PAY-M1: Reuse existing pending Stripe payment if it already carries a payable PI.
         if (existingPending && existingPending.provider === 'STRIPE' && existingPending.providerRef) {
             const { stripeGetPaymentIntent } = await import('../../lib/stripeService.js');
             try {
@@ -223,11 +227,14 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
                     });
                     return;
                 }
-            } catch { /* PI expired or invalid — create new one below */ }
+            } catch { /* PI expired or invalid — attach a fresh one to the same row below */ }
         }
 
-        // Create Payment record (+ atomic coupon reservation when present)
-        const payment = await prisma.$transaction(async (tx) => {
+        // C9: reuse the single pending row (a pre-created installment 2..N whose PI was never
+        // issued, a row whose PI expired, or one started under PIX) instead of minting a
+        // duplicate charge. Its recorded amount wins; only a brand-new row prices the coupon.
+        const chargeAmount = existingPending ? existingPending.amount : payChargeAmount;
+        const payment = existingPending ?? await prisma.$transaction(async (tx) => {
             const p = await tx.payment.create({
                 data: {
                     userId,
@@ -263,18 +270,22 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
                 installmentsEnabled: false,
             });
         } catch (err) {
-            // Stripe failed — release the coupon use, then delete the just-created PENDING
-            // row so retries don't accrue orphan payments.
-            await releaseAndPurgeCouponsForPayments([payment.id]);
-            await prisma.payment.delete({ where: { id: payment.id } }).catch(() => {});
+            // Stripe failed. Only purge a row WE just created; never delete a reused
+            // installment (that would erase a real debt). Retries stay idempotent.
+            if (!existingPending) {
+                await releaseAndPurgeCouponsForPayments([payment.id]);
+                await prisma.payment.delete({ where: { id: payment.id } }).catch(() => {});
+            }
             const msg = err instanceof Error ? err.message : 'Erro ao iniciar o pagamento com cartão. Tente novamente.';
             res.status(502).json({ error: msg });
             return;
         }
 
+        // Realign the (possibly reused) row to this fresh card PaymentIntent: STRIPE provider,
+        // the new PI ref, and drop any stale PIX QR carried over from an earlier method switch.
         await prisma.payment.update({
             where: { id: payment.id },
-            data: { providerRef: piResult.paymentIntentId },
+            data: { providerRef: piResult.paymentIntentId, provider: 'STRIPE', pixString: null },
         });
 
         res.json({
@@ -376,16 +387,13 @@ router.post('/:id/confirm-payment', authenticate, async (req: Request, res: Resp
         });
         if (paidPayment) {
             try {
-                const { fulfillContractFromPayment } = await import('../../lib/contractFulfillment.js');
-                await fulfillContractFromPayment(paidPayment.id);
-                // Renewals: the contract already exists (fulfillment is a no-op for it), so
-                // generate the FIXO bookings here. Idempotent — no-op if bookings exist or
-                // the contract isn't FIXO. Fixes client-renew producing a paid contract
-                // with zero scheduled sessions.
-                const { generateBookingsForRenewedContract } = await import('../../lib/paymentEffects.js');
-                await generateBookingsForRenewedContract(contractId);
+                // FIX (C10): usar a fonte ÚNICA de efeitos de confirmação (idempotente) — inclui
+                // fulfillment, bookings de renovação E generateRemainingInstallments (meses 2..N).
+                // Antes, confirmar por aqui não gerava as parcelas futuras (dependia do webhook).
+                const { onPaymentConfirmed } = await import('../../lib/paymentEffects.js');
+                await onPaymentConfirmed(paidPayment.id);
             } catch (fulfillErr) {
-                console.error('[CONTRACT-CONFIRM-PAYMENT] Fulfillment error (non-blocking):', fulfillErr);
+                console.error('[CONTRACT-CONFIRM-PAYMENT] Confirmation effects error (non-blocking):', fulfillErr);
             }
         }
 
@@ -430,31 +438,19 @@ router.post('/:id/subscribe', authenticate, async (req: Request, res: Response) 
 
         const duration = data.durationMonths || contract.durationMonths;
 
-        // Calculate amount based on pricing
-        const basePrice = await getBasePriceDynamic(contract.tier as any);
-        const amountBRL = applyDiscount(basePrice * 4, contract.discountPct); // monthly amount
-        
-        // Ensure discount is applied if duration is 3 or 6 months
-        let finalAmount = amountBRL;
-        if (duration === 3) {
-            const d3 = await getConfig('discount_3months');
-            finalAmount = applyDiscount(basePrice * 4, d3);
-        } else if (duration === 6) {
-            const d6 = await getConfig('discount_6months');
-            finalAmount = applyDiscount(basePrice * 4, d6);
-        }
-        
-        // Convert to cents — applyDiscount already returns cents, no extra multiplication
-        const amountCents = finalAmount;
+        // FIX (C3): mesma base mensal do /pay — sessions_per_month × tier-com-desconto + add-ons
+        // (e serviceMonthlyBase para SERVICO). Antes usava basePrice*4 fixo, sem add-ons e sem
+        // tratar SERVICO, subfaturando a assinatura recorrente todo mês.
+        const monthlyAmount = await computeMonthlyAmount(contract);
 
         const { stripeCreateSubscription } = await import('../../lib/stripeService.js');
-        
+
         // Create initial payment record
         const payment = await prisma.payment.create({
             data: {
                 userId,
                 contractId: contract.id,
-                amount: finalAmount,
+                amount: monthlyAmount,
                 provider: 'STRIPE',
                 status: 'PENDING',
                 dueDate: new Date(),
@@ -465,7 +461,7 @@ router.post('/:id/subscribe', authenticate, async (req: Request, res: Response) 
         const subResult = await stripeCreateSubscription({
             customerId: user.stripeCustomerId,
             paymentMethodId: data.paymentMethodId,
-            amount: amountCents,
+            amount: monthlyAmount,
             contractId: contract.id,
             userId: user.id,
             paymentId: payment.id,
@@ -579,7 +575,11 @@ router.post('/:id/client-renew', authenticate, async (req: Request, res: Respons
         const end = new Date(start);
         end.setMonth(end.getMonth() + data.durationMonths);
 
-        const flexCreditsTotal = original.type === 'FLEX' ? data.durationMonths * 4 : undefined;
+        // FIX (C7): créditos FLEX vêm da config episodes_Nmonths (igual à criação/fulfillment),
+        // não durationMonths*4 — senão a renovação entrega menos episódios do que foi vendido.
+        const flexCreditsTotal = original.type === 'FLEX'
+            ? await getConfig(data.durationMonths === 6 ? 'episodes_6months' : 'episodes_3months')
+            : undefined;
 
         // Create the new contract as AWAITING_PAYMENT
         const pDeadline = new Date();

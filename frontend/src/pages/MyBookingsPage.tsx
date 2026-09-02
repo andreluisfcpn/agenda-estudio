@@ -19,6 +19,7 @@ export default function MyBookingsPage() {
     const [bookings, setBookings] = useState<Booking[]>([]);
     const [addons, setAddons] = useState<AddOnConfig[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState(false);
     const [detail, setDetail] = useState<Booking | null>(null);
 
     useEffect(() => { loadBookings(); }, []);
@@ -28,10 +29,11 @@ export default function MyBookingsPage() {
 
     const loadBookings = async () => {
         setLoading(true);
+        setLoadError(false);
         try {
             const { bookings } = await bookingsApi.getMy();
             setBookings(bookings);
-        } catch (err) { console.error('Failed to load bookings:', err); }
+        } catch (err) { console.error('Failed to load bookings:', err); setLoadError(true); }
         finally { setLoading(false); }
     };
 
@@ -93,7 +95,13 @@ export default function MyBookingsPage() {
             )}
 
             {/* Recordings — shared draggable poster gallery (finger + mouse) */}
-            {!loading && finalized.length === 0 ? (
+            {!loading && loadError && bookings.length === 0 ? (
+                <div className="client-empty animate-card-enter">
+                    <Clapperboard size={32} className="client-empty__icon" />
+                    <div className="client-empty__text">Não foi possível carregar suas gravações.</div>
+                    <button className="btn btn-primary btn-sm" style={{ marginTop: 10 }} onClick={loadBookings}>Tentar novamente</button>
+                </div>
+            ) : !loading && finalized.length === 0 ? (
                 <div className="client-empty animate-card-enter">
                     <Clapperboard size={32} className="client-empty__icon" />
                     <div className="client-empty__text">Nenhuma gravação realizada ainda.</div>

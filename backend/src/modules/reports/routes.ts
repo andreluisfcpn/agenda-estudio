@@ -60,7 +60,9 @@ router.get('/occupancy', authenticate, authorize('ADMIN'), async (req: Request, 
         let totalDays = 0;
         const dayCounts = [0, 0, 0, 0, 0, 0, 0]; // Sun-Sat
         const d = new Date(fromDate);
-        while (d <= toDate) {
+        // toDate = lte = (to + 1 dia às 00:00) para a query de bookings ser inclusiva de `to`.
+        // Aqui o limite é EXCLUSIVO para não contar esse dia extra no denominador de ocupação.
+        while (d < toDate) {
             if (d.getDay() !== 0) { totalDays++; dayCounts[d.getDay()]++; }
             d.setDate(d.getDate() + 1);
         }
@@ -90,10 +92,11 @@ router.get('/occupancy', authenticate, authorize('ADMIN'), async (req: Request, 
         const dowCounts = [0, 0, 0, 0, 0, 0, 0];
         bookings.forEach(b => { dowCounts[new Date(b.date).getDay()]++; });
 
+        const slotsPerDay = SLOTS.length; // nº real de horários (time_slots), não fixo em 5
         const dayOccupancy = [1, 2, 3, 4, 5, 6].map(i => ({
             day: DAYS[i], count: dowCounts[i],
-            total: dayCounts[i] * 5, // 5 slots per day
-            pct: (dayCounts[i] * 5) > 0 ? Math.round((dowCounts[i] / (dayCounts[i] * 5)) * 100) : 0,
+            total: dayCounts[i] * slotsPerDay,
+            pct: (dayCounts[i] * slotsPerDay) > 0 ? Math.round((dowCounts[i] / (dayCounts[i] * slotsPerDay)) * 100) : 0,
         }));
 
         res.json({ slotOccupancy, dayOccupancy });

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { notificationsAdminApi, usersApi, UserSummary, BroadcastBatch } from '../../../api/client';
 import { useUI } from '../../../context/UIContext';
 import { getErrorMessage } from '../../../utils/errors';
@@ -8,6 +8,7 @@ import { Megaphone, Send, Search, Users, User as UserIcon } from 'lucide-react';
 type Target = 'all' | 'specific';
 
 export default function BroadcastComposer() {
+    const uid = useId();
     const { showToast, showConfirm } = useUI();
     const [title, setTitle] = useState('');
     const [message, setMessage] = useState('');
@@ -74,12 +75,12 @@ export default function BroadcastComposer() {
                 </h3>
 
                 <div className="form-group">
-                    <label className="form-label">Título</label>
-                    <input className="form-input" value={title} onChange={e => setTitle(e.target.value)} maxLength={120} placeholder="Ex.: Fechamento no feriado" />
+                    <label className="form-label" htmlFor={`${uid}-titulo`}>Título</label>
+                    <input id={`${uid}-titulo`} className="form-input" value={title} onChange={e => setTitle(e.target.value)} maxLength={120} placeholder="Ex.: Fechamento no feriado" />
                 </div>
                 <div className="form-group">
-                    <label className="form-label">Mensagem</label>
-                    <textarea className="form-input" rows={3} value={message} onChange={e => setMessage(e.target.value)} maxLength={1000} style={{ resize: 'vertical' }} placeholder="Escreva o aviso…" />
+                    <label className="form-label" htmlFor={`${uid}-mensagem`}>Mensagem</label>
+                    <textarea id={`${uid}-mensagem`} className="form-input" rows={3} value={message} onChange={e => setMessage(e.target.value)} maxLength={1000} style={{ resize: 'vertical' }} placeholder="Escreva o aviso…" />
                 </div>
 
                 <div className="form-group">

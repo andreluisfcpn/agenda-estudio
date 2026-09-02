@@ -54,6 +54,7 @@ export default function CalendarPage() {
     const [bookingsMap, setBookingsMap] = useState<Record<string, BookingWithUser[]>>({});
     const [myBookingsMap, setMyBookingsMap] = useState<Record<string, MyBookingSlot[]>>({});
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState(false);
     const [isFetchingWeek, setIsFetchingWeek] = useState(false);
     // Crossfade state for slot cards (4-phase: visible → out → out_done → in)
     const [slotsPhase, setSlotsPhase] = useState<'visible' | 'out' | 'out_done' | 'in'>('visible');
@@ -115,6 +116,7 @@ export default function CalendarPage() {
 
     const loadWeekData = useCallback(async (dates: Date[]) => {
         setIsFetchingWeek(true);
+        setLoadError(false);
         try {
             const results = await Promise.all(
                 dates.map(d => bookingsApi.getAvailability(formatDate(d)))
@@ -139,9 +141,9 @@ export default function CalendarPage() {
                 });
                 setBookingsMap(prev => ({ ...prev, ...newBookingsMap }));
             }
-        } catch (err) { console.error('Failed to load calendar data:', err); }
-        finally { 
-            setLoading(false); 
+        } catch (err) { console.error('Failed to load calendar data:', err); setLoadError(true); }
+        finally {
+            setLoading(false);
             setIsFetchingWeek(false);
         }
     }, [isAdmin]);
@@ -450,6 +452,20 @@ export default function CalendarPage() {
 
             {/* ─── TAB CONTENT WRAPPER ─── */}
             <div className="view-transition-wrapper">
+                {/* U4: a failed week load must not masquerade as an empty/fully-available agenda. */}
+                {!loading && loadError && (
+                    <div className="client-empty animate-card-enter" style={{ marginBottom: 16 }} role="alert">
+                        <CalendarDays size={32} className="client-empty__icon" />
+                        <div className="client-empty__text">Não foi possível carregar a agenda desta semana.</div>
+                        <button
+                            className="btn btn-primary btn-sm"
+                            style={{ marginTop: 10 }}
+                            onClick={() => loadWeekData(weekDates)}
+                        >
+                            Tentar novamente
+                        </button>
+                    </div>
+                )}
                 {(!isAdmin && activeTab === 'agendados') ? (
                     // ─── UPCOMING BOOKINGS TAB (client only) ───
                     <div key="agendados" className="fade-in-view">

@@ -148,6 +148,7 @@ export default function MyPaymentsPage() {
     const [autoCharge, setAutoCharge] = useState(false);
     const [contracts, setContracts] = useState<ContractWithStats[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState(false);
 
     const [showAddCard, setShowAddCard] = useState(false);
     const [setupSecret, setSetupSecret] = useState<string | null>(null);
@@ -162,6 +163,7 @@ export default function MyPaymentsPage() {
 
     // ─── Data Loading ─────────────────────────────────────
     const loadData = useCallback(async () => {
+        setLoadError(false);
         try {
             const [cardsRes, contractsRes] = await Promise.all([
                 stripeApi.listPaymentMethods().catch(() => ({ paymentMethods: [], autoChargeEnabled: false })),
@@ -172,6 +174,9 @@ export default function MyPaymentsPage() {
             setContracts(contractsRes.contracts);
         } catch (err: unknown) {
             showToast({ message: getErrorMessage(err) || 'Erro ao carregar dados.', type: 'error' });
+            // Marca erro persistente: sem isto a página mostrava "Tudo em dia" (lista vazia por falha)
+            // mesmo com faturas em aberto — o cliente poderia deixar de pagar uma cobrança vencida.
+            setLoadError(true);
         } finally {
             setLoading(false);
         }
@@ -325,6 +330,15 @@ export default function MyPaymentsPage() {
 
     if (loading && contracts.length === 0) {
         return <PaymentsSkeleton />;
+    }
+
+    if (loadError && contracts.length === 0) {
+        return (
+            <div style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--text-secondary)' }}>
+                <p style={{ marginBottom: 16 }}>Não foi possível carregar seus pagamentos. Verifique sua conexão.</p>
+                <button className="btn btn-primary" onClick={() => { setLoading(true); loadData(); }}>Tentar novamente</button>
+            </div>
+        );
     }
 
     return (

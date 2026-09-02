@@ -1,5 +1,5 @@
 import { getErrorMessage } from '../utils/errors';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useId } from 'react';
 import BottomSheetModal from './BottomSheetModal';
 import { PricingConfig, AddOnConfig, bookingsApi, contractsApi, Slot, pricingApi, stripeApi, authApi, ApiError, type CouponValidation } from '../api/client';
 import CouponField from './CouponField';
@@ -34,6 +34,7 @@ const MONTH_NAMES_SHORT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago
 
 export default function ContractWizard({ pricing, onClose, onComplete, onOpenCustom }: ContractWizardProps) {
     const { user, updateUser } = useAuth();
+    const uid = useId();
     const [step, setStep] = useState<WizardStep>(1);
     // PIX needs a CPF/CNPJ — gate the contract creation when it's missing.
     const [showCpfPrompt, setShowCpfPrompt] = useState(false);
@@ -112,6 +113,12 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
     const sessionsPerMonth = getRule('sessions_per_month');
     const discountedPrice = Math.round(basePrice * (1 - discountPct / 100));
     const totalGravacoes = duration * sessionsPerMonth;
+    // Step 1 (cards de plano): derivar da config, não hardcodar 30/40/0.7/0.6/12/24 — senão o
+    // desconto/episódios anunciados divergem do cobrado no Step 4 e no backend quando o admin muda a config.
+    const disc3 = getRule('discount_3months');
+    const disc6 = getRule('discount_6months');
+    const ep3 = getRule('episodes_3months');
+    const ep6 = getRule('episodes_6months');
 
     // Per-episode services accompany every recording → × sessions/month; monthly
     // services (e.g. GESTAO_SOCIAL) stay flat. Mirrors backend computeAddonsCost.
@@ -173,6 +180,10 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                 }
             } catch { /* offline/expirado — cai no prompt normalmente */ }
             pendingResolutions.current = resolutions;
+            // Libera o estado de "enviando": o prompt de CPF é uma pausa interativa, não um
+            // submit em andamento. Sem isto, submitting fica preso em true e o BottomSheetModal
+            // (preventClose={submitting}) trava o fechamento se o usuário cancelar o prompt.
+            setSubmitting(false);
             setShowCpfPrompt(true);
             return;
         }
@@ -282,7 +293,7 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                             <CpfCnpjPrompt
                                 saveLabel="Salvar e continuar"
                                 onSaved={() => { setShowCpfPrompt(false); executeCreation(pendingResolutions.current, true); }}
-                                onCancel={() => setShowCpfPrompt(false)}
+                                onCancel={() => { setShowCpfPrompt(false); setSubmitting(false); }}
                             />
                         </div>
                     </div>
@@ -409,8 +420,8 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                         <h3 className="wizard-step__title">1. Escolha seu Plano</h3>
 
                         <div className="form-group" style={{ marginBottom: 20 }}>
-                            <label className="form-label">Nome do Projeto (Obrigatório)</label>
-                            <input className="form-input" type="text" value={contractName}
+                            <label className="form-label" htmlFor={`${uid}-contract-name`}>Nome do Projeto (Obrigatório)</label>
+                            <input id={`${uid}-contract-name`} className="form-input" type="text" value={contractName}
                                 onChange={e => setContractName(e.target.value)}
                                 placeholder="Ex: Podcast de Tecnologia, Cliente VIP" />
                         </div>
@@ -443,12 +454,12 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                             {/* 3 Meses Card */}
                             <div className={`wizard-price-card ${selectedPlan === '3MESES' ? 'wizard-price-card--selected' : ''}`}
                                 onClick={() => setSelectedPlan('3MESES')}>
-                                <div className="wizard-price-card__badge" style={{ background: 'var(--tier-comercial)' }}>-30%</div>
+                                <div className="wizard-price-card__badge" style={{ background: 'var(--tier-comercial)' }}>-{disc3}%</div>
                                 <div>
                                     <div className="wizard-price-card__label">Fidelidade 3 Meses</div>
                                     <div className="wizard-price-card__original">{formatBRL(basePrice)}</div>
-                                    <div className="wizard-price-card__price">{formatBRL(Math.round(basePrice * 0.7))}</div>
-                                    <div className="wizard-price-card__per">por sessão · 12 gravações</div>
+                                    <div className="wizard-price-card__price">{formatBRL(Math.round(basePrice * (1 - disc3 / 100)))}</div>
+                                    <div className="wizard-price-card__per">por sessão · {ep3} gravações</div>
                                 </div>
                                 <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 12, opacity: selectedPlan === '3MESES' ? 1 : 0.7 }}>
                                     {selectedPlan === '3MESES' ? '✓ Selecionado' : 'Selecionar'}
@@ -458,12 +469,12 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                             {/* 6 Meses Card */}
                             <div className={`wizard-price-card ${selectedPlan === '6MESES' ? 'wizard-price-card--selected' : ''}`}
                                 onClick={() => setSelectedPlan('6MESES')}>
-                                <div className="wizard-price-card__badge" style={{ background: 'var(--accent-primary)' }}>MELHOR PREÇO -40%</div>
+                                <div className="wizard-price-card__badge" style={{ background: 'var(--accent-primary)' }}>MELHOR PREÇO -{disc6}%</div>
                                 <div>
                                     <div className="wizard-price-card__label">Fidelidade 6 Meses</div>
                                     <div className="wizard-price-card__original">{formatBRL(basePrice)}</div>
-                                    <div className="wizard-price-card__price">{formatBRL(Math.round(basePrice * 0.6))}</div>
-                                    <div className="wizard-price-card__per">por sessão · 24 gravações</div>
+                                    <div className="wizard-price-card__price">{formatBRL(Math.round(basePrice * (1 - disc6 / 100)))}</div>
+                                    <div className="wizard-price-card__per">por sessão · {ep6} gravações</div>
                                 </div>
                                 <button className="btn btn-primary btn-sm" style={{ width: '100%', marginTop: 12, opacity: selectedPlan === '6MESES' ? 1 : 0.7 }}>
                                     {selectedPlan === '6MESES' ? '✓ Selecionado' : 'Selecionar'}
@@ -761,7 +772,7 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                                     </div>
                                 </div>
                                 <div className="wizard-receipt__item-price">
-                                    <span>{formatBRL(discountedPrice * 4)}</span>
+                                    <span>{formatBRL(discountedPrice * sessionsPerMonth)}</span>
                                     <span className="wizard-receipt__item-per">/mês</span>
                                 </div>
                             </div>

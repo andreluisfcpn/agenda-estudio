@@ -1,5 +1,5 @@
 import { getErrorMessage } from '../../../utils/errors';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { pricingApi, PaymentMethodConfigItem } from '../../../api/client';
 import { setPaymentMethods as setCachedPaymentMethods } from '../../../constants/paymentMethods';
 import LoadingSpinner from '../../ui/LoadingSpinner';
@@ -16,6 +16,7 @@ import { CreditCard, Check } from 'lucide-react';
  * payment-methods cache so the rest of the app reflects changes immediately.
  */
 export default function SettingsPaymentMethodsSection() {
+    const uid = useId();
     const [paymentMethods, setPaymentMethods] = useState<PaymentMethodConfigItem[]>([]);
     const [pmEdited, setPmEdited] = useState(false);
 
@@ -139,13 +140,13 @@ export default function SettingsPaymentMethodsSection() {
                         {/* Fields */}
                         <div className="admin-grid-2" style={{ gap: '12px' }}>
                             <div className="form-group" style={{ marginBottom: 0 }}>
-                                <label className="form-label">Nome Completo</label>
-                                <input className="form-input" value={pm.label}
+                                <label className="form-label" htmlFor={`${uid}-${pm.key}-fullname`}>Nome Completo</label>
+                                <input id={`${uid}-${pm.key}-fullname`} className="form-input" value={pm.label}
                                     onChange={e => handlePmChange(pm.key, 'label', e.target.value)} />
                             </div>
                             <div className="form-group" style={{ marginBottom: 0 }}>
-                                <label className="form-label">Nome Curto</label>
-                                <input className="form-input" value={pm.shortLabel}
+                                <label className="form-label" htmlFor={`${uid}-${pm.key}-shortname`}>Nome Curto</label>
+                                <input id={`${uid}-${pm.key}-shortname`} className="form-input" value={pm.shortLabel}
                                     onChange={e => handlePmChange(pm.key, 'shortLabel', e.target.value)} />
                             </div>
                         </div>
@@ -157,8 +158,8 @@ export default function SettingsPaymentMethodsSection() {
                                 <EmojiField value={pm.emoji} onChange={v => handlePmChange(pm.key, 'emoji', v)} />
                             </div>
                             <div className="form-group" style={{ marginBottom: 0 }}>
-                                <label className="form-label">Descrição</label>
-                                <input className="form-input" value={pm.description}
+                                <label className="form-label" htmlFor={`${uid}-${pm.key}-description`}>Descrição</label>
+                                <input id={`${uid}-${pm.key}-description`} className="form-input" value={pm.description}
                                     onChange={e => handlePmChange(pm.key, 'description', e.target.value)} />
                             </div>
                         </div>

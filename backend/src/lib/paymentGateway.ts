@@ -4,6 +4,8 @@
 // Falls back to mock data when integrations are not configured.
 
 import { coraCreateBoleto, isCoraEnabled, type CoraBoletoPayload } from './coraService.js';
+import { sicoobCreatePix } from './sicoobService.js';
+import { resolvePixProvider, toSicoobTxid } from './pixGateway.js';
 import { stripeCreatePaymentIntent, stripeGetOrCreateCustomer, isStripeEnabled } from './stripeService.js';
 import { prisma } from './prisma.js';
 import { cleanDocument, isValidCpfCnpj } from '../utils/document.js';
@@ -47,9 +49,11 @@ function resolveCoraInputs(opts: CreatePaymentOpts): { doc: { identity: string; 
 // Fixed mapping: which provider handles which payment method.
 // This is the SINGLE SOURCE OF TRUTH for the entire system.
 
-export const PROVIDER_MAP: Record<string, 'STRIPE' | 'CORA'> = {
+export const PROVIDER_MAP: Record<string, 'STRIPE' | 'CORA' | 'SICOOB'> = {
     CARTAO: 'STRIPE',
-    PIX: 'CORA',
+    // PIX é DINÂMICO: atendido por SICOOB ou CORA conforme o que o admin habilitar
+    // (ver resolvePixProvider / getAvailablePaymentMethods). 'SICOOB' aqui é só o padrão.
+    PIX: 'SICOOB',
     BOLETO: 'CORA',
 };
 
@@ -73,7 +77,12 @@ export async function getAvailablePaymentMethods() {
     );
 
     return methods.filter(m => {
-        const provider = PROVIDER_MAP[m.key];
+        const key = m.key.toUpperCase();
+        // PIX é dinâmico: disponível se QUALQUER provedor de PIX (Sicoob OU Cora) estiver habilitado.
+        if (key === 'PIX') {
+            return enabledProviders.has('SICOOB') || enabledProviders.has('CORA');
+        }
+        const provider = PROVIDER_MAP[key];
         // If no provider mapping exists, keep it (future-proof)
         return !provider || enabledProviders.has(provider);
     });
@@ -92,9 +101,10 @@ export async function validatePaymentMethod(method: string): Promise<void> {
     }
 }
 
-/** Get the provider for a given method key. */
-export function getProviderForMethod(method: string): 'STRIPE' | 'CORA' {
-    return PROVIDER_MAP[method.toUpperCase()] || 'CORA';
+/** Get the provider for a given method key. Placeholder inicial — o provider REAL do PIX
+ *  é resolvido dinamicamente e persistido por updatePaymentWithGatewayResult. */
+export function getProviderForMethod(method: string): 'STRIPE' | 'CORA' | 'SICOOB' {
+    return PROVIDER_MAP[method.toUpperCase()] || 'SICOOB';
 }
 
 /** Custom error for disabled payment methods — caught by route handlers to return 400. */
@@ -124,7 +134,7 @@ export interface CreatePaymentOpts {
 }
 
 export interface PaymentResult {
-    provider: 'CORA' | 'STRIPE' | 'MOCK';
+    provider: 'CORA' | 'SICOOB' | 'STRIPE' | 'MOCK';
     providerRef: string | null;
     pixString: string | null;
     boletoUrl: string | null;
@@ -179,11 +189,11 @@ function generateMockResult(opts: CreatePaymentOpts): PaymentResult {
 export async function createPayment(opts: CreatePaymentOpts): Promise<PaymentResult> {
     const { paymentMethod } = opts;
 
-    // ─── PIX: Cora boleto with PIX QR code ───────────────
+    // ─── PIX: Sicoob ou Cora (roteamento dinâmico) ───────
     if (paymentMethod === 'PIX') {
-        const coraEnabled = await isCoraEnabled();
-        if (!coraEnabled) {
-            console.log('[Gateway] Cora not configured, using mock for PIX');
+        const pixProvider = await resolvePixProvider();
+        if (!pixProvider) {
+            console.log('[Gateway] Nenhum provedor de PIX configurado, usando mock');
             return generateMockResult(opts);
         }
 
@@ -192,6 +202,38 @@ export async function createPayment(opts: CreatePaymentOpts): Promise<PaymentRes
         // generic PIX failure that strands an orphan PENDING payment.
         const pix = resolveCoraInputs(opts);
 
+        // ── SICOOB ──
+        if (pixProvider === 'SICOOB') {
+            try {
+                const result = await sicoobCreatePix({
+                    amount: opts.amount,
+                    txid: toSicoobTxid(opts.paymentId),
+                    description: opts.description,
+                    customer: { name: opts.customer.name, document: pix.doc },
+                });
+                if (!result.pixString) {
+                    throw new Error('O Sicoob não retornou o código PIX. Tente novamente em instantes.');
+                }
+                return {
+                    provider: 'SICOOB',
+                    providerRef: result.id,
+                    pixString: result.pixString,
+                    boletoUrl: null,
+                    paymentUrl: null,
+                    clientSecret: null,
+                    qrCodeBase64: result.qrCodeBase64 || null,
+                };
+            } catch (err) {
+                console.error('[Gateway] Sicoob PIX creation failed:', err);
+                if (process.env.NODE_ENV === 'production') {
+                    throw new Error('Erro ao gerar PIX. Tente novamente ou use outro método de pagamento.');
+                }
+                console.log('[Gateway] Falling back to mock for PIX (dev only)');
+                return generateMockResult(opts);
+            }
+        }
+
+        // ── CORA ──
         try {
             const result = await coraCreateBoleto({
                 amount: opts.amount,
@@ -336,7 +378,8 @@ export async function updatePaymentWithGatewayResult(paymentId: string, result: 
         where: { id: paymentId },
         data: {
             provider: result.provider === 'MOCK'
-                ? (result.pixString ? 'CORA' : result.paymentUrl ? 'STRIPE' : 'CORA')
+                // Heurística só para o fallback MOCK (dev sem provedor). PIX default = Sicoob.
+                ? (result.pixString ? 'SICOOB' : result.paymentUrl ? 'STRIPE' : 'SICOOB')
                 : result.provider,
             providerRef: result.providerRef,
             pixString: result.pixString,

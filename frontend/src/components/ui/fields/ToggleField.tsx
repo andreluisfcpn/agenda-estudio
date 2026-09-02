@@ -1,3 +1,5 @@
+import { useId } from 'react';
+
 interface ToggleFieldProps {
     checked: boolean;
     onChange: (v: boolean) => void;
@@ -8,9 +10,11 @@ interface ToggleFieldProps {
 
 /** iOS-style switch. Replaces text fields for boolean settings. */
 export default function ToggleField({ checked, onChange, label, 'aria-label': ariaLabel }: ToggleFieldProps) {
+    const uid = useId();
     return (
-        <label className={`sf-toggle ${checked ? 'is-on' : ''}`}>
+        <label className={`sf-toggle ${checked ? 'is-on' : ''}`} htmlFor={uid}>
             <button
+                id={uid}
                 type="button"
                 role="switch"
                 aria-checked={checked}

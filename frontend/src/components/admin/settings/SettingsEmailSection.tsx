@@ -1,5 +1,5 @@
 import { getErrorMessage } from '../../../utils/errors';
-import { useState, useEffect, useMemo, type CSSProperties } from 'react';
+import { useState, useEffect, useMemo, useId, type CSSProperties } from 'react';
 import { pricingApi } from '../../../api/client';
 import LoadingSpinner from '../../ui/LoadingSpinner';
 import SettingsSaveBar, { SettingsMessages } from './SettingsSaveBar';
@@ -17,6 +17,7 @@ const SECRET_KEYS = new Set(['email_smtp_password', 'email_resend_api_key']);
 type Vals = Record<string, string>;
 
 export default function SettingsEmailSection() {
+    const uid = useId();
     const [vals, setVals] = useState<Vals>({});
     const [initial, setInitial] = useState<Vals>({});
     const [studioName, setStudioName] = useState('Estúdio Búzios Digital');
@@ -123,40 +124,41 @@ export default function SettingsEmailSection() {
                     </h3>
                     <div className="sf-config-grid">
                         <div className="sf-config-cell">
-                            <label className="sf-config-label">Provedor</label>
-                            <select className="form-select" value={provider} onChange={e => set('email_provider', e.target.value)}>
+                            <label className="sf-config-label" htmlFor={`${uid}-provider`}>Provedor</label>
+                            <select id={`${uid}-provider`} className="form-select" value={provider} onChange={e => set('email_provider', e.target.value)}>
                                 <option value="smtp">SMTP (servidor próprio)</option>
                                 <option value="resend">Resend (API)</option>
                             </select>
                         </div>
                         <div className="sf-config-cell">
-                            <label className="sf-config-label">Remetente — Nome</label>
-                            <input className="form-input" value={vals.email_from_name || ''} onChange={e => set('email_from_name', e.target.value)} placeholder="Estúdio Búzios Digital" />
+                            <label className="sf-config-label" htmlFor={`${uid}-from-name`}>Remetente — Nome</label>
+                            <input id={`${uid}-from-name`} className="form-input" value={vals.email_from_name || ''} onChange={e => set('email_from_name', e.target.value)} placeholder="Estúdio Búzios Digital" />
                         </div>
                         <div className="sf-config-cell">
-                            <label className="sf-config-label">Remetente — E-mail</label>
-                            <input className="form-input" type="email" value={vals.email_from_address || ''} onChange={e => set('email_from_address', e.target.value)} placeholder="contato@buzios.digital" />
+                            <label className="sf-config-label" htmlFor={`${uid}-from-address`}>Remetente — E-mail</label>
+                            <input id={`${uid}-from-address`} className="form-input" type="email" value={vals.email_from_address || ''} onChange={e => set('email_from_address', e.target.value)} placeholder="contato@buzios.digital" />
                         </div>
                     </div>
 
                     {provider === 'smtp' ? (
                         <div className="sf-config-grid" style={{ marginTop: 12 }}>
                             <div className="sf-config-cell">
-                                <label className="sf-config-label">SMTP — Host</label>
-                                <input className="form-input" value={vals.email_smtp_host || ''} onChange={e => set('email_smtp_host', e.target.value)} placeholder="smtp.seudominio.com" />
+                                <label className="sf-config-label" htmlFor={`${uid}-smtp-host`}>SMTP — Host</label>
+                                <input id={`${uid}-smtp-host`} className="form-input" value={vals.email_smtp_host || ''} onChange={e => set('email_smtp_host', e.target.value)} placeholder="smtp.seudominio.com" />
                             </div>
                             <div className="sf-config-cell">
-                                <label className="sf-config-label">SMTP — Porta</label>
-                                <input className="form-input" type="number" inputMode="numeric" value={vals.email_smtp_port || ''} onChange={e => set('email_smtp_port', e.target.value)} placeholder="587" />
+                                <label className="sf-config-label" htmlFor={`${uid}-smtp-port`}>SMTP — Porta</label>
+                                <input id={`${uid}-smtp-port`} className="form-input" type="number" inputMode="numeric" value={vals.email_smtp_port || ''} onChange={e => set('email_smtp_port', e.target.value)} placeholder="587" />
                             </div>
                             <div className="sf-config-cell">
-                                <label className="sf-config-label">SMTP — Usuário</label>
-                                <input className="form-input" value={vals.email_smtp_user || ''} onChange={e => set('email_smtp_user', e.target.value)} placeholder="usuario@seudominio.com" autoComplete="off" />
+                                <label className="sf-config-label" htmlFor={`${uid}-smtp-user`}>SMTP — Usuário</label>
+                                <input id={`${uid}-smtp-user`} className="form-input" value={vals.email_smtp_user || ''} onChange={e => set('email_smtp_user', e.target.value)} placeholder="usuario@seudominio.com" autoComplete="off" />
                             </div>
                             <div className="sf-config-cell">
-                                <label className="sf-config-label">SMTP — Senha</label>
+                                <label className="sf-config-label" htmlFor={`${uid}-smtp-password`}>SMTP — Senha</label>
                                 <div style={{ position: 'relative' }}>
                                     <input
+                                        id={`${uid}-smtp-password`}
                                         className="form-input"
                                         type={showSecret ? 'text' : 'password'}
                                         value={vals.email_smtp_password || ''}
@@ -179,9 +181,10 @@ export default function SettingsEmailSection() {
                     ) : (
                         <div className="sf-config-grid" style={{ marginTop: 12 }}>
                             <div className="sf-config-cell sf-config-cell--full">
-                                <label className="sf-config-label">Resend — API Key</label>
+                                <label className="sf-config-label" htmlFor={`${uid}-resend-key`}>Resend — API Key</label>
                                 <div style={{ position: 'relative' }}>
                                     <input
+                                        id={`${uid}-resend-key`}
                                         className="form-input"
                                         type={showSecret ? 'text' : 'password'}
                                         value={vals.email_resend_api_key || ''}
@@ -215,13 +218,14 @@ export default function SettingsEmailSection() {
                     </div>
 
                     <div className="sf-config-cell sf-config-cell--full" style={{ marginBottom: 12 }}>
-                        <label className="sf-config-label">Assunto</label>
-                        <input className="form-input" value={vals.login_email_subject || ''} onChange={e => set('login_email_subject', e.target.value)} placeholder="Seu código de acesso — {{studio_name}}" />
+                        <label className="sf-config-label" htmlFor={`${uid}-subject`}>Assunto</label>
+                        <input id={`${uid}-subject`} className="form-input" value={vals.login_email_subject || ''} onChange={e => set('login_email_subject', e.target.value)} placeholder="Seu código de acesso — {{studio_name}}" />
                     </div>
 
                     <div className="sf-config-cell sf-config-cell--full">
-                        <label className="sf-config-label">Corpo (HTML)</label>
+                        <label className="sf-config-label" htmlFor={`${uid}-body`}>Corpo (HTML)</label>
                         <textarea
+                            id={`${uid}-body`}
                             className="form-input"
                             value={vals.login_email_html || ''}
                             onChange={e => set('login_email_html', e.target.value)}

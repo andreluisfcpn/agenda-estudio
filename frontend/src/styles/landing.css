@@ -234,6 +234,9 @@
   max-height: 220px;
   order: -1; /* image first on mobile */
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  /* Fallback caso a foto do hero (URL externa) não carregue: mostra um gradiente
+     de marca em vez de uma caixa de imagem quebrada. */
+  background: linear-gradient(135deg, #071a1e 0%, #0d3b40 100%);
 }
 
 .landing-hero-visual img {

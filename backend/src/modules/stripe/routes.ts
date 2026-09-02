@@ -277,15 +277,47 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
             return;
         }
 
-        // Get or create Stripe Customer for the PAYER (client), not the requester.
-        const customerId = await stripeGetOrCreateCustomer(payerUserId);
+        // Re-pay of a FAILED/expired charge (e.g. an expired PIX the reconciliation marked
+        // FAILED, shown as payable in "Meus Pagamentos"). Reset to PENDING and DROP the dead
+        // gateway artifacts so we mint a FRESH charge — never reuse the stale, unpayable QR/PI
+        // (the P2 reuse guard below keys off pixString) — and so the webhook/reconciliation,
+        // which only act on PENDING, can confirm the new charge.
+        if (payment.status === 'FAILED') {
+            await prisma.payment.update({
+                where: { id: payment.id },
+                data: { status: 'PENDING', providerRef: null, pixString: null, boletoUrl: null },
+            });
+            payment.status = 'PENDING';
+            payment.providerRef = null;
+            payment.pixString = null;
+            payment.boletoUrl = null;
+        }
+
+        // NOTA: o Stripe customer é criado apenas no fluxo de CARTÃO (abaixo). PIX/boleto não
+        // precisam dele — criá-lo aqui quebrava o PIX quando o Stripe não está configurado.
 
         if (data.paymentMethod === 'pix') {
-            // Use centralized Cora helper for PIX
-            const { createCoraPayment } = await import('../../lib/coraPaymentHelper.js');
+            // P2: idempotent reuse. If a live PIX charge was already issued for this payment
+            // (QR string + provider ref on a PIX provider), return the SAME QR instead of
+            // minting a second charge — creating a new one (e.g. after the PIX provider was
+            // switched Sicoob↔Cora) would orphan the first, still-payable charge, so a client
+            // paying the old QR would never have their payment reconciled.
+            if (payment.status === 'PENDING' && payment.pixString && payment.providerRef && (payment.provider === 'CORA' || payment.provider === 'SICOOB')) {
+                res.json({
+                    provider: payment.provider,
+                    pixString: payment.pixString,
+                    qrCodeBase64: null,
+                    paymentId: payment.id,
+                    reused: true,
+                });
+                return;
+            }
+
+            // Roteamento dinâmico: Sicoob ou Cora, conforme o provedor de PIX habilitado.
+            const { createPixPayment } = await import('../../lib/pixGateway.js');
 
             try {
-                const coraRes = await createCoraPayment({
+                const pixRes = await createPixPayment({
                     userId: payerUserId,
                     amount: payment.amount,
                     description: `Pagamento PIX - ${payment.contract?.name || 'Avulso'}`,
@@ -296,17 +328,17 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
                 await prisma.payment.update({
                     where: { id: payment.id },
                     data: {
-                        providerRef: coraRes.result.id,
-                        provider: 'CORA',
+                        providerRef: pixRes.result.id,
+                        provider: pixRes.provider,
                         installments: 1,
-                        pixString: coraRes.pixString,
+                        pixString: pixRes.pixString,
                     },
                 });
 
                 res.json({
-                    provider: 'CORA',
-                    pixString: coraRes.pixString,
-                    qrCodeBase64: coraRes.qrCodeBase64,
+                    provider: pixRes.provider,
+                    pixString: pixRes.pixString,
+                    qrCodeBase64: pixRes.qrCodeBase64,
                     paymentId: payment.id,
                 });
             } catch (e: unknown) {
@@ -370,6 +402,9 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
             const plan = plans.find(p => p.count === installments);
             if (plan) amount = plan.total;
         }
+
+        // Get or create Stripe Customer for the PAYER (client), not the requester. Só no cartão.
+        const customerId = await stripeGetOrCreateCustomer(payerUserId);
 
         // Create PaymentIntent (CARDS ONLY now)
         const result = await stripeCreatePaymentIntent({
@@ -538,9 +573,14 @@ router.post('/verify-payment', authenticate, async (req: Request, res: Response)
         const pi = await stripeGetPaymentIntent(data.paymentIntentId);
         
         if (pi.status === 'succeeded') {
-            // STRIPE-M1 FIX: Verify the PaymentIntent belongs to this payment
-            if (pi.metadata?.paymentId && pi.metadata.paymentId !== data.paymentId) {
-                console.error(`[Stripe:Verify] PI ownership mismatch: PI.meta=${pi.metadata.paymentId}, requested=${data.paymentId}`);
+            // SEC FIX (S2): posse ESTRITA — rejeitar também quando metadata.paymentId está AUSENTE.
+            // Todo PI de cartão criado para um Payment grava metadata.paymentId incondicionalmente
+            // (stripeService.stripeCreatePaymentIntent). PIs sem esse metadata são PIs de FATURA de
+            // assinatura (metadata fica na subscription) — que NÃO devem ser confirmados por aqui
+            // (a assinatura confirma via webhook). Antes, metadata ausente pulava a checagem e um PI
+            // de assinatura de mesmo valor podia quitar um Payment PENDING sem cobrança correspondente.
+            if (pi.metadata?.paymentId !== data.paymentId) {
+                console.error(`[Stripe:Verify] PI ownership mismatch: PI.meta=${pi.metadata?.paymentId}, requested=${data.paymentId}`);
                 res.status(400).json({ error: 'PaymentIntent não pertence a este pagamento.' });
                 return;
             }

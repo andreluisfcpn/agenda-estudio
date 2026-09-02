@@ -601,8 +601,16 @@ router.post('/custom', authenticate, async (req: Request, res: Response) => {
                 });
             }
         } else {
-            // WEEKLY / BIWEEKLY / MONTHLY: generate from schedule
+            // WEEKLY / BIWEEKLY / MONTHLY: generate from schedule.
+            // C8 cap: `endDate` spans calendar months (~4.33 weeks each), so an uncapped weekly
+            // loop emits ~0.33 session/month/slot MORE than the contract bills (totalSessions =
+            // sessionsPerCycle × durationMonths, i.e. 4/cycle for WEEKLY). Stop at totalSessions
+            // so what is delivered exactly matches what is charged — never over-delivering. The
+            // generation is always ≥ totalSessions here, so the cap only trims the calendar tail
+            // (MONTHLY/CUSTOM already align; those are effectively unaffected).
+            let generated = 0;
             for (const slot of data.schedule) {
+                if (generated >= totalSessions) break;
                 const current = new Date(startDate);
                 // Align to first occurrence of this day of week
                 while (current.getUTCDay() !== (slot.day % 7)) {
@@ -656,6 +664,8 @@ router.post('/custom', authenticate, async (req: Request, res: Response) => {
                             price: discountedPrice,
                             addOns: data.addOns ? data.addOns.filter(a => a !== 'GESTAO_SOCIAL') : [],
                         });
+                        // C8: deliver exactly the billed session count, never the calendar surplus.
+                        if (++generated >= totalSessions) break;
                     }
 
                     current.setDate(current.getDate() + 7);

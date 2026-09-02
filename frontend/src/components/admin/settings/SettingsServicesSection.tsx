@@ -1,5 +1,5 @@
 import { getErrorMessage } from '../../../utils/errors';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { pricingApi, AddOnConfig } from '../../../api/client';
 import LoadingSpinner from '../../ui/LoadingSpinner';
 import { SettingsMessages } from './SettingsSaveBar';
@@ -23,6 +23,7 @@ function AddonCard({ initial, siblingKeys, onSaved, onDeleted }: {
     onSaved: (prevKey: string, saved: AddOnConfig) => void;
     onDeleted: (addon: EditableAddon) => void;
 }) {
+    const uid = useId();
     const [draft, setDraft] = useState<EditableAddon>(initial);
     const [priceText, setPriceText] = useState((initial.price / 100).toFixed(2).replace('.', ','));
     const [benefitsText, setBenefitsText] = useState(PARSE_BENEFITS(initial.benefits).join('\n'));
@@ -102,27 +103,27 @@ function AddonCard({ initial, siblingKeys, onSaved, onDeleted }: {
 
             <div className="admin-grid-2" style={{ gap: 12 }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">Nome</label>
-                    <input className="form-input" value={draft.name} onChange={e => set({ name: e.target.value })} />
+                    <label className="form-label" htmlFor={`${uid}-name`}>Nome</label>
+                    <input id={`${uid}-name`} className="form-input" value={draft.name} onChange={e => set({ name: e.target.value })} />
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">Preço {monthly ? 'mensal' : 'por episódio'} (R$)</label>
-                    <input className="form-input" type="text" value={priceText}
+                    <label className="form-label" htmlFor={`${uid}-price`}>Preço {monthly ? 'mensal' : 'por episódio'} (R$)</label>
+                    <input id={`${uid}-price`} className="form-input" type="text" value={priceText}
                         onChange={e => { const clean = e.target.value.replace(/[^0-9,]/g, ''); setPriceText(clean); set({ price: Math.round(parseFloat(clean.replace(',', '.')) * 100) || 0 }); }} />
                 </div>
             </div>
 
             <div className="form-group" style={{ marginTop: 12, marginBottom: 0 }}>
-                <label className="form-label">Descrição</label>
-                <textarea className="form-input" style={{ minHeight: 56, resize: 'vertical', fontFamily: 'inherit', fontSize: '0.8125rem' }}
+                <label className="form-label" htmlFor={`${uid}-description`}>Descrição</label>
+                <textarea id={`${uid}-description`} className="form-input" style={{ minHeight: 56, resize: 'vertical', fontFamily: 'inherit', fontSize: '0.8125rem' }}
                     value={draft.description || ''} onChange={e => set({ description: e.target.value })} />
             </div>
 
             {/* Display: icon + order + landing */}
             <div className="admin-grid-2" style={{ gap: 12, marginTop: 12, alignItems: 'end' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">Ícone</label>
-                    <select className="form-input" value={SERVICE_ICON_OPTIONS.includes(draft.icon || '') ? (draft.icon || 'Sparkles') : 'Sparkles'}
+                    <label className="form-label" htmlFor={`${uid}-icon`}>Ícone</label>
+                    <select id={`${uid}-icon`} className="form-input" value={SERVICE_ICON_OPTIONS.includes(draft.icon || '') ? (draft.icon || 'Sparkles') : 'Sparkles'}
                         onChange={e => set({ icon: e.target.value })}>
                         {SERVICE_ICON_OPTIONS.map(ic => <option key={ic} value={ic}>{ic}</option>)}
                     </select>
@@ -144,16 +145,16 @@ function AddonCard({ initial, siblingKeys, onSaved, onDeleted }: {
                     <summary>Configuração do serviço mensal</summary>
                     <div className="sf-advanced-body">
                         <div className="form-group" style={{ marginBottom: 0 }}>
-                            <label className="form-label">Benefícios (um por linha)</label>
-                            <textarea className="form-input" style={{ minHeight: 80, resize: 'vertical', fontFamily: 'inherit', fontSize: '0.8125rem' }}
+                            <label className="form-label" htmlFor={`${uid}-benefits`}>Benefícios (um por linha)</label>
+                            <textarea id={`${uid}-benefits`} className="form-input" style={{ minHeight: 80, resize: 'vertical', fontFamily: 'inherit', fontSize: '0.8125rem' }}
                                 value={benefitsText}
                                 onChange={e => { setBenefitsText(e.target.value); const list = e.target.value.split('\n').map(s => s.trim()).filter(Boolean); set({ benefits: list.length ? JSON.stringify(list) : '' }); }}
                                 placeholder={'Publicação nas redes\nRelatório mensal\nMaking-of'} />
                         </div>
                         <div className="sf-grid-2">
                             <div className="form-group" style={{ marginBottom: 0 }}>
-                                <label className="form-label">Durações (meses, CSV)</label>
-                                <input className="form-input" value={draft.durationsOffered || '3,6'}
+                                <label className="form-label" htmlFor={`${uid}-durations`}>Durações (meses, CSV)</label>
+                                <input id={`${uid}-durations`} className="form-input" value={draft.durationsOffered || '3,6'}
                                     onChange={e => set({ durationsOffered: e.target.value.replace(/[^0-9,]/g, '') })} />
                             </div>
                             <div className="form-group" style={{ marginBottom: 0 }}>

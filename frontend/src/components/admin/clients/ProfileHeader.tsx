@@ -28,7 +28,7 @@ export default function ProfileHeader({ user }: { user: UserDetail }) {
                 ) : (
                 <div style={{
                     width: 64, height: 64, borderRadius: '50%',
-                    background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))',
+                    background: 'linear-gradient(135deg, var(--accent-primary), #0e6b7a)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: '1.5rem', fontWeight: 700, color: '#fff',
                 }}>

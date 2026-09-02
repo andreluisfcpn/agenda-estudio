@@ -1,5 +1,5 @@
 import { getErrorMessage } from '../utils/errors';
-import { useState } from 'react';
+import { useState, useId } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { contractsApi, Contract } from '../api/client';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
@@ -16,6 +16,7 @@ import CreateContractModal from '../components/admin/contracts/CreateContractMod
 import CustomContractModal from '../components/admin/contracts/CustomContractModal';
 
 export default function AdminContractsPage() {
+    const uid = useId();
     const navigate = useNavigate();
     const { showAlert, showConfirm, showToast } = useUI();
     const {
@@ -434,26 +435,26 @@ export default function AdminContractsPage() {
                             {editContract.type} · {editContract.tier} · {editContract.user?.name} · {episodeCount(editContract.durationMonths)} gravações
                         </p>
                         {editError && <div className="error-message">{editError}</div>}
-                        <div className="form-group"><label className="form-label">Status</label>
-                            <select className="form-select" value={editForm.status} onChange={e => setEditForm({ ...editForm, status: e.target.value })}>
+                        <div className="form-group"><label className="form-label" htmlFor={`${uid}-status`}>Status</label>
+                            <select id={`${uid}-status`} className="form-select" value={editForm.status} onChange={e => setEditForm({ ...editForm, status: e.target.value })}>
                                 <option value="ACTIVE">Ativo</option><option value="PENDING_CANCELLATION">Aguardando Cancelamento</option><option value="EXPIRED">Expirado</option><option value="CANCELLED">Cancelado</option>
                             </select>
                         </div>
-                        <div className="form-group"><label className="form-label">Data de Término</label>
-                            <input type="date" className="form-input" value={editForm.endDate} onChange={e => setEditForm({ ...editForm, endDate: e.target.value })} />
+                        <div className="form-group"><label className="form-label" htmlFor={`${uid}-end-date`}>Data de Término</label>
+                            <input id={`${uid}-end-date`} type="date" className="form-input" value={editForm.endDate} onChange={e => setEditForm({ ...editForm, endDate: e.target.value })} />
                         </div>
                         {editContract.type === 'FLEX' && (
-                            <div className="form-group"><label className="form-label">Créditos Flex Restantes</label>
-                                <input type="number" className="form-input" min={0} value={editForm.flexCreditsRemaining} onChange={e => setEditForm({ ...editForm, flexCreditsRemaining: e.target.value })} />
+                            <div className="form-group"><label className="form-label" htmlFor={`${uid}-flex-credits`}>Créditos Flex Restantes</label>
+                                <input id={`${uid}-flex-credits`} type="number" className="form-input" min={0} value={editForm.flexCreditsRemaining} onChange={e => setEditForm({ ...editForm, flexCreditsRemaining: e.target.value })} />
                             </div>
                         )}
                         <div className="form-group">
-                            <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Link2 size={13} aria-hidden="true" /> Link do Contrato Digital</label>
-                            <input className="form-input" type="url" placeholder="https://..." value={editForm.contractUrl} onChange={e => setEditForm({ ...editForm, contractUrl: e.target.value })} />
+                            <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 5 }} htmlFor={`${uid}-contract-url`}><Link2 size={13} aria-hidden="true" /> Link do Contrato Digital</label>
+                            <input id={`${uid}-contract-url`} className="form-input" type="url" placeholder="https://..." value={editForm.contractUrl} onChange={e => setEditForm({ ...editForm, contractUrl: e.target.value })} />
                         </div>
                         <div className="form-group">
-                            <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 5 }}><CreditCard size={13} aria-hidden="true" /> Forma de Pagamento</label>
-                            <select className="form-select" value={editForm.paymentMethod} onChange={e => setEditForm({ ...editForm, paymentMethod: e.target.value })}>
+                            <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 5 }} htmlFor={`${uid}-payment-method`}><CreditCard size={13} aria-hidden="true" /> Forma de Pagamento</label>
+                            <select id={`${uid}-payment-method`} className="form-select" value={editForm.paymentMethod} onChange={e => setEditForm({ ...editForm, paymentMethod: e.target.value })}>
                                 <option value="">-- Não definido --</option>
                                 {getPaymentMethods().map(pm => (
                                     <option key={pm.key} value={pm.key}>{pm.emoji} {pm.label}</option>

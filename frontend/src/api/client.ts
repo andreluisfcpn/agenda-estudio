@@ -665,7 +665,7 @@ export interface FinanceMetrics {
     pendingRevenue: number;
     paidCount: number;
     unpaidCount: number;
-    breakdown: { stripe: number; cora: number; };
+    breakdown: { stripe: number; cora: number; sicoob: number; };
 }
 
 export interface EnrichedPayment extends PaymentSummary {

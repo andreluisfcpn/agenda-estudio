@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useId } from 'react';
 import { integrationsApi } from '../api/client';
 import { getErrorMessage } from '../utils/errors';
 import {
@@ -9,9 +9,11 @@ import {
 import '../styles/integration-settings.css';
 
 const emptyCoraCreds = { clientId: '', certificatePem: '', privateKeyPem: '', pixKey: '' };
+const emptySicoobCreds = { clientId: '', certificatePem: '', privateKeyPem: '', pixKey: '' };
 const emptyStripeCreds = { secretKey: '', publishableKey: '', webhookSecret: '' };
 
 export default function IntegrationSettings() {
+  const uid = useId();
   const [integrations, setIntegrations] = useState<IntegrationSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -27,6 +29,11 @@ export default function IntegrationSettings() {
     sandbox: { ...emptyCoraCreds }, production: { ...emptyCoraCreds }, environment: 'sandbox',
   });
 
+  // Sicoob form
+  const [sicoobForm, setSicoobForm] = useState({
+    sandbox: { ...emptySicoobCreds }, production: { ...emptySicoobCreds }, environment: 'sandbox',
+  });
+
   // Stripe form
   const [stripeForm, setStripeForm] = useState({
     sandbox: { ...emptyStripeCreds }, production: { ...emptyStripeCreds }, environment: 'sandbox',
@@ -35,6 +42,7 @@ export default function IntegrationSettings() {
   // Aba de EDIÇÃO de credenciais — desacoplada do ambiente ATIVO (form.environment).
   // Alternar a aba NÃO muda qual ambiente o checkout usa; só o Salvar aplica o environment.
   const [coraEditEnv, setCoraEditEnv] = useState<'sandbox' | 'production'>('sandbox');
+  const [sicoobEditEnv, setSicoobEditEnv] = useState<'sandbox' | 'production'>('sandbox');
   const [stripeEditEnv, setStripeEditEnv] = useState<'sandbox' | 'production'>('sandbox');
 
   // Cora webhooks
@@ -69,6 +77,24 @@ export default function IntegrationSettings() {
           environment: cora.environment || 'sandbox',
         });
         setCoraEditEnv(cora.environment === 'production' ? 'production' : 'sandbox');
+      }
+
+      const sicoob = res.integrations.find((i: IntegrationSummary) => i.provider === 'SICOOB');
+      if (sicoob?.configured) {
+        const cfg = sicoob.config || {};
+        const parseCreds = (c: any) => ({
+          clientId: unmask(c?.clientId),
+          certificatePem: unmask(c?.certificatePem),
+          privateKeyPem: unmask(c?.privateKeyPem),
+          pixKey: c?.pixKey || '',
+        });
+        const hasDual = cfg.sandbox || cfg.production;
+        setSicoobForm({
+          sandbox: hasDual ? parseCreds(cfg.sandbox) : parseCreds(cfg),
+          production: hasDual ? parseCreds(cfg.production) : { ...emptySicoobCreds },
+          environment: sicoob.environment || 'sandbox',
+        });
+        setSicoobEditEnv(sicoob.environment === 'production' ? 'production' : 'sandbox');
       }
 
       const stripe = res.integrations.find((i: IntegrationSummary) => i.provider === 'STRIPE');
@@ -108,6 +134,16 @@ export default function IntegrationSettings() {
           return c;
         };
         data = { environment: coraForm.environment, config: { sandbox: buildCreds(coraForm.sandbox), production: buildCreds(coraForm.production) } };
+      } else if (provider === 'SICOOB') {
+        const buildCreds = (creds: typeof sicoobForm.sandbox) => {
+          const c: Record<string, string> = {};
+          if (creds.clientId && !creds.clientId.includes('...')) c.clientId = creds.clientId;
+          if (creds.pixKey) c.pixKey = creds.pixKey;
+          if (creds.certificatePem) c.certificatePem = creds.certificatePem;
+          if (creds.privateKeyPem) c.privateKeyPem = creds.privateKeyPem;
+          return c;
+        };
+        data = { environment: sicoobForm.environment, config: { sandbox: buildCreds(sicoobForm.sandbox), production: buildCreds(sicoobForm.production) } };
       } else {
         const buildCreds = (creds: typeof stripeForm.sandbox) => {
           const c: Record<string, string> = { publishableKey: creds.publishableKey };
@@ -158,6 +194,7 @@ export default function IntegrationSettings() {
   });
 
   const cora = integrations.find(i => i.provider === 'CORA');
+  const sicoob = integrations.find(i => i.provider === 'SICOOB');
   const stripe = integrations.find(i => i.provider === 'STRIPE');
 
   if (loading) return <div className="loading-spinner"><div className="spinner" /></div>;
@@ -169,6 +206,14 @@ export default function IntegrationSettings() {
   const hasSavedCert = savedCoraEnvCfg?.certificatePem === '***CERTIFICATE_CONFIGURED***';
   const hasSavedKey = savedCoraEnvCfg?.privateKeyPem === '***PRIVATE_KEY_CONFIGURED***';
   const hasSavedCoraClientId = !!savedCoraEnvCfg?.clientId;
+
+  // Sicoob saved state checks — indexados pela aba de EDIÇÃO
+  const savedSicoobCfg = sicoob?.config || {};
+  const sicoobEditKey = sicoobEditEnv;
+  const savedSicoobEnvCfg = (savedSicoobCfg as any)?.[sicoobEditKey] || (sicoobEditKey === 'sandbox' ? savedSicoobCfg : undefined);
+  const hasSavedSicoobCert = savedSicoobEnvCfg?.certificatePem === '***CERTIFICATE_CONFIGURED***';
+  const hasSavedSicoobKey = savedSicoobEnvCfg?.privateKeyPem === '***PRIVATE_KEY_CONFIGURED***';
+  const hasSavedSicoobClientId = !!savedSicoobEnvCfg?.clientId;
 
   // Stripe saved state checks
   const savedStripeCfg = stripe?.config || {};
@@ -184,6 +229,11 @@ export default function IntegrationSettings() {
   const stripeEnvOk = (env: 'sandbox' | 'production') =>
     envConfigured('STRIPE', savedStripeCfg, env) ||
     !!(stripeForm[env].secretKey && stripeForm[env].publishableKey);
+  const sicoobEnvOk = (env: 'sandbox' | 'production') =>
+    envConfigured('SICOOB', savedSicoobCfg, env) ||
+    (env === 'production'
+      ? !!(sicoobForm[env].clientId && sicoobForm[env].certificatePem && sicoobForm[env].privateKeyPem && sicoobForm[env].pixKey)
+      : true); // sandbox sempre ok (credenciais públicas de teste)
 
   // Webhook helpers
   const webhookUrl = window.location.hostname === 'localhost'
@@ -215,7 +265,12 @@ export default function IntegrationSettings() {
   const isWebhookRegistered = coraWebhooks.some(w => w.url === webhookUrl);
 
   const coraCreds = coraForm[coraEditKey];
+  const sicoobCreds = sicoobForm[sicoobEditKey];
   const stripeCreds = stripeForm[stripeEditKey];
+
+  const sicoobWebhookUrl = window.location.hostname === 'localhost'
+    ? 'http://localhost:3001/api/webhooks/sicoob'
+    : `https://${window.location.hostname}/api/webhooks/sicoob`;
 
   return (
     <div className="int-settings">
@@ -224,7 +279,7 @@ export default function IntegrationSettings() {
         <Icons.Info size={18} />
         <div>
           Configure as credenciais dos provedores de pagamento. O <strong>Stripe</strong> é usado para cartão de crédito/débito.
-          O <strong>Cora</strong> é usado para PIX e Boleto Bancário (requer certificado mTLS).
+          O <strong>PIX</strong> é atendido pelo <strong>Sicoob</strong> (a <strong>Cora</strong> fica como opção extra de PIX; ative apenas um). Provedores de PIX usam certificado mTLS em produção.
           <div className="int-banner-sub">
             <Icons.Shield size={13} /> Campos sensíveis são mascarados após salvar. Deixe em branco para manter os valores atuais.
           </div>
@@ -282,16 +337,16 @@ export default function IntegrationSettings() {
               {/* Client ID + Chave PIX — short fields side-by-side on tablet+ */}
               <div className="int-field-row">
                 <div className="int-field">
-                  <label className="int-label"><Icons.Key /> Client ID ({coraEditKey})</label>
-                  <input className="int-input int-input--cora" type="text"
+                  <label className="int-label" htmlFor={`${uid}-cora-clientid`}><Icons.Key /> Client ID ({coraEditKey})</label>
+                  <input id={`${uid}-cora-clientid`} className="int-input int-input--cora" type="text"
                     placeholder={hasSavedCoraClientId ? '✅ Já configurado. Deixe em branco para manter.' : `Client ID da Cora para ${coraEditKey === 'sandbox' ? 'homologação' : 'produção'}`}
                     value={coraCreds.clientId}
                     onChange={e => setCoraForm(f => ({ ...f, [coraEditKey]: { ...f[coraEditKey], clientId: e.target.value } }))}
                   />
                 </div>
                 <div className="int-field">
-                  <label className="int-label"><Icons.Globe /> Chave PIX ({coraEditKey})</label>
-                  <input className="int-input int-input--cora" type="text" placeholder="email@empresa.com ou CPF/CNPJ"
+                  <label className="int-label" htmlFor={`${uid}-cora-pixkey`}><Icons.Globe /> Chave PIX ({coraEditKey})</label>
+                  <input id={`${uid}-cora-pixkey`} className="int-input int-input--cora" type="text" placeholder="email@empresa.com ou CPF/CNPJ"
                     value={coraCreds.pixKey}
                     onChange={e => setCoraForm(f => ({ ...f, [coraEditKey]: { ...f[coraEditKey], pixKey: e.target.value } }))}
                   />
@@ -371,6 +426,102 @@ export default function IntegrationSettings() {
           </div>
         </div>
 
+        {/* ═══ SICOOB CARD ═══ */}
+        <div className={`int-card int-card--sicoob ${sicoob?.enabled ? 'int-card--enabled' : ''}`}>
+          <div className="int-card-header" onClick={() => toggleCard('SICOOB')}>
+            <div className="int-card-identity">
+              <div className="int-card-icon int-card-icon--sicoob"><Icons.Bank /></div>
+              <div>
+                <div className="int-card-title">Sicoob</div>
+                <div className="int-card-desc">PIX (mTLS · sandbox sem certificado)</div>
+              </div>
+            </div>
+            <div className="int-card-controls" onClick={e => e.stopPropagation()}>
+              <StatusBadge provider={sicoob} />
+              <Toggle on={!!sicoob?.enabled} disabled={!sicoob?.configured}
+                ariaLabel="Ativar ou desativar cobranças PIX via Sicoob"
+                onChange={() => sicoob?.configured && handleToggle('SICOOB', !sicoob?.enabled)} />
+            </div>
+            <Icons.ChevronDown className={`int-chevron ${openCards.has('SICOOB') ? 'int-chevron--open' : ''}`} />
+          </div>
+
+          <div className={`int-card-body ${openCards.has('SICOOB') ? 'int-card-body--open' : ''}`}>
+            <div className="int-card-content">
+              {sicoob?.configured && !sicoob.enabled && (
+                <div className="int-off-note">
+                  Integração desligada: <strong>PIX</strong> não é cobrado pelo Sicoob. Use o interruptor acima para ativar.
+                </div>
+              )}
+
+              <div className="int-banner-sub" style={{ marginBottom: '4px' }}>
+                <Icons.Info size={13} /> No <strong>sandbox</strong>, o Sicoob usa credenciais públicas de teste — você pode ativar e testar o PIX <strong>sem certificado</strong>. A <strong>produção</strong> exige client_id + certificado mTLS (ICP-Brasil e-CNPJ) + chave privada + chave PIX do estúdio.
+              </div>
+
+              <EnvSelector
+                env={sicoobForm.environment as 'sandbox' | 'production'}
+                onChange={v => { setSicoobForm(f => ({ ...f, environment: v })); setSicoobEditEnv(v); }}
+                labels={{ sandbox: 'Sandbox', production: 'Produção' }}
+                sandboxOk={sicoobEnvOk('sandbox')} productionOk={sicoobEnvOk('production')}
+                pendingSave={!!(sicoob?.environment && sicoobForm.environment !== sicoob.environment)}
+              />
+
+              {sicoobForm.environment === 'production' && !sicoobEnvOk('production') && (
+                <div className="int-warn" role="alert">
+                  <Icons.Info size={15} />
+                  <div>Produção selecionada, mas faltam credenciais (client_id, certificado, chave privada e chave PIX) — preencha-as abaixo antes de salvar/ativar.</div>
+                </div>
+              )}
+
+              <div className="int-field-row">
+                <div className="int-field">
+                  <label className="int-label" htmlFor={`${uid}-sicoob-clientid`}><Icons.Key /> Client ID ({sicoobEditKey})</label>
+                  <input id={`${uid}-sicoob-clientid`} className="int-input int-input--sicoob" type="text"
+                    placeholder={hasSavedSicoobClientId ? '✅ Já configurado. Deixe em branco para manter.' : sicoobEditKey === 'sandbox' ? 'Opcional no sandbox (usa client_id público)' : 'Client ID do app Sicoob (produção)'}
+                    value={sicoobCreds.clientId}
+                    onChange={e => setSicoobForm(f => ({ ...f, [sicoobEditKey]: { ...f[sicoobEditKey], clientId: e.target.value } }))}
+                  />
+                </div>
+                <div className="int-field">
+                  <label className="int-label" htmlFor={`${uid}-sicoob-pixkey`}><Icons.Globe /> Chave PIX ({sicoobEditKey})</label>
+                  <input id={`${uid}-sicoob-pixkey`} className="int-input int-input--sicoob" type="text"
+                    placeholder={sicoobEditKey === 'sandbox' ? 'Opcional no sandbox' : 'Chave PIX do estúdio (email/CPF/CNPJ/aleatória)'}
+                    value={sicoobCreds.pixKey}
+                    onChange={e => setSicoobForm(f => ({ ...f, [sicoobEditKey]: { ...f[sicoobEditKey], pixKey: e.target.value } }))}
+                  />
+                </div>
+              </div>
+
+              <FileUploadZone label={`Certificado mTLS (.pem) — ${sicoobEditKey}${sicoobEditKey === 'sandbox' ? ' (opcional)' : ''}`}
+                accept=".pem,.crt,.cer" provider="cora" hasSaved={hasSavedSicoobCert}
+                value={sicoobCreds.certificatePem}
+                onChange={v => setSicoobForm(f => ({ ...f, [sicoobEditKey]: { ...f[sicoobEditKey], certificatePem: v } }))}
+                placeholder="Cole o conteúdo do certificado .pem aqui...&#10;-----BEGIN CERTIFICATE-----&#10;..."
+              />
+
+              <FileUploadZone label={`Chave Privada (.key) — ${sicoobEditKey}${sicoobEditKey === 'sandbox' ? ' (opcional)' : ''}`}
+                accept=".key,.pem" provider="cora" hasSaved={hasSavedSicoobKey}
+                value={sicoobCreds.privateKeyPem}
+                onChange={v => setSicoobForm(f => ({ ...f, [sicoobEditKey]: { ...f[sicoobEditKey], privateKeyPem: v } }))}
+                placeholder="Cole o conteúdo da chave privada .key aqui...&#10;-----BEGIN PRIVATE KEY-----&#10;..."
+              />
+
+              <WebhookUrlBox url={sicoobWebhookUrl} label="Webhook URL (registre no Sicoob — ele adiciona /pix ao final)" onCopy={copyToClipboard} />
+
+              <TestInfo provider={sicoob} />
+
+              <div className="int-actions">
+                <button className="int-btn int-btn--save int-btn--save-sicoob" onClick={() => handleSave('SICOOB')} disabled={saving} type="button">
+                  {saving ? <><span className="int-spinner" /> Salvando...</> : <><Icons.Save /> Salvar Sicoob</>}
+                </button>
+                <button className="int-btn int-btn--test" onClick={() => handleTest('SICOOB')}
+                  disabled={testingProvider === 'SICOOB' || !sicoob?.configured} type="button">
+                  {testingProvider === 'SICOOB' ? <><span className="int-spinner" /> Testando...</> : <><Icons.Zap /> Testar</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* ═══ STRIPE CARD ═══ */}
         <div className={`int-card int-card--stripe ${stripe?.enabled ? 'int-card--enabled' : ''}`}>
           <div className="int-card-header" onClick={() => toggleCard('STRIPE')}>
@@ -416,16 +567,16 @@ export default function IntegrationSettings() {
               {/* Secret + Publishable Key — credentials pair side-by-side on tablet+ */}
               <div className="int-field-row">
                 <div className="int-field">
-                  <label className="int-label"><Icons.Key /> Secret Key ({stripeEditKey})</label>
-                  <input className="int-input int-input--stripe" type="password"
+                  <label className="int-label" htmlFor={`${uid}-stripe-secretkey`}><Icons.Key /> Secret Key ({stripeEditKey})</label>
+                  <input id={`${uid}-stripe-secretkey`} className="int-input int-input--stripe" type="password"
                     placeholder={hasSavedStripeKey ? '✅ Já configurada. Deixe em branco para manter.' : stripeEditKey === 'sandbox' ? 'sk_test_xxx' : 'sk_live_xxx'}
                     value={stripeCreds.secretKey}
                     onChange={e => setStripeForm(f => ({ ...f, [stripeEditKey]: { ...f[stripeEditKey], secretKey: e.target.value } }))}
                   />
                 </div>
                 <div className="int-field">
-                  <label className="int-label"><Icons.Globe /> Publishable Key ({stripeEditKey})</label>
-                  <input className="int-input int-input--stripe" type="text"
+                  <label className="int-label" htmlFor={`${uid}-stripe-publishablekey`}><Icons.Globe /> Publishable Key ({stripeEditKey})</label>
+                  <input id={`${uid}-stripe-publishablekey`} className="int-input int-input--stripe" type="text"
                     placeholder={stripeEditKey === 'sandbox' ? 'pk_test_xxx' : 'pk_live_xxx'}
                     value={stripeCreds.publishableKey}
                     onChange={e => setStripeForm(f => ({ ...f, [stripeEditKey]: { ...f[stripeEditKey], publishableKey: e.target.value } }))}
@@ -435,8 +586,8 @@ export default function IntegrationSettings() {
 
               {/* Webhook Secret */}
               <div className="int-field">
-                <label className="int-label"><Icons.Bell /> Webhook Secret ({stripeEditKey})</label>
-                <input className="int-input int-input--stripe" type="password"
+                <label className="int-label" htmlFor={`${uid}-stripe-webhooksecret`}><Icons.Bell /> Webhook Secret ({stripeEditKey})</label>
+                <input id={`${uid}-stripe-webhooksecret`} className="int-input int-input--stripe" type="password"
                   placeholder={hasSavedStripeWebhook ? '✅ Já configurado. Deixe em branco para manter.' : 'whsec_xxx'}
                   value={stripeCreds.webhookSecret}
                   onChange={e => setStripeForm(f => ({ ...f, [stripeEditKey]: { ...f[stripeEditKey], webhookSecret: e.target.value } }))}

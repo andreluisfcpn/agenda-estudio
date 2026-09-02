@@ -894,6 +894,9 @@
   cursor: pointer;
   position: relative;
   border: 3px solid var(--border-color);
+  /* Gradiente das iniciais (fallback quando não há foto ou ela falha ao carregar).
+     teal → teal-escuro sólido (--accent-secondary é quase branco e desbotaria o círculo). */
+  background: linear-gradient(135deg, var(--accent-primary), #0e6b7a);
 }
 .profile-avatar__overlay {
   position: absolute;

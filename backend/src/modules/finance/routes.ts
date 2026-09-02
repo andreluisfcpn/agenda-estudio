@@ -50,6 +50,9 @@ router.get('/closing/:year/:month', authenticate, authorize('ADMIN'), async (req
 
         let stripeCount = 0;
         let coraCount = 0;
+        let sicoobCount = 0; // PIX via Sicoob (provedor de PIX atual pós-migração)
+        let paidCount = 0;   // derivado do status real (não da soma por provider)
+        let unpaidCount = 0;
 
         const stripeFeeRate = (await getConfig('gateway_stripe_fee_pct')) / 100;
         const coraFeeCents = await getConfig('gateway_cora_fee_cents');
@@ -72,7 +75,8 @@ router.get('/closing/:year/:month', authenticate, authorize('ADMIN'), async (req
 
             if (p.status === 'PAID') {
                 grossRevenue += p.amount;
-                
+                paidCount++;
+
                 // Deduct fees based on provider (dynamic from config)
                 if (p.provider === 'STRIPE') {
                     fee = Math.round(p.amount * stripeFeeRate);
@@ -80,10 +84,16 @@ router.get('/closing/:year/:month', authenticate, authorize('ADMIN'), async (req
                 } else if (p.provider === 'CORA') {
                     fee = coraFeeCents;
                     coraCount++;
+                } else if (p.provider === 'SICOOB') {
+                    // PIX Sicoob: sem tarifa por recebimento configurada (0). Se passar a
+                    // cobrar, adicionar gateway_sicoob_fee_* no businessConfigCatalog e aplicar aqui.
+                    fee = 0;
+                    sicoobCount++;
                 }
                 totalFees += fee;
             } else if (p.status === 'PENDING' || p.status === 'FAILED') {
                 pendingRevenue += p.amount;
+                unpaidCount++;
             }
 
             // Resolve emoji from config
@@ -109,11 +119,12 @@ router.get('/closing/:year/:month', authenticate, authorize('ADMIN'), async (req
                 netRevenue,   // Centavos pós taxas -> Repasse Estúdio
                 totalFees,    // Centavos gastos do Gateway
                 pendingRevenue, // Inadimplência ou a vencer no mês
-                paidCount: stripeCount + coraCount,
-                unpaidCount: payments.length - (stripeCount + coraCount),
+                paidCount,
+                unpaidCount,
                 breakdown: {
                     stripe: stripeCount,
-                    cora: coraCount
+                    cora: coraCount,
+                    sicoob: sicoobCount
                 }
             },
             payments: enrichedPayments

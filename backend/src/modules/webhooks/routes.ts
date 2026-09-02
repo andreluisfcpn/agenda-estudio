@@ -122,6 +122,46 @@ router.post('/cora', async (req: Request, res: Response) => {
     }
 });
 
+// ─── POST /api/webhooks/sicoob ──────────────────────────
+// O Sicoob (padrão BACen) chama a URL registrada acrescentando "/pix" ao final e
+// autentica por mTLS (sem HMAC). Por isso: expomos tanto /sicoob quanto /sicoob/pix,
+// e NUNCA confiamos no corpo — relemos GET /cob/{txid} antes de dar baixa.
+// Payload esperado: { pix: [ { txid, endToEndId, valor, chave, horario }, ... ] }
+async function handleSicoobWebhook(req: Request, res: Response) {
+    try {
+        const body = req.body || {};
+        const pixList: any[] = Array.isArray(body.pix) ? body.pix : [];
+        console.log(`[Webhook:Sicoob] Recebido ${pixList.length} evento(s) pix`);
+
+        if (pixList.length === 0) {
+            res.status(200).json({ received: true });
+            return;
+        }
+
+        const { reconcileSicoobPayment } = await import('../../lib/sicoobReconciliation.js');
+
+        for (const pix of pixList) {
+            const txid = pix?.txid;
+            if (!txid) continue;
+            // Casa pelo providerRef (txid). Re-verifica o estado real via API do Sicoob.
+            const payment = await prisma.payment.findFirst({ where: { providerRef: String(txid), provider: 'SICOOB' } });
+            if (!payment) {
+                console.log(`[Webhook:Sicoob] Nenhum pagamento para txid: ${txid}`);
+                continue;
+            }
+            await reconcileSicoobPayment(payment.id);
+        }
+
+        res.status(200).json({ received: true });
+    } catch (err) {
+        console.error('[Webhook:Sicoob] Erro processando webhook:', err);
+        res.status(200).json({ received: true, error: 'processing_error' });
+    }
+}
+
+router.post('/sicoob/pix', handleSicoobWebhook);
+router.post('/sicoob', handleSicoobWebhook);
+
 // ─── POST /api/webhooks/stripe ──────────────────────────
 // Stripe sends notifications when checkout sessions complete
 

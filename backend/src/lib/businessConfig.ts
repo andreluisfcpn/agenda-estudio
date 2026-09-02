@@ -37,6 +37,7 @@ const DEFAULTS: Record<string, string> = {
     studio_email: 'contato@buzios.digital',
     studio_hero_image: 'https://buzios.digital/wp-content/uploads/elementor/thumbs/bd-estudio-enhanced-sr-r9lm9twze86yo0wxu68fp1e0yf8baho28zrniyf1o0.jpg',
     studio_location: 'Búzios, RJ',
+    studio_phone: '(22) 3301-5850',
     // Fees and all catalog-managed keys (single source of truth) — overrides any above.
     ...CONFIG_DEFAULT_VALUES,
 };

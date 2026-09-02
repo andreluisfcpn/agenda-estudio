@@ -14,14 +14,18 @@ export function registerPaymentClientRoutes(router: Router) {
     // ─── GET /api/payments/sandbox-mode (PUBLIC) ────────────
     // Tells the checkout UI whether PIX/card are running in sandbox, so it can show
     // a "simulate payment" affordance for testing (never shown in production).
-    router.get('/sandbox-mode', async (_req: Request, res: Response) => {
+    router.get('/sandbox-mode', authenticate, async (_req: Request, res: Response) => {
         try {
-            const [cora, stripe] = await Promise.all([
+            const [cora, sicoob, stripe] = await Promise.all([
                 prisma.integrationConfig.findUnique({ where: { provider: 'CORA' } }),
+                prisma.integrationConfig.findUnique({ where: { provider: 'SICOOB' } }),
                 prisma.integrationConfig.findUnique({ where: { provider: 'STRIPE' } }),
             ]);
+            // PIX em sandbox se o provedor de PIX ATIVO (Sicoob preferido, senão Cora) estiver em sandbox.
+            const pixSandbox = (!!sicoob?.enabled && sicoob.environment === 'sandbox')
+                || (!sicoob?.enabled && !!cora?.enabled && cora.environment === 'sandbox');
             res.json({
-                pix: !!cora?.enabled && cora.environment === 'sandbox',
+                pix: pixSandbox,
                 card: !!stripe?.enabled && stripe.environment === 'sandbox',
             });
         } catch {
@@ -57,6 +61,20 @@ export function registerPaymentClientRoutes(router: Router) {
                         if (await reconcileCoraPayment(payment.id)) status = 'PAID';
                     } catch (e) {
                         console.error('[Payment-Status] Cora reconciliation failed:', e instanceof Error ? e.message : e);
+                    }
+                }
+            }
+
+            // Reconciliação ativa para pagamentos Sicoob pendentes (independente de webhook)
+            if (status === 'PENDING' && payment.provider === 'SICOOB' && payment.providerRef) {
+                const last = _coraCheckTimes.get(payment.id) || 0;
+                if (Date.now() - last > CORA_CHECK_THROTTLE_MS) {
+                    _coraCheckTimes.set(payment.id, Date.now());
+                    try {
+                        const { reconcileSicoobPayment } = await import('../../lib/sicoobReconciliation.js');
+                        if (await reconcileSicoobPayment(payment.id)) status = 'PAID';
+                    } catch (e) {
+                        console.error('[Payment-Status] Sicoob reconciliation failed:', e instanceof Error ? e.message : e);
                     }
                 }
             }

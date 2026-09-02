@@ -1,5 +1,5 @@
 import { getErrorMessage } from '../utils/errors';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useId } from 'react';
 import BottomSheetModal from './BottomSheetModal';
 import { bookingsApi, Slot } from '../api/client';
 
@@ -17,6 +17,7 @@ export interface BulkBookingModalProps {
 }
 
 export default function BulkBookingModal({ contract, onClose, onComplete }: BulkBookingModalProps) {
+    const uid = useId();
     const [currentDate, setCurrentDate] = useState('');
     const [availableSlots, setAvailableSlots] = useState<Slot[]>([]);
     const [loadingSlots, setLoadingSlots] = useState(false);
@@ -136,8 +137,8 @@ export default function BulkBookingModal({ contract, onClose, onComplete }: Bulk
                 {step === 1 && (
                     <>
                         <div className="form-group" style={{ marginBottom: '16px' }}>
-                            <label className="form-label">Escolha um Dia</label>
-                            <select className="form-input" value={currentDate} onChange={e => setCurrentDate(e.target.value)}>
+                            <label className="form-label" htmlFor={`${uid}-date`}>Escolha um Dia</label>
+                            <select id={`${uid}-date`} className="form-input" value={currentDate} onChange={e => setCurrentDate(e.target.value)}>
                                 <option value="">-- Selecione a Data --</option>
                                 {allowedDates.map(d => {
                                     const y = d.getFullYear();

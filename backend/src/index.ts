@@ -1,3 +1,4 @@
+import './bootTz.js'; // B6: pin process TZ to UTC before any Date is constructed — MUST be first.
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -353,6 +354,23 @@ app.listen(config.port, async () => {
         setTimeout(runReconcile, 15000); // run once shortly after boot
         console.log('   💸 Cora reconciliation job registered (every 2min)');
     }).catch(err => console.error('[CORA-RECONCILE] Failed to load:', err));
+
+    // Sicoob Reconciliation Cronjob — confirma PIX pagos cujo webhook falhou (every 2min)
+    import('./lib/sicoobReconciliation.js').then(({ reconcilePendingSicoobPayments }) => {
+        const runReconcile = async () => {
+            const lockKey = 'cron:sicoob-reconcile:lock';
+            const lockAcquired = await redis.set(lockKey, 'running', 'EX', 110, 'NX');
+            if (lockAcquired !== 'OK') return;
+            try {
+                await reconcilePendingSicoobPayments();
+            } finally {
+                await redis.del(lockKey);
+            }
+        };
+        setInterval(runReconcile, 2 * 60 * 1000);
+        setTimeout(runReconcile, 20000); // run once shortly after boot
+        console.log('   💸 Sicoob reconciliation job registered (every 2min)');
+    }).catch(err => console.error('[SICOOB-RECONCILE] Failed to load:', err));
 
     // Auto-Charge Cronjob — charges saved cards off-session for due installments (daily)
     import('./jobs/autoChargeJob.js').then(({ runAutoChargeJob }) => {

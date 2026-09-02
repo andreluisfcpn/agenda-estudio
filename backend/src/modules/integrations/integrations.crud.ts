@@ -7,13 +7,14 @@ import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import { authenticate, authorize } from '../../middleware/auth.js';
 import { coraTestConnection } from '../../lib/coraService.js';
+import { sicoobTestConnection } from '../../lib/sicoobService.js';
 import { stripeTestConnection } from '../../lib/stripeService.js';
 import { encryptCredentials, decryptConfigSafe } from '../../utils/crypto.js';
 import { maskConfig } from './integrations.masking.js';
 
 // ─── Schemas ─────────────────────────────────────────────
 
-const VALID_PROVIDERS = ['CORA', 'STRIPE'] as const;
+const VALID_PROVIDERS = ['CORA', 'STRIPE', 'SICOOB'] as const;
 
 const saveIntegrationSchema = z.object({
     environment: z.enum(['sandbox', 'production']).default('sandbox'),
@@ -22,7 +23,15 @@ const saveIntegrationSchema = z.object({
 });
 
 /** Um sub-config de ambiente tem as credenciais obrigatórias do provider? */
-function envCredsComplete(provider: string, envCfg: Record<string, any> | undefined): boolean {
+function envCredsComplete(provider: string, envCfg: Record<string, any> | undefined, environment?: string): boolean {
+    if (provider === 'SICOOB') {
+        // Sandbox usa credenciais PÚBLICAS de teste do Sicoob → sempre "completo" (permite testar sem cert).
+        // Produção exige client_id + certificado mTLS + chave privada + chave PIX do estúdio.
+        if (environment === 'production') {
+            return !!(envCfg && envCfg.clientId && envCfg.certificatePem && envCfg.privateKeyPem && envCfg.pixKey);
+        }
+        return true;
+    }
     if (!envCfg) return false;
     return provider === 'CORA'
         ? !!(envCfg.clientId && envCfg.certificatePem && envCfg.privateKeyPem)
@@ -91,7 +100,7 @@ router.get('/', authenticate, authorize('ADMIN'), async (_req: Request, res: Res
 router.get('/:provider', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
     const provider = (req.params.provider as string)?.toUpperCase();
     if (!VALID_PROVIDERS.includes(provider as any)) {
-        res.status(400).json({ error: 'Provider inválido. Use CORA ou STRIPE.' });
+        res.status(400).json({ error: 'Provider inválido. Use CORA, SICOOB ou STRIPE.' });
         return;
     }
 
@@ -234,7 +243,7 @@ router.put('/:provider', authenticate, authorize('ADMIN'), async (req: Request, 
         const isDualMerged = !!((mergedConfig as any).sandbox || (mergedConfig as any).production);
         if (willBeEnabled && isDualMerged) {
             const activeEnv = data.environment === 'production' ? 'production' : 'sandbox';
-            if (!envCredsComplete(provider, (mergedConfig as any)[activeEnv])) {
+            if (!envCredsComplete(provider, (mergedConfig as any)[activeEnv], activeEnv)) {
                 res.status(400).json({ error: `Não é possível ativar o ambiente de ${envLabel(activeEnv)} sem as credenciais. Preencha-as ou desligue a integração antes de trocar de ambiente.` });
                 return;
             }
@@ -313,6 +322,8 @@ router.post('/:provider/test', authenticate, authorize('ADMIN'), async (req: Req
 
     if (provider === 'CORA') {
         result = await coraTestConnection();
+    } else if (provider === 'SICOOB') {
+        result = await sicoobTestConnection();
     } else if (provider === 'STRIPE') {
         result = await stripeTestConnection();
     } else {
@@ -369,7 +380,7 @@ router.post('/:provider/toggle', authenticate, authorize('ADMIN'), async (req: R
         const env = integration.environment === 'production' ? 'production' : 'sandbox';
         const isDual = !!(cfg && (cfg.sandbox || cfg.production));
         // Config flat legado fica isento (espelha o fallback do runtime).
-        if (isDual && !envCredsComplete(provider, cfg?.[env])) {
+        if (isDual && !envCredsComplete(provider, cfg?.[env], env)) {
             res.status(400).json({ error: `Ative somente após configurar as credenciais de ${envLabel(env)} (ambiente ativo).` });
             return;
         }

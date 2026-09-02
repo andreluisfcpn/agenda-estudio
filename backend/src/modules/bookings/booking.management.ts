@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { prisma } from '../../lib/prisma.js';
 import { authenticate, authorize } from '../../middleware/auth.js';
-import { releaseMultiSlotLock } from '../../lib/redis.js';
+import { acquireMultiSlotLock, releaseMultiSlotLock } from '../../lib/redis.js';
 import { getProviderForMethod } from '../../lib/paymentGateway.js';
 import {
     getSlotTier,
@@ -15,6 +15,7 @@ import {
     applyDiscount,
     getPackageSlots,
     calculateEndTime,
+    getSlotDuration,
     isOperatingDay,
     studioDateTime,
 } from '../../utils/pricing.js';
@@ -27,7 +28,7 @@ import {
     rescheduleSchema,
     addOnPurchaseSchema,
 } from './validators.js';
-import { restoreCredit, deductCredit } from './booking.service.js';
+import { restoreCredit, deductCredit, hasBlockedConflict } from './booking.service.js';
 
 // ─── Cover image upload (memory storage → optimized with sharp) ──────────────
 const __dirname_bm = path.dirname(fileURLToPath(import.meta.url));
@@ -80,20 +81,44 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
         return;
     }
 
+    // Sessões que já aconteceram/foram consumidas NUNCA devolvem crédito ao cancelar
+    // (evita reaver crédito de gravação concluída/falta e reagendar de graça).
+    const cancelableStatuses: BookingStatus[] = [BookingStatus.RESERVED, BookingStatus.HELD, BookingStatus.CONFIRMED];
+
+    // ── Cliente: aplica a política de cancelamento (paridade com PUT /:id/client-cancel) ──
+    // Sem isto, o DELETE do cliente burlava a janela de 24h e restaurava crédito de qualquer status.
+    if (!isAdmin) {
+        if (!cancelableStatuses.includes(booking.status)) {
+            res.status(400).json({ error: 'Este agendamento não pode ser cancelado.' });
+            return;
+        }
+        if (booking.status === BookingStatus.CONFIRMED) {
+            const now = new Date();
+            const bookingDateTime = new Date(`${booking.date.toISOString().split('T')[0]}T${booking.startTime}:00-03:00`);
+            const diffHours = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+            if (diffHours < 24) {
+                // Aviso < 24h: consome a sessão (FALTA), sem devolver crédito.
+                await prisma.booking.update({ where: { id }, data: { status: BookingStatus.FALTA } });
+                res.json({ message: 'Agendamento desmarcado. Aviso menor que 24h: o crédito desta sessão foi consumido.' });
+                return;
+            }
+        }
+    }
+
     await prisma.booking.update({
         where: { id },
         data: { status: BookingStatus.CANCELLED },
     });
 
-    // Release Redis locks if the booking was RESERVED
-    if (booking.status === BookingStatus.RESERVED) {
+    // Release Redis locks if the booking was holding a slot (RESERVED/HELD)
+    if (booking.status === BookingStatus.RESERVED || booking.status === BookingStatus.HELD) {
         const dateStr = booking.date.toISOString().split('T')[0];
         const packageSlots = getPackageSlots(booking.startTime);
         await releaseMultiSlotLock(dateStr, packageSlots, booking.userId);
     }
 
-    // If Flex/Custom contract, restore credit
-    if (booking.contractId) {
+    // Restaura crédito de Flex/Custom/Avulso APENAS para sessões ainda não realizadas.
+    if (booking.contractId && cancelableStatuses.includes(booking.status)) {
         await restoreCredit(booking.contractId);
     }
 
@@ -586,47 +611,66 @@ router.patch('/:id/reschedule', authenticate, async (req: Request, res: Response
             return;
         }
 
-        // Rule 5: Check availability
-        const packageSlots = getPackageSlots(data.startTime);
-        const conflicting = await prisma.booking.findFirst({
-            where: {
-                id: { not: id },
-                date: newDate,
-                status: { not: BookingStatus.CANCELLED },
-                OR: packageSlots.map(slot => ({
-                    startTime: { lte: slot },
-                    endTime: { gt: slot },
-                })),
-            },
-        });
-
-        if (conflicting) {
-            res.status(409).json({ error: 'O horário selecionado já está ocupado.' });
+        // Rule 5: Check availability. FIX (B3): tranca o slot NOVO durante a checagem+escrita
+        // (mesmo acquireMultiSlotLock do POST /) para fechar a janela TOCTOU entre a leitura do
+        // conflito e a gravação — sem isto, duas remarcações/criações concorrentes no mesmo slot
+        // passavam ambas na findFirst e gravavam (double-booking).
+        const rescheduleSlotDur = await getSlotDuration();
+        const packageSlots = getPackageSlots(data.startTime, rescheduleSlotDur);
+        const locked = await acquireMultiSlotLock(data.date, packageSlots, req.user!.userId);
+        if (!locked) {
+            res.status(409).json({ error: 'Este horário está sendo reservado por outra pessoa. Tente novamente em instantes.' });
             return;
         }
+        try {
+            const conflicting = await prisma.booking.findFirst({
+                where: {
+                    id: { not: id },
+                    date: newDate,
+                    status: { not: BookingStatus.CANCELLED },
+                    OR: packageSlots.map(slot => ({
+                        startTime: { lte: slot },
+                        endTime: { gt: slot },
+                    })),
+                },
+            });
 
-        const endTime = calculateEndTime(data.startTime);
+            if (conflicting) {
+                res.status(409).json({ error: 'O horário selecionado já está ocupado.' });
+                return;
+            }
 
-        // Set originalDate if not already set (anchor for future reschedules)
-        const updateData: Prisma.BookingUncheckedUpdateInput = {
-            date: new Date(data.date + 'T00:00:00'),
-            startTime: data.startTime,
-            endTime,
-        };
-        if (!booking.originalDate) {
-            updateData.originalDate = booking.date; // store the initial date as anchor
+            // Não remarcar para dentro de um horário bloqueado (manutenção).
+            if (await hasBlockedConflict(newDate, packageSlots)) {
+                res.status(409).json({ error: 'Este horário está bloqueado (indisponível). Escolha outro.' });
+                return;
+            }
+
+            const endTime = calculateEndTime(data.startTime, rescheduleSlotDur);
+
+            // Set originalDate if not already set (anchor for future reschedules)
+            const updateData: Prisma.BookingUncheckedUpdateInput = {
+                date: new Date(data.date + 'T00:00:00'),
+                startTime: data.startTime,
+                endTime,
+            };
+            if (!booking.originalDate) {
+                updateData.originalDate = booking.date; // store the initial date as anchor
+            }
+
+            const updated = await prisma.booking.update({
+                where: { id },
+                data: updateData,
+                select: {
+                    id: true, date: true, startTime: true, endTime: true,
+                    status: true, tierApplied: true, price: true, contractId: true,
+                },
+            });
+
+            res.json({ booking: updated, message: 'Agendamento reagendado com sucesso!' });
+        } finally {
+            await releaseMultiSlotLock(data.date, packageSlots, req.user!.userId);
         }
-
-        const updated = await prisma.booking.update({
-            where: { id },
-            data: updateData,
-            select: {
-                id: true, date: true, startTime: true, endTime: true,
-                status: true, tierApplied: true, price: true, contractId: true,
-            },
-        });
-
-        res.json({ booking: updated, message: 'Agendamento reagendado com sucesso!' });
     } catch (err) {
         if (err instanceof z.ZodError) {
             res.status(400).json({ error: 'Dados inválidos.', details: err.errors });

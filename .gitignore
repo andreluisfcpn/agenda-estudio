@@ -67,3 +67,14 @@ backend/src/generated/
 
 # Runtime data backups (cleanupTestData dumps — never commit test/PII data)
 backend/backups/
+
+# S4: local debug dumps & one-off scripts (sandbox/test data only — never track)
+backend/clean-db.json
+backend/db-output.json
+backend/out.json
+backend/tmp_output*.json
+backend/scratch_data.ts
+backend/fix-stripe-db.ts
+backend/test-cora.ts
+backend/test-integrations*.ts
+backend/test-stripe*.ts

@@ -45,10 +45,14 @@ export function normalizeCouponCode(code: string): string {
  *  arithmetic as utils/pricing.ts#applyDiscount so coupon math never diverges. */
 export function computeCouponDiscount(coupon: Pick<Coupon, 'discountType' | 'discountValue'>, baseAmount: number): number {
     if (coupon.discountType === 'PERCENTUAL') {
-        const discounted = Math.round(baseAmount * (1 - coupon.discountValue / 100));
+        // Defense in depth: validators cap the percent at 1..100, but clamp here too so a
+        // value that ever slips past (a bad row, a future caller) can never make the discount
+        // exceed the charge or go negative — i.e. the final amount is always within [0, base].
+        const pct = Math.min(100, Math.max(0, coupon.discountValue));
+        const discounted = Math.round(baseAmount * (1 - pct / 100));
         return baseAmount - discounted;
     }
-    return Math.min(coupon.discountValue, baseAmount); // VALOR — never exceeds the charge
+    return Math.min(baseAmount, Math.max(0, coupon.discountValue)); // VALOR — within [0, charge]
 }
 
 /**

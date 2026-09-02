@@ -7,7 +7,8 @@
 
 import { getConfig } from './businessConfig.js';
 import { prisma } from './prisma.js';
-import { applyDiscount } from '../utils/pricing.js';
+import { applyDiscount, getBasePriceDynamic } from '../utils/pricing.js';
+import type { Tier } from '../generated/prisma/client.js';
 
 /**
  * Total amount (in cents) for a FULL upfront contract payment.
@@ -131,4 +132,22 @@ export async function serviceMonthlyBase(contract: { addOns: string[]; discountP
     const addon = await prisma.addOnConfig.findUnique({ where: { key: serviceKey } });
     if (!addon) return 0;
     return applyDiscount(addon.price, contract.discountPct);
+}
+
+/**
+ * Valor MENSAL (em centavos) de uma parcela de contrato — fonte única usada por /pay e
+ * /subscribe para nunca divergirem. SERVICO usa o preço do serviço mensal; os demais tipos
+ * usam sessions_per_month × tier-com-desconto + add-ons. Usa contract.discountPct armazenado.
+ */
+export async function computeMonthlyAmount(
+    contract: { type: string; tier: Tier; discountPct: number; addOns: string[] },
+): Promise<number> {
+    if (contract.type === 'SERVICO') {
+        return serviceMonthlyBase(contract);
+    }
+    const tierPrice = await getBasePriceDynamic(contract.tier);
+    const discountedPrice = applyDiscount(tierPrice, contract.discountPct);
+    const sessionsPerMonth = await getConfig('sessions_per_month');
+    const addonsCost = await computeAddonsCost(contract.addOns, contract.discountPct, sessionsPerMonth);
+    return (sessionsPerMonth * discountedPrice) + addonsCost;
 }

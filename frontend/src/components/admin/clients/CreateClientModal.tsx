@@ -1,5 +1,5 @@
 import { getErrorMessage } from '../../../utils/errors';
-import React, { useState } from 'react';
+import React, { useState, useId } from 'react';
 import { usersApi, ApiError } from '../../../api/client';
 import BottomSheetModal from '../../BottomSheetModal';
 import { UserPlus, UserRound, Mail, Lock, Smartphone, IdCard, Globe, NotebookPen, ShieldCheck, ChevronDown, Plus } from 'lucide-react';
@@ -12,6 +12,7 @@ interface CreateClientModalProps {
 }
 
 export default function CreateClientModal({ isOpen, onClose, onCreated }: CreateClientModalProps) {
+    const uid = useId();
     const [createForm, setCreateForm] = useState({ name: '', email: '', phone: '', password: '', role: 'CLIENTE', notes: '', cpfCnpj: '', socialLinks: '', clientStatus: 'ACTIVE' });
     const [createError, setCreateError] = useState('');
     const [createFieldErrors, setCreateFieldErrors] = useState<Record<string, string>>({});
@@ -106,10 +107,11 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                         {/* Name + Email row */}
                         <div className="admin-grid-2" style={{ gap: '12px', marginBottom: '12px' }}>
                             <div>
-                                <label style={labelStyle}>Nome *</label>
+                                <label style={labelStyle} htmlFor={`${uid}-name`}>Nome *</label>
                                 <div style={{ position: 'relative' }}>
                                     <UserRound size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                     <input
+                                        id={`${uid}-name`}
                                         value={createForm.name} onChange={e => setCreateForm({ ...createForm, name: e.target.value })}
                                         placeholder="Nome completo" autoFocus
                                         className={`form-input form-input--raised${(!!createFieldErrors.name) ? ' error' : ''}`} style={{ paddingLeft: 36, fontSize: '0.8125rem' }}
@@ -119,10 +121,11 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                                 {createFieldErrors.name && <div style={fieldErrorStyle}>{translateError(createFieldErrors.name)}</div>}
                             </div>
                             <div>
-                                <label style={labelStyle}>E-mail *</label>
+                                <label style={labelStyle} htmlFor={`${uid}-email`}>E-mail *</label>
                                 <div style={{ position: 'relative' }}>
                                     <Mail size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                     <input
+                                        id={`${uid}-email`}
                                         type="email" value={createForm.email}
                                         onChange={e => setCreateForm({ ...createForm, email: maskEmail(e.target.value) })}
                                         placeholder="email@exemplo.com"
@@ -137,10 +140,11 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                         {/* Password + Phone row */}
                         <div className="admin-grid-2" style={{ gap: '12px' }}>
                             <div>
-                                <label style={labelStyle}>Senha *</label>
+                                <label style={labelStyle} htmlFor={`${uid}-password`}>Senha *</label>
                                 <div style={{ position: 'relative' }}>
                                     <Lock size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                     <input
+                                        id={`${uid}-password`}
                                         type="password" value={createForm.password}
                                         onChange={e => setCreateForm({ ...createForm, password: e.target.value })}
                                         placeholder="Mínimo 6 caracteres"
@@ -151,10 +155,11 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                                 {createFieldErrors.password && <div style={fieldErrorStyle}>{translateError(createFieldErrors.password)}</div>}
                             </div>
                             <div>
-                                <label style={labelStyle}>Telefone</label>
+                                <label style={labelStyle} htmlFor={`${uid}-phone`}>Telefone</label>
                                 <div style={{ position: 'relative' }}>
                                     <Smartphone size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                     <input
+                                        id={`${uid}-phone`}
                                         value={createForm.phone}
                                         onChange={e => setCreateForm({ ...createForm, phone: maskPhone(e.target.value) })}
                                         placeholder="(21) 99999-9999"
@@ -211,10 +216,11 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                                 {/* CPF/CNPJ + Status */}
                                 <div className="admin-grid-2" style={{ gap: '12px', marginBottom: '12px' }}>
                                     <div>
-                                        <label style={labelStyle}>CPF/CNPJ</label>
+                                        <label style={labelStyle} htmlFor={`${uid}-cpfCnpj`}>CPF/CNPJ</label>
                                         <div style={{ position: 'relative' }}>
                                             <IdCard size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                             <input
+                                                id={`${uid}-cpfCnpj`}
                                                 value={createForm.cpfCnpj}
                                                 onChange={e => setCreateForm({ ...createForm, cpfCnpj: maskCpfCnpj(e.target.value) })}
                                                 placeholder="000.000.000-00"
@@ -244,10 +250,11 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
 
                                 {/* Social Links */}
                                 <div style={{ marginBottom: '12px' }}>
-                                    <label style={labelStyle}>Redes Sociais</label>
+                                    <label style={labelStyle} htmlFor={`${uid}-socialLinks`}>Redes Sociais</label>
                                     <div style={{ position: 'relative' }}>
                                         <Globe size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                         <input
+                                            id={`${uid}-socialLinks`}
                                             value={createForm.socialLinks}
                                             onChange={e => setCreateForm({ ...createForm, socialLinks: e.target.value })}
                                             placeholder="Instagram, YouTube, TikTok..."
@@ -259,8 +266,9 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
 
                                 {/* Notes */}
                                 <div>
-                                    <label style={labelStyle}><NotebookPen size={12} aria-hidden="true" style={{ verticalAlign: '-2px' }} /> Notas internas</label>
+                                    <label style={labelStyle} htmlFor={`${uid}-notes`}><NotebookPen size={12} aria-hidden="true" style={{ verticalAlign: '-2px' }} /> Notas internas</label>
                                     <textarea
+                                        id={`${uid}-notes`}
                                         value={createForm.notes}
                                         onChange={e => setCreateForm({ ...createForm, notes: e.target.value })}
                                         placeholder="Observações sobre o cliente..."

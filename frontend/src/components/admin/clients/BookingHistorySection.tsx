@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useId } from 'react';
 import { bookingsApi, Booking } from '../../../api/client';
 import StatusBadge from '../../ui/StatusBadge';
 import { TIER_META, BOOKING_STATUS_META, getMeta } from '../../../constants/adminMeta';
@@ -22,6 +22,7 @@ interface BookingHistorySectionProps {
 
 /** Histórico de agendamentos com notas/métricas por sessão (expansão inline). */
 export default function BookingHistorySection({ bookings, onBookingUpdated }: BookingHistorySectionProps) {
+    const uid = useId();
     const [expandedBookingId, setExpandedBookingId] = useState<string | null>(null);
     const [bookingAdminNotes, setBookingAdminNotes] = useState('');
     const [bookingClientNotes, setBookingClientNotes] = useState('');
@@ -99,10 +100,11 @@ export default function BookingHistorySection({ bookings, onBookingUpdated }: Bo
                         }}>
                             <div className="admin-grid-2" style={{ gap: '12px' }}>
                                 <div>
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent-text)', marginBottom: '6px' }}>
+                                    <label htmlFor={`${uid}-adminNotes`} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent-text)', marginBottom: '6px' }}>
                                         <Lock size={13} aria-hidden="true" /> Observação do Admin (somente admin)
                                     </label>
                                     <textarea
+                                        id={`${uid}-adminNotes`}
                                         className="form-input"
                                         style={{ minHeight: 80, resize: 'vertical', fontFamily: 'inherit', fontSize: '0.8125rem' }}
                                         placeholder="Anotações internas sobre esta sessão..."
@@ -111,10 +113,11 @@ export default function BookingHistorySection({ bookings, onBookingUpdated }: Bo
                                     />
                                 </div>
                                 <div>
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent-primary)', marginBottom: '6px' }}>
+                                    <label htmlFor={`${uid}-clientNotes`} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent-primary)', marginBottom: '6px' }}>
                                         <Eye size={13} aria-hidden="true" /> Observação para o Cliente (visível ao cliente)
                                     </label>
                                     <textarea
+                                        id={`${uid}-clientNotes`}
                                         className="form-input"
                                         style={{ minHeight: 80, resize: 'vertical', fontFamily: 'inherit', fontSize: '0.8125rem' }}
                                         placeholder="Feedback ou observações para o cliente ver..."
@@ -131,20 +134,20 @@ export default function BookingHistorySection({ bookings, onBookingUpdated }: Bo
                                     </h4>
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
                                         <div className="form-group" style={{ marginBottom: 0 }}>
-                                            <label className="form-label" style={{ fontSize: '0.75rem' }}>Duração (minutos)</label>
-                                            <input type="number" className="form-input" placeholder="Ex: 120" value={bookingDuration} onChange={e => { setBookingDuration(e.target.value === '' ? '' : Number(e.target.value)); setBookingNotesSaved(false); }} />
+                                            <label className="form-label" htmlFor={`${uid}-duration`} style={{ fontSize: '0.75rem' }}>Duração (minutos)</label>
+                                            <input id={`${uid}-duration`} type="number" className="form-input" placeholder="Ex: 120" value={bookingDuration} onChange={e => { setBookingDuration(e.target.value === '' ? '' : Number(e.target.value)); setBookingNotesSaved(false); }} />
                                         </div>
                                         <div className="form-group" style={{ marginBottom: 0 }}>
-                                            <label className="form-label" style={{ fontSize: '0.75rem' }}>Pico Simultâneo</label>
-                                            <input type="number" className="form-input" placeholder="Ex: 1530" value={bookingPeak} onChange={e => { setBookingPeak(e.target.value === '' ? '' : Number(e.target.value)); setBookingNotesSaved(false); }} />
+                                            <label className="form-label" htmlFor={`${uid}-peak`} style={{ fontSize: '0.75rem' }}>Pico Simultâneo</label>
+                                            <input id={`${uid}-peak`} type="number" className="form-input" placeholder="Ex: 1530" value={bookingPeak} onChange={e => { setBookingPeak(e.target.value === '' ? '' : Number(e.target.value)); setBookingNotesSaved(false); }} />
                                         </div>
                                         <div className="form-group" style={{ marginBottom: 0 }}>
-                                            <label className="form-label" style={{ fontSize: '0.75rem' }}>Mensagens no Chat</label>
-                                            <input type="number" className="form-input" placeholder="Ex: 2400" value={bookingChat} onChange={e => { setBookingChat(e.target.value === '' ? '' : Number(e.target.value)); setBookingNotesSaved(false); }} />
+                                            <label className="form-label" htmlFor={`${uid}-chat`} style={{ fontSize: '0.75rem' }}>Mensagens no Chat</label>
+                                            <input id={`${uid}-chat`} type="number" className="form-input" placeholder="Ex: 2400" value={bookingChat} onChange={e => { setBookingChat(e.target.value === '' ? '' : Number(e.target.value)); setBookingNotesSaved(false); }} />
                                         </div>
                                         <div className="form-group" style={{ marginBottom: 0 }}>
-                                            <label className="form-label" style={{ fontSize: '0.75rem' }}>Origem de Audiência</label>
-                                            <input type="text" className="form-input" placeholder="Ex: Tráfego Pago SP" value={bookingOrigin} onChange={e => { setBookingOrigin(e.target.value); setBookingNotesSaved(false); }} />
+                                            <label className="form-label" htmlFor={`${uid}-origin`} style={{ fontSize: '0.75rem' }}>Origem de Audiência</label>
+                                            <input id={`${uid}-origin`} type="text" className="form-input" placeholder="Ex: Tráfego Pago SP" value={bookingOrigin} onChange={e => { setBookingOrigin(e.target.value); setBookingNotesSaved(false); }} />
                                         </div>
                                     </div>
                                 </div>

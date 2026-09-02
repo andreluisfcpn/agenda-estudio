@@ -1,5 +1,5 @@
 import { getErrorMessage } from '../../../utils/errors';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useId } from 'react';
 import { usersApi, UserSummary, ApiError } from '../../../api/client';
 import BottomSheetModal from '../../BottomSheetModal';
 import { Pencil, UserRound, Mail, Lock, Smartphone, IdCard, Globe, NotebookPen, ShieldCheck, Save } from 'lucide-react';
@@ -13,6 +13,7 @@ interface EditClientModalProps {
 }
 
 export default function EditClientModal({ user, onClose, onSaved }: EditClientModalProps) {
+    const uid = useId();
     const [editForm, setEditForm] = useState({
         name: '', email: '', phone: '', role: '', password: '',
         notes: '', cpfCnpj: '', address: '', city: '', state: '',
@@ -157,10 +158,11 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                         {/* Name + CPF row */}
                         <div className="admin-grid-2" style={{ gap: '12px', marginBottom: '12px' }}>
                             <div>
-                                <label style={editLabelStyle}>Nome *</label>
+                                <label style={editLabelStyle} htmlFor={`${uid}-name`}>Nome *</label>
                                 <div style={{ position: 'relative' }}>
                                     <UserRound size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                     <input
+                                        id={`${uid}-name`}
                                         value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })}
                                         placeholder="Nome completo"
                                         style={editInputStyle(!!editFieldErrors.name)}
@@ -170,10 +172,11 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                                 {editFieldErrors.name && <div style={editFieldErrorStyle}>{translateError(editFieldErrors.name)}</div>}
                             </div>
                             <div>
-                                <label style={editLabelStyle}>CPF / CNPJ</label>
+                                <label style={editLabelStyle} htmlFor={`${uid}-cpfCnpj`}>CPF / CNPJ</label>
                                 <div style={{ position: 'relative' }}>
                                     <IdCard size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                     <input
+                                        id={`${uid}-cpfCnpj`}
                                         value={editForm.cpfCnpj} onChange={e => setEditForm({ ...editForm, cpfCnpj: maskCpfCnpj(e.target.value) })}
                                         placeholder="000.000.000-00"
                                         style={editInputStyle(false)}
@@ -233,10 +236,11 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                         {/* Email + Phone */}
                         <div className="admin-grid-2" style={{ gap: '12px', marginBottom: '12px' }}>
                             <div>
-                                <label style={editLabelStyle}>E-mail *</label>
+                                <label style={editLabelStyle} htmlFor={`${uid}-email`}>E-mail *</label>
                                 <div style={{ position: 'relative' }}>
                                     <Mail size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                     <input
+                                        id={`${uid}-email`}
                                         type="email" value={editForm.email}
                                         onChange={e => setEditForm({ ...editForm, email: maskEmail(e.target.value) })}
                                         placeholder="email@exemplo.com"
@@ -247,10 +251,11 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                                 {editFieldErrors.email && <div style={editFieldErrorStyle}>{translateError(editFieldErrors.email)}</div>}
                             </div>
                             <div>
-                                <label style={editLabelStyle}>Telefone</label>
+                                <label style={editLabelStyle} htmlFor={`${uid}-phone`}>Telefone</label>
                                 <div style={{ position: 'relative' }}>
                                     <Smartphone size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                     <input
+                                        id={`${uid}-phone`}
                                         value={editForm.phone}
                                         onChange={e => setEditForm({ ...editForm, phone: maskPhone(e.target.value) })}
                                         placeholder="(21) 99999-9999"
@@ -264,10 +269,11 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
 
                         {/* Social Links */}
                         <div style={{ marginBottom: '12px' }}>
-                            <label style={editLabelStyle}>Redes Sociais</label>
+                            <label style={editLabelStyle} htmlFor={`${uid}-socialLinks`}>Redes Sociais</label>
                             <div style={{ position: 'relative' }}>
                                 <Globe size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                 <input
+                                    id={`${uid}-socialLinks`}
                                     value={editForm.socialLinks}
                                     onChange={e => setEditForm({ ...editForm, socialLinks: e.target.value })}
                                     placeholder="Instagram, YouTube, TikTok..."
@@ -296,10 +302,11 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                         <div style={{ padding: '16px', borderRadius: '10px', background: 'rgba(45,212,191,0.03)', border: '1px solid rgba(45,212,191,0.08)' }}>
                             {/* Password */}
                             <div style={{ marginBottom: '12px' }}>
-                                <label style={editLabelStyle}>Nova Senha <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0, color: 'var(--text-muted)' }}>(vazio = manter atual)</span></label>
+                                <label style={editLabelStyle} htmlFor={`${uid}-password`}>Nova Senha <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0, color: 'var(--text-muted)' }}>(vazio = manter atual)</span></label>
                                 <div style={{ position: 'relative' }}>
                                     <Lock size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                     <input
+                                        id={`${uid}-password`}
                                         type="password" value={editForm.password}
                                         onChange={e => setEditForm({ ...editForm, password: e.target.value })}
                                         placeholder="Mínimo 6 caracteres"
@@ -312,8 +319,9 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
 
                             {/* Notes */}
                             <div>
-                                <label style={editLabelStyle}><NotebookPen size={12} aria-hidden="true" style={{ verticalAlign: '-2px' }} /> Notas internas</label>
+                                <label style={editLabelStyle} htmlFor={`${uid}-notes`}><NotebookPen size={12} aria-hidden="true" style={{ verticalAlign: '-2px' }} /> Notas internas</label>
                                 <textarea
+                                    id={`${uid}-notes`}
                                     value={editForm.notes}
                                     onChange={e => setEditForm({ ...editForm, notes: e.target.value })}
                                     placeholder="Observações sobre o cliente..."

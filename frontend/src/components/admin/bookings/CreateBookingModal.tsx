@@ -1,5 +1,5 @@
 import { getErrorMessage } from '../../../utils/errors';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useId } from 'react';
 import { bookingsApi, contractsApi, pricingApi, UserSummary, Contract, Slot, AddOnConfig, CouponValidation } from '../../../api/client';
 import { useUI } from '../../../context/UIContext';
 import BottomSheetModal from '../../BottomSheetModal';
@@ -24,6 +24,7 @@ interface CreateBookingModalProps {
 }
 
 export default function CreateBookingModal({ isOpen, onClose, users, onCreated }: CreateBookingModalProps) {
+    const uid = useId();
     const { showToast } = useUI();
 
     const [createStep, setCreateStep] = useState(1);
@@ -385,10 +386,10 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
 
                             {/* -- Date -- */}
                             <div style={{ marginBottom: '18px' }}>
-                                <label style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px', display: 'block' }}>
+                                <label htmlFor={`${uid}-date`} style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px', display: 'block' }}>
                                     <CalendarDays size={13} style={{ verticalAlign: '-2px', marginRight: 4 }} aria-hidden="true" />Data da gravação
                                 </label>
-                                <input type="date" value={createForm.date}
+                                <input id={`${uid}-date`} type="date" value={createForm.date}
                                     min={new Date().toISOString().split('T')[0]}
                                     aria-label="Data da gravação"
                                     onChange={e => {
@@ -677,10 +678,11 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
 
                             {/* Admin notes */}
                             <div style={{ marginBottom: '14px' }}>
-                                <label style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px', display: 'block' }}>
+                                <label htmlFor={`${uid}-adminNotes`} style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px', display: 'block' }}>
                                     <NotebookPen size={13} style={{ verticalAlign: '-2px', marginRight: 4 }} aria-hidden="true" />Notas internas (opcional)
                                 </label>
                                 <textarea
+                                    id={`${uid}-adminNotes`}
                                     value={createForm.adminNotes}
                                     onChange={e => setCreateForm({ ...createForm, adminNotes: e.target.value })}
                                     placeholder="Observações internas sobre esta gravação..."

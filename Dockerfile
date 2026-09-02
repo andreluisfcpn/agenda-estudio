@@ -119,6 +119,9 @@ USER appuser
 ENV NODE_ENV=production
 ENV PORT=3001
 ENV NODE_PATH=/app/node_modules
+# B6: the backend assumes UTC (see lib/spTime.ts) for all weekday/date math on
+# @db.Date columns stored at 00:00Z. Pin it so weekday reads never drift by a day.
+ENV TZ=UTC
 
 EXPOSE 3001
 

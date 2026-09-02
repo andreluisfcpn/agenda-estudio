@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { BusinessConfigItem } from '../../../api/client';
 import WeekdayToggles from '../../ui/fields/WeekdayToggles';
 import TimeSlotListField from '../../ui/fields/TimeSlotListField';
@@ -21,6 +22,7 @@ interface ScheduleEditorProps {
  * is unchanged.
  */
 export default function ScheduleEditor({ items, onChange }: ScheduleEditorProps) {
+    const uid = useId();
     const byKey = Object.fromEntries(items.map(i => [i.key, i])) as Record<string, BusinessConfigItem | undefined>;
 
     const slotKeys = ['time_slots', 'comercial_slots', 'audiencia_slots'].filter(k => !!byKey[k]);
@@ -141,8 +143,9 @@ export default function ScheduleEditor({ items, onChange }: ScheduleEditorProps)
                 <div className="sf-schedule-block">
                     {fallbackString.map(it => (
                         <div key={it.key} className="form-group" style={{ marginBottom: 0 }}>
-                            <label className="form-label">{it.label || it.key}</label>
+                            <label className="form-label" htmlFor={`${uid}-${it.key}`}>{it.label || it.key}</label>
                             <input
+                                id={`${uid}-${it.key}`}
                                 className="form-input"
                                 type="text"
                                 value={it.value}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { bookingsApi } from '../../../api/client';
 import { useUI } from '../../../context/UIContext';
 import { useBusinessConfig } from '../../../hooks/useBusinessConfig';
@@ -38,6 +38,7 @@ const labelCss: React.CSSProperties = { display: 'flex', alignItems: 'center', g
 const inputCss: React.CSSProperties = { width: '100%', padding: '8px 12px', borderRadius: 10, fontSize: '0.8125rem', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-primary)', outline: 'none', fontFamily: 'inherit' };
 
 export default function FinalizeRecordingModal({ isOpen, booking, onClose, onSaved }: Props) {
+    const uid = useId();
     const { showToast } = useUI();
     const [duration, setDuration] = useState('');
     const [isLive, setIsLive] = useState(false);
@@ -126,8 +127,8 @@ export default function FinalizeRecordingModal({ isOpen, booking, onClose, onSav
 
                 {/* Duração total (sempre) */}
                 <div style={{ marginBottom: 16 }}>
-                    <label style={labelCss}><Timer size={13} aria-hidden="true" /> Duração total (min)</label>
-                    <input type="text" inputMode="numeric" value={duration} placeholder="Ex: 120" style={inputCss}
+                    <label style={labelCss} htmlFor={`${uid}-duration`}><Timer size={13} aria-hidden="true" /> Duração total (min)</label>
+                    <input id={`${uid}-duration`} type="text" inputMode="numeric" value={duration} placeholder="Ex: 120" style={inputCss}
                         onChange={e => setDuration(e.target.value.replace(/[^\d]/g, ''))} />
                 </div>
 
@@ -143,8 +144,8 @@ export default function FinalizeRecordingModal({ isOpen, booking, onClose, onSav
                 {/* Gravado (não ao vivo): só link de acesso à gravação */}
                 {!isLive && (
                     <div style={{ marginBottom: 14, padding: 14, borderRadius: 12, background: 'var(--bg-card)', border: '1px solid var(--border-default)' }}>
-                        <label style={labelCss}><Link2 size={13} aria-hidden="true" /> Link de acesso à gravação</label>
-                        <input type="url" value={recordingUrl} placeholder="https://..." style={inputCss}
+                        <label style={labelCss} htmlFor={`${uid}-recordingUrl`}><Link2 size={13} aria-hidden="true" /> Link de acesso à gravação</label>
+                        <input id={`${uid}-recordingUrl`} type="url" value={recordingUrl} placeholder="https://..." style={inputCss}
                             onChange={e => setRecordingUrl(e.target.value)} />
                         <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', marginTop: 6 }}>Gravação fechada: informe só a duração total e o link de acesso.</div>
                     </div>
@@ -154,8 +155,8 @@ export default function FinalizeRecordingModal({ isOpen, booking, onClose, onSav
                     <>
                         {/* Origem do público */}
                         <div style={{ marginBottom: 14 }}>
-                            <label style={labelCss}><Globe size={13} aria-hidden="true" /> Origem do público</label>
-                            <input type="text" value={audienceOrigin} placeholder="Ex: SP Capital" style={inputCss}
+                            <label style={labelCss} htmlFor={`${uid}-audienceOrigin`}><Globe size={13} aria-hidden="true" /> Origem do público</label>
+                            <input id={`${uid}-audienceOrigin`} type="text" value={audienceOrigin} placeholder="Ex: SP Capital" style={inputCss}
                                 onChange={e => setAudienceOrigin(e.target.value)} />
                         </div>
 
@@ -189,15 +190,15 @@ export default function FinalizeRecordingModal({ isOpen, booking, onClose, onSav
                                         <span style={{ width: 8, height: 8, borderRadius: '50%', background: p.color }} /> {p.label}
                                     </div>
                                     <div style={{ marginBottom: 10 }}>
-                                        <label style={labelCss}><Link2 size={13} aria-hidden="true" /> Link da transmissão</label>
-                                        <input type="url" value={links[key] || ''} placeholder="https://..." style={inputCss}
+                                        <label style={labelCss} htmlFor={`${uid}-platformLink-${key}`}><Link2 size={13} aria-hidden="true" /> Link da transmissão</label>
+                                        <input id={`${uid}-platformLink-${key}`} type="url" value={links[key] || ''} placeholder="https://..." style={inputCss}
                                             onChange={e => setLinks(prev => ({ ...prev, [key]: e.target.value }))} />
                                     </div>
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
                                         {METRIC_FIELDS.map(f => (
                                             <div key={f.key}>
-                                                <label style={labelCss}>{f.label}</label>
-                                                <input type="text" inputMode="numeric" value={metrics[key]?.[f.key] || ''} placeholder="0" style={inputCss}
+                                                <label style={labelCss} htmlFor={`${uid}-metric-${key}-${f.key}`}>{f.label}</label>
+                                                <input id={`${uid}-metric-${key}-${f.key}`} type="text" inputMode="numeric" value={metrics[key]?.[f.key] || ''} placeholder="0" style={inputCss}
                                                     onChange={e => setMetric(key, f.key, e.target.value)} />
                                             </div>
                                         ))}
@@ -211,12 +212,12 @@ export default function FinalizeRecordingModal({ isOpen, booking, onClose, onSav
                 {/* Notes */}
                 <div className="admin-grid-2" style={{ marginTop: 4, marginBottom: 18 }}>
                     <div>
-                        <label style={labelCss}><NotebookPen size={13} aria-hidden="true" /> Nota interna (admin)</label>
-                        <textarea value={adminNotes} rows={2} style={{ ...inputCss, resize: 'vertical' }} placeholder="Privado" onChange={e => setAdminNotes(e.target.value)} />
+                        <label style={labelCss} htmlFor={`${uid}-adminNotes`}><NotebookPen size={13} aria-hidden="true" /> Nota interna (admin)</label>
+                        <textarea id={`${uid}-adminNotes`} value={adminNotes} rows={2} style={{ ...inputCss, resize: 'vertical' }} placeholder="Privado" onChange={e => setAdminNotes(e.target.value)} />
                     </div>
                     <div>
-                        <label style={labelCss}><MessageCircle size={13} aria-hidden="true" /> Feedback ao cliente</label>
-                        <textarea value={clientNotes} rows={2} style={{ ...inputCss, resize: 'vertical' }} placeholder="Visível ao cliente" onChange={e => setClientNotes(e.target.value)} />
+                        <label style={labelCss} htmlFor={`${uid}-clientNotes`}><MessageCircle size={13} aria-hidden="true" /> Feedback ao cliente</label>
+                        <textarea id={`${uid}-clientNotes`} value={clientNotes} rows={2} style={{ ...inputCss, resize: 'vertical' }} placeholder="Visível ao cliente" onChange={e => setClientNotes(e.target.value)} />
                     </div>
                 </div>
 

@@ -393,7 +393,8 @@ async function main() {
   const paymentMethods = [
     { key: 'PIX', label: 'PIX', shortLabel: 'PIX', emoji: '⚡', description: 'Pagamento instantâneo', color: '#22c55e', active: true, sortOrder: 0, accessMode: 'FULL' },
     { key: 'CARTAO', label: 'Cartão de Crédito', shortLabel: 'Cartão', emoji: '💳', description: 'Crédito ou débito', color: '#8b5cf6', active: true, sortOrder: 1, accessMode: 'FULL' },
-    { key: 'BOLETO', label: 'Boleto Bancário', shortLabel: 'Boleto', emoji: '📄', description: 'Compensação em até 3 dias úteis', color: '#f59e0b', active: true, sortOrder: 2, accessMode: 'PROGRESSIVE' },
+    // Boleto desativado: PIX passou para o Sicoob (que só faz PIX) e o boleto era exclusivo da Cora.
+    { key: 'BOLETO', label: 'Boleto Bancário', shortLabel: 'Boleto', emoji: '📄', description: 'Compensação em até 3 dias úteis', color: '#f59e0b', active: false, sortOrder: 2, accessMode: 'PROGRESSIVE' },
   ];
   for (const pm of paymentMethods) {
     await prisma.paymentMethodConfig.upsert({ where: { key: pm.key }, create: pm, update: {} });
@@ -403,7 +404,10 @@ async function main() {
   // ── IntegrationConfig (dev defaults) ─────────────────────
   const integrations = [
     { provider: 'STRIPE', enabled: true, environment: 'sandbox', config: '{}' },
-    { provider: 'CORA', enabled: true, environment: 'sandbox', config: '{}' },
+    // PIX agora é atendido pelo Sicoob (sandbox usa credenciais públicas de teste, sem certificado).
+    { provider: 'SICOOB', enabled: true, environment: 'sandbox', config: '{}' },
+    // Cora mantida como opção extra de PIX, porém DESLIGADA por padrão (admin pode reativar).
+    { provider: 'CORA', enabled: false, environment: 'sandbox', config: '{}' },
   ];
   for (const intg of integrations) {
     await prisma.integrationConfig.upsert({ where: { provider: intg.provider }, create: intg, update: {} });

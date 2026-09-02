@@ -6,6 +6,34 @@ import { prisma } from '../../lib/prisma.js';
 import { BookingStatus, Tier } from '../../generated/prisma/client.js';
 import { getPackageSlots } from '../../utils/pricing.js';
 
+// ─── Blocked Slots ─────────────────────────────────────
+
+/**
+ * Retorna true se algum dos `packageSlots` (["HH:mm", ...]) cai dentro de um intervalo
+ * bloqueado (BlockedSlot) na data. Usado para revalidar bloqueios no MOMENTO da reserva —
+ * a disponibilidade só os esconde na UI; sem esta checagem era possível reservar por cima
+ * de um horário bloqueado (manutenção/double-booking).
+ */
+export async function hasBlockedConflict(dateObj: Date, packageSlots: string[]): Promise<boolean> {
+    const blocked = await prisma.blockedSlot.findMany({
+        where: { date: dateObj },
+        select: { startTime: true, endTime: true },
+    });
+    if (blocked.length === 0) return false;
+    const blockedSet = new Set<string>();
+    for (const b of blocked) {
+        const [sH, sM] = b.startTime.split(':').map(Number);
+        const [eH, eM] = b.endTime.split(':').map(Number);
+        let m = sH * 60 + sM;
+        const end = eH * 60 + eM;
+        while (m < end) {
+            blockedSet.add(`${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
+            m += 30;
+        }
+    }
+    return packageSlots.some(s => blockedSet.has(s));
+}
+
 // ─── Credit Management ─────────────────────────────────
 
 /** Restore a single credit to a Flex or Custom contract (atomic). */

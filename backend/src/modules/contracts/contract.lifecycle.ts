@@ -207,6 +207,16 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
             await applyContractServiceChange(id, data.addOns);
         }
 
+        // FIX (C2): cancelar via PATCH deve limpar como o DELETE — anular parcelas PENDING e
+        // cancelar bookings futuros. Sem isto o contrato ficava CANCELLED com parcelas cobráveis
+        // (auto-charge / webhook tardio) e a agenda futura ativa. Só na transição real p/ CANCELLED;
+        // void-before-update (idempotente) para retries permanecerem seguros.
+        const cancelingViaPatch = data.status === 'CANCELLED' && contract.status !== 'CANCELLED';
+        if (cancelingViaPatch) {
+            const { voidContractPendingPayments } = await import('../../lib/paymentEffects.js');
+            await voidContractPendingPayments(id);
+        }
+
         const updated = await prisma.contract.update({
             where: { id },
             data: updateData,
@@ -214,6 +224,13 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
                 user: { select: { id: true, name: true, email: true } },
             },
         });
+
+        if (cancelingViaPatch) {
+            await prisma.booking.updateMany({
+                where: { contractId: id, status: { not: 'CANCELLED' }, date: { gte: new Date() } },
+                data: { status: 'CANCELLED' },
+            });
+        }
 
         res.json({ contract: updated, message: 'Contrato atualizado com sucesso.' });
     } catch (err) {
@@ -409,7 +426,10 @@ router.post('/:id/renew', authenticate, authorize('ADMIN'), async (req: Request,
         const end = new Date(start);
         end.setMonth(end.getMonth() + durationMonths);
 
-        const flexCreditsTotal = newType === 'FLEX' ? durationMonths * 4 : undefined;
+        // FIX (C7): créditos FLEX da config episodes_Nmonths (igual à criação), não durationMonths*4.
+        const flexCreditsTotal = newType === 'FLEX'
+            ? await getConfig(durationMonths === 6 ? 'episodes_6months' : 'episodes_3months')
+            : undefined;
 
         const renewed = await prisma.contract.create({
             data: {
@@ -487,11 +507,16 @@ router.patch('/:id/pause', authenticate, authorize('ADMIN'), async (req: Request
             if (diffDays > 30) { res.status(400).json({ error: 'Pausa máxima de 30 dias.' }); return; }
         }
 
-        // Cancel future bookings
-        await prisma.booking.updateMany({
-            where: { contractId: id, status: { in: ['RESERVED', 'CONFIRMED'] }, date: { gte: now } },
-            data: { status: 'CANCELLED' },
-        });
+        // FIX (C4): cancelar bookings futuros SÓ para FIXO (que o /resume regenera). Antes,
+        // pausar CUSTOM cancelava as sessões pré-geradas e o resume (só FIXO) não recriava nada
+        // → o cliente perdia as gravações pagas. Para CUSTOM/FLEX preservamos as sessões agendadas
+        // (e nenhum crédito é perdido). A extensão do endDate na retomada continua valendo p/ todos.
+        if (contract.type === 'FIXO') {
+            await prisma.booking.updateMany({
+                where: { contractId: id, status: { in: ['RESERVED', 'CONFIRMED'] }, date: { gte: now } },
+                data: { status: 'CANCELLED' },
+            });
+        }
 
         const updated = await prisma.contract.update({
             where: { id },

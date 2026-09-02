@@ -1,5 +1,5 @@
 import { getErrorMessage } from '../../../utils/errors';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useId } from 'react';
 import { couponsApi, usersApi, ApiError, Coupon, CouponInput, CouponUserRef, UserSummary } from '../../../api/client';
 import { useUI } from '../../../context/UIContext';
 import BottomSheetModal from '../../BottomSheetModal';
@@ -26,6 +26,7 @@ function centsToText(cents: number): string {
 }
 
 export default function CouponModal({ coupon, onClose, onSaved }: CouponModalProps) {
+    const uid = useId();
     const { showToast } = useUI();
     const isEdit = !!coupon;
 
@@ -172,10 +173,11 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
 
                     <div className="admin-grid-2" style={{ gap: '12px' }}>
                         <div>
-                            <label style={labelStyle}>Código *</label>
+                            <label style={labelStyle} htmlFor={`${uid}-codigo`}>Código *</label>
                             <div style={{ position: 'relative' }}>
                                 <TicketPercent size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                 <input
+                                    id={`${uid}-codigo`}
                                     value={code}
                                     onChange={e => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ''))}
                                     placeholder="Ex: BEMVINDO10"
@@ -189,10 +191,11 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
                             {fieldErrors.code && <div style={fieldErrorStyle}>{fieldErrors.code}</div>}
                         </div>
                         <div>
-                            <label style={labelStyle}>Descrição</label>
+                            <label style={labelStyle} htmlFor={`${uid}-descricao`}>Descrição</label>
                             <div style={{ position: 'relative' }}>
                                 <NotebookPen size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
                                 <input
+                                    id={`${uid}-descricao`}
                                     value={description}
                                     onChange={e => setDescription(e.target.value)}
                                     placeholder="Ex: Boas-vindas de novos clientes"
@@ -228,11 +231,12 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
                     </div>
 
                     <div>
-                        <label style={labelStyle}>{discountType === 'VALOR' ? 'Valor do desconto (R$) *' : 'Percentual de desconto (%) *'}</label>
+                        <label style={labelStyle} htmlFor={`${uid}-discount-value`}>{discountType === 'VALOR' ? 'Valor do desconto (R$) *' : 'Percentual de desconto (%) *'}</label>
                         <div style={{ position: 'relative' }}>
                             {discountType === 'VALOR' ? <Banknote size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} /> : <Percent size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />}
                             {discountType === 'VALOR' ? (
                                 <input
+                                    id={`${uid}-discount-value`}
                                     value={valueText}
                                     onChange={e => setValueText(e.target.value.replace(/[^0-9,]/g, ''))}
                                     placeholder="Ex: 50,00"
@@ -243,6 +247,7 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
                                 />
                             ) : (
                                 <input
+                                    id={`${uid}-discount-value`}
                                     type="number" min={1} max={100} step={1}
                                     value={valueText}
                                     onChange={e => setValueText(e.target.value)}
@@ -295,8 +300,9 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
 
                     <div className="admin-grid-2" style={{ gap: '12px', marginBottom: '12px' }}>
                         <div>
-                            <label style={labelStyle}>Expira em</label>
+                            <label style={labelStyle} htmlFor={`${uid}-expires-at`}>Expira em</label>
                             <input
+                                id={`${uid}-expires-at`}
                                 type="date"
                                 value={expiresAt}
                                 onChange={e => setExpiresAt(e.target.value)}
@@ -307,8 +313,9 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
                             <div style={hintStyle}>Deixe vazio para não expirar</div>
                         </div>
                         <div>
-                            <label style={labelStyle}>Máx. de usos</label>
+                            <label style={labelStyle} htmlFor={`${uid}-max-uses`}>Máx. de usos</label>
                             <input
+                                id={`${uid}-max-uses`}
                                 type="number" min={1} step={1}
                                 value={maxUses}
                                 onChange={e => setMaxUses(e.target.value)}
@@ -323,8 +330,9 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
 
                     <div className="admin-grid-2" style={{ gap: '12px', marginBottom: '12px' }}>
                         <div>
-                            <label style={labelStyle}>Limite por cliente</label>
+                            <label style={labelStyle} htmlFor={`${uid}-max-uses-per-user`}>Limite por cliente</label>
                             <input
+                                id={`${uid}-max-uses-per-user`}
                                 type="number" min={1} step={1}
                                 value={maxUsesPerUser}
                                 onChange={e => setMaxUsesPerUser(e.target.value)}
@@ -336,8 +344,9 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
                             <div style={hintStyle}>Quantas vezes o MESMO cliente pode usar (vazio = ilimitado)</div>
                         </div>
                         <div>
-                            <label style={labelStyle}>Valor mínimo (R$)</label>
+                            <label style={labelStyle} htmlFor={`${uid}-min-amount`}>Valor mínimo (R$)</label>
                             <input
+                                id={`${uid}-min-amount`}
                                 value={minAmountText}
                                 onChange={e => setMinAmountText(e.target.value.replace(/[^0-9,]/g, ''))}
                                 placeholder="Ex: 100,00"

@@ -191,6 +191,14 @@ export default function AdminFinancePage() {
                                         Cora: {data.metrics.breakdown.cora}
                                     </span>
                                 )}
+                                {data.metrics.breakdown.sicoob > 0 && (
+                                    <span style={{
+                                        padding: '3px 8px', borderRadius: '6px', fontSize: '0.6875rem', fontWeight: 600,
+                                        background: 'var(--success-bg)', color: 'var(--success)'
+                                    }}>
+                                        PIX (Sicoob): {data.metrics.breakdown.sicoob}
+                                    </span>
+                                )}
                             </div>
                         </div>
 

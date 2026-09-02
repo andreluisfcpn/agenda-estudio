@@ -65,7 +65,11 @@ router.post('/', async (req: Request, res: Response) => {
                 scope: data.scope,
                 expiresAt: data.expiresAt ? spDate(data.expiresAt) : null,
                 maxUses: data.maxUses ?? null,
-                maxUsesPerUser: data.maxUsesPerUser ?? null,
+                // FIX (O2): cupom "apenas novos clientes" é, por definição, 1 por usuário. Defaultar
+                // maxUsesPerUser=1 garante o teto por-usuário ATÔMICO (advisory lock em reserveCouponUse),
+                // fechando a corrida em que dois checkouts simultâneos do mesmo cliente usariam o cupom 2x
+                // (a checagem onlyNewClients em validateCoupon é não-atômica).
+                maxUsesPerUser: data.maxUsesPerUser ?? (data.onlyNewClients ? 1 : null),
                 minAmount: data.minAmount ?? null,
                 onlyNewClients: data.onlyNewClients,
                 active: data.active,

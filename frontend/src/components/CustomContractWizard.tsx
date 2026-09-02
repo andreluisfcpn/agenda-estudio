@@ -1,6 +1,6 @@
 import { getErrorMessage } from "../utils/errors";
 import { formatBRL } from "../utils/format";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useId } from "react";
 import BottomSheetModal from "./BottomSheetModal";
 import {
   PricingConfig,
@@ -93,6 +93,7 @@ export default function CustomContractWizard({
   onComplete,
 }: CustomContractWizardProps) {
   const { user, updateUser } = useAuth();
+  const uid = useId();
   const [step, setStep] = useState<WizardStep>(1);
   // PIX needs a CPF/CNPJ — gate the contract creation when it's missing.
   const [showCpfPrompt, setShowCpfPrompt] = useState(false);
@@ -264,6 +265,9 @@ export default function CustomContractWizard({
         }
       } catch { /* offline/expirado — cai no prompt normalmente */ }
       pendingResolutions.current = resolutions;
+      // Libera "enviando": o prompt de CPF é uma pausa interativa, não um submit em andamento.
+      // Sem isto, submitting fica preso e o BottomSheetModal (preventClose) trava o fechamento.
+      setSubmitting(false);
       setShowCpfPrompt(true);
       return;
     }
@@ -351,7 +355,7 @@ export default function CustomContractWizard({
       await executeCreation([]);
     } catch (err: unknown) {
       setError(getErrorMessage(err) || "Erro ao validar agenda");
-      setStep(4);
+      setStep(3); // step 4 não existe neste wizard; o banner de erro é renderizado no step 3
       setSubmitting(false);
     }
   };
@@ -371,7 +375,7 @@ export default function CustomContractWizard({
               <CpfCnpjPrompt
                 saveLabel="Salvar e continuar"
                 onSaved={() => { setShowCpfPrompt(false); executeCreation(pendingResolutions.current, true); }}
-                onCancel={() => setShowCpfPrompt(false)}
+                onCancel={() => { setShowCpfPrompt(false); setSubmitting(false); }}
               />
             </div>
           </div>
@@ -553,10 +557,11 @@ export default function CustomContractWizard({
             <h3 className="wizard-step__title">1. Construa sua Grade</h3>
 
             <div className="form-group" style={{ marginBottom: 20 }}>
-              <label className="form-label">
+              <label className="form-label" htmlFor={`${uid}-contract-name`}>
                 Nome do Projeto (Obrigatório)
               </label>
               <input
+                id={`${uid}-contract-name`}
                 className="form-input"
                 type="text"
                 value={contractName}

@@ -58,6 +58,18 @@ const loginVerifyCodeSchema = z.object({
 });
 
 
+// ─── Helper: bloqueio de conta ──────────────────────────
+// Impede emissão de tokens para contas BLOCKED (bloquear no admin passa a ter efeito real).
+// Aplicado em todos os pontos que emitem sessão (login senha/OTP/Google + refresh); tokens já
+// emitidos morrem no máximo no próximo refresh (≤ validade do access token).
+function assertNotBlocked(res: Response, user: { clientStatus?: string | null } | null): boolean {
+    if (user && user.clientStatus === 'BLOCKED') {
+        res.status(403).json({ error: 'Sua conta está bloqueada. Entre em contato com o estúdio.' });
+        return true;
+    }
+    return false;
+}
+
 // ─── Helper: Generate Tokens ────────────────────────────
 
 function generateTokens(payload: { userId: string; email: string; role: string }) {
@@ -234,6 +246,8 @@ router.post('/login', async (req: Request, res: Response) => {
             return;
         }
 
+        if (assertNotBlocked(res, user)) return;
+
         const tokens = generateTokens({
             userId: user.id,
             email: user.email || '',
@@ -312,6 +326,8 @@ router.post('/login/verify-code', async (req: Request, res: Response) => {
             res.status(401).json({ error: 'Código inválido ou expirado.' });
             return;
         }
+
+        if (assertNotBlocked(res, user)) return;
 
         const tokens = generateTokens({ userId: user.id, email: user.email || '', role: user.role });
         setTokenCookies(res, tokens.accessToken, tokens.refreshToken);
@@ -425,6 +441,8 @@ router.post('/google', async (req: Request, res: Response) => {
             }
         }
 
+        if (assertNotBlocked(res, user)) return;
+
         const tokens = generateTokens({ userId: user.id, email: user.email || '', role: user.role });
         setTokenCookies(res, tokens.accessToken, tokens.refreshToken);
 
@@ -457,6 +475,8 @@ router.post('/refresh', async (req: Request, res: Response) => {
             res.status(401).json({ error: 'Usuário não encontrado.' });
             return;
         }
+
+        if (assertNotBlocked(res, user)) return;
 
         const tokens = generateTokens({
             userId: user.id,

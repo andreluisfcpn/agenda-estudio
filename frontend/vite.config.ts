@@ -88,12 +88,14 @@ export default defineConfig({
     server: {
         port: 5173,
         proxy: {
+            // Alvo da API configurável por env (default 3001) — permite rodar o backend
+            // noutra porta quando a 3001 estiver ocupada por outro serviço local.
             '/api': {
-                target: 'http://127.0.0.1:3001',
+                target: `http://127.0.0.1:${process.env.BACKEND_PORT || 3001}`,
                 changeOrigin: true,
             },
             '/uploads': {
-                target: 'http://127.0.0.1:3001',
+                target: `http://127.0.0.1:${process.env.BACKEND_PORT || 3001}`,
                 changeOrigin: true,
             },
         },

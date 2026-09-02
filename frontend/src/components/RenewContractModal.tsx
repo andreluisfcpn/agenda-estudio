@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import BottomSheetModal from './BottomSheetModal';
 import { getClientPaymentMethods } from '../constants/paymentMethods';
 
@@ -10,6 +10,7 @@ interface RenewContractModalProps {
 }
 
 export default function RenewContractModal({ isOpen, tier, onClose, onConfirm }: RenewContractModalProps) {
+    const uid = useId();
     const [duration, setDuration] = useState<3 | 6 | 12>(3);
     const [method, setMethod] = useState<'PIX' | 'CARTAO'>('PIX');
     const [loading, setLoading] = useState(false);
@@ -27,8 +28,8 @@ export default function RenewContractModal({ isOpen, tier, onClose, onConfirm }:
             </p>
 
             <div className="form-group">
-                <label className="form-label">Duração (Meses)</label>
-                <select className="form-input" value={duration} onChange={e => setDuration(Number(e.target.value) as 3 | 6 | 12)}>
+                <label className="form-label" htmlFor={`${uid}-duration`}>Duração (Meses)</label>
+                <select id={`${uid}-duration`} className="form-input" value={duration} onChange={e => setDuration(Number(e.target.value) as 3 | 6 | 12)}>
                     <option value={3}>3 Meses</option>
                     <option value={6}>6 Meses</option>
                     <option value={12}>12 Meses</option>

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import Avatar from './Avatar';
 import NotificationBell from './NotificationBell';
 import {
     Menu,
@@ -18,13 +19,6 @@ export default function Topbar({ onToggleSidebar }: TopbarProps) {
     const navigate = useNavigate();
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
-
-    const initials = user?.name
-        ?.split(' ')
-        .map(w => w[0])
-        .join('')
-        .slice(0, 2)
-        .toUpperCase() || '??';
 
     // Close on click outside
     useEffect(() => {
@@ -62,11 +56,20 @@ export default function Topbar({ onToggleSidebar }: TopbarProps) {
                 </button>
 
                 <a href="/dashboard" className="topbar-brand">
+                    {/* Logo servido localmente (public/icons) — não depende de URL externa (buzios.digital
+                        estava fora do ar / ECONNRESET, quebrando o logo). Fallback: texto no onError. */}
                     <img
-                        src="https://buzios.digital/wp-content/uploads/2025/01/logo-site-branca.svg"
+                        src="/icons/logo-branca.svg"
                         alt="Búzios Digital"
                         className="topbar-brand-logo"
+                        onError={(e) => {
+                            const img = e.currentTarget;
+                            img.style.display = 'none';
+                            const fb = img.nextElementSibling as HTMLElement | null;
+                            if (fb) fb.style.display = 'inline';
+                        }}
                     />
+                    <span className="topbar-brand-fallback" style={{ display: 'none' }}>Búzios Digital</span>
                 </a>
             </div>
 
@@ -85,17 +88,7 @@ export default function Topbar({ onToggleSidebar }: TopbarProps) {
                         aria-haspopup="menu"
                         aria-expanded={menuOpen}
                     >
-                        <div
-                            className="topbar-avatar"
-                            style={user?.photoUrl ? {
-                                backgroundImage: `url(${user.photoUrl})`,
-                                backgroundSize: 'cover',
-                                backgroundPosition: 'center',
-                                fontSize: 0,
-                            } : {}}
-                        >
-                            {!user?.photoUrl && initials}
-                        </div>
+                        <Avatar className="topbar-avatar" photoUrl={user?.photoUrl} name={user?.name} />
                         <ChevronDown
                             size={14}
                             className={`topbar-profile-chevron ${menuOpen ? 'topbar-profile-chevron--open' : ''}`}
@@ -107,17 +100,7 @@ export default function Topbar({ onToggleSidebar }: TopbarProps) {
                     {menuOpen && (
                         <div className="topbar-profile-dropdown" role="menu">
                             <div className="topbar-profile-dropdown__header">
-                                <div
-                                    className="topbar-avatar topbar-avatar--lg"
-                                    style={user?.photoUrl ? {
-                                        backgroundImage: `url(${user.photoUrl})`,
-                                        backgroundSize: 'cover',
-                                        backgroundPosition: 'center',
-                                        fontSize: 0,
-                                    } : {}}
-                                >
-                                    {!user?.photoUrl && initials}
-                                </div>
+                                <Avatar className="topbar-avatar topbar-avatar--lg" photoUrl={user?.photoUrl} name={user?.name} />
                                 <div>
                                     <div className="topbar-profile-dropdown__name">{user?.name}</div>
                                     <div className="topbar-profile-dropdown__email">{user?.email}</div>

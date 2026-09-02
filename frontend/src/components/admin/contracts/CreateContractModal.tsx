@@ -1,5 +1,5 @@
 import { getErrorMessage } from '../../../utils/errors';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useId } from 'react';
 import { contractsApi, pricingApi, UserSummary, CreateContractData, PricingConfig, InstallmentPlan, AddOnConfig, ServiceBreakdownItem, CouponValidation } from '../../../api/client';
 import { useBusinessConfig } from '../../../hooks/useBusinessConfig';
 import BottomSheetModal from '../../BottomSheetModal';
@@ -28,6 +28,7 @@ interface CreateContractModalProps {
 }
 
 export default function CreateContractModal({ isOpen, onClose, onCreated, users, pricing }: CreateContractModalProps) {
+    const uid = useId();
     const { get: getRule } = useBusinessConfig();
     const ep3 = getRule('episodes_3months');
     const ep6 = getRule('episodes_6months');
@@ -40,6 +41,8 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
     });
     const [createError, setCreateError] = useState('');
     const [createSuccess, setCreateSuccess] = useState('');
+    const [creating, setCreating] = useState(false);
+    const creatingRef = React.useRef(false); // trava anti-duplo-clique (evita contrato/pagamento duplicado)
     const [paymentMethod, setPaymentMethod] = useState<AdminMethod>('CARTAO');
 
     const [conflicts, setConflicts] = useState<{ date: string, originalTime: string, suggestedReplacement?: { date: string, time: string } }[]>([]);
@@ -73,6 +76,9 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
     }, [isOpen, createForm.tier, createForm.durationMonths, createForm.type, selectedAddons]);
 
     const executeCreate = async (resolutions: any[] = []) => {
+        if (creatingRef.current) return;
+        creatingRef.current = true;
+        setCreating(true);
         setCreateError(''); setCreateSuccess('');
         try {
             const data: CreateContractData = {
@@ -106,10 +112,11 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                 setTimeout(() => { onClose(); setCreateSuccess(''); }, 1500);
             }
         } catch (err: unknown) { setCreateError(getErrorMessage(err)); }
+        finally { creatingRef.current = false; setCreating(false); }
     };
 
     const handleCreate = async () => {
-        if (!createForm.userId) return;
+        if (!createForm.userId || creatingRef.current) return;
         setCreateError('');
 
         if (createForm.type === 'FIXO') {
@@ -193,10 +200,11 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                             <div className="admin-grid-2" style={{ gap: '12px' }}>
                                 {/* Client selector */}
                                 <div>
-                                    <label style={labelStyle}>Cliente *</label>
+                                    <label style={labelStyle} htmlFor={`${uid}-cliente`}>Cliente *</label>
                                     <div style={{ position: 'relative' }}>
                                         <UserRound size={13} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', opacity: 0.5, pointerEvents: 'none' }} aria-hidden="true" />
                                         <select
+                                            id={`${uid}-cliente`}
                                             value={createForm.userId || ''}
                                             onChange={e => setCreateForm({ ...createForm, userId: e.target.value })}
                                             style={{
@@ -225,10 +233,11 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
 
                                 {/* Project name */}
                                 <div>
-                                    <label style={labelStyle}>Nome do Projeto *</label>
+                                    <label style={labelStyle} htmlFor={`${uid}-nome-projeto`}>Nome do Projeto *</label>
                                     <div style={{ position: 'relative' }}>
                                         <NotebookPen size={13} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', opacity: 0.5, pointerEvents: 'none' }} aria-hidden="true" />
                                         <input
+                                            id={`${uid}-nome-projeto`}
                                             value={createForm.name || ''} onChange={e => setCreateForm({ ...createForm, name: e.target.value })}
                                             placeholder="Ex: Podcast Verão 2026"
                                             className="form-input form-input--raised" style={{ paddingLeft: 36, fontSize: '0.8125rem' }}
@@ -314,19 +323,19 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                             {/* Date + Contract URL row */}
                             <div className="admin-grid-2" style={{ gap: '12px', marginBottom: '14px' }}>
                                 <div>
-                                    <label style={labelStyle}>Data de Início</label>
+                                    <label style={labelStyle} htmlFor={`${uid}-data-inicio`}>Data de Início</label>
                                     <div style={{ position: 'relative' }}>
                                         <CalendarDays size={13} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', opacity: 0.5, pointerEvents: 'none' }} aria-hidden="true" />
-                                        <input type="date" value={createForm.startDate}
+                                        <input id={`${uid}-data-inicio`} type="date" value={createForm.startDate}
                                             onChange={e => setCreateForm({ ...createForm, startDate: e.target.value })}
                                             className="form-input form-input--raised" style={{ paddingLeft: 36, fontSize: '0.8125rem' }} />
                                     </div>
                                 </div>
                                 <div>
-                                    <label style={labelStyle}>Link do Contrato</label>
+                                    <label style={labelStyle} htmlFor={`${uid}-contract-url`}>Link do Contrato</label>
                                     <div style={{ position: 'relative' }}>
                                         <Link2 size={13} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', opacity: 0.5, pointerEvents: 'none' }} aria-hidden="true" />
-                                        <input type="url" value={createForm.contractUrl || ''}
+                                        <input id={`${uid}-contract-url`} type="url" value={createForm.contractUrl || ''}
                                             onChange={e => setCreateForm({ ...createForm, contractUrl: e.target.value })}
                                             placeholder="https://contrato.digital/..."
                                             className="form-input form-input--raised" style={{ paddingLeft: 36, fontSize: '0.8125rem' }} />
@@ -356,8 +365,8 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                                             </div>
                                         </div>
                                         <div>
-                                            <label style={labelStyle}>Horário</label>
-                                            <input type="time" value={createForm.fixedTime || '14:00'}
+                                            <label style={labelStyle} htmlFor={`${uid}-horario`}>Horário</label>
+                                            <input id={`${uid}-horario`} type="time" value={createForm.fixedTime || '14:00'}
                                                 onChange={e => setCreateForm({ ...createForm, fixedTime: e.target.value })}
                                                 className="form-input form-input--raised" style={{ fontSize: '0.8125rem', width: 100 }} />
                                         </div>
@@ -535,15 +544,15 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                                 style={{ padding: '10px 20px', borderRadius: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer' }}>
                                 Cancelar
                             </button>
-                            <button onClick={handleCreate} disabled={!canCreate}
+                            <button onClick={handleCreate} disabled={!canCreate || creating}
                                 style={{
-                                    padding: '10px 28px', borderRadius: '10px', border: 'none', fontSize: '0.875rem', fontWeight: 700, cursor: 'pointer',
-                                    background: canCreate ? 'var(--accent-gradient-go)' : 'var(--bg-elevated)',
-                                    color: canCreate ? '#fff' : 'var(--text-muted)',
-                                    opacity: canCreate ? 1 : 0.5,
+                                    padding: '10px 28px', borderRadius: '10px', border: 'none', fontSize: '0.875rem', fontWeight: 700, cursor: (canCreate && !creating) ? 'pointer' : 'not-allowed',
+                                    background: (canCreate && !creating) ? 'var(--accent-gradient-go)' : 'var(--bg-elevated)',
+                                    color: (canCreate && !creating) ? '#fff' : 'var(--text-muted)',
+                                    opacity: (canCreate && !creating) ? 1 : 0.5,
                                     display: 'flex', alignItems: 'center', gap: '8px',
                                 }}>
-                                Criar Contrato
+                                {creating ? 'Criando...' : 'Criar Contrato'}
                             </button>
                         </div>
                     </div>

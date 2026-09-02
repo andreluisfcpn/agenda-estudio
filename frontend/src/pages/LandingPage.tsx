@@ -24,8 +24,11 @@ const COLORS = {
     white: '#FFFFFF'
 };
 
+// Logo servido localmente (public/icons) — não depende de URL externa. O hero continua
+// vindo de URL configurável (foto do estúdio); se falhar, um onError no <img> trata.
+const LOCAL_LOGO = '/icons/logo-branca.svg';
 const DEFAULT_ASSETS = {
-    logo: 'https://buzios.digital/wp-content/uploads/2025/01/logo-site-branca.svg',
+    logo: LOCAL_LOGO,
     heroImage: 'https://buzios.digital/wp-content/uploads/elementor/thumbs/bd-estudio-enhanced-sr-r9lm9twze86yo0wxu68fp1e0yf8baho28zrniyf1o0.jpg'
 };
 
@@ -63,6 +66,7 @@ export default function LandingPage() {
     const [studioHero, setStudioHero] = useState(DEFAULT_ASSETS.heroImage);
     const [studioEmail, setStudioEmail] = useState('contato@buzios.digital');
     const [studioLocation, setStudioLocation] = useState('Búzios, RJ');
+    const [studioPhone, setStudioPhone] = useState('(22) 3301-5850');
 
     const scrollToCalendar = useCallback(() => {
         setMobileMenuOpen(false);
@@ -77,6 +81,7 @@ export default function LandingPage() {
             if (cfg.studio_hero_image) setStudioHero(String(cfg.studio_hero_image));
             if (cfg.studio_email) setStudioEmail(String(cfg.studio_email));
             if (cfg.studio_location) setStudioLocation(String(cfg.studio_location));
+            if (cfg.studio_phone) setStudioPhone(String(cfg.studio_phone));
         }).catch(() => { });
     }, []);
 
@@ -143,6 +148,7 @@ export default function LandingPage() {
                     alt={studioName}
                     className="landing-navbar-logo"
                     onClick={() => window.open('https://buzios.digital', '_blank')}
+                    onError={(e) => { const t = e.currentTarget; if (!t.dataset.fb) { t.dataset.fb = '1'; t.src = LOCAL_LOGO; } }}
                 />
                 <div className="landing-navbar-desktop">
                     <button className="btn btn-ghost" onClick={() => setIsLoginModalOpen(true)} style={{ fontSize: '0.9rem', fontWeight: 600, color: COLORS.white }}>
@@ -233,7 +239,8 @@ export default function LandingPage() {
 
                     {/* Studio Image — visible on tablet/desktop only */}
                     <div className="landing-hero-visual hero-animate-5">
-                        <img src={studioHero} alt={`Interior do ${studioName}`} />
+                        <img src={studioHero} alt={`Interior do ${studioName}`}
+                            onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                         <div className="landing-hero-visual-overlay" />
                         <div className="landing-hero-visual-badge">
                             <MapPin size={12} style={{ opacity: 0.6 }} />
@@ -327,15 +334,16 @@ export default function LandingPage() {
                 <div className="landing-footer-inner">
                     <div className="landing-footer-grid">
                         <div className="landing-footer-brand">
-                            <img src={studioLogo} alt={studioName} />
+                            <img src={studioLogo} alt={studioName}
+                                onError={(e) => { const t = e.currentTarget; if (!t.dataset.fb) { t.dataset.fb = '1'; t.src = LOCAL_LOGO; } }} />
                             <p>Excelência e inovação em produção audiovisual e estratégia digital.</p>
                         </div>
 
                         <div>
                             <div className="landing-footer-col-title">CONTATO</div>
                             <div className="landing-footer-links">
-                                <a className="landing-footer-link" href="tel:+552233015850">
-                                    <Phone size={14} /> (22) 3301-5850
+                                <a className="landing-footer-link" href={`tel:+55${studioPhone.replace(/\D/g, '')}`}>
+                                    <Phone size={14} /> {studioPhone}
                                 </a>
                                 <a className="landing-footer-link" href={`mailto:${studioEmail}`}>
                                     <Mail size={14} /> {studioEmail}

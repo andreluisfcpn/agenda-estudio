@@ -57,11 +57,24 @@ router.post('/:id/complete-payment', authenticate, async (req: Request, res: Res
                 return;
             }
 
-            // PAY-03 FIX: Verify amount matches the booking payment
+            // SEC FIX (S1): exigir o VÍNCULO forte do PaymentIntent a um pagamento PENDING DESTE
+            // agendamento. Antes, quando não havia esse pagamento, a checagem de valor era pulada e
+            // QUALQUER PI 'succeeded' (ex.: um avulso anterior do próprio cliente) confirmava o
+            // agendamento e ativava o contrato SEM pagar. Agora: sem pagamento vinculado → recusa.
             const bookingPayment = await prisma.payment.findFirst({
                 where: { bookingId, providerRef: paymentIntentId, status: 'PENDING' },
             });
-            if (bookingPayment && pi.amount !== bookingPayment.amount) {
+            if (!bookingPayment) {
+                res.status(400).json({ error: 'Nenhum pagamento pendente vinculado a este agendamento e a este PaymentIntent.' });
+                return;
+            }
+            // Posse forte: o PI de cartão de um Payment sempre grava metadata.paymentId = payment.id.
+            if (pi.metadata?.paymentId && pi.metadata.paymentId !== bookingPayment.id) {
+                console.error(`[BOOKING] PI ownership mismatch: PI.meta=${pi.metadata?.paymentId}, payment=${bookingPayment.id}`);
+                res.status(400).json({ error: 'PaymentIntent não pertence a este pagamento.' });
+                return;
+            }
+            if (pi.amount !== bookingPayment.amount) {
                 console.error(`[BOOKING] Amount mismatch: PI=${pi.amount}, DB=${bookingPayment.amount}`);
                 res.status(400).json({ error: 'Valor do pagamento não confere.' });
                 return;
@@ -265,7 +278,8 @@ router.put('/:id/check-in', authenticate, authorize('ADMIN'), async (req: Reques
     if (booking.status !== 'RESERVED' && booking.status !== 'CONFIRMED') {
         res.status(400).json({ error: `Não é possível fazer check-in de um agendamento com status ${booking.status}.` }); return;
     }
-    const updated = await prisma.booking.update({ where: { id }, data: { status: BookingStatus.CONFIRMED } });
+    // Limpa o hold ao promover para CONFIRMED (evita que o cleanup varra uma reserva já com check-in).
+    const updated = await prisma.booking.update({ where: { id }, data: { status: BookingStatus.CONFIRMED, holdExpiresAt: null } });
     res.json({ booking: updated, message: '✅ Check-in realizado! Cliente presente.' });
 });
 

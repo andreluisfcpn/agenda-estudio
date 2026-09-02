@@ -1,5 +1,5 @@
 import { getErrorMessage } from '../utils/errors';
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useId } from 'react';
 import {
     Clapperboard, CheckCircle2, ChevronRight, CalendarDays, Flag, XCircle,
     AlertCircle, Ban, UserRound, Save, Radio, Timer, Eye, MessageCircle, Globe,
@@ -23,10 +23,12 @@ const TIMELINE = buildDayTimeline();
 // Estilos .today-* vivem em styles/admin-area.css (seção AdminTodayPage).
 
 export default function AdminTodayPage() {
+    const uid = useId();
     const navigate = useNavigate();
     const { showToast, showConfirm } = useUI();
     const [bookings, setBookings] = useState<BookingWithUser[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState(false);
     const [expandedSlot, setExpandedSlot] = useState<string | null>(null);
     const [finalizeBooking, setFinalizeBooking] = useState<BookingWithUser | null>(null);
 
@@ -43,10 +45,11 @@ export default function AdminTodayPage() {
 
     const loadData = useCallback(async () => {
         setLoading(true);
+        setLoadError(false);
         try {
             const res = await bookingsApi.getAll(today);
             setBookings(res.bookings.filter(b => b.status !== 'CANCELLED'));
-        } catch (err) { console.error(err); }
+        } catch (err) { console.error(err); setLoadError(true); }
         finally { setLoading(false); }
     }, [today]);
 
@@ -130,6 +133,17 @@ export default function AdminTodayPage() {
     }, [bookings, nowTime]);
 
     if (loading) return <div><HeroSkeleton /><LoadingSpinner /></div>;
+
+    // U4: a failed load must not render as an empty day (0 gravações) — show a clear retry.
+    if (loadError && bookings.length === 0) {
+        return (
+            <div className="client-empty animate-card-enter" role="alert" style={{ marginTop: 24 }}>
+                <Clapperboard size={32} className="client-empty__icon" />
+                <div className="client-empty__text">Não foi possível carregar a agenda de hoje.</div>
+                <button className="btn btn-primary btn-sm" style={{ marginTop: 10 }} onClick={loadData}>Tentar novamente</button>
+            </div>
+        );
+    }
 
     return (
         <div>
@@ -397,10 +411,10 @@ export default function AdminTodayPage() {
                                                             { icon: Eye, label: 'Pico Viewers', value: peakViewers, onChange: (v: string) => setPeakViewers(v === '' ? '' : Number(v)), type: 'number', ph: 'Ex: 1530' },
                                                             { icon: MessageCircle, label: 'Mensagens', value: chatMessages, onChange: (v: string) => setChatMessages(v === '' ? '' : Number(v)), type: 'number', ph: 'Ex: 2400' },
                                                             { icon: Globe, label: 'Origem', value: audienceOrigin, onChange: setAudienceOrigin, type: 'text', ph: 'Ex: SP Capital' },
-                                                        ].map(f => (
+                                                        ].map((f, fi) => (
                                                             <div key={f.label} className="admin-field">
-                                                                <label className="admin-field__label" style={{ display: 'flex', alignItems: 'center', gap: 4 }}><f.icon size={13} aria-hidden="true" /> {f.label}</label>
-                                                                <input type={f.type} className="form-input form-input--raised" placeholder={f.ph}
+                                                                <label className="admin-field__label" style={{ display: 'flex', alignItems: 'center', gap: 4 }} htmlFor={`${uid}-metric-${fi}`}><f.icon size={13} aria-hidden="true" /> {f.label}</label>
+                                                                <input id={`${uid}-metric-${fi}`} type={f.type} className="form-input form-input--raised" placeholder={f.ph}
                                                                     style={{ fontSize: '0.8125rem' }}
                                                                     value={f.value} onChange={e => f.onChange(e.target.value)} />
                                                             </div>
@@ -412,22 +426,22 @@ export default function AdminTodayPage() {
                                             {/* Notes — `admin-grid-2` collapses to 1 column on ≤640px (mobile). */}
                                             <div className="admin-grid-2" style={{ marginBottom: '20px' }}>
                                                 <div>
-                                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.6875rem', fontWeight: 700, color: 'var(--accent-text)', marginBottom: '8px' }}>
+                                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.6875rem', fontWeight: 700, color: 'var(--accent-text)', marginBottom: '8px' }} htmlFor={`${uid}-admin-notes`}>
                                                         <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent-text)' }} />
                                                         Observação Interna (Admin)
                                                     </label>
-                                                    <textarea className="form-input form-input--raised"
+                                                    <textarea id={`${uid}-admin-notes`} className="form-input form-input--raised"
                                                         style={{ minHeight: 80, resize: 'vertical', fontFamily: 'inherit', fontSize: '0.8125rem' }}
                                                         placeholder="Notas privadas sobre a sessão..."
                                                         value={adminNotes}
                                                         onChange={e => setAdminNotes(e.target.value)} />
                                                 </div>
                                                 <div>
-                                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.6875rem', fontWeight: 700, color: 'var(--success)', marginBottom: '8px' }}>
+                                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.6875rem', fontWeight: 700, color: 'var(--success)', marginBottom: '8px' }} htmlFor={`${uid}-client-notes`}>
                                                         <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--success)' }} />
                                                         Feedback para o Cliente
                                                     </label>
-                                                    <textarea className="form-input form-input--raised"
+                                                    <textarea id={`${uid}-client-notes`} className="form-input form-input--raised"
                                                         style={{ minHeight: 80, resize: 'vertical', fontFamily: 'inherit', fontSize: '0.8125rem' }}
                                                         placeholder="Visível no painel do cliente..."
                                                         value={clientNotes}

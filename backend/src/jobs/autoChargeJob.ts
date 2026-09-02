@@ -25,6 +25,10 @@ export async function runAutoChargeJob(): Promise<void> {
             status: 'PENDING',
             dueDate: { lte: endOfToday },
             contractId: { not: null },
+            // Nunca cobrar parcelas de contratos pausados / em cancelamento / cancelados.
+            // (ACTIVE, AWAITING_PAYMENT e EXPIRED seguem cobráveis — evita parar a cobrança da
+            // 1ª parcela e da parcela final de um contrato recém-expirado.)
+            contract: { status: { notIn: ['PAUSED', 'PENDING_CANCELLATION', 'CANCELLED'] } },
             user: { autoChargeEnabled: true, stripeCustomerId: { not: null } },
         },
         include: { user: { select: { id: true, name: true, stripeCustomerId: true } } },

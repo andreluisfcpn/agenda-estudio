@@ -1,10 +1,11 @@
-import { useState, useRef, type ChangeEvent } from 'react';
+import { useState, useRef, useId, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authApi } from '../api/client';
 import { maskCpfCnpj, isValidCpfCnpj } from '../utils/mask';
 import HeroAmbient from '../components/client/HeroAmbient';
 import ImageCropper from '../components/ImageCropper';
+import Avatar from '../components/Avatar';
 import ToggleSwitch from '../components/ui/ToggleSwitch';
 import AddressFields, { type AddressValues } from '../components/admin/clients/AddressFields';
 import { ArrowLeft, UserRound, Camera, Save, Loader2, CheckCircle2 } from 'lucide-react';
@@ -12,6 +13,7 @@ import { ArrowLeft, UserRound, Camera, Save, Loader2, CheckCircle2 } from 'lucid
 export default function MyProfilePage() {
     const navigate = useNavigate();
     const { user, updateUser } = useAuth();
+    const uid = useId();
 
     const [name, setName] = useState(user?.name || '');
     const [phone, setPhone] = useState(user?.phone || '');
@@ -110,13 +112,6 @@ export default function MyProfilePage() {
         }
     };
 
-    const initials = (user?.name || '')
-        .split(' ')
-        .map(w => w[0])
-        .join('')
-        .slice(0, 2)
-        .toUpperCase();
-
     return (
         <div>
             {/* Hero */}
@@ -144,23 +139,19 @@ export default function MyProfilePage() {
                 <div className="profile-page-section animate-card-enter">
                     {/* Avatar */}
                     <div className="profile-avatar-block">
-                        <div
+                        <Avatar
                             className="profile-avatar"
-                            style={{
-                                background: user?.photoUrl
-                                    ? `url(${user.photoUrl}) center/cover no-repeat`
-                                    : 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))',
-                            }}
+                            photoUrl={user?.photoUrl}
+                            name={user?.name}
                             onClick={() => fileRef.current?.click()}
                             title="Clique para trocar a foto"
                         >
-                            {!user?.photoUrl && initials}
                             {uploadingPhoto && (
                                 <div className="profile-avatar__overlay">
                                     <div className="spinner" style={{ width: 24, height: 24 }} />
                                 </div>
                             )}
-                        </div>
+                        </Avatar>
                         <input ref={fileRef} type="file" accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
                         <button className="btn btn-ghost btn-sm" style={{ marginTop: 10, gap: 6 }} onClick={() => fileRef.current?.click()} disabled={uploadingPhoto}>
                             <Camera size={15} /> {uploadingPhoto ? 'Enviando…' : 'Alterar foto'}
@@ -176,38 +167,38 @@ export default function MyProfilePage() {
 
                     {/* Form */}
                     <div className="form-group">
-                        <label className="form-label">E-mail</label>
-                        <input className="form-input" value={user?.email || ''} disabled style={{ opacity: 0.6 }} />
+                        <label className="form-label" htmlFor={`${uid}-email`}>E-mail</label>
+                        <input id={`${uid}-email`} className="form-input" value={user?.email || ''} disabled style={{ opacity: 0.6 }} />
                     </div>
                     <div className="form-group">
-                        <label className="form-label">Nome</label>
-                        <input className="form-input" value={name} onChange={e => setName(e.target.value)} placeholder="Seu nome" />
+                        <label className="form-label" htmlFor={`${uid}-name`}>Nome</label>
+                        <input id={`${uid}-name`} className="form-input" value={name} onChange={e => setName(e.target.value)} placeholder="Seu nome" />
                     </div>
                     <div className="form-group">
-                        <label className="form-label">Telefone (contato)</label>
-                        <input className="form-input" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(21) 99999-9999" />
+                        <label className="form-label" htmlFor={`${uid}-phone`}>Telefone (contato)</label>
+                        <input id={`${uid}-phone`} className="form-input" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(21) 99999-9999" />
                     </div>
                     <div className="form-group">
-                        <label className="form-label">Nova senha (deixe vazio para manter)</label>
-                        <input className="form-input" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" autoComplete="new-password" />
+                        <label className="form-label" htmlFor={`${uid}-password`}>Nova senha (deixe vazio para manter)</label>
+                        <input id={`${uid}-password`} className="form-input" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" autoComplete="new-password" />
                     </div>
                     <div className="form-group">
-                        <label className="form-label">CPF / CNPJ</label>
-                        <input className="form-input" value={cpfCnpj} onChange={e => setCpfCnpj(maskCpfCnpj(e.target.value))} inputMode="numeric" placeholder="000.000.000-00" />
+                        <label className="form-label" htmlFor={`${uid}-cpfcnpj`}>CPF / CNPJ</label>
+                        <input id={`${uid}-cpfcnpj`} className="form-input" value={cpfCnpj} onChange={e => setCpfCnpj(maskCpfCnpj(e.target.value))} inputMode="numeric" placeholder="000.000.000-00" />
                     </div>
                     <div className="form-group">
                         <AddressFields values={addr} onChange={patch => setAddr(a => ({ ...a, ...patch }))} />
                     </div>
                     <div className="form-group">
-                        <label className="form-label">Instagram</label>
+                        <label className="form-label" htmlFor={`${uid}-instagram`}>Instagram</label>
                         <div className="profile-input-adorned">
                             <span className="profile-input-adorned__prefix">@</span>
-                            <input className="form-input" value={instagram} onChange={e => setInstagram(e.target.value)} placeholder="usuario" />
+                            <input id={`${uid}-instagram`} className="form-input" value={instagram} onChange={e => setInstagram(e.target.value)} placeholder="usuario" />
                         </div>
                     </div>
                     <div className="form-group">
-                        <label className="form-label">LinkedIn (URL)</label>
-                        <input className="form-input" value={linkedin} onChange={e => setLinkedin(e.target.value)} placeholder="https://linkedin.com/in/..." />
+                        <label className="form-label" htmlFor={`${uid}-linkedin`}>LinkedIn (URL)</label>
+                        <input id={`${uid}-linkedin`} className="form-input" value={linkedin} onChange={e => setLinkedin(e.target.value)} placeholder="https://linkedin.com/in/..." />
                     </div>
                     <div className="form-group">
                         <label className="form-label">Notificações</label>

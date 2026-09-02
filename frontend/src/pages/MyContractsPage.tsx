@@ -35,6 +35,7 @@ export default function MyContractsPage() {
     const [contracts, setContracts] = useState<ContractWithStats[]>([]);
     const [pricing, setPricing] = useState<PricingConfig[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState(false);
     const [tab, setTab] = useState<'active' | 'archived' | 'cancelled'>('active');
     const [expandedId, setExpandedId] = useState<string | null>(location.state?.expandContractId || null);
     
@@ -88,9 +89,10 @@ export default function MyContractsPage() {
 
     const loadData = async () => {
         setLoading(true);
+        setLoadError(false);
         try {
             const [contractsRes, pricingRes, addonsRes, cardsRes] = await Promise.all([
-                contractsApi.getMy(), 
+                contractsApi.getMy(),
                 pricingApi.get(),
                 pricingApi.getAddons(),
                 stripeApi.listPaymentMethods().catch(() => ({ paymentMethods: [], autoChargeEnabled: false }))
@@ -99,7 +101,7 @@ export default function MyContractsPage() {
             setPricing(pricingRes.pricing);
             setAllAddons(addonsRes.addons);
             setSavedCards(cardsRes.paymentMethods);
-        } catch (err) { console.error('Failed to load contracts:', err); }
+        } catch (err) { console.error('Failed to load contracts:', err); setLoadError(true); }
         finally { setLoading(false); }
     };
 
@@ -343,7 +345,13 @@ export default function MyContractsPage() {
             </div>
 
             {/* ─── Contract List ─── */}
-            {contractsToDisplay.length === 0 ? (
+            {loadError && contracts.length === 0 ? (
+                <div className="contracts-empty animate-card-enter" style={{ '--i': 0 } as React.CSSProperties}>
+                    <FileText size={32} className="contracts-empty__icon" />
+                    <div className="contracts-empty__text">Não foi possível carregar seus contratos.</div>
+                    <button className="btn btn-primary btn-sm" style={{ marginTop: 10 }} onClick={loadData}>Tentar novamente</button>
+                </div>
+            ) : contractsToDisplay.length === 0 ? (
                 <div className="contracts-empty animate-card-enter" style={{ '--i': 0 } as React.CSSProperties}>
                     <FileText size={32} className="contracts-empty__icon" />
                     <div className="contracts-empty__text">

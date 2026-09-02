@@ -162,6 +162,12 @@ export default function InlineCheckout({
         }).catch(() => {});
     }, [pixString]);
 
+    // F5: the per-installment figure shown in the summary/pay button must match the chosen
+    // plan (which already includes juros). The naive `amount / installments` understates it
+    // whenever the selected plan carries interest — use the backend plan's perInstallment.
+    const selectedPlan = installmentPlans.find(p => p.count === installments);
+    const perInstallmentValue = selectedPlan ? selectedPlan.perInstallment : Math.ceil(amount / installments);
+
     // Load saved cards + installment plans when tab is CARTAO
     useEffect(() => {
         if (activeTab === 'CARTAO') {
@@ -628,7 +634,7 @@ export default function InlineCheckout({
                                     {paymentType === 'DEBIT' ? 'Debito' : `Credito ${installments > 1 ? `${installments}x` : ''}`}
                                 </span>
                                 <span className="checkout-stripe-summary-value">
-                                    {installments > 1 ? `${installments}x ${formatBRL(Math.ceil(amount / installments))}` : formatBRL(amount)}
+                                    {installments > 1 ? `${installments}x ${formatBRL(perInstallmentValue)}` : formatBRL(amount)}
                                 </span>
                             </div>
                             <StripeCardForm
@@ -638,7 +644,7 @@ export default function InlineCheckout({
                                 onError={(msg) => { setError(msg); setClientSecret(null); }}
                                 onCancel={() => setClientSecret(null)}
                                 submitLabel={installments > 1
-                                    ? `Pagar ${installments}x ${formatBRL(Math.ceil(amount / installments))}`
+                                    ? `Pagar ${installments}x ${formatBRL(perInstallmentValue)}`
                                     : `Pagar ${formatBRL(amount)}`
                                 }
                                 showSaveCard={true}
@@ -661,7 +667,7 @@ export default function InlineCheckout({
                                     <Lock size={14} />
                                     {selectedCard && selectedCard !== 'new'
                                         ? `Pagar com **** ${savedCards.find(c => c.stripePaymentMethodId === selectedCard)?.last4 || ''} - ${
-                                            installments > 1 ? `${installments}x ${formatBRL(Math.ceil(amount / installments))}` : formatBRL(amount)
+                                            installments > 1 ? `${installments}x ${formatBRL(perInstallmentValue)}` : formatBRL(amount)
                                         }`
                                         : selectedCard === 'new'
                                             ? 'Continuar com Novo Cartao'

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
+import Avatar from './Avatar';
 import { LucideIcon, ChevronRight, User, LogOut } from 'lucide-react';
 import { ADMIN_NAV, CLIENT_NAV } from '../config/nav';
 
@@ -132,13 +133,6 @@ export default function Sidebar({ collapsed }: SidebarProps) {
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
-    const initials = user?.name
-        ?.split(' ')
-        .map(w => w[0])
-        .join('')
-        .slice(0, 2)
-        .toUpperCase() || '??';
-
     // Close on outside click
     useEffect(() => {
         if (!menuOpen) return;
@@ -172,17 +166,7 @@ export default function Sidebar({ collapsed }: SidebarProps) {
                     aria-haspopup="menu"
                     aria-expanded={menuOpen}
                 >
-                    <div
-                        className="sidebar-user-avatar"
-                        style={user?.photoUrl ? {
-                            backgroundImage: `url(${user.photoUrl})`,
-                            backgroundSize: 'cover',
-                            backgroundPosition: 'center',
-                            fontSize: 0,
-                        } : {}}
-                    >
-                        {!user?.photoUrl && initials}
-                    </div>
+                    <Avatar className="sidebar-user-avatar" photoUrl={user?.photoUrl} name={user?.name} />
                     <div className="sidebar-user-info">
                         <span className="sidebar-user-name">{user?.name}</span>
                         <span className="sidebar-user-role">

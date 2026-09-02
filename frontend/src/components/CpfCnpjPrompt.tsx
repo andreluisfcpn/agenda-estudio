@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { ShieldCheck, Check, CreditCard } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { authApi } from '../api/client';
@@ -21,6 +21,7 @@ interface CpfCnpjPromptProps {
  * PATCH /auth/profile, refreshes the auth context, then calls onSaved().
  */
 export default function CpfCnpjPrompt({ onSaved, onCancel, title, subtitle, saveLabel }: CpfCnpjPromptProps) {
+    const uid = useId();
     const { user, updateUser } = useAuth();
     const [value, setValue] = useState(user?.cpfCnpj ? maskCpfCnpj(user.cpfCnpj) : '');
     const [saving, setSaving] = useState(false);
@@ -67,9 +68,10 @@ export default function CpfCnpjPrompt({ onSaved, onCancel, title, subtitle, save
             </p>
 
             <div className="form-group" style={{ width: '100%', textAlign: 'left', marginBottom: showError || error ? 6 : 14 }}>
-                <label className="form-label">CPF / CNPJ</label>
+                <label className="form-label" htmlFor={`${uid}-cpfcnpj`}>CPF / CNPJ</label>
                 <div style={{ position: 'relative' }}>
                     <input
+                        id={`${uid}-cpfcnpj`}
                         className="form-input"
                         value={value}
                         onChange={e => { setValue(maskCpfCnpj(e.target.value)); if (error) setError(''); }}
