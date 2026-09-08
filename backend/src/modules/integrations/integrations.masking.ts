@@ -12,6 +12,7 @@ export function maskCoraCredentials(creds: Record<string, any>): Record<string, 
 export function maskSicoobCredentials(creds: Record<string, any>): Record<string, any> {
     const masked = { ...creds };
     if (masked.clientId) masked.clientId = maskString(masked.clientId);
+    if (masked.accessToken) masked.accessToken = maskString(masked.accessToken);
     if (masked.certificatePem) masked.certificatePem = '***CERTIFICATE_CONFIGURED***';
     if (masked.privateKeyPem) masked.privateKeyPem = '***PRIVATE_KEY_CONFIGURED***';
     // pixKey fica visível (não é segredo) para o admin conferir a chave do recebedor.

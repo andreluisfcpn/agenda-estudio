@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import { authenticate, authorize } from '../../middleware/auth.js';
-import { acquireMultiSlotLock, releaseMultiSlotLock } from '../../lib/redis.js';
+import { acquireMultiSlotLock, releaseMultiSlotLock, acquireMutexBlocking, releaseMutex } from '../../lib/redis.js';
 import { stripeCreatePaymentIntent, stripeGetOrCreateCustomer, isStripeEnabled } from '../../lib/stripeService.js';
 import {
     getSlotTier,
@@ -131,17 +131,37 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
         // because it accompanies every recording of the month. Here it's a single episode = 1 unit.
         let extraDiscountPct = contractId && contract ? contract.discountPct : 0;
         let addonsTotal = 0;
+        // A7: numa reserva por PLANO, add-ons NÃO inclusos no contrato são EXTRAS pagos — não podem
+        // entrar em booking.price sem cobrança (a UI promete "Pagar Rxxx extras"). Eles viram um Payment
+        // PENDING próprio (como POST /:id/addons), ativados só após o pagamento por onPaymentConfirmed.
+        // Add-ons já inclusos no plano são grátis e ativados de imediato.
+        const paidAddonKeys: string[] = [];
+        const freeAddonKeys: string[] = [];
+        let paidAddonsCost = 0;
 
         if (data.addOns && data.addOns.length > 0) {
             const allAddons = await prisma.addOnConfig.findMany({
                 where: { key: { in: data.addOns } }
             });
-            for (const add of allAddons) {
-                addonsTotal += add.price;
-            }
-            if (addonsTotal > 0) {
-                const discountedAddons = applyDiscount(addonsTotal, extraDiscountPct);
-                price += discountedAddons;
+            if (contractId && contract) {
+                const included = new Set(contract.addOns || []);
+                for (const add of allAddons) {
+                    if (included.has(add.key)) {
+                        freeAddonKeys.push(add.key);
+                    } else {
+                        paidAddonKeys.push(add.key);
+                        paidAddonsCost += applyDiscount(add.price, extraDiscountPct);
+                    }
+                }
+            } else {
+                // Avulso: os extras são cobrados junto com a sessão no MESMO Payment.
+                for (const add of allAddons) {
+                    addonsTotal += add.price;
+                }
+                if (addonsTotal > 0) {
+                    const discountedAddons = applyDiscount(addonsTotal, extraDiscountPct);
+                    price += discountedAddons;
+                }
             }
         }
 
@@ -171,6 +191,13 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
             });
             return;
         }
+
+        // A8: mutex por-contrato para o teto FIXO ser atômico (liberado no fim / no erro).
+        let fixoLockKey: string | null = null;
+        // B25: se o decremento de crédito (autocommit) for aplicado mas o booking.create falhar depois,
+        // o crédito ficaria consumido sem reserva. Rastreamos para COMPENSAR (re-incrementar) no catch.
+        let creditDecremented: { contractId: string; field: 'flex' | 'custom' } | null = null;
+        let bookingCreatedOk = false;
 
         try {
             // Check for existing bookings (double-booking at DB level).
@@ -332,6 +359,29 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
             const isAvulso = !contractId;
             const holdExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
+            // A8: serializa reservas FIXO do MESMO contrato para tornar o teto atômico. O slot lock só
+            // serializa o MESMO horário — requests concorrentes em horários DIFERENTES liam usedBookings
+            // desatualizado e furavam o limite. Mutex por contrato + re-check ao vivo sob o mutex.
+            if (contract?.type === 'FIXO') {
+                fixoLockKey = `booking:fixo-cap:${contractId}`;
+                const gotFixoLock = await acquireMutexBlocking(fixoLockKey, 20);
+                if (!gotFixoLock) {
+                    fixoLockKey = null;
+                    await releaseMultiSlotLock(data.date, packageSlots, userId);
+                    res.status(409).json({ error: 'Muitas reservas simultâneas neste contrato. Tente novamente.' });
+                    return;
+                }
+                const fixoActiveStatuses: BookingStatus[] = [BookingStatus.COMPLETED, BookingStatus.CONFIRMED, BookingStatus.FALTA, BookingStatus.RESERVED];
+                const usedNow = await prisma.booking.count({ where: { contractId, status: { in: fixoActiveStatuses } } });
+                const fixoCap = contract.durationMonths * (await getConfig('sessions_per_month'));
+                if (usedNow >= fixoCap) {
+                    await releaseMutex(fixoLockKey); fixoLockKey = null;
+                    await releaseMultiSlotLock(data.date, packageSlots, userId);
+                    res.status(400).json({ error: 'Limite de agendamentos do plano fixo atingido.' });
+                    return;
+                }
+            }
+
             // Create Avulso Contract if needed
             let isAvulsoCreated = false;
             let finalContractId = contractId;
@@ -371,6 +421,7 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                         res.status(400).json({ error: 'Créditos esgotados (concorrência). Tente novamente.' });
                         return;
                     }
+                    creditDecremented = { contractId: finalContractId, field: 'flex' }; // B25: compensar se o create falhar
                     // Anchor the FLEX weekly clock to the EARLIEST recording — persisted and
                     // only ever lowered on create (never moved forward on cancel), so the
                     // weekly pace can't be reset by cancelling/rebooking.
@@ -393,6 +444,7 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                         res.status(400).json({ error: 'Créditos esgotados (concorrência). Tente novamente.' });
                         return;
                     }
+                    creditDecremented = { contractId: finalContractId, field: 'custom' }; // B25: compensar se o create falhar
                 }
             }
 
@@ -410,14 +462,22 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                     status: bookingStatus,
                     tierApplied: slotTier,
                     price,
-                    addOns: data.addOns || [],
+                    // Plano: só os add-ons inclusos entram já ativados; os extras pagos são ativados
+                    // após o pagamento (onPaymentConfirmed). Avulso: tudo (cobrado no mesmo Payment).
+                    addOns: isAvulso ? (data.addOns || []) : freeAddonKeys,
                     holdExpiresAt: isAvulso ? holdExpiresAt : null,
                 },
             });
 
+            bookingCreatedOk = true; // B25: create OK — o crédito consumido está agora atrelado a uma reserva.
+
+            // A8: teto FIXO já garantido pela criação sob o mutex — pode liberar o mutex do contrato.
+            if (fixoLockKey) { await releaseMutex(fixoLockKey); fixoLockKey = null; }
+
             // Create payment record for ALL avulso bookings
             let clientSecret: string | null = null;
             let createdPaymentId: string | null = null;
+            let createdPaymentAmount: number | null = null;
             // pixString/qrCodeBase64 are intentionally always null here: for avulso PIX the
             // client immediately calls POST /stripe/create-payment, which is the single source
             // of truth for PIX generation (and surfaces Cora errors as a 400). See the PIX note
@@ -461,6 +521,7 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                         return p;
                     });
                     createdPaymentId = payment.id;
+                    createdPaymentAmount = chargeAmount;
 
                     // 100% coupon → zero charge: skip the gateway and confirm right away
                     // (confirms the booking + activates the avulso contract like a webhook).
@@ -538,6 +599,49 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                 }
             }
 
+            // A7: reserva por PLANO com serviços extras PAGOS (não inclusos no contrato) → cria um
+            // Payment PENDING para os extras, ativados após o pagamento por onPaymentConfirmed
+            // (mesma máquina de POST /:id/addons). Sem isto os extras eram entregues sem cobrança.
+            if (!isAvulso && paidAddonKeys.length > 0) {
+                try {
+                    const extrasPayment = await prisma.payment.create({
+                        data: {
+                            userId,
+                            contractId: finalContractId,
+                            bookingId: booking.id,
+                            provider: data.paymentMethod === 'CARTAO' ? 'STRIPE' : 'CORA',
+                            amount: paidAddonsCost,
+                            status: 'PENDING',
+                            dueDate: dateObj,
+                            installments: 1,
+                            // Chaves dos extras pagos p/ ativação pós-pagamento (formato de POST /:id/addons).
+                            paymentUrl: JSON.stringify({ addonKeys: paidAddonKeys }),
+                        },
+                    });
+                    createdPaymentId = extrasPayment.id;
+                    createdPaymentAmount = paidAddonsCost;
+
+                    if (data.paymentMethod === 'CARTAO' && (await isStripeEnabled())) {
+                        const customerId = await stripeGetOrCreateCustomer(userId);
+                        const piResult = await stripeCreatePaymentIntent({
+                            amount: paidAddonsCost,
+                            customerId,
+                            description: `Serviços extras (${paidAddonKeys.length}) — ${data.date} ${data.startTime}`,
+                            paymentId: extrasPayment.id,
+                            userId,
+                            contractId: finalContractId!,
+                            installmentsEnabled: false,
+                        });
+                        clientSecret = piResult.clientSecret;
+                        await prisma.payment.update({ where: { id: extrasPayment.id }, data: { providerRef: piResult.paymentIntentId } });
+                    }
+                    // PIX: a cobrança é gerada por POST /stripe/create-payment (fonte única), como no avulso.
+                } catch (extraErr) {
+                    console.error('[BOOKING] Extra-addon payment creation failed:', getErrorMessage(extraErr));
+                    // Não estraga a reserva; o cliente pode gerar a cobrança dos extras depois.
+                }
+            }
+
             res.status(201).json({
                 booking: {
                     id: booking.id,
@@ -552,10 +656,10 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                     holdExpiresAt: booking.holdExpiresAt?.toISOString() || null,
                 },
                 paymentId: createdPaymentId,
-                ...(createdPaymentId && couponQuote ? {
-                    paymentAmount: couponQuote.finalAmount,
-                    couponDiscount: couponQuote.discountAmount,
-                } : createdPaymentId ? { paymentAmount: price } : {}),
+                ...(createdPaymentId ? {
+                    paymentAmount: createdPaymentAmount ?? price,
+                    ...(couponQuote ? { couponDiscount: couponQuote.discountAmount } : {}),
+                } : {}),
                 clientSecret,
                 // PIX QR is generated by POST /stripe/create-payment, not here — so no
                 // pixString/qrCodeBase64 in this response (nothing reads them from create).
@@ -563,11 +667,23 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                 lockExpiresIn: 600, // 10 minutes
                 message: isAvulso
                     ? 'Horário reservado por 10 minutos. Complete o pagamento para confirmar.'
-                    : 'Horário reservado com sucesso!',
+                    : (paidAddonKeys.length > 0
+                        ? 'Horário reservado! Conclua o pagamento dos serviços extras para ativá-los.'
+                        : 'Horário reservado com sucesso!'),
             });
         } catch (err) {
             // Release locks on error
             await releaseMultiSlotLock(data.date, packageSlots, userId);
+            if (fixoLockKey) { await releaseMutex(fixoLockKey).catch(() => {}); }
+            // B25: compensar o crédito debitado se a reserva NÃO chegou a ser criada (senão o crédito
+            // pago ficaria consumido sem nenhum booking, sem cron que o devolva).
+            if (creditDecremented && !bookingCreatedOk) {
+                const field = creditDecremented.field === 'flex' ? 'flexCreditsRemaining' : 'customCreditsRemaining';
+                await prisma.contract.update({
+                    where: { id: creditDecremented.contractId },
+                    data: { [field]: { increment: 1 } },
+                }).catch((e) => console.error('[BOOKING] Falha ao compensar crédito após erro de criação:', e));
+            }
             throw err;
         }
     } catch (err) {

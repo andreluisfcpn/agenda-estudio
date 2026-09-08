@@ -124,7 +124,22 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
         else addonsCostPerCycle += Math.round(addon.price * sessionsPerCycle * (1 - discountPct / 100));
     }
     const cycleAmount = cycleBaseAmount + addonsCostPerCycle;
-    const totalAmount = cycleAmount * customForm.durationMonths;
+    // B23: para "Datas Livres" (freq CUSTOM) o backend cobra o total EXATO por totalSessions (as N datas
+    // agendadas), não sessionsPerCycle×meses. Espelhamos aqui para o total exibido bater com a cobrança.
+    let totalAmount: number;
+    if (freq === 'CUSTOM') {
+        let addonsExact = 0;
+        for (const [key, config] of activeAddonEntries) {
+            const addon = customAddons.find(a => a.key === key);
+            if (!addon) continue;
+            addonsExact += config.mode === 'credits'
+                ? Math.round(addon.price * config.perCycle * customForm.durationMonths * (1 - discountPct / 100))
+                : Math.round(addon.price * totalSessions * (1 - discountPct / 100));
+        }
+        totalAmount = discountedSessionPrice * totalSessions + addonsExact;
+    } else {
+        totalAmount = cycleAmount * customForm.durationMonths;
+    }
 
     // Progress bar: always relative to threshold40 (max bar)
     const valProgressPct = Math.min((grossTotalValue / threshold40) * 100, 100);

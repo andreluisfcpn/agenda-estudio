@@ -78,6 +78,14 @@ async function getStripeConfig(): Promise<{ config: StripeCredentials; environme
             }
         }
 
+        // Guard: uma config sem secretKey (ex.: flat/legado só com publishableKey, ou vazia)
+        // faria getStripeClient estourar em `secretKey.slice(...)` com "reading 'slice'".
+        // Trata como "não configurado" para retornar um erro limpo em vez de um TypeError.
+        if (!credentials?.secretKey) {
+            console.warn('[Stripe] No secretKey configured — treating Stripe as not configured.');
+            return null;
+        }
+
         return { config: credentials, environment };
     } catch {
         return null;

@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import { authenticate, authorize } from '../../middleware/auth.js';
 import { ContractStatus, BookingStatus } from '../../generated/prisma/client.js';
-import { getBasePriceDynamic, applyDiscount, calculateEndTime, studioDateTime } from '../../utils/pricing.js';
+import { getBasePriceDynamic, applyDiscount, calculateEndTime, studioDateTime, getPackageSlots, getSlotDuration } from '../../utils/pricing.js';
+import { buildOccupiedSet } from '../bookings/availability.service.js';
 import { getConfig } from '../../lib/businessConfig.js';
 import { createPayment as gatewayCreatePayment, updatePaymentWithGatewayResult, validatePaymentMethod, getProviderForMethod, PaymentMethodDisabledError } from '../../lib/paymentGateway.js';
 import { createContractSchema, selfContractSchema, customContractSchema } from './validators.js';
@@ -88,9 +89,9 @@ router.post('/', authenticate, authorize('ADMIN'), async (req: Request, res: Res
             const bookings = [];
             const current = new Date(startDate);
 
-            // Find the first occurrence of the fixed day
-            while (current.getUTCDay() !== data.fixedDayOfWeek) {
-                current.setDate(current.getDate() + 1);
+            // Find the first occurrence of the fixed day (UTC — casa com o check-fixo).
+            while (current.getUTCDay() !== (data.fixedDayOfWeek % 7)) {
+                current.setUTCDate(current.getUTCDate() + 1);
             }
 
             // Generate weekly bookings until end date
@@ -100,10 +101,12 @@ router.post('/', authenticate, authorize('ADMIN'), async (req: Request, res: Res
             const endTime = calculateEndTime(data.fixedTime);
             const basePrice = await getBasePriceDynamic(data.tier);
             const discountedPrice = applyDiscount(basePrice, discountPct);
+            const slotDuration = await getSlotDuration();
+            let skipped = 0;
 
             for (let week = 0; week < totalWeeks; week++) {
                 const bookingDate = new Date(current);
-                bookingDate.setDate(current.getDate() + week * 7);
+                bookingDate.setUTCDate(current.getUTCDate() + week * 7);
 
                 if (bookingDate > endDate) break;
 
@@ -122,6 +125,14 @@ router.post('/', authenticate, authorize('ADMIN'), async (req: Request, res: Res
                     finalTime = resolution.newTime;
                 }
 
+                // Guard anti-overbooking: nunca gravar por cima de horário ocupado (pula a ocorrência).
+                const occupied = await buildOccupiedSet(finalDate);
+                if (getPackageSlots(finalTime, slotDuration).some(s => occupied.has(s))) {
+                    skipped++;
+                    console.warn(`[FIXO-admin] slot ocupado — ocorrência pulada (contrato ${contract.id}): ${finalDate.toISOString().split('T')[0]} ${finalTime}`);
+                    continue;
+                }
+
                 bookings.push({
                     userId: data.userId,
                     contractId: contract.id,
@@ -135,6 +146,9 @@ router.post('/', authenticate, authorize('ADMIN'), async (req: Request, res: Res
                 });
             }
 
+            if (skipped > 0) {
+                console.warn(`[FIXO-admin] ${skipped} ocorrência(s) puladas por conflito no contrato ${contract.id}.`);
+            }
             if (bookings.length > 0) {
                 await prisma.booking.createMany({ data: bookings });
             }
@@ -713,9 +727,39 @@ router.post('/custom', authenticate, async (req: Request, res: Response) => {
         });
         const customProvider = getProviderForMethod(data.paymentMethod);
 
+        // B23: "Datas Livres" (frequency CUSTOM) cobra o total EXATO por totalSessions (as N datas
+        // agendadas), distribuído pelas parcelas com o RESTO na última. O modelo por-ciclo
+        // (sessionsPerCycle = round(N/durationMonths)) divergia da contagem real de datas quando N não é
+        // múltiplo de durationMonths (over/undercharge). Demais frequências mantêm o cálculo uniforme.
+        let perInstallmentBases: number[];
+        if (frequency === 'CUSTOM') {
+            let addonsCostExact = 0;
+            if (data.addOns && data.addOns.length > 0) {
+                const addonCfgs = await prisma.addOnConfig.findMany({ where: { key: { in: data.addOns } } });
+                for (const addon of addonCfgs) {
+                    const cfg = data.addonConfig?.[addon.key];
+                    addonsCostExact += (cfg?.mode === 'credits' && cfg.perCycle)
+                        ? applyDiscount(addon.price * cfg.perCycle * data.durationMonths, discountPct)
+                        : applyDiscount(addon.price * totalSessions, discountPct);
+                }
+            }
+            const exactTotal = (discountedPrice * totalSessions) + addonsCostExact;
+            if (customIsFull) {
+                const { computeFullContractTotal } = await import('../../lib/contractPricing.js');
+                perInstallmentBases = [await computeFullContractTotal(exactTotal, 1, data.paymentMethod)];
+            } else {
+                const m = customPlan.scheduleDueDates.length;
+                const per = Math.floor(exactTotal / m);
+                perInstallmentBases = Array.from({ length: m }, (_, i) => (i === m - 1 ? exactTotal - per * (m - 1) : per));
+            }
+        } else {
+            const uniformBase = customIsFull ? customPlan.fullAmount : customPlan.monthlyAmount;
+            perInstallmentBases = customPlan.scheduleDueDates.map(() => uniformBase);
+        }
+
         // Coupon (client self-serve or admin on behalf — eligibility is the target user's).
         // Contract + bookings already exist above, so any coupon failure rolls them back.
-        const customBase = customIsFull ? customPlan.fullAmount : customPlan.monthlyAmount;
+        const customBase = perInstallmentBases[0]!;
         let customCoupon: CouponQuote | null = null;
         if (data.couponCode) {
             try {
@@ -726,7 +770,7 @@ router.post('/custom', authenticate, async (req: Request, res: Response) => {
                 throw err;
             }
         }
-        const customSchedule2 = discountSchedule(customCoupon, customPlan.scheduleDueDates.map(() => customBase));
+        const customSchedule2 = discountSchedule(customCoupon, perInstallmentBases);
         const payments: any[] = customPlan.scheduleDueDates.map((dueDate, i) => ({
             userId,
             contractId: contract.id,

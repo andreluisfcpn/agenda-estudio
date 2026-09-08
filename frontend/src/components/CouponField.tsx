@@ -30,6 +30,9 @@ export default function CouponField({ amount, userId, applied, onApply, onRemove
     const [warning, setWarning] = useState('');
     // Último amount validado com sucesso — evita re-validar logo após aplicar.
     const lastValidatedAmount = useRef<number | null>(null);
+    // A21: também rastrear o userId validado. O admin pode trocar o cliente-alvo sem mudar o total;
+    // sem isto o guard curto-circuitava e o cupom ficava "aplicado" com a elegibilidade do cliente ANTERIOR.
+    const lastValidatedUserId = useRef<string | null>(null);
 
     const apply = async () => {
         const trimmed = code.trim().toUpperCase();
@@ -40,6 +43,7 @@ export default function CouponField({ amount, userId, applied, onApply, onRemove
         try {
             const v = await couponsApi.validate({ code: trimmed, amount, ...(userId ? { userId } : {}) });
             lastValidatedAmount.current = amount;
+            lastValidatedUserId.current = userId ?? null;
             onApply(v);
             setExpanded(false);
             setCode('');
@@ -54,11 +58,12 @@ export default function CouponField({ amount, userId, applied, onApply, onRemove
     const appliedCode = applied?.code ?? null;
     useEffect(() => {
         if (!appliedCode || disabled) return;
-        if (lastValidatedAmount.current === amount) return;
+        if (lastValidatedAmount.current === amount && lastValidatedUserId.current === (userId ?? null)) return;
         const t = window.setTimeout(async () => {
             try {
                 const v = await couponsApi.validate({ code: appliedCode, amount, ...(userId ? { userId } : {}) });
                 lastValidatedAmount.current = amount;
+                lastValidatedUserId.current = userId ?? null;
                 onApply(v);
             } catch (err) {
                 lastValidatedAmount.current = null;

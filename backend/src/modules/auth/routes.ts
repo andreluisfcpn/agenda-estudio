@@ -109,14 +109,18 @@ function setTokenCookies(res: Response, accessToken: string, refreshToken: strin
 interface AuthUserRecord {
     id: string; email: string | null; name: string; phone: string | null;
     photoUrl: string | null; role: string; cpfCnpj: string | null;
-    address: string | null; city: string | null; state: string | null;
+    address: string | null; addressNumber: string | null; complement: string | null;
+    neighborhood: string | null; zipCode: string | null; city: string | null; state: string | null;
     socialLinks: string | null; essentialNotificationsOnly: boolean;
 }
 
 function toAuthUser(u: AuthUserRecord) {
+    // A15: incluir os 4 campos do endereço estruturado (número/complemento/bairro/CEP). Sem eles,
+    // como o contexto do frontend faz updateUser(res.user), o endereço "some" após login/troca de foto.
     return {
         id: u.id, email: u.email, name: u.name, phone: u.phone, photoUrl: u.photoUrl, role: u.role,
-        cpfCnpj: u.cpfCnpj, address: u.address, city: u.city, state: u.state,
+        cpfCnpj: u.cpfCnpj, address: u.address, addressNumber: u.addressNumber, complement: u.complement,
+        neighborhood: u.neighborhood, zipCode: u.zipCode, city: u.city, state: u.state,
         socialLinks: u.socialLinks, essentialNotificationsOnly: u.essentialNotificationsOnly,
     };
 }
@@ -146,7 +150,15 @@ router.post('/register/send-code', async (req: Request, res: Response) => {
             return;
         }
 
-        await otpService.generateAndSend(data.email, data.name);
+        try {
+            await otpService.generateAndSend(data.email, data.name);
+        } catch (e) {
+            if ((e as { code?: string })?.code === 'OTP_COOLDOWN') {
+                res.status(429).json({ error: 'Aguarde alguns segundos antes de solicitar um novo código.' });
+                return;
+            }
+            throw e;
+        }
 
         res.json({ message: `Código enviado para ${data.email}` });
     } catch (err) {
@@ -286,7 +298,15 @@ router.post('/login/send-code', async (req: Request, res: Response) => {
             return;
         }
 
-        await otpService.generateAndSend(email, user.name);
+        try {
+            await otpService.generateAndSend(email, user.name);
+        } catch (e) {
+            if ((e as { code?: string })?.code === 'OTP_COOLDOWN') {
+                res.status(429).json({ error: 'Aguarde alguns segundos antes de solicitar um novo código.' });
+                return;
+            }
+            throw e;
+        }
 
         res.json({ message: 'Código enviado para seu e-mail.' });
     } catch (err) {
@@ -565,7 +585,10 @@ router.patch('/profile', authenticate, async (req: Request, res: Response) => {
         if (data.zipCode !== undefined) updateData.zipCode = data.zipCode;
         if (data.city !== undefined) updateData.city = data.city;
         if (data.state !== undefined) updateData.state = data.state;
-        if (data.socialLinks !== undefined) updateData.socialLinks = JSON.stringify(data.socialLinks);
+        // A14: o frontend já envia socialLinks como STRING JSON. Re-stringificar gravava um JSON
+        // duplamente codificado (na releitura, parse devolvia uma string, não objeto → links somem).
+        // Só serializa quando vier objeto; string já pronta é gravada como está.
+        if (data.socialLinks !== undefined) updateData.socialLinks = typeof data.socialLinks === 'string' ? data.socialLinks : JSON.stringify(data.socialLinks);
         if (data.essentialNotificationsOnly !== undefined) updateData.essentialNotificationsOnly = data.essentialNotificationsOnly;
 
         const user = await prisma.user.update({

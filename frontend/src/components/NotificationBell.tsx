@@ -137,7 +137,7 @@ export default function NotificationBell() {
                     width: '100%',
                     fontFamily: 'inherit',
                 }}
-                title={`${unreadCount} notificação${unreadCount !== 1 ? 'ões' : ''} não lida${unreadCount !== 1 ? 's' : ''}`}
+                title={`${unreadCount} notifica${unreadCount !== 1 ? 'ções' : 'ção'} não lida${unreadCount !== 1 ? 's' : ''}`}
             >
                 <span className="sidebar-link-icon"><Bell size={20} strokeWidth={1.8} /></span>
                 <span className="sidebar-link-label" style={{ fontSize: '0.8125rem', fontWeight: 600, flex: 1, textAlign: 'left' }}>

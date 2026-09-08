@@ -44,7 +44,9 @@ export default function CalendarPage() {
     const { get: getConfigNum } = useBusinessConfig();
     // Minimum advance notice for clients (admin books any time). Slots closer than this
     // are greyed out to match the backend rule.
-    const minAdvanceHours = getConfigNum('booking_min_advance_hours') || 12;
+    // B13: usar o valor real (0 é válido); `|| 12` transformava uma config legítima de 0h em 12h só no front.
+    const minAdvanceHoursRaw = getConfigNum('booking_min_advance_hours');
+    const minAdvanceHours = Number.isFinite(minAdvanceHoursRaw) ? minAdvanceHoursRaw : 12;
     const initialStart = useRef(initialCalendarStart(isAdmin)).current;
     const [currentWeek, setCurrentWeek] = useState(initialStart.base);
     const [weekDates, setWeekDates] = useState<Date[]>(getWeekDates(initialStart.base));
@@ -681,7 +683,7 @@ export default function CalendarPage() {
                         <Clock size={48} strokeWidth={1.5} />
                     </div>
                     <p style={{ color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '10px', fontSize: '0.9375rem', maxWidth: '300px' }}>
-                        Não é possível agendar um horário no passado, ou com antecedência inferior a 30 minutos.
+                        Não é possível agendar um horário no passado, ou com menos de {minAdvanceHours} hora{minAdvanceHours !== 1 ? 's' : ''} de antecedência.
                     </p>
                 </div>
             </BottomSheetModal>

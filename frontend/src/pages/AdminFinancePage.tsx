@@ -79,8 +79,13 @@ export default function AdminFinancePage() {
     // Collection rate (% paid vs total)
     const collectionRate = useMemo(() => {
         if (!data || data.payments.length === 0) return 0;
-        const paid = data.payments.filter(p => p.status === 'PAID').length;
-        return Math.round((paid / data.payments.length) * 100);
+        // A2: só contar faturas COBRÁVEIS no denominador. CANCELLED (parcelas anuladas por contrato
+        // cancelado) e REFUNDED não são cobráveis — o backend já as exclui de paidCount/unpaidCount,
+        // então incluí-las aqui deflacionava a barra e contradizia os cartões KPI (ex.: "7 pagos / 0 pendentes").
+        const collectible = data.payments.filter(p => ['PAID', 'PENDING', 'FAILED'].includes(p.status));
+        if (collectible.length === 0) return 0;
+        const paid = collectible.filter(p => p.status === 'PAID').length;
+        return Math.round((paid / collectible.length) * 100);
     }, [data]);
 
     const goMonth = (delta: number) => {

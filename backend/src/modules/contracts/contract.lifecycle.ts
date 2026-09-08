@@ -47,7 +47,7 @@ router.get('/my', authenticate, async (req: Request, res: Response) => {
             _count: { select: { bookings: true } },
             bookings: {
                 select: {
-                    id: true, status: true, date: true,
+                    id: true, status: true, date: true, originalDate: true,
                     startTime: true, endTime: true, tierApplied: true, price: true,
                     clientNotes: true, adminNotes: true, platforms: true, platformLinks: true, addOns: true,
                 },
@@ -226,8 +226,12 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
         });
 
         if (cancelingViaPatch) {
+            // B6: ancorar em meia-noite (não no instante). booking.date é date-only à meia-noite, então
+            // `gte: new Date()` deixava o agendamento de HOJE por cancelar (fica < agora).
+            const startOfToday = new Date();
+            startOfToday.setUTCHours(0, 0, 0, 0);
             await prisma.booking.updateMany({
-                where: { contractId: id, status: { not: 'CANCELLED' }, date: { gte: new Date() } },
+                where: { contractId: id, status: { not: 'CANCELLED' }, date: { gte: startOfToday } },
                 data: { status: 'CANCELLED' },
             });
         }
@@ -271,12 +275,15 @@ router.delete('/:id', authenticate, authorize('ADMIN'), async (req: Request, res
         data: { status: 'CANCELLED' },
     });
 
-    // Cancel future bookings tied to this contract
+    // Cancel future bookings tied to this contract. B6: ancorar em meia-noite (não no instante) —
+    // booking.date é date-only à meia-noite, então `gte: new Date()` deixava o de HOJE por cancelar.
+    const startOfToday = new Date();
+    startOfToday.setUTCHours(0, 0, 0, 0);
     await prisma.booking.updateMany({
         where: {
             contractId: id,
             status: { not: 'CANCELLED' },
-            date: { gte: new Date() },
+            date: { gte: startOfToday },
         },
         data: { status: 'CANCELLED' },
     });
@@ -415,6 +422,16 @@ router.post('/:id/renew', authenticate, authorize('ADMIN'), async (req: Request,
         if (!original) { res.status(404).json({ error: 'Contrato não encontrado.' }); return; }
         if (!['ACTIVE', 'EXPIRED'].includes(original.status)) { res.status(400).json({ error: 'Só é possível renovar contratos ativos ou expirados.' }); return; }
 
+        // Renovação 1× por contrato (mesma regra do client-renew; admin não tem a janela de 7 dias).
+        const existingRenewal = await prisma.contract.findFirst({
+            where: { renewedFromId: id, status: { notIn: ['CANCELLED'] } },
+            select: { id: true },
+        });
+        if (existingRenewal) {
+            res.status(400).json({ error: 'Este contrato já foi renovado. A renovação só pode acontecer uma única vez.' });
+            return;
+        }
+
         const newTier = tier || original.tier;
         const newType = type || original.type;
         const discount3 = await getConfig('discount_3months');
@@ -456,10 +473,16 @@ router.post('/:id/renew', authenticate, authorize('ADMIN'), async (req: Request,
 
         // Generate bookings for FIXO
         if (newType === 'FIXO' && original.fixedDayOfWeek && original.fixedTime) {
+            // A6: limitar por totalWeeks = durationMonths × sessions_per_month (o teto que todo outro
+            // caminho FIXO aplica). Sem isso o laço por span de calendário (mês ≈ 4,33 semanas)
+            // sobre-entrega ~1 sessão em 3m / ~2 em 6m.
+            const { getConfig } = await import('../../lib/businessConfig.js');
+            const sessionsPerMonth = await getConfig('sessions_per_month');
+            const maxBookings = durationMonths * sessionsPerMonth;
             const bookings: any[] = [];
             const cursor = new Date(start);
             while (cursor.getDay() !== (original.fixedDayOfWeek % 7)) cursor.setDate(cursor.getDate() + 1);
-            while (cursor < end) {
+            while (cursor < end && bookings.length < maxBookings) {
                 const basePrice = await getBasePriceDynamic(newTier as any);
                 const price = applyDiscount(basePrice, discountPct);
                 const endTime = calculateEndTime(original.fixedTime!);
@@ -480,7 +503,7 @@ router.post('/:id/renew', authenticate, authorize('ADMIN'), async (req: Request,
 
         // Audit
         const { logAudit } = await import('../../lib/audit.js');
-        await logAudit('CONTRACT', renewed.id, 'RENEWED', (req as any).user.id, { fromContractId: original.id, durationMonths, tier: newTier, type: newType });
+        await logAudit('CONTRACT', renewed.id, 'RENEWED', req.user!.userId, { fromContractId: original.id, durationMonths, tier: newTier, type: newType });
 
         res.status(201).json({ contract: renewed, message: 'Contrato renovado com sucesso!' });
     } catch (err: any) {
@@ -524,7 +547,7 @@ router.patch('/:id/pause', authenticate, authorize('ADMIN'), async (req: Request
         });
 
         const { logAudit } = await import('../../lib/audit.js');
-        await logAudit('CONTRACT', id, 'PAUSED', (req as any).user.id, { reason, resumeDate });
+        await logAudit('CONTRACT', id, 'PAUSED', req.user!.userId, { reason, resumeDate });
 
         res.json({ contract: updated, message: 'Contrato pausado.' });
     } catch (err: any) {
@@ -550,17 +573,39 @@ router.patch('/:id/resume', authenticate, authorize('ADMIN'), async (req: Reques
         const newEndDate = new Date(contract.endDate);
         newEndDate.setDate(newEndDate.getDate() + daysPaused);
 
+        // A3: FLEX — congelar o relógio de forfeiture durante a pausa deslocando flexCycleStart
+        // pelos mesmos dias de pausa. Sem isso, computeFlexState mede semanas por wall-clock e o
+        // flexCreditExpiryJob confisca créditos pré-pagos das semanas em que o contrato ficou pausado.
+        let newFlexCycleStart: Date | null = contract.flexCycleStart;
+        if (contract.type === 'FLEX' && contract.flexCycleStart) {
+            newFlexCycleStart = new Date(contract.flexCycleStart);
+            newFlexCycleStart.setDate(newFlexCycleStart.getDate() + daysPaused);
+        }
+
         const updated = await prisma.contract.update({
             where: { id },
-            data: { status: 'ACTIVE', endDate: newEndDate, pausedAt: null, pauseReason: null, resumeDate: null },
+            data: {
+                status: 'ACTIVE', endDate: newEndDate, pausedAt: null, pauseReason: null, resumeDate: null,
+                ...(contract.type === 'FLEX' && contract.flexCycleStart ? { flexCycleStart: newFlexCycleStart } : {}),
+            },
         });
 
         // Re-generate future bookings for FIXO
         if (contract.type === 'FIXO' && contract.fixedDayOfWeek && contract.fixedTime) {
+            // B4 (gêmeo de A6): limitar por durationMonths × sessions_per_month, DESCONTANDO as sessões
+            // já entregues antes da pausa. Sem o teto, o laço por span de calendário (mês ≈ 4,33 semanas)
+            // regenerava sessões que o cap da criação excluíra → sobre-entrega de gravações pagas.
+            const { getConfig } = await import('../../lib/businessConfig.js');
+            const sessionsPerMonth = await getConfig('sessions_per_month');
+            const maxBookings = contract.durationMonths * sessionsPerMonth;
+            const alreadyDelivered = await prisma.booking.count({
+                where: { contractId: id, status: { not: 'CANCELLED' }, date: { lt: now } },
+            });
+            const remainingCap = Math.max(0, maxBookings - alreadyDelivered);
             const bookings: any[] = [];
             const cursor = new Date(now);
             while (cursor.getDay() !== (contract.fixedDayOfWeek % 7)) cursor.setDate(cursor.getDate() + 1);
-            while (cursor < newEndDate) {
+            while (cursor < newEndDate && bookings.length < remainingCap) {
                 const basePrice = await getBasePriceDynamic(contract.tier as any);
                 const discountPct = contract.discountPct;
                 const price = applyDiscount(basePrice, discountPct);
@@ -581,7 +626,7 @@ router.patch('/:id/resume', authenticate, authorize('ADMIN'), async (req: Reques
         }
 
         const { logAudit } = await import('../../lib/audit.js');
-        await logAudit('CONTRACT', id, 'RESUMED', (req as any).user.id, { daysPaused, newEndDate: newEndDate.toISOString() });
+        await logAudit('CONTRACT', id, 'RESUMED', req.user!.userId, { daysPaused, newEndDate: newEndDate.toISOString() });
 
         res.json({ contract: updated, message: `Contrato retomado. Vigência estendida em ${daysPaused} dias.` });
     } catch (err: any) {

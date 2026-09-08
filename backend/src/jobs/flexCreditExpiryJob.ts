@@ -11,14 +11,17 @@ import { computeFlexState, targetForfeit } from '../lib/flexCredits.js';
  *      we've already forfeited, mark the new credits as lost (banking/compensation).
  *   3. Warn: when the current 7-day window is closing without a recording.
  */
-export async function runFlexCreditExpiryJob(): Promise<void> {
-    const now = new Date();
+export async function runFlexCreditExpiryJob(now: Date = new Date()): Promise<void> {
 
     const contracts = await prisma.contract.findMany({
         where: { type: 'FLEX', status: 'ACTIVE' },
         include: {
             user: { select: { id: true, name: true } },
-            bookings: { where: { status: { not: 'CANCELLED' } }, select: { date: true } },
+            // "não fizer → come 1 crédito": um no-show (FALTA) JÁ custa 1 crédito — a reserva consumiu
+            // o crédito e ele NÃO é devolvido (diferente de CANCELLED/NAO_REALIZADO, que devolvem). Por
+            // isso a FALTA CONTA como gravação aqui: o crédito já foi cobrado na reserva; NÃO aplicar
+            // forfeiture extra (senão puniria 2× e, em semana bancada, o reconcile devolveria o crédito).
+            bookings: { where: { status: { not: 'CANCELLED' } }, select: { date: true, originalDate: true } },
         },
     });
 
@@ -28,10 +31,30 @@ export async function runFlexCreditExpiryJob(): Promise<void> {
     for (const c of contracts) {
         if (!c.flexCreditsTotal) continue;
 
+        // Anchor-aware: usa a data-ÂNCORA (originalDate) da reserva, não a data corrente. Assim uma
+        // REMARCAÇÃO legítima (direito de até 7 dias) não empurra a gravação pra fora da janela de
+        // origem e não confisca crédito indevido — resolve a colisão remarcação × forfeiture (regra 5).
+        const anchorDates = c.bookings.map(b => b.originalDate ?? b.date);
+
+        // "o contrato passa a valer a partir do 1º episódio que grava" (intenção do dono): o relógio
+        // é RE-DERIVADO da MENOR âncora entre as reservas válidas (não canceladas / não no-show).
+        // Assim (a) marcação em lote passa a ancorar (antes ficava null → nunca confiscava) e
+        // (b) se a 1ª reserva-âncora for cancelada, o relógio acompanha a nova 1ª gravação (não fica
+        // preso numa data cancelada). Trade-off: cancelar a 1ª pode adiar o relógio — aceitável pois
+        // o contrato "vale a partir da 1ª gravação"; cancelamento não é o caminho comum.
+        let cycleStart = c.flexCycleStart;
+        if (anchorDates.length > 0) {
+            const earliest = new Date(Math.min(...anchorDates.map(d => +d)));
+            if (!cycleStart || +earliest !== +cycleStart) {
+                cycleStart = earliest;
+                await prisma.contract.update({ where: { id: c.id }, data: { flexCycleStart: earliest } });
+            }
+        }
+
         const state = computeFlexState({
             total: c.flexCreditsTotal,
-            cycleStart: c.flexCycleStart,
-            bookingDates: c.bookings.map(b => b.date),
+            cycleStart,
+            bookingDates: anchorDates,
             now,
         });
 

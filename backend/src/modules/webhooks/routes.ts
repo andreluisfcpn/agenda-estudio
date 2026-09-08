@@ -208,8 +208,9 @@ router.post('/stripe', async (req: Request, res: Response) => {
                 if (payment && payment.status !== 'PAID') {
                     // Verify the charged amount matches before marking PAID (parity with
                     // payment_intent.succeeded). Guards against tampered/mismatched sessions.
-                    if (session.amount_total != null && session.amount_total !== payment.amount) {
-                        console.error(`[Webhook:Stripe] checkout.session amount mismatch: session=${session.amount_total}, DB=${payment.amount} — skipping ${paymentId}`);
+                    const expectedTotal = payment.chargedAmount ?? payment.amount;
+                    if (session.amount_total != null && session.amount_total !== expectedTotal) {
+                        console.error(`[Webhook:Stripe] checkout.session amount mismatch: session=${session.amount_total}, DB=${expectedTotal} — skipping ${paymentId}`);
                     } else {
                         // Atomic update to prevent race conditions with verifyPayment
                         const updated = await prisma.payment.updateMany({
@@ -266,7 +267,11 @@ router.post('/stripe', async (req: Request, res: Response) => {
             const charge = event.data.object;
             const paymentIntentId = charge.payment_intent;
 
-            if (paymentIntentId) {
+            // B24: só marcar REFUNDED em estorno TOTAL. `charge.refunded` é true apenas no estorno
+            // integral; estornos PARCIAIS também disparam charge.refunded (com refunded=false e
+            // amount_refunded < amount) e NÃO devem zerar a receita do pagamento inteiro no relatório.
+            const fullyRefunded = charge.refunded === true || (charge.amount_refunded != null && charge.amount != null && charge.amount_refunded >= charge.amount);
+            if (paymentIntentId && fullyRefunded) {
                 // VULN-C1 FIX: Atomic guard — only refund payments that are currently PAID
                 // Prevents marking PENDING/FAILED payments as REFUNDED via forged webhooks
                 const updated = await prisma.payment.updateMany({
@@ -279,6 +284,8 @@ router.post('/stripe', async (req: Request, res: Response) => {
                 } else {
                     console.warn(`[Webhook:Stripe] charge.refunded received for PI ${paymentIntentId} but no PAID payment found — skipping`);
                 }
+            } else if (paymentIntentId) {
+                console.warn(`[Webhook:Stripe] Estorno PARCIAL para PI ${paymentIntentId} (amount_refunded=${charge.amount_refunded}/${charge.amount}) — não marcado REFUNDED.`);
             }
         }
 
@@ -290,9 +297,11 @@ router.post('/stripe', async (req: Request, res: Response) => {
             if (paymentId) {
                 const payment = await prisma.payment.findUnique({ where: { id: paymentId } });
                 if (payment && payment.status !== 'PAID') {
-                    // VULN-H2 FIX: Verify amount matches before marking as PAID
-                    if (pi.amount !== payment.amount) {
-                        console.error(`[Webhook:Stripe] Amount mismatch on PI succeeded: PI=${pi.amount}, DB=${payment.amount} — skipping payment ${paymentId}`);
+                    // VULN-H2 FIX: Verify amount matches before marking as PAID.
+                    // Card charges may carry an installment surcharge in chargedAmount; PIX/boleto use amount.
+                    const expectedAmount = payment.chargedAmount ?? payment.amount;
+                    if (pi.amount !== expectedAmount) {
+                        console.error(`[Webhook:Stripe] Amount mismatch on PI succeeded: PI=${pi.amount}, DB=${expectedAmount} — skipping payment ${paymentId}`);
                     } else {
                         // Atomic update to prevent race conditions
                         const updated = await prisma.payment.updateMany({

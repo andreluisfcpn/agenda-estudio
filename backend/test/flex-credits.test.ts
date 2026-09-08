@@ -200,4 +200,58 @@ describe('computeFlexState', () => {
         expect(s.recordings).toBe(2);
         expect(s.total).toBe(24);
     });
+
+    // ── Banking / "contador" (intenção do dono) ──
+    // "se ele faz 5 numa semana, ele pode ficar 5 semanas sem fazer episódio":
+    // gravar adiantado banca as janelas seguintes; o shortfall só aparece na 1ª janela vazia.
+    it('banking: 4 gravações na 1ª semana cobrem as semanas 1-4 (shortfall 0 até a semana 5)', () => {
+        const bookingDates = [day(0), day(0), day(0), day(0)]; // 4 na semana 1
+        // Semana 4 fechando: 4 janelas decorridas, 4 gravações bancadas → sem perda.
+        const at28 = computeFlexState({ total: 12, cycleStart, bookingDates, now: day(28) });
+        expect(at28.weeksElapsed).toBe(4);
+        expect(at28.recordingsWithinElapsed).toBe(4);
+        expect(at28.shortfall).toBe(0);
+        // Semana 5 fechando com a 5ª janela vazia: 5 decorridas, 4 bancadas → shortfall 1.
+        const at35 = computeFlexState({ total: 12, cycleStart, bookingDates, now: day(35) });
+        expect(at35.weeksElapsed).toBe(5);
+        expect(at35.recordingsWithinElapsed).toBe(4);
+        expect(at35.shortfall).toBe(1);
+    });
+
+    it('banking: 2 gravações numa semana seguram 2 semanas antes do 1º shortfall', () => {
+        const bookingDates = [day(0), day(3)]; // 2 na semana 1
+        const at14 = computeFlexState({ total: 12, cycleStart, bookingDates, now: day(14) });
+        expect(at14.weeksElapsed).toBe(2);
+        expect(at14.recordingsWithinElapsed).toBe(2);
+        expect(at14.shortfall).toBe(0); // 2 semanas cobertas
+        const at21 = computeFlexState({ total: 12, cycleStart, bookingDates, now: day(21) });
+        expect(at21.weeksElapsed).toBe(3);
+        expect(at21.recordingsWithinElapsed).toBe(2);
+        expect(at21.shortfall).toBe(1); // 3ª janela vazia → -1
+    });
+
+    it('fim de ciclo exatamente na borda total*WEEK: sem janela corrente', () => {
+        const s = computeFlexState({
+            total: 12,
+            cycleStart,
+            bookingDates: [day(0)],
+            now: new Date(CS + 12 * WEEK_MS), // borda exata (elapsedRaw === total)
+        });
+        expect(s.weeksElapsed).toBe(12);
+        expect(s.currentWindowIndex).toBeNull();
+        expect(s.currentWindowStart).toBeNull();
+        expect(s.currentWindowEnd).toBeNull();
+        expect(s.daysLeftInWindow).toBeNull();
+        expect(s.recordedThisWindow).toBe(false);
+    });
+
+    it('múltiplas gravações no MESMO dia contam como créditos distintos', () => {
+        // "o cara pode fazer todos os episódios possíveis numa semana só" — inclusive no mesmo dia.
+        const bookingDates = [day(0), day(0)];
+        const at1 = computeFlexState({ total: 12, cycleStart, bookingDates, now: day(1) });
+        expect(at1.recordings).toBe(2); // não colapsa por data
+        const at14 = computeFlexState({ total: 12, cycleStart, bookingDates, now: day(14) });
+        expect(at14.recordingsWithinElapsed).toBe(2);
+        expect(at14.shortfall).toBe(0); // 2 no mesmo dia bancam 2 semanas
+    });
 });

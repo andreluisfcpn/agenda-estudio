@@ -140,14 +140,56 @@ export async function serviceMonthlyBase(contract: { addOns: string[]; discountP
  * usam sessions_per_month × tier-com-desconto + add-ons. Usa contract.discountPct armazenado.
  */
 export async function computeMonthlyAmount(
-    contract: { type: string; tier: Tier; discountPct: number; addOns: string[] },
+    contract: { type: string; tier: Tier; discountPct: number; addOns: string[]; sessionsPerCycle?: number | null; addonCredits?: string | null },
 ): Promise<number> {
     if (contract.type === 'SERVICO') {
         return serviceMonthlyBase(contract);
     }
     const tierPrice = await getBasePriceDynamic(contract.tier);
     const discountedPrice = applyDiscount(tierPrice, contract.discountPct);
+
+    // CUSTOM: o valor por CICLO (≈ mês) é sessionsPerCycle × preço-com-desconto + add-ons por ciclo,
+    // exatamente como a criação (contract.creation.ts: cycleBaseAmount + addonsCostPerCycle). Usar o
+    // `sessions_per_month` global (default 4) subfaturaria qualquer CUSTOM com sessionsPerCycle ≠ 4.
+    if (contract.type === 'CUSTOM') {
+        const sessionsPerCycle = contract.sessionsPerCycle || (await getConfig('sessions_per_month'));
+        const cycleBase = sessionsPerCycle * discountedPrice;
+        const addonsCostPerCycle = await computeCustomAddonsCostPerCycle(
+            contract.addOns, contract.addonCredits, contract.discountPct, sessionsPerCycle,
+        );
+        return cycleBase + addonsCostPerCycle;
+    }
+
     const sessionsPerMonth = await getConfig('sessions_per_month');
     const addonsCost = await computeAddonsCost(contract.addOns, contract.discountPct, sessionsPerMonth);
     return (sessionsPerMonth * discountedPrice) + addonsCost;
+}
+
+/**
+ * Custo de add-ons por CICLO de um contrato CUSTOM (centavos, após desconto), espelhando
+ * `contract.creation.ts` (bloco addonsCostPerCycle): modo 'credits' cobra `price × perCycle`;
+ * caso contrário cobra `price × sessionsPerCycle`. `addonCredits` é o JSON de data.addonConfig.
+ */
+async function computeCustomAddonsCostPerCycle(
+    addOns: string[] | null | undefined,
+    addonCreditsJson: string | null | undefined,
+    discountPct: number,
+    sessionsPerCycle: number,
+): Promise<number> {
+    if (!addOns || addOns.length === 0) return 0;
+    let addonConfig: Record<string, { mode?: string; perCycle?: number }> = {};
+    if (addonCreditsJson) {
+        try { addonConfig = JSON.parse(addonCreditsJson); } catch { addonConfig = {}; }
+    }
+    const configs = await prisma.addOnConfig.findMany({ where: { key: { in: addOns } } });
+    let total = 0;
+    for (const addon of configs) {
+        const cfg = addonConfig[addon.key];
+        if (cfg?.mode === 'credits' && cfg.perCycle) {
+            total += applyDiscount(addon.price * cfg.perCycle, discountPct);
+        } else {
+            total += applyDiscount(addon.price * sessionsPerCycle, discountPct);
+        }
+    }
+    return total;
 }

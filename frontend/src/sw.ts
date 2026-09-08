@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
+import { precacheAndRoute, cleanupOutdatedCaches, matchPrecache } from 'workbox-precaching';
 import { registerRoute, NavigationRoute, setCatchHandler } from 'workbox-routing';
 import { NetworkFirst, StaleWhileRevalidate, CacheFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
@@ -79,7 +79,10 @@ registerRoute(navRoute);
 // Serve offline.html when any navigation request fails
 setCatchHandler(async ({ request }) => {
     if (request.destination === 'document') {
-        const cached = await caches.match('/offline.html');
+        // B26: usar matchPrecache — o Workbox precacheia sob a chave revisionada
+        // ('/offline.html?__WB_REVISION__=...'), então caches.match('/offline.html') (URL exata)
+        // nunca batia e o usuário via o texto cru "Offline". matchPrecache resolve a cache-key certa.
+        const cached = await matchPrecache('/offline.html');
         return cached ?? new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/html' } });
     }
     return Response.error();
@@ -93,8 +96,9 @@ self.addEventListener('push', (event) => {
         const data = event.data.json();
         const options: NotificationOptions = {
             body: data.message || '',
-            icon: '/icons/icon-192.svg',
-            badge: '/icons/icon-192.svg',
+            // B27: PNG (não SVG) — o Chrome Android não renderiza SVG em ícone/badge de notificação.
+            icon: '/icons/icon-192.png',
+            badge: '/icons/icon-192.png',
             tag: data.tag || 'buzios-default',
             data: { url: data.actionUrl || '/' },
             requireInteraction: data.severity === 'critical',

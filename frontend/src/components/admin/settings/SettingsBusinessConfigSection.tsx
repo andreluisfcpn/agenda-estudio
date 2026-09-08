@@ -1,6 +1,7 @@
 import { getErrorMessage } from '../../../utils/errors';
 import { useState, useEffect } from 'react';
 import { pricingApi, BusinessConfigItem } from '../../../api/client';
+import { invalidateFrontendConfigCache } from '../../../hooks/useBusinessConfig';
 import LoadingSpinner from '../../ui/LoadingSpinner';
 import SettingsSaveBar, { SettingsMessages } from './SettingsSaveBar';
 import ScheduleEditor from './ScheduleEditor';
@@ -97,7 +98,14 @@ export default function SettingsBusinessConfigSection({ groups, title, subtitle,
     const handleSaveConfigs = async () => {
         setSaving(true); setError('');
         try {
-            await pricingApi.updateBusinessConfig(configs.map(c => ({ key: c.key, value: c.value })));
+            // B14: enviar SÓ as chaves dos grupos que ESTA seção renderiza — não o snapshot inteiro.
+            // Enviar tudo revertia silenciosamente chaves de outros grupos alteradas em paralelo
+            // (outra aba/admin), já que o PUT faz upsert do array completo.
+            const payload = groups.flatMap(g => (configGrouped[g] || []).map(c => ({ key: c.key, value: c.value })));
+            await pricingApi.updateBusinessConfig(payload);
+            // B28: invalidar o cache module-level de business config — senão wizards/calendário leem
+            // valores antigos até um reload (invalidateFrontendConfigCache existia mas nunca era chamada).
+            invalidateFrontendConfigCache();
             showMsg('✅ Regras de negócio atualizadas!');
             setConfigEdited(false);
         } catch (err: unknown) { setError(getErrorMessage(err)); }

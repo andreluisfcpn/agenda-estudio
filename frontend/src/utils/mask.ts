@@ -27,8 +27,9 @@ export function maskPhone(value: string): string {
  */
 export function maskEmail(value: string): string {
     if (!value) return '';
-    // Allow alphanumeric, @, ., -, _
-    return value.toLowerCase().replace(/[^a-z0-9@._-]/g, '');
+    // Allow alphanumeric, @, ., -, _ and + (A13: sem o '+' o plus-addressing — joao+podcast@gmail.com —
+    // era corrompido a cada tecla, mandando o OTP para outra caixa e quebrando cadastro/login por código).
+    return value.toLowerCase().replace(/[^a-z0-9@._+-]/g, '');
 }
 
 /**

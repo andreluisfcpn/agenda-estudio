@@ -130,8 +130,9 @@ export async function unlockNextCycleBookings(contractId: string): Promise<void>
 export async function generateBookingsForRenewedContract(contractId: string): Promise<void> {
     try {
         const contract = await prisma.contract.findUnique({ where: { id: contractId } });
-        if (!contract || contract.type !== 'FIXO') return;
-        if (!contract.fixedDayOfWeek || !contract.fixedTime) return;
+        if (!contract) return;
+        // FIXO e CUSTOM (recorrente) pré-geram bookings; FLEX/AVULSO consomem créditos.
+        if (contract.type !== 'FIXO' && contract.type !== 'CUSTOM') return;
 
         // Idempotency guard: only generate if there are no bookings yet
         const existing = await prisma.booking.count({
@@ -140,43 +141,89 @@ export async function generateBookingsForRenewedContract(contractId: string): Pr
         if (existing > 0) return;
 
         const { getBasePriceDynamic, applyDiscount, calculateEndTime } = await import('../utils/pricing.js');
-        const { getConfig } = await import('./businessConfig.js');
+        // Bookings carry only per-episode services; monthly services never ride on a recording.
+        const { filterPerEpisodeAddons } = await import('./contractPricing.js');
 
         const basePrice = await getBasePriceDynamic(contract.tier);
         const discountedPrice = applyDiscount(basePrice, contract.discountPct);
-        const sessionsPerMonth = await getConfig('sessions_per_month');
-        const totalWeeks = contract.durationMonths * sessionsPerMonth;
-
-        const start = new Date(contract.startDate);
-        const current = new Date(start);
-        while (current.getDay() !== (contract.fixedDayOfWeek % 7)) {
-            current.setDate(current.getDate() + 1);
-        }
-
-        // Bookings carry only per-episode services; monthly services never ride on a recording.
-        const { filterPerEpisodeAddons } = await import('./contractPricing.js');
         const perEpisodeAddOns = await filterPerEpisodeAddons(contract.addOns);
+        const startDate = new Date(contract.startDate);
+        const endDate = new Date(contract.endDate);
+        const bookings: Array<Record<string, unknown>> = [];
 
-        const bookings = [];
-        for (let week = 0; week < totalWeeks; week++) {
-            const bookingDate = new Date(current);
-            bookingDate.setDate(current.getDate() + week * 7);
-            if (bookingDate > contract.endDate) break;
-            bookings.push({
-                userId: contract.userId,
-                contractId: contract.id,
-                date: bookingDate,
-                startTime: contract.fixedTime,
-                endTime: calculateEndTime(contract.fixedTime),
-                status: 'CONFIRMED' as const,
-                tierApplied: contract.tier,
-                price: discountedPrice,
-                addOns: perEpisodeAddOns,
-            });
+        if (contract.type === 'FIXO') {
+            if (!contract.fixedDayOfWeek || !contract.fixedTime) return;
+            const { getConfig } = await import('./businessConfig.js');
+            const { buildOccupiedSet } = await import('../modules/bookings/availability.service.js');
+            const { getPackageSlots, getSlotDuration } = await import('../utils/pricing.js');
+            const sessionsPerMonth = await getConfig('sessions_per_month');
+            const totalWeeks = contract.durationMonths * sessionsPerMonth;
+            const slotDuration = await getSlotDuration();
+            const current = new Date(startDate);
+            while (current.getUTCDay() !== (contract.fixedDayOfWeek % 7)) current.setUTCDate(current.getUTCDate() + 1);
+            let skipped = 0;
+            for (let week = 0; week < totalWeeks; week++) {
+                const bookingDate = new Date(current);
+                bookingDate.setUTCDate(current.getUTCDate() + week * 7);
+                if (bookingDate > endDate) break;
+                // Guard anti-overbooking: a renovação NÃO tem etapa interativa de conflito, então
+                // pula qualquer ocorrência cujo horário já esteja ocupado (nunca sobrepõe).
+                const occupied = await buildOccupiedSet(bookingDate);
+                if (getPackageSlots(contract.fixedTime, slotDuration).some(s => occupied.has(s))) {
+                    skipped++;
+                    console.warn(`[FIXO-renovação] slot ocupado — ocorrência pulada (contrato ${contract.id}): ${bookingDate.toISOString().split('T')[0]} ${contract.fixedTime}`);
+                    continue;
+                }
+                bookings.push({
+                    userId: contract.userId, contractId: contract.id, date: bookingDate,
+                    startTime: contract.fixedTime, endTime: calculateEndTime(contract.fixedTime),
+                    status: 'CONFIRMED', tierApplied: contract.tier, price: discountedPrice, addOns: perEpisodeAddOns,
+                });
+            }
+            if (skipped > 0) console.warn(`[FIXO-renovação] ${skipped} ocorrência(s) puladas por conflito (contrato ${contract.id}).`);
+        } else {
+            // B22: CUSTOM — regenera a partir do customSchedule copiado na renovação, espelhando a
+            // criação (WEEKLY/BIWEEKLY/MONTHLY) com o teto C8 (totalSessions). Datas explícitas
+            // ("Datas Livres") NÃO são re-ancoráveis a um novo período automaticamente → não geramos
+            // aqui (evita datas erradas; ficam para reagendamento manual).
+            if (!contract.customSchedule) return;
+            let sched: { frequency?: string; schedule?: Array<{ day: number; time: string }>; weekPattern?: number[] };
+            try { sched = JSON.parse(contract.customSchedule); } catch { return; }
+            const frequency = sched?.frequency;
+            const schedule = sched?.schedule || [];
+            const weekPattern = sched?.weekPattern;
+            const totalSessions = contract.totalSessions ?? 0;
+            if (frequency === 'CUSTOM' || schedule.length === 0 || totalSessions <= 0) return;
+            let generated = 0;
+            for (const slot of schedule) {
+                if (generated >= totalSessions) break;
+                const current = new Date(startDate);
+                while (current.getUTCDay() !== (slot.day % 7)) current.setDate(current.getDate() + 1);
+                while (current < endDate) {
+                    let shouldGenerate = true;
+                    if (frequency === 'BIWEEKLY') {
+                        const weekIndex = Math.floor((current.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 7));
+                        shouldGenerate = (weekPattern || [1, 3]).includes((weekIndex % 4) + 1);
+                    } else if (frequency === 'MONTHLY') {
+                        shouldGenerate = (weekPattern || [1]).includes(Math.ceil(current.getUTCDate() / 7));
+                    }
+                    if (shouldGenerate) {
+                        const weekIndex = Math.floor((current.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 7));
+                        const status = contract.accessMode === 'PROGRESSIVE' && Math.floor(weekIndex / 4) > 0 ? 'RESERVED' : 'CONFIRMED';
+                        bookings.push({
+                            userId: contract.userId, contractId: contract.id, date: new Date(current),
+                            startTime: slot.time, endTime: calculateEndTime(slot.time),
+                            status, tierApplied: contract.tier, price: discountedPrice, addOns: perEpisodeAddOns,
+                        });
+                        if (++generated >= totalSessions) break;
+                    }
+                    current.setDate(current.getDate() + 7);
+                }
+            }
         }
 
         if (bookings.length > 0) {
-            await prisma.booking.createMany({ data: bookings });
+            await prisma.booking.createMany({ data: bookings as never });
             console.log(`[PaymentEffects] Generated ${bookings.length} bookings for renewed contract ${contractId}`);
         }
     } catch (err) {
@@ -351,6 +398,11 @@ export async function generateRemainingInstallments(contractId: string): Promise
                     amount: perMonthAmount,   // parity with the first payment (pre-coupon unless scope=ALL)
                     status: 'PENDING' as const,
                     dueDate,
+                    // B1: propagar a assinatura Stripe para as parcelas 2..N. Sem isto, o webhook
+                    // invoice.payment_succeeded (que casa por {stripeSubscriptionId, status:PENDING})
+                    // nunca as concilia — ficam PENDING para sempre e o auto-charge as cobra DE NOVO
+                    // (cobrança dupla), pois o Stripe já debita o cartão pela assinatura.
+                    ...(firstPaid.stripeSubscriptionId ? { stripeSubscriptionId: firstPaid.stripeSubscriptionId } : {}),
                     ...(couponOnAll ? {
                         couponId: firstPaid.couponId,
                         couponCode: firstPaid.couponCode,

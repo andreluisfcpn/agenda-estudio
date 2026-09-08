@@ -10,6 +10,7 @@ import { HeroSkeleton, TableSkeleton } from '../components/ui/SkeletonLoader';
 import { TIER_META, getMeta } from '../constants/adminMeta';
 
 import { formatBRL } from '../utils/format';
+import { todayStrSaoPaulo } from '../utils/time';
 
 function formatBRLCompact(cents: number): string {
     const v = cents / 100;
@@ -20,10 +21,14 @@ function formatBRLCompact(cents: number): string {
 type Period = '7d' | '30d' | '90d' | '365d';
 
 function getDateRange(period: Period): { from: string; to: string } {
-    const to = new Date();
-    const from = new Date();
-    from.setDate(from.getDate() - parseInt(period));
-    return { from: from.toISOString().split('T')[0], to: to.toISOString().split('T')[0] };
+    // B29: derivar da data-calendário de São Paulo. Antes usava new Date().toISOString() (UTC), que
+    // entre ~21h–24h SP retornava SP+1 e deslocava toda a janela 1 dia à frente.
+    const to = todayStrSaoPaulo();
+    const fromDate = new Date(to + 'T12:00:00'); // meio-dia local evita drift ao subtrair dias
+    fromDate.setDate(fromDate.getDate() - parseInt(period));
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const from = `${fromDate.getFullYear()}-${pad(fromDate.getMonth() + 1)}-${pad(fromDate.getDate())}`;
+    return { from, to };
 }
 
 export default function AdminReportsPage() {

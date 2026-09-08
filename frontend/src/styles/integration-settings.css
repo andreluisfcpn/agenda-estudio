@@ -400,6 +400,12 @@
   -webkit-tap-highlight-color: transparent;
 }
 .int-env-seg:hover { color: var(--text-secondary); }
+.int-env-seg--disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.int-env-seg--disabled:hover { color: var(--text-muted); }
 .int-env-seg--active {
   background: var(--bg-secondary);
   color: var(--text-primary);
@@ -1089,6 +1095,26 @@
   color: var(--warning, #f59e0b);
   font-size: 0.75rem;
   line-height: 1.45;
+}
+/* Nota neutra/informativa: sandbox usa credenciais públicas → nada a preencher. */
+.int-sandbox-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(59, 130, 246, 0.07);
+  border: 1px dashed rgba(59, 130, 246, 0.3);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+.int-sandbox-note strong { color: var(--text-primary); }
+.int-sandbox-note code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  font-size: 0.72rem;
 }
 .int-warn svg { flex-shrink: 0; margin-top: 1px; }
 .int-warn-link {

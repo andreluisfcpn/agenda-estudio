@@ -103,6 +103,10 @@ export default function AdminContractsPage() {
         })
         : statusFiltered;
     const episodeCount = (months: number) => months === 3 ? ep3 : ep6;
+    // L6: episodeCount só cobre 3/6 meses — para AVULSO (durationMonths=1) caía no ramo ep6 (24) errado.
+    // Deriva do TIPO: AVULSO = 1 gravação; CUSTOM = totalSessions real; demais = episódios do plano por duração.
+    const contractEpisodes = (c: { type: string; durationMonths: number; totalSessions?: number | null }) =>
+        c.type === 'AVULSO' ? 1 : c.type === 'CUSTOM' ? (c.totalSessions ?? episodeCount(c.durationMonths)) : episodeCount(c.durationMonths);
 
     const getDaysToExpiry = (endDate: string) => {
         const now = new Date();
@@ -300,7 +304,7 @@ export default function AdminContractsPage() {
 
                                             {/* Episodes */}
                                             <td data-label="Gravações">
-                                                <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>{episodeCount(c.durationMonths)}</div>
+                                                <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>{contractEpisodes(c)}</div>
                                                 <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
                                                     {c.durationMonths}m · {c.discountPct}% desc
                                                 </div>
@@ -432,7 +436,7 @@ export default function AdminContractsPage() {
                 <BottomSheetModal isOpen onClose={() => setEditContract(null)} title="Editar Contrato" size="md">
                     <div>
                         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '16px' }}>
-                            {editContract.type} · {editContract.tier} · {editContract.user?.name} · {episodeCount(editContract.durationMonths)} gravações
+                            {editContract.type} · {editContract.tier} · {editContract.user?.name} · {contractEpisodes(editContract)} gravações
                         </p>
                         {editError && <div className="error-message">{editError}</div>}
                         <div className="form-group"><label className="form-label" htmlFor={`${uid}-status`}>Status</label>

@@ -155,8 +155,10 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                     await sendLoginCode(email);
                     setCode('');
                     startResendCooldown();
-                    setSuccessMessage('Enviamos um código de acesso ao seu e-mail. Entre com ele e redefina sua senha no seu perfil.');
+                    // A16: navigateTo() limpa successMessage — chamar ANTES de setar a mensagem, senão
+                    // (batched no mesmo tick) o valor committado é '' e o banner nunca aparece.
                     navigateTo('login_code');
+                    setSuccessMessage('Enviamos um código de acesso ao seu e-mail. Entre com ele e redefina sua senha no seu perfil.');
                 } catch (err: unknown) {
                     setError(getErrorMessage(err) || 'Falha ao enviar o código.');
                 } finally {

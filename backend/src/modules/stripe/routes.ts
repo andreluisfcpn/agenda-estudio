@@ -285,12 +285,13 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
         if (payment.status === 'FAILED') {
             await prisma.payment.update({
                 where: { id: payment.id },
-                data: { status: 'PENDING', providerRef: null, pixString: null, boletoUrl: null },
+                data: { status: 'PENDING', providerRef: null, pixString: null, boletoUrl: null, chargedAmount: null },
             });
             payment.status = 'PENDING';
             payment.providerRef = null;
             payment.pixString = null;
             payment.boletoUrl = null;
+            payment.chargedAmount = null;
         }
 
         // NOTA: o Stripe customer é criado apenas no fluxo de CARTÃO (abaixo). PIX/boleto não
@@ -419,16 +420,17 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
             savePaymentMethod: data.savePaymentMethod,
         });
 
-        // Update our payment with the Stripe reference AND the fee-adjusted amount actually
-        // charged. Without persisting `amount`, the webhook/verify amount-parity check
-        // (pi.amount !== payment.amount) would reject confirmation when installment fees applied —
-        // charging the customer but leaving the payment stuck PENDING.
+        // Update our payment with the Stripe reference AND the fee-adjusted total in
+        // `chargedAmount` — NOT in `amount`. Keeping `amount` as the immutable base means a
+        // retry recomputes the surcharge from the base (never compounding) and PIX/boleto keep
+        // charging the base. The card amount-parity check (verify/webhook) compares pi.amount
+        // against COALESCE(chargedAmount, amount), so it still accepts the fee-adjusted charge.
         await prisma.payment.update({
             where: { id: payment.id },
             data: {
                 providerRef: result.paymentIntentId,
                 provider: 'STRIPE',
-                amount,
+                chargedAmount: amount,
                 installments,
             },
         });
@@ -585,9 +587,11 @@ router.post('/verify-payment', authenticate, async (req: Request, res: Response)
                 return;
             }
 
-            // VULN-07 FIX: Verify amount matches before accepting
-            if (pi.amount !== payment.amount) {
-                console.error(`[Stripe:Verify] Amount mismatch: PI=${pi.amount}, DB=${payment.amount} for payment ${payment.id}`);
+            // VULN-07 FIX: Verify amount matches before accepting. Card charges may carry an
+            // installment surcharge stored in chargedAmount; PIX/boleto have none (→ amount).
+            const expectedAmount = payment.chargedAmount ?? payment.amount;
+            if (pi.amount !== expectedAmount) {
+                console.error(`[Stripe:Verify] Amount mismatch: PI=${pi.amount}, DB=${expectedAmount} for payment ${payment.id}`);
                 res.status(400).json({ error: 'Valor do PaymentIntent não confere com o pagamento.' });
                 return;
             }

@@ -247,6 +247,9 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                     {/* -------- STEP 2: Contract, Date, Slot -------- */}
                     {createStep === 2 && (() => {
                         const TIER_LABEL: Record<string, string> = { COMERCIAL: 'Comercial', AUDIENCIA: 'Audiência', SABADO: 'Sábado' };
+                        // L2: rótulo do TIPO real do contrato — antes era binário (FIXO→"Fixo", resto→"Flex"),
+                        // rotulando errado CUSTOM/AVULSO/SERVICO como "Flex".
+                        const TYPE_LABEL: Record<string, string> = { FIXO: 'Fixo', FLEX: 'Flex', CUSTOM: 'Personalizado', AVULSO: 'Avulso', SERVICO: 'Serviço' };
 
                         // Determine selected contract and its tier for slot filtering
                         const activeContract = clientContracts.find(c => c.id === createForm.contractId);
@@ -305,7 +308,14 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                     {clientContracts.map(c => {
                                         const isSelected = createForm.contractId === c.id;
                                         const ct = tc(c.tier);
-                                        const hasCredits = c.type === 'FLEX' ? (c.flexCreditsRemaining ?? 0) > 0 : true;
+                                        // L3: CUSTOM só é agendável se houver reagendamento livre (customCreditsRemaining>0) —
+                                        // suas sessões são todas pré-geradas na criação. Antes, qualquer não-FLEX ficava sempre
+                                        // habilitado, deixando o admin vincular além do total do CUSTOM. Espelha o BookingModal do cliente.
+                                        const hasCredits = c.type === 'FLEX'
+                                            ? (c.flexCreditsRemaining ?? 0) > 0
+                                            : c.type === 'CUSTOM'
+                                                ? (c.customCreditsRemaining ?? 0) > 0
+                                                : true;
                                         const compat = true; // day compat checked after date selection
 
                                         return (
@@ -352,7 +362,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                                             fontSize: '0.5625rem', fontWeight: 600, padding: '1px 6px', borderRadius: '4px',
                                                             background: c.type === 'FIXO' ? 'rgba(245,158,11,0.1)' : 'rgba(59,130,246,0.1)',
                                                             color: c.type === 'FIXO' ? 'var(--warning)' : 'var(--info)',
-                                                        }}>{c.type === 'FIXO' ? <><Pin size={10} aria-hidden="true" style={{ verticalAlign: '-1px' }} /> Fixo</> : <><RefreshCw size={10} aria-hidden="true" style={{ verticalAlign: '-1px' }} /> Flex</>}</span>
+                                                        }}>{c.type === 'FIXO' ? <><Pin size={10} aria-hidden="true" style={{ verticalAlign: '-1px' }} /> Fixo</> : <><RefreshCw size={10} aria-hidden="true" style={{ verticalAlign: '-1px' }} /> {TYPE_LABEL[c.type] || 'Flex'}</>}</span>
                                                     </div>
                                                     <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                                                         {c.type === 'FIXO' && c.fixedDayOfWeek != null && (

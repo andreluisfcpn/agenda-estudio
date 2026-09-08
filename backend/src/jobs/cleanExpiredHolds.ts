@@ -72,6 +72,35 @@ export async function cleanExpiredHolds() {
             });
             if (cancelled.count === 0) continue;
 
+            // B10: um pagamento PIX pode ter confirmado ENTRE o paidExists (acima) e o cancel atômico.
+            // Re-consulta: se apareceu um PAID, a reserva que acabamos de cancelar está de fato paga →
+            // promove de volta a CONFIRMED (repara a corrida), em vez de deixar um órfão pago-mas-cancelado
+            // que o confirmBooking posterior (que casa RESERVED/HELD) nunca conserta.
+            const paidAfter = await prisma.payment.findFirst({
+                where: {
+                    status: 'PAID',
+                    OR: [
+                        { bookingId: booking.id },
+                        ...(booking.contractId ? [{ contractId: booking.contractId }] : []),
+                    ],
+                },
+                select: { id: true },
+            });
+            if (paidAfter) {
+                await prisma.booking.updateMany({
+                    where: { id: booking.id, status: 'CANCELLED' },
+                    data: { status: 'CONFIRMED', holdExpiresAt: null },
+                });
+                if (booking.contractId) {
+                    await prisma.contract.updateMany({
+                        where: { id: booking.contractId, status: 'AWAITING_PAYMENT' },
+                        data: { status: 'ACTIVE', paymentDeadline: null },
+                    });
+                }
+                console.log(`[HOLD-CLEANUP] Booking ${booking.id} foi pago na janela do cancel — restaurado para CONFIRMED (mantém o slot).`);
+                continue;
+            }
+
             // Release Redis lock
             const dateStr = booking.date.toISOString().split('T')[0];
             const packageSlots = getPackageSlots(booking.startTime);

@@ -29,13 +29,17 @@ export async function runBookingReminderJob(): Promise<void> {
         const rangeStart = new Date(now.getTime() + (window.hoursAhead - 0.5) * 60 * 60 * 1000);
         const rangeEnd = new Date(now.getTime() + (window.hoursAhead + 0.5) * 60 * 60 * 1000);
 
-        // Find bookings whose start falls within the window
+        // Find bookings whose start falls within the window.
+        // A11: booking.date é a data SP em 00:00Z; o instante UTC de uma sessão noturna (ex.: 22:00 BRT)
+        // cai no DIA UTC SEGUINTE, então pré-filtrar por dia UTC exato de rangeStart/rangeEnd excluía a
+        // reserva (datada no dia SP anterior). Alargamos ±1 dia — a checagem exata de instante abaixo
+        // (startDateTime < rangeStart || > rangeEnd) é quem restringe de verdade.
         const bookings = await prisma.booking.findMany({
             where: {
                 status: { in: ['CONFIRMED', 'RESERVED'] },
                 date: {
-                    gte: new Date(rangeStart.getFullYear(), rangeStart.getMonth(), rangeStart.getDate()),
-                    lte: new Date(rangeEnd.getFullYear(), rangeEnd.getMonth(), rangeEnd.getDate()),
+                    gte: new Date(Date.UTC(rangeStart.getUTCFullYear(), rangeStart.getUTCMonth(), rangeStart.getUTCDate() - 1)),
+                    lte: new Date(Date.UTC(rangeEnd.getUTCFullYear(), rangeEnd.getUTCMonth(), rangeEnd.getUTCDate() + 1)),
                 },
             },
             include: { user: { select: { id: true, name: true } } },

@@ -11,6 +11,10 @@ export function registerUserListingRoutes(router: Router) {
         const where: any = {};
         if (role && typeof role === 'string') {
             where.role = role;
+        } else {
+            // L4: o diretório de clientes não deve listar contas ADMIN (não são clientes) — isso inflava
+            // "N resultados" e divergia do KPI "TOTAL N clientes". Um filtro explícito (?role=ADMIN) ainda funciona.
+            where.role = { not: 'ADMIN' };
         }
 
         const rawUsers = await prisma.user.findMany({
@@ -93,6 +97,7 @@ export function registerUserListingRoutes(router: Router) {
                         contractUrl: true,
                         flexCreditsTotal: true,
                         flexCreditsRemaining: true,
+                        totalSessions: true, // L6: para o card derivar as gravações reais de CUSTOM (não por duração)
                     },
                 },
                 bookings: {

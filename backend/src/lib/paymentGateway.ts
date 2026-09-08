@@ -4,7 +4,7 @@
 // Falls back to mock data when integrations are not configured.
 
 import { coraCreateBoleto, isCoraEnabled, type CoraBoletoPayload } from './coraService.js';
-import { sicoobCreatePix } from './sicoobService.js';
+import { sicoobCreatePix, sicoobAllowedEnvironment } from './sicoobService.js';
 import { resolvePixProvider, toSicoobTxid } from './pixGateway.js';
 import { stripeCreatePaymentIntent, stripeGetOrCreateCustomer, isStripeEnabled } from './stripeService.js';
 import { prisma } from './prisma.js';
@@ -72,8 +72,15 @@ export async function getAvailablePaymentMethods() {
         return methods;
     }
 
+    // Trava por deploy (só Sicoob): espelha resolvePixProvider — um Sicoob habilitado num
+    // ambiente proibido pelo deploy (NODE_ENV) NÃO conta como provedor disponível, senão o
+    // checkout ofereceria PIX que o roteamento depois recusa.
+    const allowedSicoobEnv = sicoobAllowedEnvironment();
     const enabledProviders = new Set(
-        integrations.filter(i => i.enabled).map(i => i.provider)
+        integrations
+            .filter(i => i.enabled)
+            .filter(i => i.provider !== 'SICOOB' || i.environment === allowedSicoobEnv)
+            .map(i => i.provider)
     );
 
     return methods.filter(m => {

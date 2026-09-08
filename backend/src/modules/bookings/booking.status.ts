@@ -74,8 +74,12 @@ router.post('/:id/complete-payment', authenticate, async (req: Request, res: Res
                 res.status(400).json({ error: 'PaymentIntent não pertence a este pagamento.' });
                 return;
             }
-            if (pi.amount !== bookingPayment.amount) {
-                console.error(`[BOOKING] Amount mismatch: PI=${pi.amount}, DB=${bookingPayment.amount}`);
+            // B12: cartão parcelado guarda o total com juros em chargedAmount (fix A1) — comparar
+            // contra (chargedAmount ?? amount), como verify-payment/webhook. Antes rejeitava (400) um
+            // PI de cartão legitimamente sobretaxado neste caminho.
+            const expectedAmount = bookingPayment.chargedAmount ?? bookingPayment.amount;
+            if (pi.amount !== expectedAmount) {
+                console.error(`[BOOKING] Amount mismatch: PI=${pi.amount}, DB=${expectedAmount}`);
                 res.status(400).json({ error: 'Valor do pagamento não confere.' });
                 return;
             }
@@ -234,11 +238,16 @@ router.put('/:id/client-cancel', authenticate, async (req: Request, res: Respons
     const diffHours = diffMs / (1000 * 60 * 60);
 
     if (diffHours >= 24) {
-        // Cancel with refund
-        await prisma.booking.update({
-            where: { id },
+        // Cancel with refund. B3: transição atômica guardada — só a requisição que efetivamente move
+        // CONFIRMED→CANCELLED restaura o crédito (duplo-clique não dupla-restaura).
+        const cancelled = await prisma.booking.updateMany({
+            where: { id, status: BookingStatus.CONFIRMED },
             data: { status: BookingStatus.CANCELLED },
         });
+        if (cancelled.count === 0) {
+            res.json({ message: 'Agendamento já cancelado.' });
+            return;
+        }
 
         if (booking.contractId) {
             await restoreCredit(booking.contractId);

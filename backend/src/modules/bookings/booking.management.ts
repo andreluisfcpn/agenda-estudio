@@ -105,10 +105,17 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
         }
     }
 
-    await prisma.booking.update({
-        where: { id },
+    // B3: transição atômica guardada — só UMA requisição concorrente vence o CANCELLED e, portanto,
+    // restaura o crédito. Antes, duplo-clique fazia 2 updates por id + 2 restoreCredit sobre o mesmo
+    // snapshot (RESERVED/CONFIRMED), devolvendo +2 créditos por 1 gravação cancelada.
+    const cancelled = await prisma.booking.updateMany({
+        where: { id, status: { in: cancelableStatuses } },
         data: { status: BookingStatus.CANCELLED },
     });
+    if (cancelled.count === 0) {
+        res.json({ message: 'Reserva já estava cancelada.' });
+        return;
+    }
 
     // Release Redis locks if the booking was holding a slot (RESERVED/HELD)
     if (booking.status === BookingStatus.RESERVED || booking.status === BookingStatus.HELD) {
@@ -117,8 +124,9 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
         await releaseMultiSlotLock(dateStr, packageSlots, booking.userId);
     }
 
-    // Restaura crédito de Flex/Custom/Avulso APENAS para sessões ainda não realizadas.
-    if (booking.contractId && cancelableStatuses.includes(booking.status)) {
+    // Restaura crédito de Flex/Custom/Avulso — só porque ESTA requisição venceu a transição atômica
+    // acima (o filtro status:{in:cancelableStatuses} já garante que era sessão não-realizada).
+    if (booking.contractId) {
         await restoreCredit(booking.contractId);
     }
 
@@ -148,9 +156,12 @@ router.delete('/:id/hard-delete', authenticate, authorize('ADMIN'), async (req: 
             await releaseMultiSlotLock(dateStr, packageSlots, booking.userId);
         }
 
-        // Restore credits if from FLEX or CUSTOM contract (and booking was NOT already cancelled)
+        // B5: só devolve crédito para sessões AINDA NÃO REALIZADAS (RESERVED/HELD/CONFIRMED), igual ao
+        // DELETE /:id. Antes restaurava para qualquer status != CANCELLED — devolvendo crédito indevido
+        // de COMPLETED/FALTA e dupla-restaurando NAO_REALIZADO (que já teve o crédito devolvido ao ser marcado).
+        const hardDeleteCancelable: BookingStatus[] = [BookingStatus.RESERVED, BookingStatus.HELD, BookingStatus.CONFIRMED];
         let creditRestored = false;
-        if (booking.contractId && booking.status !== BookingStatus.CANCELLED) {
+        if (booking.contractId && hardDeleteCancelable.includes(booking.status)) {
             creditRestored = await restoreCredit(booking.contractId);
         }
 
@@ -361,18 +372,9 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
 
         if (data.status) {
             updateData.status = data.status;
-
-            // NAO_REALIZADO: restore credit to contract (handles FLEX, CUSTOM, AVULSO)
-            if (data.status === 'NAO_REALIZADO' && booking.contractId && booking.status !== 'NAO_REALIZADO') {
-                await restoreCredit(booking.contractId);
-            }
-
-            // If changing FROM NAO_REALIZADO back to something that consumes credit, re-deduct
-            // Re-deduct credit when reverting from NAO_REALIZADO (handles FLEX, CUSTOM, AVULSO)
-            if (booking.status === 'NAO_REALIZADO' && data.status !== 'NAO_REALIZADO' && data.status !== 'CANCELLED' && booking.contractId) {
-                await deductCredit(booking.contractId);
-            }
         }
+        // B17/B3: os ajustes de crédito (restore/deduct de NAO_REALIZADO) foram MOVIDOS para depois de
+        // TODAS as validações e são feitos sob transição atômica de status — ver o bloco antes do update final.
 
         if (data.adminNotes !== undefined) updateData.adminNotes = data.adminNotes;
         if (data.clientNotes !== undefined) updateData.clientNotes = data.clientNotes;
@@ -428,6 +430,25 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
             updateData.tierApplied = slotTier;
             updateData.price = await getBasePriceDynamic(slotTier);
         }
+
+        // B17/B3: aplica a transição de status ATOMICAMENTE (updateMany guardado pelo status atual) e
+        // ajusta o crédito só se ESTA requisição venceu — e só aqui, DEPOIS de todas as validações.
+        // Antes, restoreCredit/deductCredit rodavam no topo: um 400 posterior deixava o crédito
+        // alterado sem a mudança de status, e um duplo-clique dupla-restaurava (mesmo snapshot).
+        if (data.status && data.status !== booking.status) {
+            const moved = await prisma.booking.updateMany({
+                where: { id, status: booking.status },
+                data: { status: data.status },
+            });
+            if (moved.count > 0 && booking.contractId) {
+                if (data.status === 'NAO_REALIZADO') {
+                    await restoreCredit(booking.contractId);
+                } else if (booking.status === 'NAO_REALIZADO' && data.status !== 'CANCELLED') {
+                    await deductCredit(booking.contractId);
+                }
+            }
+        }
+        delete updateData.status; // já aplicado atomicamente acima
 
         const updated = await prisma.booking.update({
             where: { id },

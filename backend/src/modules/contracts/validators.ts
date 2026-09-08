@@ -79,18 +79,18 @@ export const customCheckSchema = z.object({
 export const customContractSchema = z.object({
     name: z.string().min(1, 'Nome do projeto é obrigatório'),
     tier: z.nativeEnum(Tier),
-    durationMonths: z.number().min(1).max(12),
+    durationMonths: z.number().int().min(1).max(12), // B19: .int() — fracionário estourava a coluna Int (500 → agora 400)
     schedule: z.array(z.object({
-        day: z.number().min(0).max(6),
+        day: z.number().int().min(0).max(6),
         time: z.string().regex(/^\d{2}:\d{2}$/),
-    })).optional().default([]),
+    })).max(14).optional().default([]), // B9: teto (evita geração massiva de bookings / DoS)
     paymentMethod: z.nativeEnum(PaymentMethod),
-    addOns: z.array(z.string()).optional(),
+    addOns: z.array(z.string()).max(20).optional(),
     paymentPlan: z.enum(['MONTHLY', 'FULL']).optional().default('MONTHLY'),
     couponCode: z.string().trim().min(1).max(64).optional(),
     addonConfig: z.record(z.string(), z.object({
         mode: z.enum(['all', 'credits']),
-        perCycle: z.number().optional(),
+        perCycle: z.number().int().min(0).optional(), // B2: sem piso, perCycle negativo virava dinheiro grátis
     })).optional(),
     resolvedConflicts: z.array(z.object({
         originalDate: z.string(),
@@ -102,11 +102,11 @@ export const customContractSchema = z.object({
     userId: z.string().uuid().optional(),
     // Enhanced scheduling
     frequency: z.enum(['WEEKLY', 'BIWEEKLY', 'MONTHLY', 'CUSTOM']).default('WEEKLY'),
-    weekPattern: z.array(z.number().min(1).max(5)).optional(), // e.g. [1,3] = weeks 1 & 3
+    weekPattern: z.array(z.number().int().min(1).max(5)).max(5).optional(), // e.g. [1,3] = weeks 1 & 3
     customDates: z.array(z.object({
         date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
         time: z.string().regex(/^\d{2}:\d{2}$/),
-    })).optional(),
+    })).max(366).optional(), // B9: teto (máx ~1 ano de datas)
 });
 
 // ─── UPDATE (Admin) ─────────────────────────────────────

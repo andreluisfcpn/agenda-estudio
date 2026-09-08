@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import { authenticate, authorize } from '../../middleware/auth.js';
 import { coraTestConnection } from '../../lib/coraService.js';
-import { sicoobTestConnection } from '../../lib/sicoobService.js';
+import { sicoobTestConnection, sicoobAllowedEnvironment } from '../../lib/sicoobService.js';
 import { stripeTestConnection } from '../../lib/stripeService.js';
 import { encryptCredentials, decryptConfigSafe } from '../../utils/crypto.js';
 import { maskConfig } from './integrations.masking.js';
@@ -88,7 +88,9 @@ router.get('/', authenticate, authorize('ADMIN'), async (_req: Request, res: Res
             };
         });
 
-        res.json({ integrations: result });
+        // Ambiente permitido por ESTE deploy (NODE_ENV) — a UI usa para travar o seletor do Sicoob
+        // (produção só em deploy de produção; qualquer outro deploy só sandbox).
+        res.json({ integrations: result, deployEnvironment: sicoobAllowedEnvironment() });
     } catch (err) {
         console.error('Error listing integrations:', err);
         res.status(500).json({ error: 'Erro ao listar integrações.' });
@@ -158,6 +160,20 @@ router.put('/:provider', authenticate, authorize('ADMIN'), async (req: Request, 
         }
 
         const data = saveIntegrationSchema.parse(req.body);
+
+        // Trava por deploy (só Sicoob): o ambiente ATIVO tem de ser o permitido por este servidor
+        // (NODE_ENV) — produção só em deploy de produção; qualquer outro deploy só sandbox. Impede
+        // ativar por engano a API real fora de produção (ou o mock em produção). Defesa em
+        // profundidade: a UI já desabilita a opção proibida; aqui protege chamadas diretas à API.
+        if (provider === 'SICOOB') {
+            const allowedEnv = sicoobAllowedEnvironment();
+            if (data.environment !== allowedEnv) {
+                res.status(400).json({
+                    error: `Neste servidor (${allowedEnv === 'production' ? 'produção' : 'desenvolvimento/homologação'}) o Sicoob só opera em ${envLabel(allowedEnv)}. Selecione "${envLabel(allowedEnv)}" como ambiente ativo. A ${envLabel(allowedEnv === 'production' ? 'sandbox' : 'production')} é configurada no deploy correspondente.`,
+                });
+                return;
+            }
+        }
 
         // Stripe key sanity: reject swapped/empty keys early with a clear message
         // so the client checkout never ends up with a broken publishable key.
@@ -363,6 +379,20 @@ router.post('/:provider/toggle', authenticate, authorize('ADMIN'), async (req: R
     if (!integration) {
         res.status(400).json({ error: `Integração ${provider} não configurada.` });
         return;
+    }
+
+    // Trava por deploy (só Sicoob): não deixar ATIVAR o Sicoob num ambiente proibido por este
+    // servidor (NODE_ENV) — senão o admin veria "Ativa · Produção" com toast de sucesso enquanto
+    // o runtime bloqueia (fail-closed). Espelha a mesma trava do PUT /:provider.
+    if (enabled && provider === 'SICOOB') {
+        const allowedEnv = sicoobAllowedEnvironment();
+        const stored = integration.environment === 'production' ? 'production' : 'sandbox';
+        if (stored !== allowedEnv) {
+            res.status(400).json({
+                error: `Neste servidor (${allowedEnv === 'production' ? 'produção' : 'desenvolvimento/homologação'}) o Sicoob só opera em ${envLabel(allowedEnv)}. Selecione "${envLabel(allowedEnv)}" como ambiente ativo e salve antes de ativar.`,
+            });
+            return;
+        }
     }
 
     // Guarda: só liga se o AMBIENTE ATIVO tiver as credenciais obrigatórias —

@@ -294,7 +294,11 @@ model Payment {
   bookingId   String?         @map("booking_id")
   provider    PaymentProvider
   providerRef String?         @map("provider_ref")
-  amount      Int // in cents
+  amount      Int // in cents — BASE (sem juros de cartão). Imutável; PIX/boleto cobram este valor.
+  // Total efetivamente cobrado no cartão (base + juros de parcelamento), quando aplicável.
+  // Mantém `amount` como base para (a) não compor juros a cada retry e (b) PIX/boleto não vazarem o valor com juros.
+  // As checagens de paridade de cartão comparam contra (chargedAmount ?? amount).
+  chargedAmount Int?          @map("charged_amount")
   status      PaymentStatus   @default(PENDING)
   dueDate     DateTime?       @map("due_date")
   pixString   String?         @map("pix_string") @db.Text

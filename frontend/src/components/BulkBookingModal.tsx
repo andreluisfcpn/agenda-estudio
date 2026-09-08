@@ -2,6 +2,8 @@ import { getErrorMessage } from '../utils/errors';
 import React, { useState, useEffect, useId } from 'react';
 import BottomSheetModal from './BottomSheetModal';
 import { bookingsApi, Slot } from '../api/client';
+import { useBusinessConfig } from '../hooks/useBusinessConfig';
+import { studioSlotDate } from '../utils/time';
 
 const DAY_NAMES_FULL = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
@@ -18,6 +20,10 @@ export interface BulkBookingModalProps {
 
 export default function BulkBookingModal({ contract, onClose, onComplete }: BulkBookingModalProps) {
     const uid = useId();
+    const { get: getConfigNum } = useBusinessConfig();
+    // B13: usar o valor real (0 é válido); `|| 12` transformava 0h em 12h só no front.
+    const minAdvanceHoursRaw = getConfigNum('booking_min_advance_hours');
+    const minAdvanceHours = Number.isFinite(minAdvanceHoursRaw) ? minAdvanceHoursRaw : 12;
     const [currentDate, setCurrentDate] = useState('');
     const [availableSlots, setAvailableSlots] = useState<Slot[]>([]);
     const [loadingSlots, setLoadingSlots] = useState(false);
@@ -171,9 +177,12 @@ export default function BulkBookingModal({ contract, onClose, onComplete }: Bulk
                                         {availableSlots.map(s => {
                                             const isTierAllowed = contract.tier === 'COMERCIAL' ? s.time <= '15:30' : true;
 
-                                            // Time check
-                                            const slotDateTime = new Date(`${currentDate}T${s.time}:00`);
-                                            const isPast = (slotDateTime.getTime() - Date.now()) / (1000 * 60) < 30;
+                                            // A9: mesma regra do calendário — respeitar booking_min_advance_hours (12h)
+                                            // e usar studioSlotDate (fuso SP). Antes o grid só bloqueava < 30 min, então o
+                                            // cliente selecionava slots que o backend recusava por antecedência; como o
+                                            // POST /bookings/bulk é all-or-nothing, o LOTE inteiro abortava no 1º slot < 12h.
+                                            const slotDateTime = studioSlotDate(currentDate, s.time);
+                                            const isPast = (slotDateTime.getTime() - Date.now()) / (1000 * 60) < minAdvanceHours * 60;
 
                                             const active = isSelected(s.time);
                                             const allowed = (s.available && isTierAllowed && !isPast) || active;

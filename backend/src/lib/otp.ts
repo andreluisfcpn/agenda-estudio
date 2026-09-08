@@ -28,46 +28,65 @@ export const otpService = {
      * provider misconfigured in prod) leaves no orphan code and doesn't block retry.
      */
     async generateAndSend(target: string, name: string): Promise<void> {
-        const code = customAlphabet('0123456789', 6)();
-        const { deliverOtpEmail } = await import('./email.js');
-        await deliverOtpEmail(target, name, code); // throws on misconfiguration (prod)
-
-        await redis.set(`${OTP_PREFIX}${target}`, code, 'EX', OTP_EXPIRY_SECONDS);
-        await redis.set(`${OTP_COOLDOWN_PREFIX}${target}`, '1', 'EX', SEND_COOLDOWN_SECONDS);
-        // AUTH-M1: do NOT reset the failure counter on new code generation.
+        // B21: reivindica o cooldown ATOMICAMENTE (SET NX) ANTES de enviar — evita que sends
+        // concorrentes furem o throttle de 30s (get-then-set não-atômico deixava todos passarem).
+        // Lança OTP_COOLDOWN quando já há um send recente; o chamador mapeia para 429.
+        const cooldownKey = `${OTP_COOLDOWN_PREFIX}${target}`;
+        const claimed = await redis.set(cooldownKey, '1', 'EX', SEND_COOLDOWN_SECONDS, 'NX');
+        if (claimed !== 'OK') {
+            const err = new Error('OTP_COOLDOWN') as Error & { code?: string };
+            err.code = 'OTP_COOLDOWN';
+            throw err;
+        }
+        try {
+            const code = customAlphabet('0123456789', 6)();
+            const { deliverOtpEmail } = await import('./email.js');
+            await deliverOtpEmail(target, name, code); // throws on misconfiguration (prod)
+            await redis.set(`${OTP_PREFIX}${target}`, code, 'EX', OTP_EXPIRY_SECONDS);
+            // AUTH-M1: do NOT reset the failure counter on new code generation.
+        } catch (e) {
+            // Falha de entrega/persistência: libera o cooldown para não bloquear retry legítimo
+            // (mantém a intenção original de "não orfanizar o código nem travar o reenvio").
+            await redis.del(cooldownKey).catch(() => {});
+            throw e;
+        }
     },
 
     async verify(target: string, code: string): Promise<boolean> {
-        // VULN-10 FIX: Check if locked out from too many failed attempts
+        // B20: checagem-de-lockout + comparação + incremento ATÔMICOS (Lua). Antes eram statements
+        // separados por awaits, então palpites concorrentes liam o contador stale e furavam o teto por
+        // alvo (MAX_FAILED_ATTEMPTS). Agora o incremento é a fonte da verdade, num único round-trip.
         const failKey = `${OTP_FAIL_PREFIX}${target}`;
-        const failCount = parseInt(await redis.get(failKey) || '0', 10);
+        const key = `${OTP_PREFIX}${target}`;
+        const script = `
+          local fail = tonumber(redis.call('get', KEYS[2]) or '0')
+          if fail >= tonumber(ARGV[2]) then return {-1, fail} end
+          local stored = redis.call('get', KEYS[1])
+          if not stored then return {0, fail} end
+          if stored == ARGV[1] then
+            redis.call('del', KEYS[1])
+            redis.call('del', KEYS[2])
+            return {1, 0}
+          end
+          local n = redis.call('incr', KEYS[2])
+          if n == 1 then redis.call('expire', KEYS[2], tonumber(ARGV[3])) end
+          return {2, n}
+        `;
+        const [status, count] = await redis.eval(
+            script, 2, key, failKey, code, String(MAX_FAILED_ATTEMPTS), String(LOCKOUT_SECONDS),
+        ) as [number, number];
 
-        if (failCount >= MAX_FAILED_ATTEMPTS) {
-            console.warn(`[OTP] Target ${target} is locked out (${failCount} failed attempts)`);
-            void logOtpEvent(target, 'LOCKED_OUT', failCount);
+        if (status === 1) return true;
+        if (status === -1) {
+            console.warn(`[OTP] Target ${target} is locked out (${count} failed attempts)`);
+            void logOtpEvent(target, 'LOCKED_OUT', count);
             return false;
         }
-
-        const key = `${OTP_PREFIX}${target}`;
-        const stored = await redis.get(key);
-
-        if (!stored) return false;
-
-        if (stored === code) {
-            await redis.del(key); // Single use — delete after verification
-            await redis.del(failKey); // Reset failure counter on success
-            return true;
+        if (status === 2) {
+            console.warn(`[OTP] Failed attempt ${count}/${MAX_FAILED_ATTEMPTS} for ${target}`);
+            void logOtpEvent(target, 'FAILED_ATTEMPT', count);
         }
-
-        // Increment failure counter with lockout TTL
-        const newCount = await redis.incr(failKey);
-        if (newCount === 1) {
-            await redis.expire(failKey, LOCKOUT_SECONDS);
-        }
-
-        console.warn(`[OTP] Failed attempt ${newCount}/${MAX_FAILED_ATTEMPTS} for ${target}`);
-        void logOtpEvent(target, 'FAILED_ATTEMPT', newCount);
-        return false;
+        return false; // status 0 = no active code
     },
 
     async isLockedOut(target: string): Promise<boolean> {

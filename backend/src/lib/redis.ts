@@ -144,3 +144,26 @@ export async function releaseMultiSlotLock(
         await releaseLock(date, slot, userId);
     }
 }
+
+// ─── Generic short-lived mutex ──────────────────────────
+// SET NX EX. Used to serialize non-slot critical sections (e.g. the FIXO cap check,
+// where concurrent bookings for DIFFERENT slots of the same contract must not race).
+
+/** Try once to acquire a mutex; returns true if acquired. */
+export async function acquireMutex(key: string, ttlSeconds: number): Promise<boolean> {
+    const res = await redis.set(key, '1', 'EX', ttlSeconds, 'NX');
+    return res === 'OK';
+}
+
+/** Acquire a mutex, retrying briefly while it is held by another caller. */
+export async function acquireMutexBlocking(key: string, ttlSeconds: number, tries = 30, delayMs = 100): Promise<boolean> {
+    for (let i = 0; i < tries; i++) {
+        if (await acquireMutex(key, ttlSeconds)) return true;
+        await new Promise(r => setTimeout(r, delayMs));
+    }
+    return false;
+}
+
+export async function releaseMutex(key: string): Promise<void> {
+    await redis.del(key);
+}

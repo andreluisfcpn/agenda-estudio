@@ -193,27 +193,34 @@ export function FileUploadZone({
    Sandbox/Produção troca DE UMA VEZ o ambiente ativo no checkout E as
    credenciais mostradas/editadas abaixo. Cada opção mostra ✓/— se aquele
    ambiente já tem credenciais completas. */
-export function EnvSelector({ env, onChange, labels, sandboxOk, productionOk, pendingSave }: {
+export function EnvSelector({ env, onChange, labels, sandboxOk, productionOk, pendingSave, lockedEnv }: {
   env: 'sandbox' | 'production';
   onChange: (v: 'sandbox' | 'production') => void;
   labels: { sandbox: string; production: string };
   sandboxOk: boolean;
   productionOk: boolean;
   pendingSave: boolean;
+  /** Quando definido, este servidor (deploy) só permite este ambiente — o outro fica travado. */
+  lockedEnv?: 'sandbox' | 'production';
 }) {
-  const seg = (value: 'sandbox' | 'production', label: string, ok: boolean, Icon: (p: any) => React.ReactElement) => (
-    <button type="button"
-      className={`int-env-seg ${env === value ? 'int-env-seg--active' : ''}`}
-      onClick={() => onChange(value)}
-      role="radio" aria-checked={env === value}
-      aria-label={`${label} — ${ok ? 'credenciais configuradas' : 'sem credenciais'}`}>
-      <Icon size={14} />
-      <span className="int-env-seg-label">{label}</span>
-      <span className={`int-env-seg-dot ${ok ? 'int-env-seg-dot--ok' : ''}`} aria-hidden="true">
-        {ok ? <Icons.Check size={10} /> : '—'}
-      </span>
-    </button>
-  );
+  const seg = (value: 'sandbox' | 'production', label: string, ok: boolean, Icon: (p: any) => React.ReactElement) => {
+    const disabled = !!lockedEnv && value !== lockedEnv;
+    return (
+      <button type="button"
+        className={`int-env-seg ${env === value ? 'int-env-seg--active' : ''} ${disabled ? 'int-env-seg--disabled' : ''}`}
+        onClick={() => { if (!disabled) onChange(value); }}
+        disabled={disabled}
+        role="radio" aria-checked={env === value} aria-disabled={disabled}
+        title={disabled ? 'Bloqueado neste servidor (definido pelo deploy)' : undefined}
+        aria-label={`${label} — ${disabled ? 'bloqueado neste servidor' : ok ? 'credenciais configuradas' : 'sem credenciais'}`}>
+        <Icon size={14} />
+        <span className="int-env-seg-label">{label}</span>
+        <span className={`int-env-seg-dot ${ok ? 'int-env-seg-dot--ok' : ''}`} aria-hidden="true">
+          {disabled ? '🔒' : ok ? <Icons.Check size={10} /> : '—'}
+        </span>
+      </button>
+    );
+  };
   return (
     <div className="int-env-selector">
       <div className="int-env-selector-title">Ambiente ativo no checkout</div>
@@ -222,8 +229,12 @@ export function EnvSelector({ env, onChange, labels, sandboxOk, productionOk, pe
         {seg('production', labels.production, productionOk, Icons.Rocket)}
       </div>
       <div className="int-env-selector-hint">
-        Define o ambiente usado nas cobranças e as credenciais editadas abaixo.
-        {pendingSave && <strong> • Alteração pendente — clique em Salvar para aplicar.</strong>}
+        {lockedEnv ? (
+          <>🔒 Este servidor é de <strong>{lockedEnv === 'production' ? 'produção' : 'desenvolvimento/homologação'}</strong> — o Sicoob opera apenas em <strong>{lockedEnv === 'production' ? 'produção (API real)' : 'sandbox (mock)'}</strong>. O outro ambiente é configurado no deploy correspondente.</>
+        ) : (
+          <>Define o ambiente usado nas cobranças e as credenciais editadas abaixo.
+          {pendingSave && <strong> • Alteração pendente — clique em Salvar para aplicar.</strong>}</>
+        )}
       </div>
     </div>
   );

@@ -19,8 +19,11 @@ import { STUDIO_SLOTS } from '../../../constants/slots';
 function getMonthRange(): { start: Date; end: Date } {
     const now = new Date();
     return {
-        start: new Date(now.getFullYear(), now.getMonth(), 1),
-        end: new Date(now.getFullYear(), now.getMonth() + 1, 0),
+        // A18: usar UTC-midnight para bater com `new Date("YYYY-MM-DD")` (que é 00:00Z). Antes, o
+        // Date(y,m,1) em horário LOCAL (03:00Z em UTC-3) fazia a comparação `b.date (00:00Z) >= start`
+        // ser falsa para o DIA 1, derrubando receita/contagem/presença das reservas do 1º dia do mês.
+        start: new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1)),
+        end: new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 0)),
     };
 }
 
@@ -255,7 +258,7 @@ export default function AdminDashboard() {
                     { label: 'Receita do Mês', value: formatBRL(monthRevenue), sub: `${monthBookings.length} agendamentos`, mod: ' admin-kpi-card--success' },
                     { label: 'Ocupação Hoje', value: isSunday ? '—' : `${todaysBookings.length}/5`, sub: isSunday ? 'Fechado' : `${Math.round((todaysBookings.length / 5) * 100)}% dos slots`, mod: '' },
                     { label: 'Taxa de Presença', value: `${attendanceRate}%`, sub: `${completedThisMonth} concluídas, ${noShowsThisMonth} faltas`, mod: attendanceRate >= 80 ? ' admin-kpi-card--success' : ' admin-kpi-card--danger' },
-                    { label: 'Contratos Ativos', value: `${activeContracts.length}`, sub: `${allUsers.filter(u => u.role !== 'ADMIN').length} clientes cadastrados`, mod: ' admin-kpi-card--accent' },
+                    { label: 'Contratos Ativos', value: `${activeContracts.length}`, sub: (() => { const n = allUsers.filter(u => u.role !== 'ADMIN').length; return `${n} cliente${n !== 1 ? 's' : ''} cadastrado${n !== 1 ? 's' : ''}`; })(), mod: ' admin-kpi-card--accent' },
                 ].map((kpi, i) => (
                     <div key={i} className={`admin-kpi-card${kpi.mod}`}>
                         <div className="admin-kpi-card__label">{kpi.label}</div>

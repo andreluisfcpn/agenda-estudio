@@ -26,7 +26,7 @@ const TIER_LABELS: Record<string, string> = {
     SABADO: '🌟 Sábado Premium',
 };
 
-type Step = 'choose' | 'avulso_addons' | 'avulso_checkout' | 'held' | 'processing' | 'done' | 'error';
+type Step = 'choose' | 'avulso_addons' | 'avulso_checkout' | 'plan_extras_checkout' | 'held' | 'processing' | 'done' | 'error';
 
 // ─── Countdown Timer Component ──────────────────────────
 function CountdownTimer({ expiresAt, onExpire }: { expiresAt: string; onExpire: () => void }) {
@@ -97,6 +97,9 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
     const [installments, setInstallments] = useState(1);
     const [clientSecret, setClientSecret] = useState<string | null>(null);
     const [bookingId, setBookingId] = useState<string | null>(null);
+    // A7: cobrança dos serviços extras pagos de uma reserva por PLANO.
+    const [planExtrasPaymentId, setPlanExtrasPaymentId] = useState<string | null>(null);
+    const [planExtrasAmount, setPlanExtrasAmount] = useState(0);
     const bookingRef = useRef<string | null>(null);
     const paymentRef = useRef<string | null>(null); // tracks internal Payment ID for method switch
     const [holdExpiresAt, setHoldExpiresAt] = useState<string | null>(null);
@@ -119,6 +122,8 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
             setSelectedAddons([]);
             setClientSecret(null);
             setBookingId(null);
+            setPlanExtrasPaymentId(null);
+            setPlanExtrasAmount(0);
             setHoldExpiresAt(null);
             setPaymentIntentId(null);
             bookingRef.current = null;
@@ -186,8 +191,20 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
         setError('');
         setStep('processing');
         try {
-            await bookingsApi.create({ date, startTime: time, contractId: selectedContractId!, addOns: selectedAddons });
-            setStep('done');
+            const res = await bookingsApi.create({ date, startTime: time, contractId: selectedContractId!, addOns: selectedAddons });
+            // A7: se a reserva por plano tiver serviços EXTRAS pagos (não inclusos no contrato), o backend
+            // cria um Payment PENDING e retorna paymentId/paymentAmount — roteamos para o checkout para
+            // cobrá-los (senão ficam pendentes em "Meus Pagamentos", nunca entregues de graça).
+            if (res.paymentId && (res.paymentAmount ?? 0) > 0) {
+                bookingRef.current = res.booking.id;
+                setBookingId(res.booking.id);
+                paymentRef.current = res.paymentId;
+                setPlanExtrasPaymentId(res.paymentId);
+                setPlanExtrasAmount(res.paymentAmount ?? Math.round(addonsCost));
+                setStep('plan_extras_checkout');
+            } else {
+                setStep('done');
+            }
         } catch (err: unknown) {
             setError(getErrorMessage(err) || 'Erro ao agendar');
             setStep('error');
@@ -541,6 +558,50 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
                             }}
                             onError={(msg) => setError(msg)}
                             onCancel={() => setStep('avulso_addons')}
+                        />
+                    </>
+                )}
+
+                {/* ══════════ Step: PLAN EXTRAS CHECKOUT (serviços extras de reserva por plano — A7) ══════════ */}
+                {step === 'plan_extras_checkout' && planExtrasPaymentId && (
+                    <>
+                        <h2 style={{ fontSize: '1.125rem', fontWeight: 800, margin: '0 0 16px 0' }}>Serviços extras</h2>
+                        <div style={{
+                            padding: '14px 16px', borderRadius: 'var(--radius-md)',
+                            background: 'rgba(17,129,155,0.08)', border: '1px solid rgba(17,129,155,0.2)',
+                            fontSize: '0.8125rem', color: 'var(--accent-text)', marginBottom: '16px',
+                        }}>
+                            ✅ Sua gravação foi <strong>reservada</strong>. Conclua o pagamento dos serviços extras para ativá-los nesta gravação.
+                        </div>
+
+                        {error && (
+                            <div style={{
+                                padding: '12px 14px', borderRadius: 'var(--radius-md)',
+                                background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)',
+                                fontSize: '0.8125rem', color: 'var(--danger, #ef4444)', marginBottom: '12px',
+                            }}>
+                                {error}
+                            </div>
+                        )}
+
+                        <InlineCheckout
+                            amount={planExtrasAmount}
+                            description={`Serviços extras — ${dateDisplay} às ${time}`}
+                            allowedMethods={['CARTAO', 'PIX']}
+                            context="avulso"
+                            createPaymentFn={async (method) => {
+                                const pid = planExtrasPaymentId;
+                                // O Payment dos extras já existe (criado na reserva por plano).
+                                if (method === 'CARTAO') {
+                                    // InlineCheckout gera o PaymentIntent a partir do paymentId.
+                                    return { paymentId: pid };
+                                }
+                                const pixRes = await stripeApi.createPayment({ paymentId: pid, paymentMethod: 'pix' });
+                                return { paymentId: pixRes.paymentId || pid, pixString: pixRes.pixString, qrCodeBase64: pixRes.qrCodeBase64 };
+                            }}
+                            onSuccess={() => setStep('done')}
+                            onError={(msg) => setError(msg)}
+                            onCancel={() => setStep('done')}
                         />
                     </>
                 )}

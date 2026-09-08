@@ -151,8 +151,11 @@ async function buildComputedNotifications(userId: string, userRole: string): Pro
     // 2b. Failed payments
     const failedEff = ev(isAdmin ? 'computed_payment_failed_admin' : 'computed_payment_failed');
     if (failedEff.enabled) {
+        // L12: este alerta é "Pagamento com CARTÃO falhou" — restringir a provider STRIPE. Falhas de
+        // PIX/boleto (Sicoob/Cora) têm seu próprio evento "Cobrança expirada"; antes elas disparavam a
+        // cópia de cartão ("Atualize o cartão"), confundindo clientes que só usam PIX.
         const failedPayments = await prisma.payment.findMany({
-            where: { status: 'FAILED', ...(isAdmin ? {} : { userId }) },
+            where: { status: 'FAILED', provider: 'STRIPE', ...(isAdmin ? {} : { userId }) },
             include: { user: { select: { name: true } } },
         });
         for (const p of failedPayments) {

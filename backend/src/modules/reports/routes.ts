@@ -54,7 +54,7 @@ router.get('/occupancy', authenticate, authorize('ADMIN'), async (req: Request, 
         const { from, to } = req.query;
         const dateFilter = buildDateFilter(from as string | undefined, to as string | undefined);
         const fromDate = dateFilter?.gte || new Date(new Date().setDate(new Date().getDate() - 30));
-        const toDate = dateFilter?.lte || new Date();
+        const toDate = dateFilter?.lt || dateFilter?.lte || new Date();
 
         // Count business days in range (Mon-Sat, excluding Sunday)
         let totalDays = 0;
@@ -211,18 +211,21 @@ router.get('/ranking', authenticate, authorize('ADMIN'), async (req: Request, re
 
 // ─── Helpers ────────────────────────────────────────────
 
-function buildDateFilter(from?: string, to?: string): { gte?: Date; lte?: Date } | undefined {
+function buildDateFilter(from?: string, to?: string): { gte?: Date; lt?: Date; lte?: Date } | undefined {
     if (!from && !to) {
         // Default: last 30 days
         const now = new Date();
         return { gte: new Date(now.setDate(now.getDate() - 30)), lte: new Date() };
     }
-    const filter: { gte?: Date; lte?: Date } = {};
+    const filter: { gte?: Date; lt?: Date } = {};
     if (from) filter.gte = new Date(from);
     if (to) {
         const end = new Date(to);
-        end.setDate(end.getDate() + 1); // inclusive
-        filter.lte = end;
+        end.setDate(end.getDate() + 1);
+        // A17: limite EXCLUSIVO (lt) — o dia `to` inteiro entra, mas o dia `to+1` (00:00Z) fica de fora.
+        // Antes era `lte` inclusivo, então reservas datadas em to+1 vazavam para todos os relatórios e a
+        // % de ocupação (cujo laço usa d < toDate) ficava inflada (numerador com to+1, denominador sem).
+        filter.lt = end;
     }
     return filter;
 }

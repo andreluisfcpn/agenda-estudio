@@ -54,6 +54,11 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
             } else {
                 monthlyAmount = svcMonthly;
             }
+        } else if (contract.type === 'CUSTOM') {
+            // B22: CUSTOM é precificado por sessionsPerCycle (fonte única computeMonthlyAmount). O
+            // cálculo inline por sessions_per_month global (4) subfaturava CUSTOM — sobretudo na
+            // RENOVAÇÃO, cuja 1ª parcela é precificada aqui (sem installments pré-gerados).
+            monthlyAmount = await computeMonthlyAmount(contract);
         } else {
             const tierPrice = await getBasePriceDynamic(contract.tier);
             const discountedPrice = applyDiscount(tierPrice, contract.discountPct);
@@ -349,9 +354,11 @@ router.post('/:id/confirm-payment', authenticate, async (req: Request, res: Resp
                 return;
             }
 
-            // VULN-07 FIX: Verify amount matches
-            if (pi.amount !== payment.amount) {
-                console.error(`[CONTRACT-CONFIRM] Amount mismatch: PI=${pi.amount}, DB=${payment.amount}`);
+            // VULN-07 FIX: Verify amount matches. B11: cartão parcelado guarda o total com juros em
+            // chargedAmount (fix A1) — comparar contra (chargedAmount ?? amount), como verify/webhook.
+            const expectedAmount = payment.chargedAmount ?? payment.amount;
+            if (pi.amount !== expectedAmount) {
+                console.error(`[CONTRACT-CONFIRM] Amount mismatch: PI=${pi.amount}, DB=${expectedAmount}`);
                 res.status(400).json({ error: 'Valor do pagamento não confere.' });
                 return;
             }
@@ -533,13 +540,30 @@ router.post('/:id/client-renew', authenticate, async (req: Request, res: Respons
             return; 
         }
 
-        // PAY-M2 FIX: Block duplicate pending renewals
-        const pendingRenewal = await prisma.contract.findFirst({
-            where: { renewedFromId: id, status: 'AWAITING_PAYMENT' },
+        // Regra do dono: a renovação só pode acontecer UMA ÚNICA VEZ por contrato. Bloqueia se já
+        // existir uma renovação não-cancelada (pendente OU já concluída) — só uma renovação
+        // CANCELLED permite tentar de novo. (PAY-M2 cobria só a pendente; agora cobre "1x".)
+        const existingRenewal = await prisma.contract.findFirst({
+            where: { renewedFromId: id, status: { notIn: ['CANCELLED'] } },
+            select: { status: true },
         });
-        if (pendingRenewal) {
-            res.status(400).json({ error: 'Já existe uma renovação pendente para este contrato. Realize o pagamento ou aguarde a expiração.' });
+        if (existingRenewal) {
+            res.status(400).json({
+                error: existingRenewal.status === 'AWAITING_PAYMENT'
+                    ? 'Já existe uma renovação pendente para este contrato. Realize o pagamento ou aguarde a expiração.'
+                    : 'Este contrato já foi renovado. A renovação só pode acontecer uma única vez.',
+            });
             return;
+        }
+
+        // Regra do dono: janela de renovação = só nos 7 dias antes de expirar (ou já expirado).
+        if (original.status === 'ACTIVE') {
+            const DAY_MS = 24 * 60 * 60 * 1000;
+            const daysToEnd = Math.ceil((new Date(original.endDate).getTime() - Date.now()) / DAY_MS);
+            if (daysToEnd > 7) {
+                res.status(400).json({ error: `A renovação fica disponível nos últimos 7 dias do contrato (ainda faltam ${daysToEnd} dias).` });
+                return;
+            }
         }
 
         // Resolve + validate the payment method (renewal must carry a usable method, else the
@@ -606,6 +630,17 @@ router.post('/:id/client-renew', authenticate, async (req: Request, res: Respons
                 flexCreditsRemaining: flexCreditsTotal ?? null,
                 flexCycleStart: null, // FLEX clock starts on the 1st recording
                 flexForfeitFloor: original.type === 'FLEX' ? 0 : null, // not grandfathered
+                // B22: CUSTOM precisa dos campos de ciclo copiados — senão computeMonthlyAmount cai no
+                // fallback de 4 sessões/mês (subfatura ~50%) e a geração de bookings não sabe o schedule.
+                ...(original.type === 'CUSTOM' ? {
+                    sessionsPerWeek: original.sessionsPerWeek,
+                    sessionsPerCycle: original.sessionsPerCycle,
+                    totalSessions: original.totalSessions,
+                    customSchedule: original.customSchedule,
+                    addonCredits: original.addonCredits,
+                    accessMode: original.accessMode,
+                    customCreditsRemaining: original.customCreditsRemaining,
+                } : {}),
                 renewedFromId: original.id,
             },
         });

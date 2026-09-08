@@ -564,7 +564,7 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                         <div style={{ textAlign: 'center', marginBottom: '20px' }}>
                             <AlertTriangle size={40} style={{ color: 'var(--warning)', opacity: 0.6, marginBottom: 8 }} aria-hidden="true" />
                             <h3 style={{ fontSize: '1.25rem', color: '#ef4444' }}>Conflitos de Agenda</h3>
-                            <p style={{ color: 'var(--text-muted)' }}>Alguns dias projetados já possuem outras gravações.</p>
+                            <p style={{ color: 'var(--text-muted)' }}>Alguns dias já têm gravações. Aplicamos a auto-substituição (mesmo dia ou outro dia); dias sem alternativa são pulados — nunca gravamos por cima.</p>
                         </div>
 
                         <div style={{ background: 'var(--bg-secondary)', padding: '16px', borderRadius: 'var(--radius-md)', marginBottom: '24px', maxHeight: '400px', overflowY: 'auto' }}>
@@ -584,15 +584,17 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                                             </div>
 
                                             {c.suggestedReplacement ? (
-                                                <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><RefreshCw size={12} aria-hidden="true" /> Auto-Substituição:</span>
+                                                <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><RefreshCw size={12} aria-hidden="true" /> Auto-substituição:</span>
                                                     <span style={{ background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', padding: '4px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                                                        {c.suggestedReplacement.time} no mesmo dia
+                                                        {c.suggestedReplacement.date === c.date
+                                                            ? `${c.suggestedReplacement.time} (mesmo dia)`
+                                                            : (() => { const p = c.suggestedReplacement!.date.split('-'); return `${DAY_NAMES_FULL[new Date(`${c.suggestedReplacement!.date}T12:00:00`).getDay()]} ${p[2]}/${p[1]} · ${c.suggestedReplacement!.time} (outro dia)`; })()}
                                                     </span>
                                                 </div>
                                             ) : (
                                                 <div style={{ fontSize: '0.8125rem', color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertTriangle size={12} aria-hidden="true" /> Dia completamente lotado para a faixa. Remanejamento no fim do ciclo.</span>
+                                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertTriangle size={12} aria-hidden="true" /> Dia lotado e sem dia próximo livre — esta ocorrência será <strong>pulada</strong> (não gravamos por cima). Remarque manualmente.</span>
                                                 </div>
                                             )}
                                         </div>
@@ -604,7 +606,7 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                         <div className="modal-actions" style={{ flexDirection: 'column', gap: '12px' }}>
                             <button className="btn btn-primary" style={{ width: '100%', padding: '14px' }}
                                 onClick={() => executeCreate(resolvedConflicts)}>
-                                Forçar Criação e Aplicar Sugestões
+                                Criar (aplicar sugestões · pular dias lotados)
                             </button>
                             <button className="btn btn-secondary" style={{ width: '100%', padding: '14px' }}
                                 onClick={() => setShowConflictModal(false)}>

@@ -85,8 +85,12 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
     const [showCancelModal, setShowCancelModal] = useState(false);
 
     // Conflicts
-    const [conflicts, setConflicts] = useState<{ date: string, originalTime: string, suggestedReplacement?: { date: string, time: string }, alternatives?: { date: string, time: string }[] }[]>([]);
+    const [conflicts, setConflicts] = useState<{ date: string, originalTime: string, dayFull?: boolean, suggestedReplacement?: { date: string, time: string }, alternatives?: { date: string, time: string, kind?: 'SAME_DAY' | 'OTHER_DAY' }[] }[]>([]);
     const [resolvedConflicts, setResolvedConflicts] = useState<{ originalDate: string, originalTime: string, newDate: string, newTime: string }[]>([]);
+    // Dia-da-semana inteiro sem vaga (+ previsão) e sugestões de OUTRO dia-da-semana pra trocar o plano.
+    const [weekdayUnavailable, setWeekdayUnavailable] = useState(false);
+    const [forecast, setForecast] = useState<string | null>(null);
+    const [altWeekdays, setAltWeekdays] = useState<{ dayOfWeek: number, conflictCount: number, conflictFree: boolean }[]>([]);
 
     // Per-conflict substitution: which alternative slot the client picked for a given conflict.
     const getResolution = (originalDate: string, originalTime: string) =>
@@ -259,6 +263,9 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
 
                 if (!res.available) {
                     setConflicts(res.conflicts);
+                    setWeekdayUnavailable(!!res.weekdayUnavailable);
+                    setForecast(res.forecast ?? null);
+                    setAltWeekdays(res.alternativeWeekdays ?? []);
                     const autoResolutions = res.conflicts
                         .filter(c => c.suggestedReplacement)
                         .map(c => ({
@@ -282,7 +289,61 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
         }
     };
 
+    // Troca o dia-da-semana INTEIRO do plano (ex.: todas as segundas → terças) e revalida.
+    // Só ajusta firstDate + reroda o check; o usuário confirma no botão (com o estado já atualizado),
+    // evitando criar com firstDate desatualizado.
+    const switchWeekday = async (targetDow: number) => {
+        if (!firstDate || !firstTime) return;
+        const domToDow = (dt: Date) => (dt.getDay() === 0 ? 7 : dt.getDay());
+        const d = new Date(`${firstDate}T12:00:00`);
+        for (let g = 0; g < 8 && domToDow(d) !== targetDow; g++) d.setDate(d.getDate() + 1);
+        const newFirst = d.toISOString().split('T')[0];
+        setFirstDate(newFirst);
+        setSubmitting(true);
+        setError('');
+        try {
+            const res = await contractsApi.checkFixo({
+                tier: selectedTier, durationMonths: duration as 3 | 6,
+                startDate: newFirst, fixedDayOfWeek: targetDow, fixedTime: firstTime,
+            });
+            setConflicts(res.available ? [] : res.conflicts);
+            setWeekdayUnavailable(!!res.weekdayUnavailable);
+            setForecast(res.forecast ?? null);
+            setAltWeekdays(res.alternativeWeekdays ?? []);
+            setResolvedConflicts(res.available ? [] : res.conflicts
+                .filter(c => c.suggestedReplacement)
+                .map(c => ({ originalDate: c.date, originalTime: c.originalTime, newDate: c.suggestedReplacement!.date, newTime: c.suggestedReplacement!.time })));
+        } catch (err: unknown) {
+            setError(getErrorMessage(err) || 'Erro ao validar agenda');
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
     const progressSteps = step >= 5 && step !== 7 ? 4 : step;
+
+    // Helpers de exibição da etapa de conflito.
+    const fmtBR = (iso: string) => { const p = iso.split('-'); return `${p[2]}/${p[1]}`; };
+    const dowOf = (iso: string) => DAY_NAMES_FULL[new Date(`${iso}T12:00:00`).getDay()];
+    const curDowLabel = firstDate ? DAY_NAMES_FULL[new Date(`${firstDate}T12:00:00`).getDay()] : '';
+
+    // Bloco reutilizável: trocar o plano inteiro para outro dia-da-semana livre nesse horário.
+    const altWeekdaysUI = altWeekdays.length > 0 ? (
+        <div style={{ background: 'var(--bg-secondary)', padding: 16, borderRadius: 'var(--radius-md)', marginBottom: 16 }}>
+            <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: 4 }}>Ou troque o dia da semana</div>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '0 0 10px' }}>
+                Mude o plano inteiro para outro dia livre nesse horário{firstTime ? ` (${firstTime})` : ''}:
+            </p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {altWeekdays.map(a => (
+                    <button key={a.dayOfWeek} type="button" onClick={() => switchWeekday(a.dayOfWeek)} disabled={submitting}
+                        style={{ padding: '8px 14px', borderRadius: 'var(--radius-sm)', border: `1.5px solid ${a.conflictFree ? 'var(--accent-primary)' : 'var(--border-default)'}`, background: 'var(--bg-card)', color: 'var(--text-primary)', fontWeight: 600, fontSize: '0.85rem', cursor: submitting ? 'default' : 'pointer', opacity: submitting ? 0.6 : 1 }}>
+                        {DAY_NAMES_FULL[a.dayOfWeek]}{a.conflictFree ? ' · livre' : ` · ${a.conflictCount} conflito(s)`}
+                    </button>
+                ))}
+            </div>
+        </div>
+    ) : null;
 
     return (
         <BottomSheetModal isOpen={true} onClose={onClose} title="✨ Nova Contratação" preventClose={submitting} maxWidth="540px">
@@ -1028,96 +1089,134 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                 {/* ══════════ STEP 7: CONFLICT RESOLUTION ══════════ */}
                 {step === 7 && (
                     <div>
-                        <div className="wizard-state-screen" style={{ padding: '24px 0' }}>
-                            <div className="wizard-state-screen__icon">⚠️</div>
-                            <h3 className="wizard-state-screen__title" style={{ color: '#ef4444' }}>Conflitos de Agenda Encontrados</h3>
-                            <p className="wizard-state-screen__desc">Alguns dias do seu contrato Fixo já possuem outras gravações marcadas.</p>
-                        </div>
+                        {weekdayUnavailable ? (
+                            /* Nenhuma ocorrência do dia-da-semana tem vaga no período */
+                            <>
+                                <div className="wizard-state-screen" style={{ padding: '24px 0' }}>
+                                    <div className="wizard-state-screen__icon">🚫</div>
+                                    <h3 className="wizard-state-screen__title" style={{ color: '#ef4444' }}>{curDowLabel} sem vaga nesse horário</h3>
+                                    <p className="wizard-state-screen__desc">
+                                        Todas as ocorrências de {curDowLabel.toLowerCase()} às {firstTime} estão lotadas no período.{' '}
+                                        {forecast ? `Previsão de liberação: ${dowOf(forecast)}, ${fmtBR(forecast)}.` : 'Sem previsão de liberação nas próximas semanas.'}
+                                    </p>
+                                </div>
+                                {altWeekdaysUI}
+                                <div className="wizard-actions wizard-actions--stack">
+                                    <button className="btn btn-secondary" style={{ width: '100%', padding: 14 }} onClick={() => setStep(2)}>
+                                        ⬅ Voltar e escolher outro Plano/Horário
+                                    </button>
+                                </div>
+                            </>
+                        ) : conflicts.length === 0 ? (
+                            /* Após trocar de dia-da-semana, ficou tudo livre */
+                            <>
+                                <div className="wizard-state-screen" style={{ padding: '24px 0' }}>
+                                    <div className="wizard-state-screen__icon">✅</div>
+                                    <h3 className="wizard-state-screen__title">Agenda livre!</h3>
+                                    <p className="wizard-state-screen__desc">Nenhum conflito em {curDowLabel.toLowerCase()} às {firstTime}. É só concluir.</p>
+                                </div>
+                                <div className="wizard-actions wizard-actions--stack">
+                                    <button className="btn btn-primary" style={{ width: '100%', padding: 14 }} onClick={() => executeCreation(resolvedConflicts)} disabled={submitting}>
+                                        ✅ Concluir
+                                    </button>
+                                    <button className="btn btn-secondary" style={{ width: '100%', padding: 14 }} onClick={() => setStep(2)}>
+                                        ⬅ Voltar e escolher outro Plano/Horário
+                                    </button>
+                                </div>
+                            </>
+                        ) : (
+                            /* Conflitos por ocorrência (mesmo dia = trocar horário; dia cheio = outro dia) */
+                            <>
+                                <div className="wizard-state-screen" style={{ padding: '24px 0' }}>
+                                    <div className="wizard-state-screen__icon">⚠️</div>
+                                    <h3 className="wizard-state-screen__title" style={{ color: '#ef4444' }}>Conflitos de Agenda Encontrados</h3>
+                                    <p className="wizard-state-screen__desc">Alguns dias já têm gravações marcadas. Escolha um substituto para cada um.</p>
+                                </div>
 
-                        <div style={{ background: 'var(--bg-secondary)', padding: 16, borderRadius: 'var(--radius-md)', marginBottom: 24 }}>
-                            <div style={{ fontWeight: 700, marginBottom: 4, fontSize: '0.875rem' }}>Datas em conflito:</div>
-                            <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '0 0 14px' }}>
-                                Para cada dia, escolha um horário livre como substituto — ou volte e selecione outro dia recorrente.
-                            </p>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                                {conflicts.map((c, i) => {
-                                    const ymd = c.date.split('-');
-                                    const dateObj = new Date(`${c.date}T12:00:00`);
-                                    const localDate = `${ymd[2]}/${ymd[1]}/${ymd[0]}`;
-                                    const dow = DAY_NAMES_FULL[dateObj.getDay()];
-                                    const alts = c.alternatives && c.alternatives.length > 0
-                                        ? c.alternatives
-                                        : (c.suggestedReplacement ? [c.suggestedReplacement] : []);
-                                    const selected = getResolution(c.date, c.originalTime);
+                                <div style={{ background: 'var(--bg-secondary)', padding: 16, borderRadius: 'var(--radius-md)', marginBottom: 16 }}>
+                                    <div style={{ fontWeight: 700, marginBottom: 4, fontSize: '0.875rem' }}>Datas em conflito:</div>
+                                    <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '0 0 14px' }}>
+                                        Dia com horário livre → troque o horário. Dia cheio → grave em outro dia (antes/depois).
+                                    </p>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                                        {conflicts.map((c, i) => {
+                                            const alts = c.alternatives && c.alternatives.length > 0
+                                                ? c.alternatives
+                                                : (c.suggestedReplacement ? [{ ...c.suggestedReplacement }] : []);
+                                            const selected = getResolution(c.date, c.originalTime);
+                                            const otherDay = !!c.dayFull;
 
-                                    return (
-                                        <div key={i} className="wizard-conflict">
-                                            <div className="wizard-conflict__header">
-                                                <span className="wizard-conflict__date">{dow}, {localDate} às {c.originalTime}</span>
-                                                <span className="wizard-conflict__badge">Ocupado</span>
-                                            </div>
-
-                                            {alts.length > 0 ? (
-                                                <div style={{ marginTop: 10 }}>
-                                                    <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
-                                                        Novo horário neste dia:
+                                            return (
+                                                <div key={i} className="wizard-conflict">
+                                                    <div className="wizard-conflict__header">
+                                                        <span className="wizard-conflict__date">{dowOf(c.date)}, {fmtBR(c.date)} às {c.originalTime}</span>
+                                                        <span className="wizard-conflict__badge">{otherDay ? 'Dia cheio' : 'Ocupado'}</span>
                                                     </div>
-                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                                                        {alts.map(alt => {
-                                                            const isSel = selected?.newTime === alt.time && selected?.newDate === alt.date;
-                                                            return (
-                                                                <button
-                                                                    key={alt.time}
-                                                                    type="button"
-                                                                    onClick={() => selectAlternative(c.date, c.originalTime, alt)}
-                                                                    aria-pressed={isSel}
-                                                                    style={{
-                                                                        padding: '7px 14px',
-                                                                        borderRadius: 'var(--radius-sm)',
-                                                                        border: `1.5px solid ${isSel ? 'var(--accent-primary)' : 'var(--border-default)'}`,
-                                                                        background: isSel ? 'var(--accent-primary)' : 'var(--bg-card)',
-                                                                        color: isSel ? '#fff' : 'var(--text-primary)',
-                                                                        fontWeight: 600,
-                                                                        fontSize: '0.85rem',
-                                                                        cursor: 'pointer',
-                                                                        transition: 'all 0.15s',
-                                                                    }}
-                                                                >
-                                                                    {alt.time}
-                                                                </button>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <div className="wizard-conflict__warning">
-                                                    <span>⚠️ Este dia está completamente lotado para o seu pacote. Volte e escolha outro dia/horário recorrente para evitar a sobreposição.</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
 
-                        {unresolvedConflicts > 0 && (
-                            <p style={{ fontSize: '0.78rem', color: '#ef4444', textAlign: 'center', marginBottom: 12 }}>
-                                {unresolvedConflicts === 1
-                                    ? '1 dia continua lotado e será criado sobre o horário ocupado. Recomendamos voltar e ajustar.'
-                                    : `${unresolvedConflicts} dias continuam lotados e serão criados sobre os horários ocupados. Recomendamos voltar e ajustar.`}
-                            </p>
+                                                    {alts.length > 0 ? (
+                                                        <div style={{ marginTop: 10 }}>
+                                                            <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
+                                                                {otherDay ? 'Este dia está cheio — grave em outro dia:' : 'Novo horário neste dia:'}
+                                                            </div>
+                                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                                                {alts.map(alt => {
+                                                                    const isSel = selected?.newTime === alt.time && selected?.newDate === alt.date;
+                                                                    return (
+                                                                        <button
+                                                                            key={`${alt.date}-${alt.time}`}
+                                                                            type="button"
+                                                                            onClick={() => selectAlternative(c.date, c.originalTime, alt)}
+                                                                            aria-pressed={isSel}
+                                                                            style={{
+                                                                                padding: '7px 14px',
+                                                                                borderRadius: 'var(--radius-sm)',
+                                                                                border: `1.5px solid ${isSel ? 'var(--accent-primary)' : 'var(--border-default)'}`,
+                                                                                background: isSel ? 'var(--accent-primary)' : 'var(--bg-card)',
+                                                                                color: isSel ? '#fff' : 'var(--text-primary)',
+                                                                                fontWeight: 600,
+                                                                                fontSize: '0.85rem',
+                                                                                cursor: 'pointer',
+                                                                                transition: 'all 0.15s',
+                                                                            }}
+                                                                        >
+                                                                            {otherDay ? `${dowOf(alt.date)} ${fmtBR(alt.date)} · ${alt.time}` : alt.time}
+                                                                        </button>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="wizard-conflict__warning">
+                                                            <span>⚠️ Dia cheio e sem dia próximo livre. Troque o dia da semana abaixo, ou volte e escolha outro horário.</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                {altWeekdaysUI}
+
+                                {unresolvedConflicts > 0 && (
+                                    <p style={{ fontSize: '0.78rem', color: '#ef4444', textAlign: 'center', marginBottom: 12 }}>
+                                        {unresolvedConflicts === 1 ? '1 dia' : `${unresolvedConflicts} dias`} sem substituto. Resolva ou troque o dia da semana — não criamos por cima de horário ocupado.
+                                    </p>
+                                )}
+
+                                <div className="wizard-actions wizard-actions--stack">
+                                    <button className="btn btn-primary" style={{ width: '100%', padding: 14 }}
+                                        onClick={() => executeCreation(resolvedConflicts)}
+                                        disabled={submitting || unresolvedConflicts > 0}>
+                                        ✅ Confirmar Substituições e Concluir
+                                    </button>
+                                    <button className="btn btn-secondary" style={{ width: '100%', padding: 14 }}
+                                        onClick={() => setStep(2)}>
+                                        ⬅ Voltar e escolher outro Plano/Horário
+                                    </button>
+                                </div>
+                            </>
                         )}
-
-                        <div className="wizard-actions wizard-actions--stack">
-                            <button className="btn btn-primary" style={{ width: '100%', padding: 14 }}
-                                onClick={() => executeCreation(resolvedConflicts)}>
-                                ✅ Confirmar Substituições e Concluir
-                            </button>
-                            <button className="btn btn-secondary" style={{ width: '100%', padding: 14 }}
-                                onClick={() => setStep(2)}>
-                                ⬅ Voltar e escolher outro Plano/Horário
-                            </button>
-                        </div>
                     </div>
                 )}
 

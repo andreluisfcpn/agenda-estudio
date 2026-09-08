@@ -9,6 +9,13 @@ import { useFocusTrap } from '../hooks/useFocusTrap';
  *  `size` has no effect. */
 export type ModalSize = 'sm' | 'md' | 'lg' | 'xl';
 
+// A24: scroll-lock do body com contagem de referências (stack-aware). Antes, cada BottomSheetModal
+// setava body.overflow='hidden' ao abrir e restaurava '' no cleanup; fechar o sheet do topo da pilha
+// destravava o scroll de fundo enquanto um sheet inferior ainda estava aberto. O contador module-level
+// só restaura o overflow quando o ÚLTIMO sheet fecha.
+let scrollLockCount = 0;
+let savedBodyOverflow = '';
+
 interface BottomSheetModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -75,12 +82,19 @@ export default function BottomSheetModal({
         return () => window.removeEventListener('resize', measure);
     }, [isOpen]);
 
-    // Lock body scroll
+    // Lock body scroll (ref-counted — ver A24 acima)
     useEffect(() => {
         if (isOpen) {
-            document.body.style.overflow = 'hidden';
+            if (scrollLockCount === 0) {
+                savedBodyOverflow = document.body.style.overflow;
+                document.body.style.overflow = 'hidden';
+            }
+            scrollLockCount++;
             return () => {
-                document.body.style.overflow = '';
+                scrollLockCount = Math.max(0, scrollLockCount - 1);
+                if (scrollLockCount === 0) {
+                    document.body.style.overflow = savedBodyOverflow;
+                }
             };
         }
     }, [isOpen]);

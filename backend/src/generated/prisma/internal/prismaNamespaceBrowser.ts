@@ -215,6 +215,7 @@ export const PaymentScalarFieldEnum = {
   provider: 'provider',
   providerRef: 'providerRef',
   amount: 'amount',
+  chargedAmount: 'chargedAmount',
   status: 'status',
   dueDate: 'dueDate',
   pixString: 'pixString',

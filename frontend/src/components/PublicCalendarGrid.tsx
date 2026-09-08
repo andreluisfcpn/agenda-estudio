@@ -57,35 +57,42 @@ export default function PublicCalendarGrid({ onSlotSelect }: { onSlotSelect?: (d
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    const fetchData = useCallback(async (start: string) => {
-        setLoading(true);
-        setError(null);
+    // A19: `isBackground` distingue o refresh de 60s do load inicial/troca de semana. Num refresh de
+    // background NÃO mostramos o spinner nem re-selecionamos o 1º dia (senão o dia escolhido pelo visitante
+    // era descartado e a lista sumia atrás do spinner a cada minuto — numa superfície crítica de conversão).
+    const fetchData = useCallback(async (start: string, isBackground = false) => {
+        if (!isBackground) setLoading(true);
         try {
             const res = await publicApi.getWeekAvailability(start, 7);
             setDays(res.days);
+            setError(null); // B16: limpar o erro só no SUCESSO — um refresh de background que falha não
+                            // deve apagar um erro persistente (antes zerava incondicionalmente e podia deixar o painel em branco).
 
-            // Find the first day that has open slots
-            let firstAvailIdx = 0;
-            const now = Date.now();
-            for (let i = 0; i < res.days.length; i++) {
-                const d = res.days[i];
-                if (!d.closed && d.slots) {
-                    const hasValidSlot = d.slots.some((s: PublicSlot) => {
-                        const slotDateTime = new Date(`${d.date}T${s.time}:00`);
-                        const isPast = (slotDateTime.getTime() - now) / (1000 * 60) < 30;
-                        return s.available && !isPast;
-                    });
-                    if (hasValidSlot) {
-                        firstAvailIdx = i;
-                        break;
+            if (!isBackground) {
+                // Find the first day that has open slots (só no load inicial / troca de semana)
+                let firstAvailIdx = 0;
+                const now = Date.now();
+                for (let i = 0; i < res.days.length; i++) {
+                    const d = res.days[i];
+                    if (!d.closed && d.slots) {
+                        const hasValidSlot = d.slots.some((s: PublicSlot) => {
+                            const slotDateTime = new Date(`${d.date}T${s.time}:00`);
+                            const isPast = (slotDateTime.getTime() - now) / (1000 * 60) < 30;
+                            return s.available && !isPast;
+                        });
+                        if (hasValidSlot) {
+                            firstAvailIdx = i;
+                            break;
+                        }
                     }
                 }
+                setSelectedIdx(firstAvailIdx);
             }
-            setSelectedIdx(firstAvailIdx);
         } catch (err: unknown) {
-            setError(getErrorMessage(err) || 'Erro ao carregar disponibilidade');
+            // Num refresh de background, não sobrescrever a tela com erro — mantém os dados atuais.
+            if (!isBackground) setError(getErrorMessage(err) || 'Erro ao carregar disponibilidade');
         } finally {
-            setLoading(false);
+            if (!isBackground) setLoading(false);
         }
     }, []);
 
@@ -95,7 +102,7 @@ export default function PublicCalendarGrid({ onSlotSelect }: { onSlotSelect?: (d
 
     useEffect(() => {
         fetchData(weekStart);
-        const interval = setInterval(() => fetchData(weekStart), 60_000);
+        const interval = setInterval(() => fetchData(weekStart, true), 60_000);
         return () => clearInterval(interval);
     }, [weekStart, fetchData]);
 

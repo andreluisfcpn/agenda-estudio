@@ -3,8 +3,17 @@
 // Docs: https://developers.sicoob.com.br/portal/apis
 //
 // Autenticação:
-//   • sandbox    → client_id + access_token FIXOS públicos de teste (sem certificado, sem OAuth).
+//   • sandbox    → client_id + access_token de teste (sem certificado, sem OAuth). Por padrão os
+//                  PÚBLICOS embutidos; o admin pode salvar os próprios pelo painel (fallback p/ os
+//                  públicos). Base sandbox (mock, cópia de produção): dev/homologação.
 //   • production → OAuth2 client_credentials via mTLS (certificado ICP-Brasil e-CNPJ do estúdio).
+//                  Base real (api.sicoob.com.br): a API "de verdade", usada só em produção.
+//
+// TRAVA POR DEPLOY (segurança financeira): o ambiente permitido é decidido pelo NODE_ENV do
+// servidor, não só pelo toggle do painel — deploy de produção só opera em `production`; qualquer
+// outro deploy (development/homologação) só opera em `sandbox`. Assim é impossível cobrar de
+// verdade fora de produção ou rodar mock em produção, mesmo que o toggle do banco esteja errado
+// (ex.: banco de produção clonado para homologação). Ver `sicoobAllowedEnvironment()`.
 //
 // Usa node:https diretamente para suportar mTLS (o fetch/undici não suporta https.Agent).
 
@@ -20,6 +29,13 @@ import { decryptConfigSafe } from '../utils/crypto.js';
 /** Credenciais de um ambiente (sandbox ou production). */
 interface SicoobCredentials {
     clientId: string;
+    /**
+     * Access token (Bearer) FIXO — só usado no sandbox. Opcional: se vazio, cai no token público
+     * de teste embutido (SICOOB_SANDBOX_TOKEN). Serve para o admin trocar o par client_id+token de
+     * teste pelo painel (ex.: se o Sicoob rotacionar o público) sem precisar mexer no código.
+     * Em produção é ignorado — lá o token vem do OAuth via mTLS.
+     */
+    accessToken?: string;
     /** PEM do certificado cliente (mTLS) — obrigatório só em produção. */
     certificatePem?: string;
     /** PEM da chave privada (mTLS) — obrigatório só em produção. */
@@ -83,6 +99,21 @@ const SICOOB_URLS = {
 // Escopos necessários (criar/consultar cobrança imediata + gerenciar webhook + consultar pix).
 const SICOOB_SCOPES = 'cob.read cob.write pix.read webhook.read webhook.write';
 
+// ─── Trava de ambiente por deploy ────────────────────────
+
+/**
+ * Único ambiente Sicoob que ESTE deploy pode operar (decidido pelo servidor, não pelo painel):
+ *   • NODE_ENV === 'production' → 'production' (a API real, com mTLS).
+ *   • qualquer outro valor      → 'sandbox'   (mock público — desenvolvimento/homologação).
+ * É a fonte de verdade da trava financeira: nunca cobrar de verdade fora de produção nem rodar
+ * mock em produção. Usada no runtime (getSicoobConfig / roteamento) e na UI/validação do painel.
+ */
+export function sicoobAllowedEnvironment(): 'sandbox' | 'production' {
+    return process.env.NODE_ENV === 'production' ? 'production' : 'sandbox';
+}
+
+const sicoobEnvLabel = (env: string) => (env === 'production' ? 'produção' : 'sandbox');
+
 // ─── Token Cache ─────────────────────────────────────────
 
 let _tokenCache: { token: string; expiresAt: number; environment: string } | null = null;
@@ -107,6 +138,15 @@ async function getSicoobConfig(): Promise<{ config: SicoobCredentials; environme
         const parsed = JSON.parse(decrypted);
         const environment = (integration.environment === 'production' ? 'production' : 'sandbox') as 'sandbox' | 'production';
 
+        // Trava por deploy: se o ambiente ativo no painel não é o permitido por este servidor
+        // (NODE_ENV), bloqueia — fail-closed. Nunca cobra de verdade fora de produção nem roda
+        // mock em produção, mesmo com o toggle do banco errado. O admin corrige o ambiente ativo.
+        const allowedEnv = sicoobAllowedEnvironment();
+        if (environment !== allowedEnv) {
+            console.warn(`[Sicoob] Ambiente ativo "${environment}" bloqueado neste deploy (NODE_ENV=${process.env.NODE_ENV || 'development'} → apenas "${allowedEnv}"). Ajuste o ambiente ativo no painel.`);
+            return null;
+        }
+
         let credentials: SicoobCredentials | undefined;
         if (isDualConfig(parsed)) {
             credentials = parsed[environment];
@@ -115,11 +155,13 @@ async function getSicoobConfig(): Promise<{ config: SicoobCredentials; environme
             credentials = parsed as SicoobCredentials;
         }
 
-        // Sandbox: preenche client_id/pixKey de teste quando não informados, para permitir
-        // testar sem cadastro real. Produção exige credenciais completas de verdade.
+        // Sandbox: preenche client_id/token/pixKey de teste quando não informados, para permitir
+        // testar sem cadastro real. O admin pode salvar client_id + accessToken próprios (o painel
+        // os grava) — usados no lugar dos públicos. Produção exige credenciais completas de verdade.
         if (environment === 'sandbox') {
             credentials = {
                 clientId: credentials?.clientId || SICOOB_SANDBOX_CLIENT_ID,
+                accessToken: credentials?.accessToken || SICOOB_SANDBOX_TOKEN,
                 pixKey: credentials?.pixKey || 'sandbox-pix-key',
                 certificatePem: credentials?.certificatePem,
                 privateKeyPem: credentials?.privateKeyPem,
@@ -181,9 +223,9 @@ async function sicoobAuth(): Promise<{ token: string; config: SicoobCredentials;
     const { config, environment } = setup;
     const urls = SICOOB_URLS[environment];
 
-    // Sandbox: token público fixo, sem rede/OAuth/mTLS.
+    // Sandbox: token Bearer fixo (o salvo no painel, senão o público de teste), sem rede/OAuth/mTLS.
     if (environment === 'sandbox') {
-        return { token: SICOOB_SANDBOX_TOKEN, config, environment, api: urls.api };
+        return { token: config.accessToken || SICOOB_SANDBOX_TOKEN, config, environment, api: urls.api };
     }
 
     // Produção: OAuth2 client_credentials via mTLS.
@@ -374,6 +416,20 @@ function certSummary(pem?: string): string {
 }
 
 export async function sicoobTestConnection(): Promise<{ success: boolean; message: string }> {
+    // Mensagem clara quando o ambiente ativo no painel não bate com o permitido por este deploy
+    // (senão getSicoobConfig retorna null e o teste diria só "não configurada").
+    const integration = await prisma.integrationConfig.findUnique({ where: { provider: 'SICOOB' } });
+    if (integration) {
+        const stored = integration.environment === 'production' ? 'production' : 'sandbox';
+        const allowedEnv = sicoobAllowedEnvironment();
+        if (stored !== allowedEnv) {
+            return {
+                success: false,
+                message: `Ambiente ativo "${sicoobEnvLabel(stored)}" não é permitido neste servidor (${allowedEnv === 'production' ? 'produção' : 'desenvolvimento/homologação'}). Aqui o Sicoob só opera em "${sicoobEnvLabel(allowedEnv)}". Selecione "${sicoobEnvLabel(allowedEnv)}" como ambiente ativo e salve.`,
+            };
+        }
+    }
+
     const setup = await getSicoobConfig();
     if (!setup) return { success: false, message: 'Integração Sicoob não configurada ou desabilitada.' };
     const certInfo = certSummary(setup.config.certificatePem);

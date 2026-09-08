@@ -35,6 +35,14 @@ import { prisma } from './lib/prisma.js';
 import { redis } from './lib/redis.js';
 
 
+// A25: os runners de cron rodam via setInterval/setTimeout (fire-and-forget), e alguns fazem
+// `await redis.set/del` e queries de topo FORA de try/catch. Uma falha transitória de DB/Redis num
+// tick vira uma rejeição não tratada que, no modo default do Node (v15+), ENCERRA o processo — uma
+// falha recuperável derrubando (e potencialmente crash-loopando) a API inteira. Logamos e seguimos.
+process.on('unhandledRejection', (reason) => {
+    console.error('[Process] Unhandled promise rejection (mantendo a API no ar):', reason);
+});
+
 const app = express();
 
 // ─── Middleware ──────────────────────────────────────────

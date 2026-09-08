@@ -124,7 +124,10 @@ export default function ClientDashboard() {
 
             setStats({
                 bookings: activeBookings.length,
-                completedBookings: completedBookings.length,
+                // A20: o KPI "Gravações / sessões concluídas" deve contar SÓ COMPLETED. A lista
+                // `completedBookings` (histórico) é ampla de propósito (inclui FALTA/NAO_REALIZADO/CANCELLED),
+                // então contá-la aqui inflava o card com faltas/canceladas como se fossem gravações.
+                completedBookings: completedBookings.filter(b => b.status === 'COMPLETED').length,
                 // Mesma regra da aba "Ativos" de MyContractsPage — contar todos os
                 // contratos fazia o KPI mostrar "8" para um cliente com 0 ativos.
                 contracts: contractsRes.contracts.filter(isContractCurrent).length,
@@ -197,12 +200,15 @@ export default function ClientDashboard() {
     const heroMessage = (() => {
         if (stats.overdueCount > 0) return `Você tem ${stats.overdueCount} fatura(s) em atraso`;
         if (nextBooking) {
-            const bookingDate = new Date(nextBooking.date);
-            const today = new Date();
-            const diffDays = Math.ceil((bookingDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            // B7: ancorar ao meio-dia LOCAL de cada data-calendário (a data da reserva é 00:00Z). Antes,
+            // subtrair o instante atual de 00:00Z rotulava a sessão de AMANHÃ como "hoje" entre 21h–24h SP.
+            const bookingAnchor = new Date(nextBooking.date.split('T')[0] + 'T12:00:00');
+            const now = new Date();
+            const todayAnchor = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
+            const diffDays = Math.round((bookingAnchor.getTime() - todayAnchor.getTime()) / (1000 * 60 * 60 * 24));
             if (diffDays === 0) return `Sua sessão é hoje às ${nextBooking.startTime}`;
             if (diffDays === 1) return `Sua próxima sessão é amanhã às ${nextBooking.startTime}`;
-            return `Próxima sessão em ${diffDays} dias — ${bookingDate.toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: 'short' })} às ${nextBooking.startTime}`;
+            return `Próxima sessão em ${diffDays} dias — ${new Date(nextBooking.date).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: 'short' })} às ${nextBooking.startTime}`;
         }
         if (stats.openPaymentsValue > 0) return 'Você tem pagamentos pendentes';
         return 'Tudo em dia! Agende sua próxima sessão';
@@ -229,7 +235,8 @@ export default function ClientDashboard() {
             const s = computeFlexState({
                 total: c.flexCreditsTotal ?? 0,
                 cycleStart: c.flexCycleStart ? new Date(c.flexCycleStart) : null,
-                bookingDates: (c.bookings || []).map(b => new Date(`${b.date.split('T')[0]}T${b.startTime || '00:00'}:00`)),
+                // Anchor-aware (originalDate): espelha o job — remarcação dentro do direito não vira "semana perdida".
+                bookingDates: (c.bookings || []).map(b => new Date(`${((b as { originalDate?: string | null }).originalDate || b.date).split('T')[0]}T${b.startTime || '00:00'}:00`)),
                 now: nowDate,
             });
             const remaining = c.flexCreditsRemaining ?? 0;
@@ -310,7 +317,7 @@ export default function ClientDashboard() {
 
             <div className="client-stats-grid stagger-enter">
                 <StatCard icon={Wallet} label="Faturas Abertas" value={formatBRL(stats.openPaymentsValue)}
-                    detail={stats.overdueCount > 0 ? `${stats.overdueCount} fatura(s) atrasada(s)` : stats.openPaymentsValue > 0 ? 'No prazo' : 'Tudo em dia'}
+                    detail={stats.overdueCount > 0 ? `${stats.overdueCount} fatura(s) atrasada(s)` : stats.openPaymentsValue > 0 ? 'Em aberto' : 'Tudo em dia'}
                     accent={stats.overdueCount > 0 ? 'var(--danger)' : 'var(--success)'} index={0} onClick={() => navigate('/meus-pagamentos')} />
                 <StatCard icon={CalendarDays} label="Agendamentos Ativos" value={stats.bookings}
                     detail="próximas sessões" accent="var(--accent-primary)" index={1} onClick={() => navigate('/calendar')} />

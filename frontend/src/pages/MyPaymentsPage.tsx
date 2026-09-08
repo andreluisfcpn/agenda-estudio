@@ -98,7 +98,9 @@ function PendingPaymentCard({ payment: p, index: i, isOverdue, isFailed, onPay, 
             {(isFailed || isOverdue) && (
                 <span className="pending-card__badge">
                     <AlertTriangle size={10} />
-                    {isFailed ? 'Falha no Cartão' : 'Em Atraso'}
+                    {/* L12: só é "cartão" quando o provedor é o Stripe. PIX/boleto (Sicoob/Cora) que falharam
+                        mostravam "Falha no Cartão" mesmo sem cartão — rótulo genérico para esses. */}
+                    {isFailed ? (p.provider === 'STRIPE' ? 'Falha no cartão' : 'Cobrança falhou') : 'Em Atraso'}
                 </span>
             )}
             <div className="pending-card__top">

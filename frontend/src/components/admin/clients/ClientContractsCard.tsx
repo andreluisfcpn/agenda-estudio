@@ -30,7 +30,13 @@ export default function ClientContractsCard({ contracts }: { contracts: Contract
                                 <StatusBadge meta={getMeta(CONTRACT_STATUS_META, c.status)} />
                             </div>
                             <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-                                <div>{c.durationMonths}m · {c.discountPct}% desconto · {c.durationMonths === 3 ? getRule('episodes_3months') : getRule('episodes_6months')} gravações</div>
+                                <div>{c.durationMonths}m · {c.discountPct}% desconto · {
+                                    // L6: derivar por TIPO — AVULSO = 1 (era 24 pelo ramo "≠3m → episodes_6months"),
+                                    // CUSTOM = totalSessions real; demais = episódios do plano por duração.
+                                    c.type === 'AVULSO' ? 1
+                                        : c.type === 'CUSTOM' ? (c.totalSessions ?? (c.durationMonths === 3 ? getRule('episodes_3months') : getRule('episodes_6months')))
+                                            : (c.durationMonths === 3 ? getRule('episodes_3months') : getRule('episodes_6months'))
+                                } gravações</div>
                                 <div>{new Date(c.startDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })} → {new Date(c.endDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</div>
                                 {c.type === 'FLEX' && c.flexCreditsRemaining != null && (
                                     <div style={{ marginTop: '4px', fontWeight: 600, color: 'var(--accent-primary)' }}>

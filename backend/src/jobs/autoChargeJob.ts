@@ -25,6 +25,9 @@ export async function runAutoChargeJob(): Promise<void> {
             status: 'PENDING',
             dueDate: { lte: endOfToday },
             contractId: { not: null },
+            // B1: parcelas de assinatura Stripe (têm stripeSubscriptionId) são cobradas pelo próprio
+            // Stripe via invoice recorrente — o auto-charge NÃO deve tocá-las, senão cobra em dobro.
+            stripeSubscriptionId: null,
             // Nunca cobrar parcelas de contratos pausados / em cancelamento / cancelados.
             // (ACTIVE, AWAITING_PAYMENT e EXPIRED seguem cobráveis — evita parar a cobrança da
             // 1ª parcela e da parcela final de um contrato recém-expirado.)

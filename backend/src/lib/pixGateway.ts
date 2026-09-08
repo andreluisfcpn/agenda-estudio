@@ -5,7 +5,7 @@
 // call sites trocarem `createCoraPayment` por `createPixPayment` sem outra mudança.
 
 import { prisma } from './prisma.js';
-import { sicoobCreatePix } from './sicoobService.js';
+import { sicoobCreatePix, sicoobAllowedEnvironment } from './sicoobService.js';
 import { createCoraPayment, type CoraPaymentRequest, type CoraPaymentResponse } from './coraPaymentHelper.js';
 import { cleanDocument, isValidCpfCnpj } from '../utils/document.js';
 
@@ -22,9 +22,17 @@ export function toSicoobTxid(seed: string): string {
 export async function resolvePixProvider(): Promise<PixProvider | null> {
     const integrations = await prisma.integrationConfig.findMany({
         where: { provider: { in: ['SICOOB', 'CORA'] }, enabled: true },
-        select: { provider: true },
+        select: { provider: true, environment: true },
     });
-    const enabled = new Set(integrations.map(i => i.provider));
+    // Trava por deploy (só Sicoob): se o ambiente ativo do Sicoob não é o permitido por este
+    // servidor (NODE_ENV), ele NÃO é selecionável → cai graciosamente na Cora (ou null), em vez
+    // de escolher Sicoob e estourar erro no checkout. Espelha o fail-closed de getSicoobConfig.
+    const allowedEnv = sicoobAllowedEnvironment();
+    const enabled = new Set(
+        integrations
+            .filter(i => i.provider !== 'SICOOB' || i.environment === allowedEnv)
+            .map(i => i.provider),
+    );
     if (enabled.has('SICOOB')) return 'SICOOB';
     if (enabled.has('CORA')) return 'CORA';
     return null;

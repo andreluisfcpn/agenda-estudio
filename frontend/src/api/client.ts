@@ -170,7 +170,19 @@ export interface BookingResults {
 // ─── Contracts ──────────────────────────────────────────
 export const contractsApi = {
     checkFixo: (data: { tier: string; durationMonths: number; startDate: string; fixedDayOfWeek: number; fixedTime: string }) =>
-        request<{ available: boolean; conflicts: { date: string; originalTime: string; suggestedReplacement?: { date: string; time: string }; alternatives?: { date: string; time: string }[] }[] }>('/contracts/check-fixo', { method: 'POST', body: JSON.stringify(data) }),
+        request<{
+            available: boolean;
+            weekdayUnavailable?: boolean;
+            forecast?: string | null;
+            conflicts: {
+                date: string;
+                originalTime: string;
+                dayFull?: boolean;
+                suggestedReplacement?: { date: string; time: string };
+                alternatives?: { date: string; time: string; kind?: 'SAME_DAY' | 'OTHER_DAY' }[];
+            }[];
+            alternativeWeekdays?: { dayOfWeek: number; conflictCount: number; conflictFree: boolean }[];
+        }>('/contracts/check-fixo', { method: 'POST', body: JSON.stringify(data) }),
     create: (data: CreateContractData) => request<{ contract: Contract; payments: PaymentSummary[]; message: string; firstPaymentId?: string }>('/contracts', { method: 'POST', body: JSON.stringify(data) }),
     createSelf: (data: SelfContractData) => request<{ message: string; firstPaymentId: string; amount: number; duration: number; alreadyPaid?: boolean; couponDiscount?: number; clientSecret?: string; firstPixString?: string }>('/contracts/self', { method: 'POST', body: JSON.stringify(data) }),    // Standalone services (e.g. Social Media Management)
     createService: (opts: { serviceKey: string, paymentMethod: 'CARTAO' | 'PIX' | 'BOLETO', durationMonths?: number, paymentPlan?: 'FULL' | 'MONTHLY', couponCode?: string }) => request<{ contract?: Contract; firstPaymentId: string; amount: number; alreadyPaid?: boolean; couponDiscount?: number; clientSecret?: string; pixString?: string; qrCodeBase64?: string; boletoUrl?: string; barcode?: string; checkoutUrl?: string; message: string }>('/contracts/service', { method: 'POST', body: JSON.stringify(opts) }),
@@ -321,7 +333,7 @@ export interface Slot {
     time: string; available: boolean; tier: 'COMERCIAL' | 'AUDIENCIA' | 'SABADO' | null; price: number | null;
 }
 export interface Booking {
-    id: string; date: string; startTime: string; endTime: string;
+    id: string; date: string; originalDate?: string | null; startTime: string; endTime: string;
     status: 'RESERVED' | 'CONFIRMED' | 'HELD' | 'COMPLETED' | 'FALTA' | 'NAO_REALIZADO' | 'CANCELLED';
     tierApplied: 'COMERCIAL' | 'AUDIENCIA' | 'SABADO';
     price: number; contractId?: string | null; userId?: string | null;
@@ -406,7 +418,7 @@ export interface ContractWithStats extends Contract {
     bookings: ContractBooking[];
 }
 export interface ContractBooking {
-    id: string; status: string; date: string;
+    id: string; status: string; date: string; originalDate?: string | null;
     startTime: string; endTime: string; tierApplied: string; price: number;
     clientNotes?: string | null; adminNotes?: string | null;
     platforms?: string | null; platformLinks?: string | null;
@@ -703,7 +715,8 @@ export interface IntegrationSummary {
 }
 
 export const integrationsApi = {
-    list: () => request<{ integrations: IntegrationSummary[] }>('/integrations'),
+    // deployEnvironment = ambiente permitido por este servidor (NODE_ENV): trava o seletor do Sicoob.
+    list: () => request<{ integrations: IntegrationSummary[]; deployEnvironment?: 'sandbox' | 'production' }>('/integrations'),
     get: (provider: string) => request<{ integration: IntegrationSummary }>(`/integrations/${provider}`),
     save: (provider: string, data: { environment: string; enabled?: boolean; config: Record<string, any> }) =>
         request<{ integration: IntegrationSummary; message: string }>(`/integrations/${provider}`, { method: 'PUT', body: JSON.stringify(data) }),

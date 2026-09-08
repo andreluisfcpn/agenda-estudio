@@ -9,7 +9,7 @@ import {
 import '../styles/integration-settings.css';
 
 const emptyCoraCreds = { clientId: '', certificatePem: '', privateKeyPem: '', pixKey: '' };
-const emptySicoobCreds = { clientId: '', certificatePem: '', privateKeyPem: '', pixKey: '' };
+const emptySicoobCreds = { clientId: '', accessToken: '', certificatePem: '', privateKeyPem: '', pixKey: '' };
 const emptyStripeCreds = { secretKey: '', publishableKey: '', webhookSecret: '' };
 
 export default function IntegrationSettings() {
@@ -20,6 +20,8 @@ export default function IntegrationSettings() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [testingProvider, setTestingProvider] = useState<string | null>(null);
+  // Ambiente permitido por ESTE servidor (NODE_ENV, vindo do backend): trava o seletor do Sicoob.
+  const [deployEnvironment, setDeployEnvironment] = useState<'sandbox' | 'production' | undefined>(undefined);
 
   // Accordion state — multiple cards can be open simultaneously on desktop
   const [openCards, setOpenCards] = useState<Set<string>>(new Set(['CORA']));
@@ -55,6 +57,8 @@ export default function IntegrationSettings() {
     try {
       const res = await integrationsApi.list();
       setIntegrations(res.integrations);
+      const deployEnv = res.deployEnvironment;
+      setDeployEnvironment(deployEnv);
 
       // Valores MASCARADOS pelo backend ('abc...def', '***CONFIGURED***') não entram
       // no form: campo vazio = "manter o valor atual" (o merge do PUT preserva) e o
@@ -80,10 +84,15 @@ export default function IntegrationSettings() {
       }
 
       const sicoob = res.integrations.find((i: IntegrationSummary) => i.provider === 'SICOOB');
+      // Trava por deploy: o ambiente ativo do Sicoob é FIXADO pelo servidor (deployEnv), não pelo
+      // que está salvo — assim o painel já abre no ambiente correto (e único) deste deploy.
+      const sicoobActiveEnv: 'sandbox' | 'production' =
+        deployEnv || (sicoob?.environment === 'production' ? 'production' : 'sandbox');
       if (sicoob?.configured) {
         const cfg = sicoob.config || {};
         const parseCreds = (c: any) => ({
           clientId: unmask(c?.clientId),
+          accessToken: unmask(c?.accessToken),
           certificatePem: unmask(c?.certificatePem),
           privateKeyPem: unmask(c?.privateKeyPem),
           pixKey: c?.pixKey || '',
@@ -92,10 +101,12 @@ export default function IntegrationSettings() {
         setSicoobForm({
           sandbox: hasDual ? parseCreds(cfg.sandbox) : parseCreds(cfg),
           production: hasDual ? parseCreds(cfg.production) : { ...emptySicoobCreds },
-          environment: sicoob.environment || 'sandbox',
+          environment: sicoobActiveEnv,
         });
-        setSicoobEditEnv(sicoob.environment === 'production' ? 'production' : 'sandbox');
+      } else {
+        setSicoobForm(f => ({ ...f, environment: sicoobActiveEnv }));
       }
+      setSicoobEditEnv(sicoobActiveEnv);
 
       const stripe = res.integrations.find((i: IntegrationSummary) => i.provider === 'STRIPE');
       if (stripe?.configured) {
@@ -138,6 +149,7 @@ export default function IntegrationSettings() {
         const buildCreds = (creds: typeof sicoobForm.sandbox) => {
           const c: Record<string, string> = {};
           if (creds.clientId && !creds.clientId.includes('...')) c.clientId = creds.clientId;
+          if (creds.accessToken && !creds.accessToken.includes('...')) c.accessToken = creds.accessToken;
           if (creds.pixKey) c.pixKey = creds.pixKey;
           if (creds.certificatePem) c.certificatePem = creds.certificatePem;
           if (creds.privateKeyPem) c.privateKeyPem = creds.privateKeyPem;
@@ -214,6 +226,10 @@ export default function IntegrationSettings() {
   const hasSavedSicoobCert = savedSicoobEnvCfg?.certificatePem === '***CERTIFICATE_CONFIGURED***';
   const hasSavedSicoobKey = savedSicoobEnvCfg?.privateKeyPem === '***PRIVATE_KEY_CONFIGURED***';
   const hasSavedSicoobClientId = !!savedSicoobEnvCfg?.clientId;
+  const hasSavedSicoobAccessToken = !!savedSicoobEnvCfg?.accessToken;
+  // Ambiente salvo do Sicoob diverge do permitido por este servidor → ativar seria bloqueado
+  // pelo backend (fail-closed). Trava o interruptor até salvar com o ambiente correto.
+  const sicoobEnvMismatch = !!(deployEnvironment && sicoob?.configured && sicoob.environment !== deployEnvironment);
 
   // Stripe saved state checks
   const savedStripeCfg = stripe?.config || {};
@@ -236,9 +252,9 @@ export default function IntegrationSettings() {
       : true); // sandbox sempre ok (credenciais públicas de teste)
 
   // Webhook helpers
-  const webhookUrl = window.location.hostname === 'localhost'
-    ? 'http://localhost:3001/api/webhooks/cora'
-    : `https://${window.location.hostname}/api/webhooks/cora`;
+  // L8: usar a origin REAL. Em dev o Vite faz proxy de /api → backend (porta pode variar, ex.: 3005);
+  // antes hardcodava :3001. Em prod é o próprio domínio público (https://app.buzios.digital).
+  const webhookUrl = `${window.location.origin}/api/webhooks/cora`;
 
   const loadWebhooks = async () => {
     setLoadingWebhooks(true);
@@ -268,9 +284,7 @@ export default function IntegrationSettings() {
   const sicoobCreds = sicoobForm[sicoobEditKey];
   const stripeCreds = stripeForm[stripeEditKey];
 
-  const sicoobWebhookUrl = window.location.hostname === 'localhost'
-    ? 'http://localhost:3001/api/webhooks/sicoob'
-    : `https://${window.location.hostname}/api/webhooks/sicoob`;
+  const sicoobWebhookUrl = `${window.location.origin}/api/webhooks/sicoob`;
 
   return (
     <div className="int-settings">
@@ -438,9 +452,9 @@ export default function IntegrationSettings() {
             </div>
             <div className="int-card-controls" onClick={e => e.stopPropagation()}>
               <StatusBadge provider={sicoob} />
-              <Toggle on={!!sicoob?.enabled} disabled={!sicoob?.configured}
+              <Toggle on={!!sicoob?.enabled} disabled={!sicoob?.configured || (sicoobEnvMismatch && !sicoob?.enabled)}
                 ariaLabel="Ativar ou desativar cobranças PIX via Sicoob"
-                onChange={() => sicoob?.configured && handleToggle('SICOOB', !sicoob?.enabled)} />
+                onChange={() => sicoob?.configured && !(sicoobEnvMismatch && !sicoob?.enabled) && handleToggle('SICOOB', !sicoob?.enabled)} />
             </div>
             <Icons.ChevronDown className={`int-chevron ${openCards.has('SICOOB') ? 'int-chevron--open' : ''}`} />
           </div>
@@ -454,8 +468,15 @@ export default function IntegrationSettings() {
               )}
 
               <div className="int-banner-sub" style={{ marginBottom: '4px' }}>
-                <Icons.Info size={13} /> No <strong>sandbox</strong>, o Sicoob usa credenciais públicas de teste — você pode ativar e testar o PIX <strong>sem certificado</strong>. A <strong>produção</strong> exige client_id + certificado mTLS (ICP-Brasil e-CNPJ) + chave privada + chave PIX do estúdio.
+                <Icons.Info size={13} /> No <strong>sandbox</strong> (desenvolvimento/homologação), o Sicoob usa credenciais públicas de teste — você pode ativar e testar o PIX <strong>sem certificado</strong>. A <strong>produção</strong> (API real) exige client_id + certificado mTLS (ICP-Brasil e-CNPJ) + chave privada + chave PIX do estúdio.
               </div>
+
+              {deployEnvironment && sicoob?.configured && sicoob.environment !== deployEnvironment && (
+                <div className="int-warn" role="alert">
+                  <Icons.Info size={15} />
+                  <div>O ambiente salvo (<strong>{sicoob.environment === 'production' ? 'produção' : 'sandbox'}</strong>) não é o deste servidor (<strong>{deployEnvironment === 'production' ? 'produção' : 'sandbox'}</strong>). O PIX Sicoob fica bloqueado até você <strong>salvar</strong> com o ambiente correto (já selecionado abaixo){deployEnvironment === 'production' ? ', preenchendo as credenciais de produção se ainda faltarem' : ''}.</div>
+                </div>
+              )}
 
               <EnvSelector
                 env={sicoobForm.environment as 'sandbox' | 'production'}
@@ -463,6 +484,7 @@ export default function IntegrationSettings() {
                 labels={{ sandbox: 'Sandbox', production: 'Produção' }}
                 sandboxOk={sicoobEnvOk('sandbox')} productionOk={sicoobEnvOk('production')}
                 pendingSave={!!(sicoob?.environment && sicoobForm.environment !== sicoob.environment)}
+                lockedEnv={deployEnvironment}
               />
 
               {sicoobForm.environment === 'production' && !sicoobEnvOk('production') && (
@@ -472,38 +494,80 @@ export default function IntegrationSettings() {
                 </div>
               )}
 
-              <div className="int-field-row">
-                <div className="int-field">
-                  <label className="int-label" htmlFor={`${uid}-sicoob-clientid`}><Icons.Key /> Client ID ({sicoobEditKey})</label>
-                  <input id={`${uid}-sicoob-clientid`} className="int-input int-input--sicoob" type="text"
-                    placeholder={hasSavedSicoobClientId ? '✅ Já configurado. Deixe em branco para manter.' : sicoobEditKey === 'sandbox' ? 'Opcional no sandbox (usa client_id público)' : 'Client ID do app Sicoob (produção)'}
-                    value={sicoobCreds.clientId}
-                    onChange={e => setSicoobForm(f => ({ ...f, [sicoobEditKey]: { ...f[sicoobEditKey], clientId: e.target.value } }))}
-                  />
-                </div>
-                <div className="int-field">
-                  <label className="int-label" htmlFor={`${uid}-sicoob-pixkey`}><Icons.Globe /> Chave PIX ({sicoobEditKey})</label>
-                  <input id={`${uid}-sicoob-pixkey`} className="int-input int-input--sicoob" type="text"
-                    placeholder={sicoobEditKey === 'sandbox' ? 'Opcional no sandbox' : 'Chave PIX do estúdio (email/CPF/CNPJ/aleatória)'}
-                    value={sicoobCreds.pixKey}
-                    onChange={e => setSicoobForm(f => ({ ...f, [sicoobEditKey]: { ...f[sicoobEditKey], pixKey: e.target.value } }))}
-                  />
-                </div>
-              </div>
+              {sicoobEditKey === 'sandbox' ? (
+                <>
+                  <div className="int-sandbox-note">
+                    <Icons.Info size={15} />
+                    <div>
+                      <strong>Sandbox usa credenciais públicas de teste do Sicoob</strong> — deixe os campos em branco para usar
+                      o <code>client_id</code> e o access token públicos embutidos (<strong>sem certificado</strong>): é só <strong>ativar</strong> e <strong>Testar</strong>.
+                      Preencha abaixo apenas se quiser <strong>salvar suas próprias credenciais de teste</strong> (elas ficam guardadas e substituem as públicas).
+                    </div>
+                  </div>
 
-              <FileUploadZone label={`Certificado mTLS (.pem) — ${sicoobEditKey}${sicoobEditKey === 'sandbox' ? ' (opcional)' : ''}`}
-                accept=".pem,.crt,.cer" provider="cora" hasSaved={hasSavedSicoobCert}
-                value={sicoobCreds.certificatePem}
-                onChange={v => setSicoobForm(f => ({ ...f, [sicoobEditKey]: { ...f[sicoobEditKey], certificatePem: v } }))}
-                placeholder="Cole o conteúdo do certificado .pem aqui...&#10;-----BEGIN CERTIFICATE-----&#10;..."
-              />
+                  <div className="int-field">
+                    <label className="int-label" htmlFor={`${uid}-sicoob-clientid`}><Icons.Key /> Client ID (sandbox)</label>
+                    <input id={`${uid}-sicoob-clientid`} className="int-input int-input--sicoob" type="text"
+                      placeholder={hasSavedSicoobClientId ? '✅ Salvo. Deixe em branco para manter.' : 'Opcional — padrão: client_id público de teste'}
+                      value={sicoobCreds.clientId}
+                      onChange={e => setSicoobForm(f => ({ ...f, [sicoobEditKey]: { ...f[sicoobEditKey], clientId: e.target.value } }))}
+                    />
+                  </div>
 
-              <FileUploadZone label={`Chave Privada (.key) — ${sicoobEditKey}${sicoobEditKey === 'sandbox' ? ' (opcional)' : ''}`}
-                accept=".key,.pem" provider="cora" hasSaved={hasSavedSicoobKey}
-                value={sicoobCreds.privateKeyPem}
-                onChange={v => setSicoobForm(f => ({ ...f, [sicoobEditKey]: { ...f[sicoobEditKey], privateKeyPem: v } }))}
-                placeholder="Cole o conteúdo da chave privada .key aqui...&#10;-----BEGIN PRIVATE KEY-----&#10;..."
-              />
+                  <div className="int-field">
+                    <label className="int-label" htmlFor={`${uid}-sicoob-accesstoken`}><Icons.Key /> Access Token / Bearer (sandbox)</label>
+                    <input id={`${uid}-sicoob-accesstoken`} className="int-input int-input--sicoob" type="text"
+                      placeholder={hasSavedSicoobAccessToken ? '✅ Salvo. Deixe em branco para manter.' : 'Opcional — padrão: access token público de teste'}
+                      value={sicoobCreds.accessToken}
+                      onChange={e => setSicoobForm(f => ({ ...f, [sicoobEditKey]: { ...f[sicoobEditKey], accessToken: e.target.value } }))}
+                    />
+                  </div>
+
+                  <div className="int-field">
+                    <label className="int-label" htmlFor={`${uid}-sicoob-pixkey`}><Icons.Globe /> Chave PIX (sandbox)</label>
+                    <input id={`${uid}-sicoob-pixkey`} className="int-input int-input--sicoob" type="text"
+                      placeholder="Opcional no sandbox"
+                      value={sicoobCreds.pixKey}
+                      onChange={e => setSicoobForm(f => ({ ...f, [sicoobEditKey]: { ...f[sicoobEditKey], pixKey: e.target.value } }))}
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="int-field-row">
+                    <div className="int-field">
+                      <label className="int-label" htmlFor={`${uid}-sicoob-clientid`}><Icons.Key /> Client ID (produção)</label>
+                      <input id={`${uid}-sicoob-clientid`} className="int-input int-input--sicoob" type="text"
+                        placeholder={hasSavedSicoobClientId ? '✅ Já configurado. Deixe em branco para manter.' : 'Client ID do app Sicoob (produção)'}
+                        value={sicoobCreds.clientId}
+                        onChange={e => setSicoobForm(f => ({ ...f, [sicoobEditKey]: { ...f[sicoobEditKey], clientId: e.target.value } }))}
+                      />
+                    </div>
+                    <div className="int-field">
+                      <label className="int-label" htmlFor={`${uid}-sicoob-pixkey`}><Icons.Globe /> Chave PIX (produção)</label>
+                      <input id={`${uid}-sicoob-pixkey`} className="int-input int-input--sicoob" type="text"
+                        placeholder="Chave PIX do estúdio (email/CPF/CNPJ/aleatória)"
+                        value={sicoobCreds.pixKey}
+                        onChange={e => setSicoobForm(f => ({ ...f, [sicoobEditKey]: { ...f[sicoobEditKey], pixKey: e.target.value } }))}
+                      />
+                    </div>
+                  </div>
+
+                  <FileUploadZone label="Certificado mTLS (.pem) — produção"
+                    accept=".pem,.crt,.cer" provider="cora" hasSaved={hasSavedSicoobCert}
+                    value={sicoobCreds.certificatePem}
+                    onChange={v => setSicoobForm(f => ({ ...f, [sicoobEditKey]: { ...f[sicoobEditKey], certificatePem: v } }))}
+                    placeholder="Cole o conteúdo do certificado .pem aqui...&#10;-----BEGIN CERTIFICATE-----&#10;..."
+                  />
+
+                  <FileUploadZone label="Chave Privada (.key) — produção"
+                    accept=".key,.pem" provider="cora" hasSaved={hasSavedSicoobKey}
+                    value={sicoobCreds.privateKeyPem}
+                    onChange={v => setSicoobForm(f => ({ ...f, [sicoobEditKey]: { ...f[sicoobEditKey], privateKeyPem: v } }))}
+                    placeholder="Cole o conteúdo da chave privada .key aqui...&#10;-----BEGIN PRIVATE KEY-----&#10;..."
+                  />
+                </>
+              )}
 
               <WebhookUrlBox url={sicoobWebhookUrl} label="Webhook URL (registre no Sicoob — ele adiciona /pix ao final)" onCopy={copyToClipboard} />
 

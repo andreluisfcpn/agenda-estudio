@@ -88,7 +88,10 @@ export function registerConfigRoutes(router: Router) {
     const updateBusinessConfigSchema = z.object({
         configs: z.array(z.object({
             key: z.string().min(1),
-            value: z.string().min(1),
+            // A12: valor pode ser STRING VAZIA. Campos opcionais (SMTP: host/user/password/resend_api_key)
+            // são legitimamente vazios; com `.min(1)` o PUT rejeitava o array inteiro ("Dados inválidos")
+            // e NENHUMA seção de Configurações salvava no estado padrão (sem SMTP configurado).
+            value: z.string(),
         })),
     });
 

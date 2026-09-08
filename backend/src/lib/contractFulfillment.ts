@@ -4,7 +4,8 @@
 
 import { prisma } from './prisma.js';
 import { ContractStatus, ContractType, BookingStatus, Prisma, Tier } from '../generated/prisma/client.js';
-import { getBasePriceDynamic, applyDiscount, calculateEndTime, addMonths, addBillingCycles } from '../utils/pricing.js';
+import { getBasePriceDynamic, applyDiscount, calculateEndTime, addMonths, addBillingCycles, getPackageSlots, getSlotDuration } from '../utils/pricing.js';
+import { buildOccupiedSet } from '../modules/bookings/availability.service.js';
 import { getConfig } from './businessConfig.js';
 import { createPayment as gatewayCreatePayment, updatePaymentWithGatewayResult, getProviderForMethod } from './paymentGateway.js';
 import { computeAddonsCost, filterPerEpisodeAddons } from './contractPricing.js';
@@ -226,7 +227,7 @@ export async function fulfillContractFromPayment(paymentId: string): Promise<voi
 
     // Infer fixedDayOfWeek if FIXO and missing
     if (data.type === 'FIXO' && !data.fixedDayOfWeek) {
-        const dayOfWeek = firstDate.getDay() === 0 ? 7 : firstDate.getDay();
+        const dayOfWeek = firstDate.getUTCDay() === 0 ? 7 : firstDate.getUTCDay();
         data.fixedDayOfWeek = dayOfWeek;
         data.fixedTime = data.firstBookingTime;
     }
@@ -271,15 +272,17 @@ export async function fulfillContractFromPayment(paymentId: string): Promise<voi
         const bookings = [];
         const current = new Date(startDate);
 
-        while (current.getDay() !== (data.fixedDayOfWeek % 7)) {
-            current.setDate(current.getDate() + 1);
+        while (current.getUTCDay() !== (data.fixedDayOfWeek % 7)) {
+            current.setUTCDate(current.getUTCDate() + 1);
         }
 
         const totalWeeks = data.durationMonths * (await getConfig('sessions_per_month'));
+        const slotDuration = await getSlotDuration();
+        let skipped = 0;
 
         for (let week = 0; week < totalWeeks; week++) {
             const bookingDate = new Date(current);
-            bookingDate.setDate(current.getDate() + week * 7);
+            bookingDate.setUTCDate(current.getUTCDate() + week * 7);
             if (bookingDate > endDate) break;
 
             const bookingDateStr = bookingDate.toISOString().split('T')[0];
@@ -292,6 +295,17 @@ export async function fulfillContractFromPayment(paymentId: string): Promise<voi
             if (resolution) {
                 finalDate = new Date(resolution.newDate + 'T00:00:00');
                 finalTime = resolution.newTime;
+            }
+
+            // Guard anti-overbooking: NUNCA gravar por cima de um horário já ocupado (bookings
+            // não-cancelados + blocked slots), mesmo que o slot tenha sido tomado entre o
+            // check-fixo e o pagamento. Ocorrência ocupada é PULADA (nunca sobrepõe).
+            const occupied = await buildOccupiedSet(finalDate);
+            const pkg = getPackageSlots(finalTime, slotDuration);
+            if (pkg.some(s => occupied.has(s))) {
+                skipped++;
+                console.warn(`[FIXO] slot ocupado — ocorrência pulada (contrato ${contract.id}): ${finalDate.toISOString().split('T')[0]} ${finalTime}`);
+                continue;
             }
 
             bookings.push({
@@ -307,6 +321,9 @@ export async function fulfillContractFromPayment(paymentId: string): Promise<voi
             });
         }
 
+        if (skipped > 0) {
+            console.warn(`[FIXO] ${skipped} ocorrência(s) puladas por conflito no contrato ${contract.id} (remarcar manualmente).`);
+        }
         if (bookings.length > 0) {
             await prisma.booking.createMany({ data: bookings });
         }

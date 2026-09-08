@@ -31,7 +31,7 @@ export default function ClientHealthCards({ user }: { user: UserDetail }) {
                 </div>
                 <div style={{ marginTop: '12px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                     {h.paymentsCount} pagamento{h.paymentsCount !== 1 ? 's' : ''} registrado{h.paymentsCount !== 1 ? 's' : ''}
-                    {h.total > 0 && <> · {h.completed} sessão{h.completed !== 1 ? 'ões' : ''} concluída{h.completed !== 1 ? 's' : ''} de {h.total}</>}
+                    {h.total > 0 && <> · {h.completed} sess{h.completed !== 1 ? 'ões' : 'ão'} concluída{h.completed !== 1 ? 's' : ''} de {h.total}</>}
                 </div>
             </div>
 

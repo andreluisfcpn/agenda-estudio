@@ -50,8 +50,15 @@ export default function ContractCard({
     const contractAddonKeys = c.addOns || [];
     const episodeServices = contractAddonKeys.map(k => allAddons.find(a => a.key === k)).filter((a): a is AddOnConfig => !!a && !a.monthly);
     const monthlyServices = contractAddonKeys.map(k => allAddons.find(a => a.key === k)).filter((a): a is AddOnConfig => !!a && !!a.monthly);
-    const totalBookings = c.type === 'FIXO' ? c.durationMonths * 4 : c.totalBookings;
-    const usedBookingsCount = c.type === 'FIXO' ? bookings.filter(b => b.status !== 'NAO_REALIZADO' && b.status !== 'CANCELLED').length : (c.flexCreditsTotal || 0) - (c.flexCreditsRemaining || 0);
+    // L11: CUSTOM (Personalizado) tem as sessões TODAS pré-geradas e não usa créditos FLEX — antes caía no
+    // ramo FLEX (flexCreditsTotal 0 − flexCreditsRemaining 0 = 0) com totalBookings vazio → "0/0 episódios".
+    // Trata como FIXO: total = totalSessions e "usadas" = bookings ativos (agendados/realizados).
+    const totalBookings = c.type === 'FIXO' ? c.durationMonths * 4
+        : c.type === 'CUSTOM' ? (c.totalSessions || c.totalBookings || 0)
+        : c.totalBookings;
+    const usedBookingsCount = (c.type === 'FIXO' || c.type === 'CUSTOM')
+        ? bookings.filter(b => b.status !== 'NAO_REALIZADO' && b.status !== 'CANCELLED').length
+        : (c.flexCreditsTotal || 0) - (c.flexCreditsRemaining || 0);
     const usedPct = totalBookings > 0 ? Math.round((usedBookingsCount / totalBookings) * 100) : 0;
     const now = new Date();
 
@@ -81,7 +88,9 @@ export default function ContractCard({
         ? computeFlexState({
             total: c.flexCreditsTotal ?? 0,
             cycleStart: c.flexCycleStart ? new Date(c.flexCycleStart) : null,
-            bookingDates: bookings.map(b => new Date(`${b.date.split('T')[0]}T${b.startTime || '00:00'}:00`)),
+            // Anchor-aware: usa a data-âncora (originalDate) — espelha o job, pra o contador não
+            // mostrar uma "semana perdida" numa gravação que foi só REMARCADA dentro do direito.
+            bookingDates: bookings.map(b => new Date(`${(b.originalDate || b.date).split('T')[0]}T${b.startTime || '00:00'}:00`)),
             now,
         })
         : null;
@@ -92,6 +101,9 @@ export default function ContractCard({
 
     const daysLeft = Math.ceil((new Date(c.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
     const isExpiring = c.status === 'ACTIVE' && !isAvulso && daysLeft >= 0 && daysLeft <= 15;
+    // Botão "Renovar": janela de 7 dias antes de vencer (alinha com a regra do backend — a
+    // renovação só pode acontecer 1× e só nos últimos 7 dias).
+    const isRenewable = c.status === 'ACTIVE' && !isAvulso && daysLeft >= 0 && daysLeft <= 7;
 
     const accentType = c.type === 'FIXO' ? 'fixo' : isAvulso ? 'avulso' : c.type === 'CUSTOM' ? 'custom' : c.type === 'SERVICO' ? 'servico' : 'flex';
 
@@ -262,7 +274,7 @@ export default function ContractCard({
                             <span className="contract-card__cancelled-value">{totalBookings - completedBookings.length}</span>
                         </div>
                         <div className="contract-card__cancelled-footer">
-                            Encerrado em: <strong>{new Date(c.endDate).toLocaleDateString('pt-BR')}</strong>
+                            Encerrado em: <strong>{new Date(c.endDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</strong>
                         </div>
                     </div>
                 ) : !isArchived ? (
@@ -312,7 +324,9 @@ export default function ContractCard({
                             const statuses = flexWeekStatuses({
                                 total: flexTotal,
                                 cycleStart: c.flexCycleStart ? new Date(c.flexCycleStart) : null,
-                                bookingDates: bookings.map(b => new Date(`${b.date.split('T')[0]}T${b.startTime || '00:00'}:00`)),
+                                // Anchor-aware: usa a data-âncora (originalDate) — espelha o job, pra o contador não
+            // mostrar uma "semana perdida" numa gravação que foi só REMARCADA dentro do direito.
+            bookingDates: bookings.map(b => new Date(`${(b.originalDate || b.date).split('T')[0]}T${b.startTime || '00:00'}:00`)),
                                 now,
                             });
                             if (statuses.length === 0) return null;
@@ -563,7 +577,7 @@ export default function ContractCard({
 
                     {c.status === 'ACTIVE' && (
                         <div className="contract-actions">
-                            {(isExpiring || isServico) && onRenewContract && (
+                            {(isRenewable || isServico) && onRenewContract && (
                                 <button className="btn btn-primary btn-sm contract-actions__renew"
                                     onClick={(e) => { e.stopPropagation(); onRenewContract(); }}>
                                     {isServico ? 'Renovar Serviço' : 'Renovar Contrato'}

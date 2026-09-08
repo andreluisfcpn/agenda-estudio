@@ -169,7 +169,10 @@ export async function getUserNotifications(userId: string, limit = 50) {
 // Day-of / recurring signals that go stale fast: the session already happened,
 // or the push job re-derives the current state every 5 min. Keeping them for the
 // generic 30/90-day window left "Sessão em 2 horas!" lingering days later (B2).
-const EPHEMERAL_TYPES = ['BOOKING_REMINDER', 'BOOKING_CONFIRMED', 'BOOKING_UNCONFIRMED', 'PAYMENT_OVERDUE'] as const;
+// A22: CONTRACT_EXPIRING também é um sinal computado/persistido pelo pushNotificationJob — quando a
+// regra deixa de sombrear (contrato ACTIVE com end_date já no passado, decisão T2), a cópia com texto
+// congelado ("expira em N dias") reaparecia no sino de um contrato vencido e a limpeza não a removia.
+const EPHEMERAL_TYPES = ['BOOKING_REMINDER', 'BOOKING_CONFIRMED', 'BOOKING_UNCONFIRMED', 'PAYMENT_OVERDUE', 'CONTRACT_EXPIRING'] as const;
 const EPHEMERAL_MAX_AGE_MS = 48 * 3600 * 1000;
 
 /** Delete old notifications (cleanup job). */
