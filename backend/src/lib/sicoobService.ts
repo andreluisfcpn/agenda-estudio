@@ -250,7 +250,7 @@ async function sicoobAuth(): Promise<{ token: string; config: SicoobCredentials;
         key: config.privateKeyPem,
     });
     if (response.status >= 400) {
-        throw new Error(`Sicoob auth falhou (${response.status}): ${response.body}`);
+        throw new Error(`Sicoob auth falhou — ${formatSicoobError(response.status, response.body)}`);
     }
     const data: SicoobToken = JSON.parse(response.body);
     _tokenCache = {
@@ -259,6 +259,28 @@ async function sicoobAuth(): Promise<{ token: string; config: SicoobCredentials;
         environment,
     };
     return { token: data.access_token, config, environment, api: urls.api };
+}
+
+/**
+ * Mensagem legível de um erro do Sicoob. A API segue o padrão Bacen (RFC 7807 "Problema":
+ * `{ title, detail, violacoes: [{ razao, propriedade }] }`). Extrai isso quando possível; senão
+ * cai no corpo cru truncado. Ex.: "400: Chave inválida — devedor.cpf: CPF inválido".
+ */
+export function formatSicoobError(status: number, body: string): string {
+    try {
+        const p = JSON.parse(body);
+        const parts: string[] = [];
+        if (p?.title) parts.push(String(p.title));
+        if (p?.detail && p.detail !== p.title) parts.push(String(p.detail));
+        if (Array.isArray(p?.violacoes) && p.violacoes.length) {
+            const vs = p.violacoes
+                .map((v: any) => [v?.propriedade, v?.razao].filter(Boolean).join(': '))
+                .filter(Boolean);
+            if (vs.length) parts.push(vs.join('; '));
+        }
+        if (parts.length) return `${status}: ${parts.join(' — ')}`;
+    } catch { /* corpo não-JSON */ }
+    return `${status}: ${body.slice(0, 300)}`;
 }
 
 /** Headers padrão do Sicoob: Bearer + client_id em toda chamada. */
@@ -313,7 +335,7 @@ export async function sicoobCreatePix(payload: SicoobPixPayload): Promise<Sicoob
         console.log('[Sicoob PIX] status', response.status, 'body', response.body.slice(0, 200));
     }
     if (response.status >= 400) {
-        throw new Error(`Sicoob criar cobrança falhou (${response.status}): ${response.body}`);
+        throw new Error(`Sicoob criar cobrança falhou — ${formatSicoobError(response.status, response.body)}`);
     }
 
     const result = JSON.parse(response.body);
@@ -352,7 +374,7 @@ export async function sicoobGetCob(txid: string): Promise<any> {
         key: environment === 'production' ? config.privateKeyPem : undefined,
     });
     if (response.status >= 400) {
-        throw new Error(`Sicoob consultar cobrança falhou (${response.status}): ${response.body}`);
+        throw new Error(`Sicoob consultar cobrança falhou — ${formatSicoobError(response.status, response.body)}`);
     }
     return JSON.parse(response.body);
 }
@@ -368,7 +390,7 @@ export async function sicoobRegisterWebhook(webhookUrl: string): Promise<void> {
         key: environment === 'production' ? config.privateKeyPem : undefined,
     });
     if (response.status >= 400) {
-        throw new Error(`Sicoob registrar webhook falhou (${response.status}): ${response.body}`);
+        throw new Error(`Sicoob registrar webhook falhou — ${formatSicoobError(response.status, response.body)}`);
     }
 }
 
@@ -383,7 +405,7 @@ export async function sicoobGetWebhook(): Promise<any> {
     });
     if (response.status === 404) return null;
     if (response.status >= 400) {
-        throw new Error(`Sicoob consultar webhook falhou (${response.status}): ${response.body}`);
+        throw new Error(`Sicoob consultar webhook falhou — ${formatSicoobError(response.status, response.body)}`);
     }
     return JSON.parse(response.body);
 }
@@ -398,7 +420,7 @@ export async function sicoobDeleteWebhook(): Promise<void> {
         key: environment === 'production' ? config.privateKeyPem : undefined,
     });
     if (response.status >= 400 && response.status !== 404) {
-        throw new Error(`Sicoob remover webhook falhou (${response.status}): ${response.body}`);
+        throw new Error(`Sicoob remover webhook falhou — ${formatSicoobError(response.status, response.body)}`);
     }
 }
 

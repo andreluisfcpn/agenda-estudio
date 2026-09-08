@@ -51,6 +51,7 @@ export default function IntegrationSettings() {
   const [coraWebhooks, setCoraWebhooks] = useState<{ id: string; url: string; events?: string[] }[]>([]);
   const [loadingWebhooks, setLoadingWebhooks] = useState(false);
   const [registeringWebhook, setRegisteringWebhook] = useState(false);
+  const [registeringSicoobWebhook, setRegisteringSicoobWebhook] = useState(false);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -271,6 +272,17 @@ export default function IntegrationSettings() {
       await loadWebhooks();
     } catch (e: unknown) { setError(getErrorMessage(e) || 'Erro ao registrar webhook'); }
     finally { setRegisteringWebhook(false); }
+  };
+
+  // Sicoob: 1 webhook por chave PIX; a URL é montada no servidor (sem /pix — o Sicoob acrescenta).
+  const registerSicoobWebhook = async () => {
+    setRegisteringSicoobWebhook(true); clearMsgs();
+    try {
+      // Manda a URL que a caixa EXIBE (origem pública real) — evita registrar um host de dev/interno.
+      const res = await integrationsApi.registerSicoobWebhook(`${window.location.origin}/api/webhooks/sicoob`);
+      showMsg(`${res.message} (${res.url})`);
+    } catch (e: unknown) { setError(getErrorMessage(e) || 'Erro ao registrar webhook no Sicoob'); }
+    finally { setRegisteringSicoobWebhook(false); }
   };
 
   const deleteWebhook = async (id: string) => {
@@ -569,7 +581,11 @@ export default function IntegrationSettings() {
                 </>
               )}
 
-              <WebhookUrlBox url={sicoobWebhookUrl} label="Webhook URL (registre no Sicoob — ele adiciona /pix ao final)" onCopy={copyToClipboard} />
+              <WebhookUrlBox url={sicoobWebhookUrl} label="Webhook URL (o Sicoob adiciona /pix ao final)" onCopy={copyToClipboard} />
+              <button className="int-btn int-btn--webhook" onClick={registerSicoobWebhook}
+                disabled={registeringSicoobWebhook || !sicoob?.configured} type="button" style={{ marginTop: 8 }}>
+                {registeringSicoobWebhook ? <><span className="int-spinner" /> Registrando...</> : <><Icons.Bell /> Registrar Webhook no Sicoob</>}
+              </button>
 
               <TestInfo provider={sicoob} />
 

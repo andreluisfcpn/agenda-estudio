@@ -731,6 +731,14 @@ export const integrationsApi = {
         request<{ message: string; endpoint: any }>('/integrations/cora/webhooks', { method: 'POST', body: JSON.stringify({ url }) }),
     deleteCoraWebhook: (id: string) =>
         request<{ message: string }>(`/integrations/cora/webhooks/${id}`, { method: 'DELETE' }),
+    // Sicoob webhook (1 por chave PIX; a URL é montada no servidor, sem /pix)
+    getSicoobWebhook: () =>
+        request<{ webhook: { webhookUrl?: string } | null }>('/integrations/sicoob/webhook'),
+    // Envia a URL exibida no painel (origem pública real) — o servidor registra ESSA (não BACKEND_URL).
+    registerSicoobWebhook: (url: string) =>
+        request<{ message: string; url: string }>('/integrations/sicoob/webhook', { method: 'POST', body: JSON.stringify({ url }) }),
+    deleteSicoobWebhook: () =>
+        request<{ message: string }>('/integrations/sicoob/webhook', { method: 'DELETE' }),
 };
 
 function buildQS(params?: Record<string, string | number | undefined>): string {

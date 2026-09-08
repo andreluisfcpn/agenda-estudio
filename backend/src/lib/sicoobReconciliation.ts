@@ -34,6 +34,23 @@ export function isSicoobCobCancelled(cob: any): boolean {
     return String(cob.status || '').toUpperCase().startsWith('REMOVIDA');
 }
 
+// Margem: um pagamento feito no último segundo pode levar alguns segundos para refletir no cob
+// (pix[]/status), então só consideramos "expirada" um tempo APÓS a expiração declarada.
+const EXPIRY_GRACE_MS = 2 * 60 * 1000;
+
+/**
+ * A cobrança imediata EXPIROU sem pagamento? Uma cob imediata expirada permanece com status ATIVA
+ * no Sicoob (não vira REMOVIDA), então sem esta checagem um PIX não pago ficaria PENDING até o sweep
+ * de 72h desistir. Usa `calendario.criacao` (ISO) + `calendario.expiracao` (segundos) + margem.
+ */
+export function isSicoobCobExpired(cob: any, now: Date = new Date()): boolean {
+    if (!cob) return false;
+    const criacaoMs = Date.parse(cob?.calendario?.criacao ?? '');
+    const expiracao = Number(cob?.calendario?.expiracao);
+    if (!Number.isFinite(criacaoMs) || !Number.isFinite(expiracao) || expiracao <= 0) return false;
+    return now.getTime() > criacaoMs + expiracao * 1000 + EXPIRY_GRACE_MS;
+}
+
 /**
  * Verifica um pagamento Sicoob contra a API e marca PAID (rodando os efeitos de
  * confirmação) se o Sicoob confirmar. Idempotente e seguro para repetir.
@@ -94,7 +111,12 @@ export async function reconcileSicoobCancellation(paymentId: string): Promise<bo
         await reconcileSicoobPayment(paymentId);
         return false;
     }
-    if (!isSicoobCobCancelled(cob)) return false;
+    // Falha o pagamento se a cobrança foi REMOVIDA (cancelada) OU EXPIROU sem pagamento. A cobrança
+    // imediata expirada fica ATIVA no Sicoob (não vira REMOVIDA); sem a checagem de expiração o
+    // pagamento não pago ficaria PENDING até o sweep de 72h desistir.
+    const cancelled = isSicoobCobCancelled(cob);
+    const expired = isSicoobCobExpired(cob);
+    if (!cancelled && !expired) return false;
 
     const updated = await prisma.payment.updateMany({
         where: { id: payment.id, status: 'PENDING' },
@@ -103,7 +125,7 @@ export async function reconcileSicoobCancellation(paymentId: string): Promise<bo
     if (updated.count === 0) return false;
 
     await releaseCouponForPayment(payment.id);
-    console.log(`[Sicoob-Reconcile] Payment ${payment.id} marcado FAILED (cobrança ${payment.providerRef} removida/expirada)`);
+    console.log(`[Sicoob-Reconcile] Payment ${payment.id} marcado FAILED (cobrança ${payment.providerRef} ${cancelled ? 'removida' : 'expirada'})`);
     await notifyPaymentExpired(payment);
     return true;
 }
