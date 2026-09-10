@@ -218,8 +218,7 @@ async function main() {
     },
     {
       key: "studio_hero_image",
-      value:
-        "https://buzios.digital/wp-content/uploads/elementor/thumbs/bd-estudio-enhanced-sr-r9lm9twze86yo0wxu68fp1e0yf8baho28zrniyf1o0.jpg",
+      value: "/images/hero-estudio.webp",
       type: "string",
       label: "Imagem Principal",
       group: "studio",

@@ -24,12 +24,18 @@ const COLORS = {
     white: '#FFFFFF'
 };
 
-// Logo servido localmente (public/icons) — não depende de URL externa. O hero continua
-// vindo de URL configurável (foto do estúdio); se falhar, um onError no <img> trata.
+// Logo e hero servidos localmente (public/) — não dependem de URL externa. A foto do hero
+// antes vinha de uma thumbnail do WordPress/Elementor que passou a dar 404 e, com o onError
+// escondendo a imagem, o hero "sumia". Agora a imagem é um asset local (bundle), com fallback.
 const LOCAL_LOGO = '/icons/logo-branca.svg';
+const LOCAL_HERO = '/images/hero-estudio.webp';
+const LOCAL_HERO_FALLBACK = '/images/hero-estudio.jpg';
+// URL legada do hero (thumbnail Elementor) — se o config do banco ainda tiver esse valor,
+// ignoramos e usamos a imagem local, evitando uma requisição que falha e o flash do hero.
+const LEGACY_HERO_URL = 'https://buzios.digital/wp-content/uploads/elementor/thumbs/bd-estudio-enhanced-sr-r9lm9twze86yo0wxu68fp1e0yf8baho28zrniyf1o0.jpg';
 const DEFAULT_ASSETS = {
     logo: LOCAL_LOGO,
-    heroImage: 'https://buzios.digital/wp-content/uploads/elementor/thumbs/bd-estudio-enhanced-sr-r9lm9twze86yo0wxu68fp1e0yf8baho28zrniyf1o0.jpg'
+    heroImage: LOCAL_HERO
 };
 
 // Placeholder social proof (replace with real data later)
@@ -78,7 +84,7 @@ export default function LandingPage() {
         pricingApi.getBusinessConfigPublic().then(({ config: cfg }) => {
             if (cfg.studio_name) setStudioName(String(cfg.studio_name));
             if (cfg.studio_logo_url) setStudioLogo(String(cfg.studio_logo_url));
-            if (cfg.studio_hero_image) setStudioHero(String(cfg.studio_hero_image));
+            if (cfg.studio_hero_image && String(cfg.studio_hero_image) !== LEGACY_HERO_URL) setStudioHero(String(cfg.studio_hero_image));
             if (cfg.studio_email) setStudioEmail(String(cfg.studio_email));
             if (cfg.studio_location) setStudioLocation(String(cfg.studio_location));
             if (cfg.studio_phone) setStudioPhone(String(cfg.studio_phone));
@@ -240,7 +246,12 @@ export default function LandingPage() {
                     {/* Studio Image — visible on tablet/desktop only */}
                     <div className="landing-hero-visual hero-animate-5">
                         <img src={studioHero} alt={`Interior do ${studioName}`}
-                            onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                            onError={(e) => {
+                                const t = e.currentTarget;
+                                // 1ª falha: cai para o JPG local; 2ª falha: esconde (mostra o gradiente de marca).
+                                if (!t.dataset.fb) { t.dataset.fb = '1'; t.src = LOCAL_HERO_FALLBACK; }
+                                else { t.style.display = 'none'; }
+                            }} />
                         <div className="landing-hero-visual-overlay" />
                         <div className="landing-hero-visual-badge">
                             <MapPin size={12} style={{ opacity: 0.6 }} />
