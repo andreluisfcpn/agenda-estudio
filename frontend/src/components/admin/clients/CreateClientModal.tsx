@@ -3,7 +3,7 @@ import React, { useState, useId } from 'react';
 import { usersApi, ApiError } from '../../../api/client';
 import BottomSheetModal from '../../BottomSheetModal';
 import { UserPlus, UserRound, Mail, Lock, Smartphone, IdCard, Globe, NotebookPen, ShieldCheck, ChevronDown, Plus } from 'lucide-react';
-import { maskPhone, maskEmail, maskCpfCnpj, translateError } from '../../../utils/mask';
+import { maskPhone, maskEmail, maskCpfCnpj, translateError, isValidCpfCnpj } from '../../../utils/mask';
 
 interface CreateClientModalProps {
     isOpen: boolean;
@@ -22,6 +22,14 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
     const handleCreate = async () => {
         setCreateError('');
         setCreateFieldErrors({});
+        // Bloqueio no submit (o campo é opcional e vive numa seção recolhível — se inválido, abre a seção
+        // e mostra o erro no topo, sempre visível). Cobre também documento incompleto (< tamanho válido).
+        const cpfDig = createForm.cpfCnpj.replace(/\D/g, '');
+        if (cpfDig.length > 0 && !isValidCpfCnpj(cpfDig)) {
+            setShowAdvanced(true);
+            setCreateError('CPF/CNPJ inválido — confira os números.');
+            return;
+        }
         setCreating(true);
         try {
             const payload: any = {
@@ -74,6 +82,11 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
         fontSize: '0.6875rem', color: 'var(--danger)', fontWeight: 600, marginTop: '4px', paddingLeft: '4px',
     };
 
+    // CPF/CNPJ é opcional; quando preenchido precisa passar na validação da Receita (dígitos verificadores).
+    // Erro visual só quando o documento está em tamanho completo (11/14) — evita "vermelho" enquanto ainda
+    // se digita. O bloqueio real (qualquer valor não vazio inválido) é feito no submit (handleCreate).
+    const cpfDigits = createForm.cpfCnpj.replace(/\D/g, '');
+    const cpfShowError = (cpfDigits.length === 11 || cpfDigits.length === 14) && !isValidCpfCnpj(cpfDigits);
     const canCreate = createForm.name.length >= 2 && createForm.email.includes('@') && createForm.password.length >= 6;
 
     return (
@@ -224,10 +237,13 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
                                                 value={createForm.cpfCnpj}
                                                 onChange={e => setCreateForm({ ...createForm, cpfCnpj: maskCpfCnpj(e.target.value) })}
                                                 placeholder="000.000.000-00"
-                                                className={`form-input form-input--raised${(false) ? ' error' : ''}`} style={{ paddingLeft: 36, fontSize: '0.8125rem' }}
-                                                onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-default)')}
+                                                aria-invalid={cpfShowError}
+                                                inputMode="numeric"
+                                                className={`form-input form-input--raised${cpfShowError ? ' error' : ''}`} style={{ paddingLeft: 36, fontSize: '0.8125rem', borderColor: cpfShowError ? 'rgba(239,68,68,0.5)' : undefined }}
+                                                onBlur={e => (e.currentTarget.style.borderColor = cpfShowError ? 'rgba(239,68,68,0.5)' : 'var(--border-default)')}
                                             />
                                         </div>
+                                        {cpfShowError && <div style={fieldErrorStyle}>CPF/CNPJ inválido — confira os números.</div>}
                                     </div>
                                     <div>
                                         <label style={labelStyle}>Status</label>

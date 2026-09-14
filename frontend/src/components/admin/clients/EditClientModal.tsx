@@ -4,7 +4,7 @@ import { usersApi, UserSummary, ApiError } from '../../../api/client';
 import BottomSheetModal from '../../BottomSheetModal';
 import { Pencil, UserRound, Mail, Lock, Smartphone, IdCard, Globe, NotebookPen, ShieldCheck, Save } from 'lucide-react';
 import AddressFields from './AddressFields';
-import { maskPhone, maskCpfCnpj, maskEmail, translateError } from '../../../utils/mask';
+import { maskPhone, maskCpfCnpj, maskEmail, translateError, isValidCpfCnpj } from '../../../utils/mask';
 
 interface EditClientModalProps {
     user: UserSummary;
@@ -65,6 +65,12 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
         if (!user) return;
         setEditError('');
         setEditFieldErrors({});
+        // Bloqueio no submit: CPF/CNPJ preenchido tem que ser válido (cobre também documento incompleto).
+        const cpfDig = editForm.cpfCnpj.replace(/\D/g, '');
+        if (cpfDig.length > 0 && !isValidCpfCnpj(cpfDig)) {
+            setEditError('CPF/CNPJ inválido — confira os números.');
+            return;
+        }
         setEditLoading(true);
         try {
             const data: any = {};
@@ -120,6 +126,11 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
     const editFieldErrorStyle = {
         fontSize: '0.6875rem', color: 'var(--danger)', fontWeight: 600, marginTop: '4px', paddingLeft: '4px',
     };
+
+    // CPF/CNPJ é opcional; erro visual só em tamanho completo (11/14) — evita "vermelho" enquanto se digita.
+    // O bloqueio real (qualquer valor não vazio inválido) é feito no submit (handleEdit).
+    const editCpfDigits = editForm.cpfCnpj.replace(/\D/g, '');
+    const cpfShowError = (editCpfDigits.length === 11 || editCpfDigits.length === 14) && !isValidCpfCnpj(editCpfDigits);
 
     return (
         <BottomSheetModal isOpen onClose={onClose} hideHeader size="md" className="admin-sheet" title="Editar Cliente">
@@ -179,10 +190,13 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                                         id={`${uid}-cpfCnpj`}
                                         value={editForm.cpfCnpj} onChange={e => setEditForm({ ...editForm, cpfCnpj: maskCpfCnpj(e.target.value) })}
                                         placeholder="000.000.000-00"
-                                        style={editInputStyle(false)}
-                                        onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-default)')}
+                                        aria-invalid={cpfShowError}
+                                        inputMode="numeric"
+                                        style={editInputStyle(cpfShowError)}
+                                        onBlur={e => (e.currentTarget.style.borderColor = cpfShowError ? 'rgba(239,68,68,0.5)' : 'var(--border-default)')}
                                     />
                                 </div>
+                                {cpfShowError && <div style={editFieldErrorStyle}>CPF/CNPJ inválido — confira os números.</div>}
                             </div>
                         </div>
 
