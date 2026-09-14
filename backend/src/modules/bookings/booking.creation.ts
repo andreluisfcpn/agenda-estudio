@@ -815,6 +815,16 @@ router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res
         const dateObj = new Date(data.date + 'T00:00:00');
         const dayOfWeek = dateObj.getUTCDay();
 
+        // O admin NÃO pode agendar em data/horário que já passou (fuso do estúdio). O caminho do
+        // cliente (POST /) já bloqueia o passado, mas dispensa o admin (linha ~41); o /admin não
+        // tinha nenhuma checagem, então dava para criar reservas retroativas. `min` no <input> do
+        // front não cobre nem horário passado no mesmo dia nem data digitada — a trava real é aqui.
+        const adminSlotStart = studioDateTime(data.date, data.startTime);
+        if (Number.isNaN(adminSlotStart.getTime()) || adminSlotStart.getTime() < Date.now()) {
+            res.status(400).json({ error: 'Não é possível agendar em uma data ou horário que já passou.' });
+            return;
+        }
+
         if (!(await isOperatingDay(dayOfWeek))) {
             res.status(400).json({ error: 'O estúdio não funciona neste dia da semana.' });
             return;

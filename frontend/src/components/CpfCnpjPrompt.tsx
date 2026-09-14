@@ -1,18 +1,24 @@
 import { useId, useState } from 'react';
 import { ShieldCheck, Check, CreditCard } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { authApi } from '../api/client';
+import { authApi, usersApi } from '../api/client';
 import { maskCpfCnpj, isValidCpfCnpj } from '../utils/mask';
 import { getErrorMessage } from '../utils/errors';
 
 interface CpfCnpjPromptProps {
-    /** Called after the document is successfully saved — re-run the payment here. */
-    onSaved: () => void;
+    /** Called after the document is successfully saved — re-run the payment here.
+     *  Recebe os dígitos salvos para o chamador refletir localmente (evita re-perguntar em retry). */
+    onSaved: (savedDoc?: string) => void;
     onCancel?: () => void;
     title?: string;
     subtitle?: string;
     /** Label of the primary button (e.g. "Salvar e gerar PIX"). */
     saveLabel?: string;
+    /**
+     * Admin cobrando um CLIENTE: coleta/salva o CPF do CLIENTE selecionado (não do admin logado).
+     * Sem isto, o gate usava o CPF do usuário autenticado (o admin) e gravava no perfil dele.
+     */
+    client?: { id: string; name?: string | null; cpfCnpj?: string | null };
 }
 
 /**
@@ -20,10 +26,12 @@ interface CpfCnpjPromptProps {
  * valid document on file. Validates the check digits client-side, persists via
  * PATCH /auth/profile, refreshes the auth context, then calls onSaved().
  */
-export default function CpfCnpjPrompt({ onSaved, onCancel, title, subtitle, saveLabel }: CpfCnpjPromptProps) {
+export default function CpfCnpjPrompt({ onSaved, onCancel, title, subtitle, saveLabel, client }: CpfCnpjPromptProps) {
     const uid = useId();
     const { user, updateUser } = useAuth();
-    const [value, setValue] = useState(user?.cpfCnpj ? maskCpfCnpj(user.cpfCnpj) : '');
+    // Quando `client` está presente (admin cobrando um cliente), o documento é do CLIENTE.
+    const docOwnerCpf = client ? client.cpfCnpj : user?.cpfCnpj;
+    const [value, setValue] = useState(docOwnerCpf ? maskCpfCnpj(docOwnerCpf) : '');
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [touched, setTouched] = useState(false);
@@ -38,9 +46,14 @@ export default function CpfCnpjPrompt({ onSaved, onCancel, title, subtitle, save
         setSaving(true);
         setError('');
         try {
-            const res = await authApi.updateProfile({ cpfCnpj: digits });
-            updateUser(res.user);
-            onSaved();
+            if (client) {
+                // Admin salvando o CPF do CLIENTE selecionado (PATCH /users/:id) — não toca no perfil do admin.
+                await usersApi.update(client.id, { cpfCnpj: digits });
+            } else {
+                const res = await authApi.updateProfile({ cpfCnpj: digits });
+                updateUser(res.user);
+            }
+            onSaved(digits);
         } catch (err: unknown) {
             setError(getErrorMessage(err) || 'Não foi possível salvar. Tente novamente.');
             setSaving(false);
@@ -61,10 +74,12 @@ export default function CpfCnpjPrompt({ onSaved, onCancel, title, subtitle, save
             </div>
 
             <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: '0 0 6px' }}>
-                {title || 'Confirme seu CPF ou CNPJ'}
+                {title || (client ? 'Confirme o CPF ou CNPJ do cliente' : 'Confirme seu CPF ou CNPJ')}
             </h3>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5, margin: '0 0 18px', maxWidth: 340 }}>
-                {subtitle || 'Esta cobrança é emitida no seu nome — por isso precisamos do seu CPF ou CNPJ. É rápido, e fica salvo no seu perfil para as próximas vezes.'}
+                {subtitle || (client
+                    ? `A cobrança é emitida no nome ${client.name ? `de ${client.name}` : 'do cliente'} — informe o CPF ou CNPJ dele. Fica salvo no perfil do cliente para as próximas vezes.`
+                    : 'Esta cobrança é emitida no seu nome — por isso precisamos do seu CPF ou CNPJ. É rápido, e fica salvo no seu perfil para as próximas vezes.')}
             </p>
 
             <div className="form-group" style={{ width: '100%', textAlign: 'left', marginBottom: showError || error ? 6 : 14 }}>

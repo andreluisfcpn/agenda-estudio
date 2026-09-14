@@ -235,6 +235,7 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
     // Charge-now step: mesmo InlineCheckout + política unificada do cliente. Cobra o CLIENTE
     // (payment.userId) — o backend resolve o pagador a partir do payment, não do admin.
     if (chargePaymentId) {
+        const chargeClient = users.find(u => u.id === customForm.userId);
         return (
             <ChargeNowSheet
                 paymentId={chargePaymentId}
@@ -245,6 +246,7 @@ export default function CustomContractModal({ isOpen, onClose, onCreated, users,
                 allowedMethods={[customForm.paymentMethod as 'CARTAO' | 'PIX' | 'BOLETO']}
                 allowBoleto={customForm.paymentMethod === 'BOLETO'}
                 context="contract"
+                client={chargeClient ? { id: chargeClient.id, name: chargeClient.name, cpfCnpj: chargeClient.cpfCnpj } : undefined}
                 error={customError || undefined}
                 onError={(msg) => setCustomError(msg)}
                 onSuccess={() => { setChargePaymentId(null); onClose(); }}

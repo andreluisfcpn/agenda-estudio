@@ -479,7 +479,7 @@ export interface CustomConflict {
 // PaymentSummary is defined above (line ~247) — removed duplicate here
 export interface UserSummary {
     id: string; email: string; name: string; phone: string | null; role: string;
-    clientStatus: string; tags: string[];
+    cpfCnpj: string | null; clientStatus: string; tags: string[];
     createdAt: string; _count: { bookings: number; contracts: number };
     contracts?: { type: 'FIXO' | 'FLEX' | 'SERVICO' | 'CUSTOM' | 'AVULSO'; status: string; addOns: string[] }[];
     totalPaid: number; totalPending: number;

@@ -630,6 +630,7 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                     allowedMethods={[paymentMethod]}
                     allowBoleto={!!createForm.boletoAllowed}
                     context="contract"
+                    client={selectedUser ? { id: selectedUser.id, name: selectedUser.name, cpfCnpj: selectedUser.cpfCnpj } : undefined}
                     onError={(msg) => setCreateError(msg)}
                     onSuccess={() => { onCreated(); onClose(); }}
                     onDismiss={() => { onCreated(); onClose(); }}

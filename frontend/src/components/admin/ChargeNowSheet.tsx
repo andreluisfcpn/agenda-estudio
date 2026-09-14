@@ -19,6 +19,8 @@ interface ChargeNowSheetProps {
     /** Fechar / deixar pendente (backdrop, ESC e o botão inferior). */
     onDismiss: () => void;
     dismissLabel?: string;
+    /** Cliente selecionado — usado para o gate/coleta de CPF do CLIENTE (PIX/Boleto), não do admin. */
+    client?: { id: string; name?: string | null; cpfCnpj?: string | null };
 }
 
 /**
@@ -43,6 +45,7 @@ export default function ChargeNowSheet({
     onSuccess,
     onDismiss,
     dismissLabel = 'Deixar pendente (cliente paga depois)',
+    client,
 }: ChargeNowSheetProps) {
     return (
         <BottomSheetModal isOpen onClose={onDismiss} hideHeader size="sm" className="admin-sheet" title={title}>
@@ -60,6 +63,7 @@ export default function ChargeNowSheet({
                     isAdmin
                     allowBoleto={allowBoleto}
                     context={context}
+                    chargeClient={client}
                     onSuccess={onSuccess}
                     onError={onError}
                     onCancel={onDismiss}

@@ -26,6 +26,9 @@ export function registerUserListingRoutes(router: Router) {
                 name: true,
                 phone: true,
                 role: true,
+                // Necessário para o admin cobrar o CLIENTE (gate/coleta de CPF do PIX/Boleto usa o
+                // documento do cliente selecionado, não o do admin). Endpoint é ADMIN-only.
+                cpfCnpj: true,
                 clientStatus: true,
                 tags: true,
                 createdAt: true,

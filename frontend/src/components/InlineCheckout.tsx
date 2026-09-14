@@ -40,6 +40,11 @@ interface InlineCheckoutProps {
     allowBoleto?: boolean;
     /** Checkout context for per-method visibility: avulso | contract | invoice */
     context?: string;
+    /**
+     * Admin cobrando um CLIENTE: o gate de CPF (PIX/Boleto) e a coleta usam o CPF do CLIENTE
+     * selecionado, não o do admin logado (useAuth). O backend já cobra o payment.userId (cliente).
+     */
+    chargeClient?: { id: string; name?: string | null; cpfCnpj?: string | null };
     /** Function to create the Payment record on-the-fly */
     createPaymentFn?: (method: 'CARTAO' | 'PIX' | 'BOLETO') => Promise<{
         paymentId: string;
@@ -70,6 +75,7 @@ export default function InlineCheckout({
     isAdmin = false,
     allowBoleto = false,
     context,
+    chargeClient,
     createPaymentFn,
 }: InlineCheckoutProps) {
     const allMethods = isAdmin ? getPaymentMethods() : getClientPaymentMethods();
@@ -123,6 +129,12 @@ export default function InlineCheckout({
     // PIX requires a CPF/CNPJ on file (Cora invoice). Gate the charge behind an
     // inline collection step when the user has no valid document.
     const { user } = useAuth();
+    // Documento salvo AGORA pelo prompt (o prop `chargeClient` vem da lista de users e não é
+    // recarregado após salvar) — assim o gate/coleta não re-perguntam num retry na mesma cobrança.
+    const [savedClientDoc, setSavedClientDoc] = useState<string | null>(null);
+    // Admin cobrando um cliente → o documento é do CLIENTE selecionado; senão, o do próprio usuário
+    // logado (cliente pagando o seu). Antes usava sempre `user` (o admin), pedindo/gravando o CPF errado.
+    const cpfOwnerDoc = savedClientDoc ?? (chargeClient ? chargeClient.cpfCnpj : user?.cpfCnpj);
     const [needsCpf, setNeedsCpf] = useState(false);
     // Sandbox testing: when PIX is in sandbox, offer a "simulate payment" button
     const [pixSandbox, setPixSandbox] = useState(false);
@@ -345,7 +357,7 @@ export default function InlineCheckout({
     // Gate: PIX needs a valid CPF/CNPJ. If absent, show the inline collection
     // step instead of round-tripping to the server only to fail.
     const initPixPayment = () => {
-        if (!isValidCpfCnpj(user?.cpfCnpj)) {
+        if (!isValidCpfCnpj(cpfOwnerDoc)) {
             setNeedsCpf(true);
             return;
         }
@@ -405,7 +417,7 @@ export default function InlineCheckout({
 
     // Boleto (Cora) also needs a CPF/CNPJ on file — same gate as PIX.
     const initBoletoPayment = () => {
-        if (!isValidCpfCnpj(user?.cpfCnpj)) {
+        if (!isValidCpfCnpj(cpfOwnerDoc)) {
             setNeedsCpf(true);
             return;
         }
@@ -686,8 +698,9 @@ export default function InlineCheckout({
                     {!pixString ? (
                         needsCpf ? (
                             <CpfCnpjPrompt
+                                client={chargeClient}
                                 saveLabel={`Salvar e gerar PIX - ${formatBRL(amount)}`}
-                                onSaved={() => { setNeedsCpf(false); proceedPix(); }}
+                                onSaved={(doc) => { if (doc) setSavedClientDoc(doc); setNeedsCpf(false); proceedPix(); }}
                                 onCancel={() => setNeedsCpf(false)}
                             />
                         ) : (
@@ -774,8 +787,9 @@ export default function InlineCheckout({
                     {!boletoUrl ? (
                         needsCpf ? (
                             <CpfCnpjPrompt
+                                client={chargeClient}
                                 saveLabel={`Salvar e gerar Boleto - ${formatBRL(amount)}`}
-                                onSaved={() => { setNeedsCpf(false); proceedBoleto(); }}
+                                onSaved={(doc) => { if (doc) setSavedClientDoc(doc); setNeedsCpf(false); proceedBoleto(); }}
                                 onCancel={() => setNeedsCpf(false)}
                             />
                         ) : (

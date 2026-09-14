@@ -6,6 +6,7 @@ import BottomSheetModal from '../../BottomSheetModal';
 import CouponField from '../../CouponField';
 import ServiceLineItem from '../../ui/ServiceLineItem';
 import { formatBRL, DAY_NAMES } from '../../../utils/format';
+import { todayStrSaoPaulo, studioSlotDate } from '../../../utils/time';
 import { TIER_META } from '../../../constants/adminMeta';
 import WizardSteps from '../WizardSteps';
 import ChargeNowSheet from '../ChargeNowSheet';
@@ -151,6 +152,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                 subtitle={`${chargeMethod === 'PIX' ? 'Mostre o QR Code PIX ao cliente.' : 'Use o cartão do cliente (presente).'} A reserva confirma ao pagar.`}
                 allowedMethods={[chargeMethod]}
                 context="avulso"
+                client={selectedUser ? { id: selectedUser.id, name: selectedUser.name, cpfCnpj: selectedUser.cpfCnpj } : undefined}
                 error={createError || undefined}
                 onError={(msg) => setCreateError(msg)}
                 onSuccess={() => { resetCreateModal(); showToast('Pagamento confirmado!'); }}
@@ -263,6 +265,17 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                         const filteredSlots = filterTier
                             ? daySlots.filter(s => s.tier === filterTier || !s.available)
                             : daySlots;
+
+                        // Não permitir agendar no passado (fuso do estúdio). `min` no <input> só cobre o
+                        // seletor; aqui removemos horários que já passaram HOJE e zeramos datas passadas
+                        // (digitadas). A trava autoritativa está no backend (POST /bookings/admin).
+                        const todayStr = todayStrSaoPaulo();
+                        const isPastDate = !!createForm.date && createForm.date < todayStr;
+                        const isToday = createForm.date === todayStr;
+                        const nowMs = Date.now();
+                        const slotsForDay = isPastDate
+                            ? []
+                            : filteredSlots.filter(s => !(isToday && studioSlotDate(createForm.date, s.time).getTime() < nowMs));
 
                         return (
                         <div>
@@ -400,7 +413,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                     <CalendarDays size={13} style={{ verticalAlign: '-2px', marginRight: 4 }} aria-hidden="true" />Data da gravação
                                 </label>
                                 <input id={`${uid}-date`} type="date" value={createForm.date}
-                                    min={new Date().toISOString().split('T')[0]}
+                                    min={todayStr}
                                     aria-label="Data da gravação"
                                     onChange={e => {
                                         const newDate = e.target.value;
@@ -437,15 +450,21 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                     </label>
                                     {slotsLoading ? (
                                         <div style={{ padding: '24px', textAlign: 'center' }}><div className="spinner" style={{ width: 24, height: 24, margin: '0 auto' }} /></div>
-                                    ) : filteredSlots.filter(s => s.available).length === 0 ? (
+                                    ) : isPastDate ? (
+                                        <div style={{ padding: '24px', textAlign: 'center', color: 'var(--warning)', fontSize: '0.8125rem', background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: 10, fontWeight: 600 }}>
+                                            Data no passado — escolha uma data a partir de hoje.
+                                        </div>
+                                    ) : slotsForDay.filter(s => s.available).length === 0 ? (
                                         <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8125rem', background: 'var(--bg-elevated)', borderRadius: 10 }}>
-                                            {filterTier
-                                                ? `Nenhum horário ${TIER_LABEL[filterTier]} disponível nesta data`
-                                                : 'Nenhum horário disponível nesta data'}
+                                            {isToday
+                                                ? 'Nenhum horário disponível ainda hoje — os horários de hoje já passaram ou estão ocupados.'
+                                                : filterTier
+                                                    ? `Nenhum horário ${TIER_LABEL[filterTier]} disponível nesta data`
+                                                    : 'Nenhum horário disponível nesta data'}
                                         </div>
                                     ) : (
                                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '6px' }}>
-                                            {filteredSlots.map(slot => {
+                                            {slotsForDay.map(slot => {
                                                 const isSelected = createForm.startTime === slot.time;
                                                 const slotTc = tc(slot.tier || 'COMERCIAL');
                                                 return (
