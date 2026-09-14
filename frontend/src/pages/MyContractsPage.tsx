@@ -381,14 +381,25 @@ export default function MyContractsPage() {
                                 onSubscribeContract={() => setShowSubscribeModalFor(c)}
                                 onPayInstallment={(payment) => setPayingInstallment({ payment, contract: c })}
                                 onPayContract={c.status === 'AWAITING_PAYMENT' ? async () => {
+                                    // AVULSO é pago pelo pagamento do PRÓPRIO agendamento — o backend rejeita
+                                    // /contracts/:id/pay (evita cobrar mês×tier). Vai direto ao pagamento pendente.
+                                    if (c.type === 'AVULSO') {
+                                        const pending = c.payments?.find(p => p.status === 'PENDING');
+                                        if (pending) {
+                                            navigate('/meus-pagamentos', { state: { autoOpenPaymentId: pending.id } });
+                                        } else {
+                                            showToast({ type: 'error', message: 'Pagamento do agendamento não encontrado. Abra "Minhas Reservas" para pagar.' });
+                                        }
+                                        return;
+                                    }
                                     try {
                                         const res = await contractsApi.pay(c.id);
                                         showToast({ type: 'success', message: 'Abrindo pagamento...' });
                                         // FE-H1 FIX: Never expose clientSecret in URL — use navigate state instead
                                         // MyPaymentsPage already handles location.state.autoOpenPaymentId (L69-91)
                                         const firstPendingPayment = c.payments?.find(p => p.status === 'PENDING');
-                                        navigate('/meus-pagamentos', { 
-                                            state: { autoOpenPaymentId: firstPendingPayment?.id || res.paymentId } 
+                                        navigate('/meus-pagamentos', {
+                                            state: { autoOpenPaymentId: firstPendingPayment?.id || res.paymentId }
                                         });
                                     } catch (err: unknown) {
                                         showToast({ type: 'error', message: getErrorMessage(err) || 'Erro ao iniciar pagamento' });
