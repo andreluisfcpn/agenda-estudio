@@ -177,19 +177,55 @@ export default function BookingDetailModal({
         }
     };
 
+    // Persiste o pré-cadastro do episódio (título/descrição/plataformas). O backend aceita isso mesmo
+    // com a reserva em RESERVED (aguardando pagamento); a capa já é salva na hora, no upload.
+    const persistEpisode = () => bookingsApi.clientUpdate(booking.id, {
+        episodeTitle: episodeTitle.trim(),
+        episodeDescription: episodeDescription.trim(),
+        platforms: JSON.stringify(platforms),
+    });
+
     const handleSave = async () => {
         setSaving(true);
         try {
-            await bookingsApi.clientUpdate(booking.id, {
-                episodeTitle: episodeTitle.trim(),
-                episodeDescription: episodeDescription.trim(),
-                platforms: JSON.stringify(platforms),
-            });
-            showToast('Gravação atualizada!');
+            await persistEpisode();
+            showToast('Gravação salva!');
             onSaved();
         } catch (err: unknown) {
             showAlert({ message: getErrorMessage(err), type: 'error' });
         } finally { setSaving(false); }
+    };
+
+    // Reserva aguardando pagamento: salva o pré-cadastro SEM fechar o modal (o cliente segue para o
+    // pagamento em seguida). Se não pagar no prazo, o job de expiração de holds apaga a reserva avulsa
+    // e o rascunho vai junto — comportamento desejado (nada fica "perdido" no banco).
+    const handleSaveDraft = async () => {
+        setSaving(true);
+        try {
+            await persistEpisode();
+            showToast('Rascunho salvo! Suas informações ficam guardadas até o pagamento.');
+        } catch (err: unknown) {
+            showAlert({ message: getErrorMessage(err), type: 'error' });
+        } finally { setSaving(false); }
+    };
+
+    // "Pagar agora": salva o que foi digitado antes de sair para o pagamento (não perde o rascunho).
+    const handlePayNow = async () => {
+        setSaving(true);
+        try { await persistEpisode(); }
+        catch { /* não bloqueia o pagamento se o rascunho falhar ao salvar */ }
+        finally { setSaving(false); }
+        onClose();
+        navigate('/meus-pagamentos');
+    };
+
+    // Fechar o modal (X / clicar fora / Esc / arrastar) com a reserva aguardando pagamento: auto-salva
+    // o rascunho antes de fechar, para o cliente não perder o que digitou por não clicar em "Salvar".
+    // Fire-and-forget (não trava o fechamento). Se não pagar no prazo, o hold expira e apaga tudo.
+    const isAwaitingHold = src.status === 'RESERVED' && !!src.holdExpiresAt && new Date(src.holdExpiresAt).getTime() > Date.now();
+    const handleClose = () => {
+        if (isAwaitingHold) persistEpisode().catch(() => {});
+        onClose();
     };
 
     const handleReschedule = async () => {
@@ -257,7 +293,7 @@ export default function BookingDetailModal({
 
     return (
         <>
-            <BottomSheetModal isOpen={isOpen} onClose={onClose} title="Detalhes da Gravação" maxWidth="560px" preventClose={saving || rescheduling || uploadingCover}>
+            <BottomSheetModal isOpen={isOpen} onClose={handleClose} title="Detalhes da Gravação" maxWidth="560px" preventClose={saving || rescheduling || uploadingCover}>
                 <div className="bdm">
                     {/* Hold banner */}
                     {src.holdExpiresAt && new Date(src.holdExpiresAt).getTime() > Date.now() && (
@@ -436,8 +472,11 @@ export default function BookingDetailModal({
 
                     {/* Footer */}
                     <div className="bdm-footer">
-                        {src.status === 'RESERVED' && src.holdExpiresAt && new Date(src.holdExpiresAt).getTime() > Date.now() ? (
-                            <button className="btn btn-primary" onClick={() => { onClose(); navigate('/meus-pagamentos'); }}><CreditCard size={15} /> Pagar agora</button>
+                        {isAwaitingHold ? (
+                            <>
+                                <button className="btn btn-secondary" onClick={handleSaveDraft} disabled={saving}>{saving ? 'Salvando...' : 'Salvar rascunho'}</button>
+                                <button className="btn btn-primary" onClick={handlePayNow} disabled={saving}><CreditCard size={15} /> Pagar agora</button>
+                            </>
                         ) : (
                             <>
                                 {canReschedule() && (
