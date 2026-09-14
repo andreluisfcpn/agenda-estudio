@@ -54,6 +54,14 @@ function CardFormInner({ mode, clientSecret, onSuccess, onError, onCancel, submi
         return () => clearTimeout(t);
     }, [formReady]);
 
+    // O confirmSetup/confirmPayment lança "elements should have a mounted Payment Element" quando o
+    // Payment Element não montou — normalmente porque a Publishable Key não bate com a conta/modo do
+    // SetupIntent (ex.: pk_test com chaves live), ou o form ainda não carregou. Traduz para algo acionável.
+    const friendlyStripeError = (raw: string) =>
+        /mounted Payment Element|Payment Element|Express Checkout Element/i.test(raw)
+            ? 'O formulário de cartão não carregou. Recarregue a página e tente de novo. Se continuar, confirme no painel (Integrações → Stripe) se a Publishable Key (pk_live_…) está correta e é da mesma conta da Secret Key.'
+            : raw;
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!stripe || !elements) return;
@@ -71,7 +79,7 @@ function CardFormInner({ mode, clientSecret, onSuccess, onError, onCancel, submi
                     redirect: 'if_required',
                 });
                 if (error) {
-                    const msg = error.message || 'Erro ao salvar cartão.';
+                    const msg = friendlyStripeError(error.message || 'Erro ao salvar cartão.');
                     setFormError(msg);
                     onError(msg);
                 } else {
@@ -86,7 +94,7 @@ function CardFormInner({ mode, clientSecret, onSuccess, onError, onCancel, submi
                     redirect: 'if_required',
                 });
                 if (error) {
-                    const msg = error.message || 'Erro no pagamento.';
+                    const msg = friendlyStripeError(error.message || 'Erro no pagamento.');
                     setFormError(msg);
                     onError(msg);
                 } else if (paymentIntent?.status === 'succeeded') {
@@ -96,7 +104,7 @@ function CardFormInner({ mode, clientSecret, onSuccess, onError, onCancel, submi
                 }
             }
         } catch (err: unknown) {
-            const msg = getErrorMessage(err) || 'Erro inesperado.';
+            const msg = friendlyStripeError(getErrorMessage(err) || 'Erro inesperado.');
             setFormError(msg);
             onError(msg);
         } finally {
