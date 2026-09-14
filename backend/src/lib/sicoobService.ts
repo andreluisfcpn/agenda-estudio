@@ -130,6 +130,21 @@ function fixNewlines(creds: SicoobCredentials): SicoobCredentials {
     return creds;
 }
 
+/**
+ * Normaliza a chave PIX para o formato que a API Pix (Bacen) exige. Chaves de CPF/CNPJ precisam ir
+ * SÓ com os dígitos — se o admin cadastrou com pontuação (ex.: CNPJ "12.345.678/0001-90"), o Sicoob
+ * rejeita a cobrança por schema. Para evitar qualquer risco de quebrar outros tipos, só agimos quando
+ * a chave casa EXATAMENTE a máscara de CPF ou CNPJ; e-mail, telefone, chave aleatória e uma chave já
+ * só-dígitos passam intactas.
+ */
+const CPF_MASK = /^\d{3}\.\d{3}\.\d{3}-\d{2}$/;
+const CNPJ_MASK = /^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$/;
+export function normalizePixKey(raw: string | undefined | null): string {
+    const key = (raw ?? '').trim();
+    if (CPF_MASK.test(key) || CNPJ_MASK.test(key)) return key.replace(/\D/g, '');
+    return key;
+}
+
 async function getSicoobConfig(): Promise<{ config: SicoobCredentials; environment: 'sandbox' | 'production' } | null> {
     const integration = await prisma.integrationConfig.findUnique({ where: { provider: 'SICOOB' } });
     if (!integration || !integration.enabled) return null;
@@ -174,7 +189,10 @@ async function getSicoobConfig(): Promise<{ config: SicoobCredentials; environme
             return null;
         }
 
-        return { config: fixNewlines(credentials), environment };
+        const normalizedConfig = fixNewlines(credentials);
+        // Chave de CPF/CNPJ cadastrada com pontuação vira só-dígitos (formato exigido pela API Pix).
+        normalizedConfig.pixKey = normalizePixKey(normalizedConfig.pixKey);
+        return { config: normalizedConfig, environment };
     } catch {
         return null;
     }
@@ -307,6 +325,13 @@ export async function sicoobCreatePix(payload: SicoobPixPayload): Promise<Sicoob
 
     const { token, config, environment, api } = await sicoobAuth();
 
+    // Sem a chave PIX do estúdio o corpo vai sem `chave` (ou com string vazia) e o Sicoob rejeita a
+    // cobrança por schema (400) com um erro genérico. Falha aqui com uma mensagem acionável. Em produção
+    // a chave não era validada em lugar nenhum (só clientId/cert/key eram).
+    if (!config.pixKey || !config.pixKey.trim()) {
+        throw new Error('Chave PIX do estúdio não configurada. Cadastre a Chave PIX em Integrações → Sicoob (aba Produção) antes de gerar cobranças.');
+    }
+
     const devedorKey = payload.customer.document.type === 'CNPJ' ? 'cnpj' : 'cpf';
     const body = JSON.stringify({
         calendario: { expiracao: payload.expiresSeconds ?? 3600 },
@@ -335,6 +360,22 @@ export async function sicoobCreatePix(payload: SicoobPixPayload): Promise<Sicoob
         console.log('[Sicoob PIX] status', response.status, 'body', response.body.slice(0, 200));
     }
     if (response.status >= 400) {
+        // Diagnóstico server-side (roda também em produção; o log de sucesso acima é só em dev). Loga
+        // quais campos foram enviados (sem valores sensíveis — nada de CPF/chave em claro) e a resposta
+        // crua do Sicoob, para achar erros de schema em produção sem ficar às cegas.
+        console.error('[Sicoob PIX] cobrança rejeitada', response.status, `(env=${environment})`,
+            '| campos:', JSON.stringify({
+                expiracao: payload.expiresSeconds ?? 3600,
+                devedor: devedorKey,
+                temDocumento: !!payload.customer.document.identity,
+                temNome: !!payload.customer.name,
+                valor: (payload.amount / 100).toFixed(2),
+                temChave: !!config.pixKey,
+                chaveLen: config.pixKey?.length ?? 0,
+                chaveSoDigitos: /^\d+$/.test(config.pixKey || ''),
+                temSolicitacaoPagador: !!payload.description?.trim(),
+            }),
+            '| resposta:', response.body.slice(0, 500));
         throw new Error(`Sicoob criar cobrança falhou — ${formatSicoobError(response.status, response.body)}`);
     }
 
