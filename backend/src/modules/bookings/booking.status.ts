@@ -313,11 +313,18 @@ router.put('/:id/complete', authenticate, authorize('ADMIN'), async (req: Reques
         const agg = deriveStreamAggregates(data.streamMetrics);
         const peakViewers = data.peakViewers != null ? data.peakViewers : agg.peakViewers;
         const chatMessages = data.chatMessages != null ? data.chatMessages : agg.chatMessages;
+        // Duração da sessão: quando o operador não informa um valor, deriva do intervalo entre
+        // "Iniciar Gravação" e agora (a finalização). Só na 1ª finalização com gravação iniciada —
+        // re-salvar métricas de um COMPLETED preserva a duração já registrada (não recalcula do início).
+        let durationMinutes = data.durationMinutes;
+        if (durationMinutes == null && booking.status !== 'COMPLETED' && booking.recordingStartedAt) {
+            durationMinutes = Math.max(1, Math.round((Date.now() - booking.recordingStartedAt.getTime()) / 60000));
+        }
         const updated = await prisma.booking.update({
             where: { id },
             data: {
                 status: BookingStatus.COMPLETED,
-                ...(data.durationMinutes !== undefined && { durationMinutes: data.durationMinutes }),
+                ...(durationMinutes != null && { durationMinutes }),
                 ...(data.isLivestream !== undefined && { isLivestream: data.isLivestream }),
                 ...(data.platforms !== undefined && { platforms: data.platforms }),
                 ...(data.platformLinks !== undefined && { platformLinks: data.platformLinks }),

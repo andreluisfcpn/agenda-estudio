@@ -17,6 +17,7 @@ interface FinalizeBooking {
     date?: string;
     startTime?: string;
     status?: string;
+    recordingStartedAt?: string | null;
     durationMinutes?: number | null;
     isLivestream?: boolean | null;
     platforms?: string | null;
@@ -41,6 +42,9 @@ export default function FinalizeRecordingModal({ isOpen, booking, onClose, onSav
     const uid = useId();
     const { showToast } = useUI();
     const [duration, setDuration] = useState('');
+    // Duração automática: minutos entre "Iniciar Gravação" e a finalização (só na 1ª finalização).
+    const [autoEstimate, setAutoEstimate] = useState<number | null>(null);
+    const [manualDuration, setManualDuration] = useState(false);
     const [isLive, setIsLive] = useState(false);
     const [selected, setSelected] = useState<string[]>([]);
     const [links, setLinks] = useState<Record<string, string>>({});
@@ -56,6 +60,13 @@ export default function FinalizeRecordingModal({ isOpen, booking, onClose, onSav
     // Initialize from the booking each time it opens (pre-fills when editing a finalized one).
     useEffect(() => {
         if (!isOpen || !booking) return;
+        // 1ª finalização com gravação iniciada → duração automática (minutos desde o "Iniciar").
+        const startedMs = booking.recordingStartedAt ? new Date(booking.recordingStartedAt).getTime() : null;
+        const est = (startedMs && booking.status !== 'COMPLETED')
+            ? Math.max(1, Math.round((Date.now() - startedMs) / 60000))
+            : null;
+        setAutoEstimate(est);
+        setManualDuration(est == null); // sem cálculo disponível (COMPLETED/sem início) → entrada manual
         setDuration(booking.durationMinutes != null ? String(booking.durationMinutes) : '');
         const sm = parseStreamMetrics(booking.streamMetrics);
         const plats = parsePlatforms(booking.platforms);
@@ -99,7 +110,9 @@ export default function FinalizeRecordingModal({ isOpen, booking, onClose, onSav
             // Gravado (não ao vivo): só duração + 1 link de acesso à gravação.
             if (!isLive && recordingUrl.trim()) linksObj.GRAVACAO = recordingUrl.trim();
             await bookingsApi.complete(booking.id, {
-                durationMinutes: duration === '' ? null : Number(duration),
+                // Automático: manda null e o backend deriva o intervalo início→finalização no instante do
+                // request (mesmo caminho do Dashboard). Manual: o valor digitado. autoEstimate é só a prévia.
+                durationMinutes: manualDuration ? (duration === '' ? null : Number(duration)) : null,
                 isLivestream: isLive,
                 platforms: JSON.stringify(usePlatforms),
                 platformLinks: JSON.stringify(linksObj),
@@ -125,11 +138,32 @@ export default function FinalizeRecordingModal({ isOpen, booking, onClose, onSav
 
                 {error && <div className="admin-alert admin-alert--danger" role="alert">{error}</div>}
 
-                {/* Duração total (sempre) */}
+                {/* Duração total — automática (do início ao fim) ou informada manualmente */}
                 <div style={{ marginBottom: 16 }}>
                     <label style={labelCss} htmlFor={`${uid}-duration`}><Timer size={13} aria-hidden="true" /> Duração total (min)</label>
-                    <input id={`${uid}-duration`} type="text" inputMode="numeric" value={duration} placeholder="Ex: 120" style={inputCss}
-                        onChange={e => setDuration(e.target.value.replace(/[^\d]/g, ''))} />
+                    {manualDuration ? (
+                        <>
+                            <input id={`${uid}-duration`} type="text" inputMode="numeric" value={duration} placeholder="Ex: 120" style={inputCss}
+                                onChange={e => setDuration(e.target.value.replace(/[^\d]/g, ''))} />
+                            {autoEstimate != null && (
+                                <button type="button" onClick={() => setManualDuration(false)}
+                                    style={{ background: 'none', border: 'none', padding: '6px 0 0', cursor: 'pointer', color: 'var(--accent-primary)', fontSize: '0.6875rem', fontWeight: 600 }}>
+                                    Usar duração automática (~{autoEstimate} min)
+                                </button>
+                            )}
+                        </>
+                    ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', padding: '10px 14px', borderRadius: 10, background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.28)' }}>
+                            <span style={{ fontSize: '0.8125rem', color: 'var(--text-primary)', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                                <Timer size={15} style={{ color: 'var(--success)' }} aria-hidden="true" />
+                                <span><strong>~{autoEstimate} min</strong> até agora · registrada automaticamente do início à finalização</span>
+                            </span>
+                            <button type="button" onClick={() => { setManualDuration(true); setDuration(autoEstimate != null ? String(autoEstimate) : ''); }}
+                                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent-primary)', fontSize: '0.6875rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                Informar manualmente
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 {/* Livestream toggle */}
