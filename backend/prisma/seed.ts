@@ -111,9 +111,16 @@ async function main() {
     // gateway
     {
       key: "gateway_stripe_fee_pct",
-      value: "4",
+      value: "3.99",
       type: "percent",
       label: "Taxa Stripe (%)",
+      group: "gateway",
+    },
+    {
+      key: "gateway_stripe_fee_cents",
+      value: "39",
+      type: "number",
+      label: "Taxa Fixa Stripe por Transação (centavos)",
       group: "gateway",
     },
     {

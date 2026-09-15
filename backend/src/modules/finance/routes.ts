@@ -54,7 +54,11 @@ router.get('/closing/:year/:month', authenticate, authorize('ADMIN'), async (req
         let paidCount = 0;   // derivado do status real (não da soma por provider)
         let unpaidCount = 0;
 
+        // Stripe (Brasil) cobra PERCENTUAL + TAXA FIXA por transação (ex.: 3,99% + R$0,39). O fixo
+        // domina em valores pequenos (uma cobrança de R$0,52 fica líquida ~R$0,11). Sem somar o fixo,
+        // o líquido do relatório ficava superestimado (divergia do extrato real do Stripe).
         const stripeFeeRate = (await getConfig('gateway_stripe_fee_pct')) / 100;
+        const stripeFeeFixedCents = await getConfig('gateway_stripe_fee_cents');
         const coraFeeCents = await getConfig('gateway_cora_fee_cents');
 
         // Load admin-configured payment method labels
@@ -79,7 +83,9 @@ router.get('/closing/:year/:month', authenticate, authorize('ADMIN'), async (req
 
                 // Deduct fees based on provider (dynamic from config)
                 if (p.provider === 'STRIPE') {
-                    fee = Math.round(p.amount * stripeFeeRate);
+                    // Percentual + taxa fixa; nunca ultrapassa o valor bruto (evita líquido negativo
+                    // num teste minúsculo). O Stripe cobra o fixo mesmo assim, mas o líquido não fica < 0.
+                    fee = Math.min(p.amount, Math.round(p.amount * stripeFeeRate) + stripeFeeFixedCents);
                     stripeCount++;
                 } else if (p.provider === 'CORA') {
                     fee = coraFeeCents;

@@ -29,7 +29,8 @@ const DEFAULTS: Record<string, string> = {
     operating_days: '1,2,3,4,5,6',
     close_time: '23:00',
     // ── gateway ──
-    gateway_stripe_fee_pct: '4',
+    gateway_stripe_fee_pct: '3.99',
+    gateway_stripe_fee_cents: '39',
     gateway_cora_fee_cents: '200',
     // ── studio ──
     studio_name: 'Estúdio Búzios Digital',

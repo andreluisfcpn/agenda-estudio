@@ -38,8 +38,9 @@ export const BUSINESS_CONFIG_CATALOG: ConfigCatalogItem[] = [
     // Tarifa fixa de cartão por nº de parcelas (1x..12x) — fonte central única.
     { key: 'card_installment_surcharges', value: '{"1":0,"2":5,"3":7,"4":8,"5":10,"6":11,"7":13,"8":14,"9":16,"10":17,"11":19,"12":20}', type: 'json', label: 'Tarifa de Cartão por Parcela (%)', group: 'payments' },
     // ── Gateway (taxas de processamento dos provedores) ──
-    { key: 'gateway_stripe_fee_pct',  value: '4',   type: 'percent', label: 'Taxa de Processamento Stripe (%)',   group: 'gateway' },
-    { key: 'gateway_cora_fee_cents',  value: '200', type: 'cents',   label: 'Taxa de Processamento Cora (centavos)', group: 'gateway' },
+    { key: 'gateway_stripe_fee_pct',   value: '3.99', type: 'percent', label: 'Taxa de Processamento Stripe (%)',              group: 'gateway' },
+    { key: 'gateway_stripe_fee_cents', value: '39',   type: 'cents',   label: 'Taxa Fixa Stripe por Transação (centavos)',  group: 'gateway' },
+    { key: 'gateway_cora_fee_cents',   value: '200',  type: 'cents',   label: 'Taxa de Processamento Cora (centavos)',      group: 'gateway' },
     // ── Studio & Branding (aba "Gerais") — fonte única do catálogo ──
     { key: 'studio_name',       value: 'Estúdio Búzios Digital', type: 'string', label: 'Nome do Estúdio',   group: 'studio' },
     { key: 'studio_email',      value: 'contato@buzios.digital', type: 'string', label: 'E-mail de Contato', group: 'studio' },
