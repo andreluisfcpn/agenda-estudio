@@ -12,6 +12,7 @@ import { HeroSkeleton } from '../components/ui/SkeletonLoader';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import StatusBadge from '../components/ui/StatusBadge';
 import FinalizeRecordingModal from '../components/admin/bookings/FinalizeRecordingModal';
+import StatusReasonModal, { type ReasonKind } from '../components/admin/bookings/StatusReasonModal';
 import { TIER_META, BOOKING_STATUS_META, getMeta } from '../constants/adminMeta';
 
 import { formatBRL, getInitials } from '../utils/format';
@@ -31,6 +32,8 @@ export default function AdminTodayPage() {
     const [loadError, setLoadError] = useState(false);
     const [expandedSlot, setExpandedSlot] = useState<string | null>(null);
     const [finalizeBooking, setFinalizeBooking] = useState<BookingWithUser | null>(null);
+    const [reasonModal, setReasonModal] = useState<{ booking: BookingWithUser; kind: ReasonKind } | null>(null);
+    const [savingReason, setSavingReason] = useState(false);
 
     const [adminNotes, setAdminNotes] = useState('');
     const [clientNotes, setClientNotes] = useState('');
@@ -64,6 +67,28 @@ export default function AdminTodayPage() {
             showToast(`${label} registrado com sucesso!`);
             await loadData();
         } catch (err: unknown) { console.error(err); }
+    };
+
+    // Operador clica em "Iniciar Gravação" → registra quem operou e quando (pré-requisito p/ finalizar).
+    const handleStartRecording = async (bookingId: string) => {
+        try {
+            await bookingsApi.startRecording(bookingId);
+            showToast('🔴 Gravação iniciada!');
+            await loadData();
+        } catch (err: unknown) { showToast({ message: getErrorMessage(err) || 'Erro ao iniciar a gravação.', type: 'error' }); }
+    };
+
+    // Falta / Não Realizado passam por um modal que exige o MOTIVO antes de aplicar o status.
+    const handleConfirmReason = async (reason: string) => {
+        if (!reasonModal) return;
+        setSavingReason(true);
+        try {
+            await bookingsApi.update(reasonModal.booking.id, { status: reasonModal.kind, statusReason: reason });
+            showToast(reasonModal.kind === 'FALTA' ? 'Falta registrada.' : 'Marcado como não realizado — crédito liberado.');
+            setReasonModal(null);
+            await loadData();
+        } catch (err: unknown) { showToast({ message: getErrorMessage(err) || 'Erro ao registrar.', type: 'error' }); }
+        finally { setSavingReason(false); }
     };
 
     const handleCancel = (bookingId: string, clientName: string) => {
@@ -336,16 +361,26 @@ export default function AdminTodayPage() {
                                                             Confirmar
                                                         </button>
                                                     )}
-                                                    <button className="today-action-btn today-action-btn--success"
-                                                        aria-label="Finalizar gravação"
-                                                        style={{ padding: '4px 10px', fontSize: '0.75rem' }}
-                                                        onClick={(e) => { e.stopPropagation(); setFinalizeBooking(booking); }}>
-                                                        <Flag size={15} aria-hidden="true" />
-                                                    </button>
+                                                    {booking.status === 'CONFIRMED' && !booking.recordingStartedAt && (
+                                                        <button className="today-action-btn today-action-btn--danger"
+                                                            aria-label="Iniciar gravação"
+                                                            style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                                                            onClick={(e) => { e.stopPropagation(); handleStartRecording(booking.id); }}>
+                                                            <Radio size={15} aria-hidden="true" />
+                                                        </button>
+                                                    )}
+                                                    {booking.status === 'CONFIRMED' && booking.recordingStartedAt && (
+                                                        <button className="today-action-btn today-action-btn--success"
+                                                            aria-label="Finalizar gravação"
+                                                            style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                                                            onClick={(e) => { e.stopPropagation(); setFinalizeBooking(booking); }}>
+                                                            <Flag size={15} aria-hidden="true" />
+                                                        </button>
+                                                    )}
                                                     <button className="today-action-btn today-action-btn--danger"
                                                         aria-label="Registrar falta"
                                                         style={{ padding: '4px 10px', fontSize: '0.75rem' }}
-                                                        onClick={(e) => { e.stopPropagation(); handleStatusChange(booking.id, 'FALTA', 'Falta'); }}>
+                                                        onClick={(e) => { e.stopPropagation(); setReasonModal({ booking, kind: 'FALTA' }); }}>
                                                         <XCircle size={15} aria-hidden="true" />
                                                     </button>
                                                 </div>
@@ -370,16 +405,25 @@ export default function AdminTodayPage() {
                                                             <CheckCircle2 size={14} aria-hidden="true" /> Confirmar Presença
                                                         </button>
                                                     )}
-                                                    <button className="today-action-btn today-action-btn--success"
-                                                        onClick={() => setFinalizeBooking(booking)}>
-                                                        <Flag size={14} aria-hidden="true" /> Finalizar gravação
-                                                    </button>
+                                                    {/* CONFIRMED: iniciar (marca operador) → depois libera o Finalizar. */}
+                                                    {booking.status === 'CONFIRMED' && !booking.recordingStartedAt && (
+                                                        <button className="today-action-btn today-action-btn--danger"
+                                                            onClick={() => handleStartRecording(booking.id)}>
+                                                            <Radio size={14} aria-hidden="true" /> Iniciar Gravação
+                                                        </button>
+                                                    )}
+                                                    {booking.status === 'CONFIRMED' && booking.recordingStartedAt && (
+                                                        <button className="today-action-btn today-action-btn--success"
+                                                            onClick={() => setFinalizeBooking(booking)}>
+                                                            <Flag size={14} aria-hidden="true" /> Finalizar gravação
+                                                        </button>
+                                                    )}
                                                     <button className="today-action-btn today-action-btn--danger"
-                                                        onClick={() => handleStatusChange(booking.id, 'FALTA', 'Falta')}>
+                                                        onClick={() => setReasonModal({ booking, kind: 'FALTA' })}>
                                                         <XCircle size={14} aria-hidden="true" /> Falta
                                                     </button>
                                                     <button className="today-action-btn today-action-btn--teal"
-                                                        onClick={() => handleStatusChange(booking.id, 'NAO_REALIZADO', 'Não Realizado')}>
+                                                        onClick={() => setReasonModal({ booking, kind: 'NAO_REALIZADO' })}>
                                                         <AlertCircle size={14} aria-hidden="true" /> Não Realizado
                                                     </button>
                                                     <div style={{ flex: 1 }} />
@@ -387,6 +431,23 @@ export default function AdminTodayPage() {
                                                         onClick={() => handleCancel(booking.id, booking.user.name)}>
                                                         <Ban size={14} aria-hidden="true" /> Cancelar
                                                     </button>
+                                                </div>
+                                            )}
+
+                                            {/* Em gravação — quem iniciou e quando. */}
+                                            {booking.status === 'CONFIRMED' && booking.recordingStartedAt && (
+                                                <div style={{ margin: '10px 0 0', padding: '8px 12px', borderRadius: 10, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                    <Radio size={13} aria-hidden="true" /> Em gravação — iniciada por {booking.recordingStartedByName || 'operador'} às {new Date(booking.recordingStartedAt).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })}
+                                                </div>
+                                            )}
+
+                                            {/* Motivo registrado na Falta / Não Realizado. */}
+                                            {(booking.status === 'FALTA' || booking.status === 'NAO_REALIZADO') && booking.statusReason && (
+                                                <div style={{ margin: '10px 0 0', padding: '8px 12px', borderRadius: 10, background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                                                    <strong style={{ color: booking.status === 'FALTA' ? 'var(--danger)' : 'var(--warning)' }}>
+                                                        {booking.status === 'FALTA' ? 'Motivo da falta: ' : 'Motivo (não realizado): '}
+                                                    </strong>
+                                                    {booking.statusReason}
                                                 </div>
                                             )}
 
@@ -478,6 +539,15 @@ export default function AdminTodayPage() {
                 booking={finalizeBooking}
                 onClose={() => setFinalizeBooking(null)}
                 onSaved={() => { setFinalizeBooking(null); loadData(); }}
+            />
+
+            <StatusReasonModal
+                isOpen={!!reasonModal}
+                kind={reasonModal?.kind ?? null}
+                subtitle={reasonModal ? `${reasonModal.booking.user.name} · ${reasonModal.booking.startTime}` : undefined}
+                onConfirm={handleConfirmReason}
+                onClose={() => setReasonModal(null)}
+                saving={savingReason}
             />
         </div>
     );

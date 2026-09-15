@@ -1905,6 +1905,10 @@ export const BookingScalarFieldEnum = {
   episodeTitle: 'episodeTitle',
   episodeDescription: 'episodeDescription',
   coverImageUrl: 'coverImageUrl',
+  recordingStartedAt: 'recordingStartedAt',
+  recordingStartedById: 'recordingStartedById',
+  recordingStartedByName: 'recordingStartedByName',
+  statusReason: 'statusReason',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const

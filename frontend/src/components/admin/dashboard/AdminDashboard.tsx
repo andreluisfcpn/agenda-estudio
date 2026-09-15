@@ -4,11 +4,12 @@ import { bookingsApi, contractsApi, usersApi, BookingWithUser, Contract, UserSum
 import { useUI } from '../../../context/UIContext';
 import { useNavigate } from 'react-router-dom';
 import StatusBadge from '../../ui/StatusBadge';
+import StatusReasonModal, { type ReasonKind } from '../bookings/StatusReasonModal';
 import AdminPageHeader from '../AdminPageHeader';
 import { DashboardSkeleton } from '../../ui/SkeletonLoader';
 import {
     CalendarDays, LayoutDashboard, Flag, XCircle, ClipboardCheck, AlertTriangle,
-    AlertCircle, Clock, CheckCircle2, TrendingUp, CalendarClock, Target, Moon,
+    AlertCircle, Clock, CheckCircle2, TrendingUp, CalendarClock, Target, Moon, Radio,
 } from 'lucide-react';
 import { TIER_META, BOOKING_STATUS_META, getMeta } from '../../../constants/adminMeta';
 import { formatBRL, DAY_NAMES, getInitials } from '../../../utils/format';
@@ -56,6 +57,8 @@ export default function AdminDashboard() {
     const [allContracts, setAllContracts] = useState<Contract[]>([]);
     const [allUsers, setAllUsers] = useState<UserSummary[]>([]);
     const [loading, setLoading] = useState(true);
+    const [reasonModal, setReasonModal] = useState<{ booking: BookingWithUser; kind: ReasonKind } | null>(null);
+    const [savingReason, setSavingReason] = useState(false);
 
     useEffect(() => { loadAll(); }, []);
 
@@ -74,15 +77,28 @@ export default function AdminDashboard() {
         finally { setLoading(false); }
     };
 
-    const handleQuickAction = async (id: string, action: 'checkin' | 'complete' | 'falta') => {
+    const handleQuickAction = async (id: string, action: 'checkin' | 'start' | 'complete') => {
         try {
             let res;
             if (action === 'checkin') res = await bookingsApi.checkIn(id);
-            else if (action === 'complete') res = await bookingsApi.complete(id);
-            else res = await bookingsApi.markFalta(id);
+            else if (action === 'start') res = await bookingsApi.startRecording(id);
+            else res = await bookingsApi.complete(id);
             showToast(res.message);
             await loadAll();
         } catch (err: unknown) { showToast(getErrorMessage(err) || 'Erro ao atualizar.'); }
+    };
+
+    // Falta / Não Realizado passam pelo modal que exige o MOTIVO antes de aplicar o status (igual à tela Hoje).
+    const handleConfirmReason = async (reason: string) => {
+        if (!reasonModal) return;
+        setSavingReason(true);
+        try {
+            await bookingsApi.update(reasonModal.booking.id, { status: reasonModal.kind, statusReason: reason });
+            showToast(reasonModal.kind === 'FALTA' ? 'Falta registrada.' : 'Marcado como não realizado — crédito liberado.');
+            setReasonModal(null);
+            await loadAll();
+        } catch (err: unknown) { showToast(getErrorMessage(err) || 'Erro ao registrar.'); }
+        finally { setSavingReason(false); }
     };
 
     if (loading) return <DashboardSkeleton />;
@@ -220,20 +236,28 @@ export default function AdminDashboard() {
                                             </button>
                                             <button className="today-action-btn today-action-btn--danger" title="Registrar Falta"
                                                 aria-label="Registrar falta"
-                                                onClick={() => handleQuickAction(b.id, 'falta')}>
+                                                onClick={() => setReasonModal({ booking: b, kind: 'FALTA' })}>
                                                 <XCircle size={15} aria-hidden="true" />
                                             </button>
                                         </div>
                                     )}
                                     {b && b.status === 'CONFIRMED' && !isPast && (
                                         <div className="dash-slot__actions">
-                                            <button className="today-action-btn today-action-btn--success" title="Finalizar Sessão"
-                                                onClick={() => handleQuickAction(b.id, 'complete')}>
-                                                <Flag size={14} aria-hidden="true" /> Finalizar
-                                            </button>
+                                            {/* Iniciar Gravação é obrigatório antes de finalizar (registra o operador presente). */}
+                                            {!b.recordingStartedAt ? (
+                                                <button className="today-action-btn today-action-btn--danger" title="Iniciar Gravação"
+                                                    onClick={() => handleQuickAction(b.id, 'start')}>
+                                                    <Radio size={14} aria-hidden="true" /> Iniciar
+                                                </button>
+                                            ) : (
+                                                <button className="today-action-btn today-action-btn--success" title="Finalizar Sessão"
+                                                    onClick={() => handleQuickAction(b.id, 'complete')}>
+                                                    <Flag size={14} aria-hidden="true" /> Finalizar
+                                                </button>
+                                            )}
                                             <button className="today-action-btn today-action-btn--danger" title="Registrar Falta"
                                                 aria-label="Registrar falta"
-                                                onClick={() => handleQuickAction(b.id, 'falta')}>
+                                                onClick={() => setReasonModal({ booking: b, kind: 'FALTA' })}>
                                                 <XCircle size={15} aria-hidden="true" />
                                             </button>
                                         </div>
@@ -430,6 +454,15 @@ export default function AdminDashboard() {
                     )}
                 </div>
             </div>
+
+            <StatusReasonModal
+                isOpen={!!reasonModal}
+                kind={reasonModal?.kind ?? null}
+                subtitle={reasonModal ? `${reasonModal.booking.user.name} · ${reasonModal.booking.startTime}` : undefined}
+                onConfirm={handleConfirmReason}
+                onClose={() => setReasonModal(null)}
+                saving={savingReason}
+            />
         </div>
     );
 }

@@ -368,6 +368,13 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
             return;
         }
 
+        // Não se marca FALTA em uma sessão já concluída ou cancelada (replica o guard da antiga
+        // rota /mark-falta, agora que a falta é registrada por este PATCH com motivo).
+        if (data.status === 'FALTA' && (booking.status === 'COMPLETED' || booking.status === 'CANCELLED')) {
+            res.status(400).json({ error: `Não é possível marcar falta em um agendamento ${booking.status}.` });
+            return;
+        }
+
         const updateData: Prisma.BookingUncheckedUpdateInput = {};
 
         if (data.status) {
@@ -378,6 +385,8 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
 
         if (data.adminNotes !== undefined) updateData.adminNotes = data.adminNotes;
         if (data.clientNotes !== undefined) updateData.clientNotes = data.clientNotes;
+        // Motivo de FALTA / NÃO REALIZADO (informado pelo operador no modal).
+        if (data.statusReason !== undefined) updateData.statusReason = data.statusReason;
         if (data.platforms !== undefined) updateData.platforms = data.platforms;
         if (data.platformLinks !== undefined) updateData.platformLinks = data.platformLinks;
 

@@ -50,6 +50,7 @@ export const adminUpdateBookingSchema = z.object({
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     startTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
     status: z.enum(['RESERVED', 'CONFIRMED', 'COMPLETED', 'FALTA', 'NAO_REALIZADO', 'CANCELLED']).optional(),
+    statusReason: z.string().max(2000).optional().nullable(), // motivo informado em FALTA / NÃO REALIZADO
     adminNotes: z.string().optional(),
     clientNotes: z.string().optional(),
     platforms: z.string().optional(),

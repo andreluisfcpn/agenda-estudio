@@ -158,6 +158,9 @@ router.get('/:id', authenticate, async (req: Request, res: Response) => {
                     audienceOrigin: true,
                     isLivestream: true,
                     streamMetrics: true,
+                    recordingStartedAt: true,
+                    recordingStartedByName: true,
+                    statusReason: true,
                 },
             },
             payments: {

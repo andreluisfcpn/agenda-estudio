@@ -15,7 +15,7 @@ import { getPaymentBadge } from '../constants/paymentMethods';
 import { decomposeBookingPricing, AddonCatalogEntry } from '../utils/bookingPricing';
 import { formatBRL } from '../utils/format';
 import { getErrorMessage } from '../utils/errors';
-import { ArrowLeft, Mic, CreditCard, Receipt, Sparkles, ExternalLink, CheckCircle2, Zap, Eye, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Mic, CreditCard, Receipt, Sparkles, ExternalLink, CheckCircle2, Zap, Eye, MessageCircle, Radio, ClipboardCheck } from 'lucide-react';
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' });
 
@@ -86,6 +86,15 @@ export default function AdminContractDetailPage() {
     });
 
     const simulate = async (p: PaymentSummary) => { try { await paymentsApi.simulate(p.id); showToast('Pagamento simulado (sandbox).'); load(); } catch { showToast('Erro na simulação.'); } };
+
+    // Fluxo de gravação em etapas: Confirmar presença → Iniciar (registra operador) → Finalizar.
+    const bookingStep = async (bookingId: string, action: 'checkin' | 'start') => {
+        try {
+            const res = action === 'checkin' ? await bookingsApi.checkIn(bookingId) : await bookingsApi.startRecording(bookingId);
+            showToast(res.message);
+            load();
+        } catch (e) { showToast(getErrorMessage(e) || 'Erro ao atualizar a gravação.'); }
+    };
 
 
     // Editing recurring services is allowed only for FIXO/FLEX active contracts (recompute future).
@@ -222,8 +231,6 @@ export default function AdminContractDetailPage() {
                         {bookings.map(b => {
                             const dec = decomposeBookingPricing({ priceCents: b.price, addOns: b.addOns, addonCatalog: catalog, discountPct, priceIncludesServices });
                             const bMeta = getMeta(BOOKING_STATUS_META, b.status);
-                            const canFinalize = b.status === 'CONFIRMED' || b.status === 'RESERVED';
-                            const canEditData = b.status === 'COMPLETED';
                             return (
                                 <div key={b.id} style={{ padding: 'var(--space-3)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-card)' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -258,11 +265,44 @@ export default function AdminContractDetailPage() {
                                             {b.chatMessages != null && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><MessageCircle size={12} aria-hidden="true" /> {b.chatMessages}</span>}
                                         </div>
                                     )}
-                                    {(canFinalize || canEditData) && (
+                                    {/* Fluxo em etapas: Confirmar presença → Iniciar Gravação (registra o operador) → Finalizar. */}
+                                    {b.status === 'RESERVED' && (
+                                        <div style={{ marginTop: 8 }}>
+                                            <button className="btn btn-ghost btn-sm" onClick={() => bookingStep(b.id, 'checkin')}>
+                                                <ClipboardCheck size={14} /> Confirmar presença
+                                            </button>
+                                        </div>
+                                    )}
+                                    {b.status === 'CONFIRMED' && !b.recordingStartedAt && (
+                                        <div style={{ marginTop: 8 }}>
+                                            <button className="btn btn-ghost btn-sm" onClick={() => bookingStep(b.id, 'start')}>
+                                                <Radio size={14} /> Iniciar gravação
+                                            </button>
+                                        </div>
+                                    )}
+                                    {b.status === 'CONFIRMED' && b.recordingStartedAt && (
+                                        <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                            <button className="btn btn-ghost btn-sm" onClick={() => setFinalizeBooking(b)}>
+                                                <CheckCircle2 size={14} /> Finalizar gravação
+                                            </button>
+                                            <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--danger)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                                <Radio size={12} /> Em gravação{b.recordingStartedByName ? ` — ${b.recordingStartedByName}` : ''}
+                                            </span>
+                                        </div>
+                                    )}
+                                    {b.status === 'COMPLETED' && (
                                         <div style={{ marginTop: 8 }}>
                                             <button className="btn btn-ghost btn-sm" onClick={() => setFinalizeBooking(b)}>
-                                                <CheckCircle2 size={14} /> {canEditData ? 'Editar dados da gravação' : 'Finalizar gravação'}
+                                                <CheckCircle2 size={14} /> Editar dados da gravação
                                             </button>
+                                        </div>
+                                    )}
+                                    {(b.status === 'FALTA' || b.status === 'NAO_REALIZADO') && b.statusReason && (
+                                        <div style={{ marginTop: 8, fontSize: '0.6875rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                                            <strong style={{ color: b.status === 'FALTA' ? 'var(--danger)' : 'var(--warning)' }}>
+                                                {b.status === 'FALTA' ? 'Motivo da falta: ' : 'Motivo (não realizado): '}
+                                            </strong>
+                                            {b.statusReason}
                                         </div>
                                     )}
                                 </div>

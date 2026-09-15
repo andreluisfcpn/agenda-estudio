@@ -304,6 +304,11 @@ router.put('/:id/complete', authenticate, authorize('ADMIN'), async (req: Reques
         if (!['CONFIRMED', 'RESERVED', 'COMPLETED'].includes(booking.status)) {
             res.status(400).json({ error: `Não é possível finalizar um agendamento com status ${booking.status}.` }); return;
         }
+        // "Iniciar Gravação" é obrigatório antes da 1ª finalização (marca que houve um operador presente).
+        // Re-salvar métricas de uma gravação já COMPLETED não re-exige (o início já ficou registrado).
+        if (booking.status !== 'COMPLETED' && !booking.recordingStartedAt) {
+            res.status(400).json({ error: 'Inicie a gravação antes de finalizar (clique em "Iniciar Gravação").' }); return;
+        }
         // Legacy aggregates: explicit value wins, else derive from per-network streamMetrics.
         const agg = deriveStreamAggregates(data.streamMetrics);
         const peakViewers = data.peakViewers != null ? data.peakViewers : agg.peakViewers;
@@ -331,17 +336,37 @@ router.put('/:id/complete', authenticate, authorize('ADMIN'), async (req: Reques
     }
 });
 
-// ─── PUT /api/bookings/:id/mark-falta (Admin) ───────────
+// Falta é registrada via PATCH /:id (status=FALTA + statusReason) — todo no-show carrega um motivo.
+// A antiga rota reason-less /mark-falta foi removida para não abrir uma porta lateral sem motivo.
 
-router.put('/:id/mark-falta', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
+// ─── PUT /api/bookings/:id/start-recording (Admin) ──────
+// O operador clica em "Iniciar Gravação" — registra QUEM operou e QUANDO. Marca que houve alguém
+// presente e é pré-requisito para finalizar (ver o guard em /:id/complete).
+
+router.put('/:id/start-recording', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
     const id = req.params.id as string;
     const booking = await prisma.booking.findUnique({ where: { id } });
     if (!booking) { res.status(404).json({ error: 'Agendamento não encontrado.' }); return; }
-    if (booking.status === 'COMPLETED' || booking.status === 'CANCELLED') {
-        res.status(400).json({ error: `Não é possível marcar falta em um agendamento ${booking.status}.` }); return;
+    // Só faz sentido iniciar uma gravação confirmada (paga) e ainda não finalizada.
+    if (booking.status !== 'CONFIRMED') {
+        res.status(400).json({ error: `Só é possível iniciar uma gravação confirmada (status atual: ${booking.status}).` });
+        return;
     }
-    const updated = await prisma.booking.update({ where: { id }, data: { status: BookingStatus.FALTA } });
-    res.json({ booking: updated, message: '❌ Sessão marcada como falta (no-show).' });
+    // Idempotente: se já foi iniciada, mantém o operador/horário original (não sobrescreve).
+    if (booking.recordingStartedAt) {
+        res.json({ booking, message: 'Gravação já iniciada.' });
+        return;
+    }
+    const operator = await prisma.user.findUnique({ where: { id: req.user!.userId }, select: { name: true } });
+    const updated = await prisma.booking.update({
+        where: { id },
+        data: {
+            recordingStartedAt: new Date(),
+            recordingStartedById: req.user!.userId,
+            recordingStartedByName: operator?.name ?? null,
+        },
+    });
+    res.json({ booking: updated, message: '🔴 Gravação iniciada.' });
 });
 
 } // end registerStatusRoutes

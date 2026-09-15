@@ -11,7 +11,7 @@ registerAvailabilityRoutes(router); // GET /public-availability, /availability
 registerCreationRoutes(router);     // POST /, /bulk, /admin
 
 // Param routes after static ones
-registerStatusRoutes(router);       // POST /:id/complete-payment | PATCH /:id/confirm | PUT /:id/client-cancel, check-in, complete, mark-falta
+registerStatusRoutes(router);       // POST /:id/complete-payment | PATCH /:id/confirm | PUT /:id/client-cancel, check-in, complete, start-recording
 registerManagementRoutes(router);   // GET /my, / | PATCH /:id, /:id/client-update, /:id/reschedule | POST /:id/addons | DELETE /:id, /:id/hard-delete
 
 export default router;

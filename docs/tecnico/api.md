@@ -36,7 +36,7 @@ API REST sob o prefixo **`/api`**, registrada em [`backend/src/index.ts`](../../
 | POST | `/admin` | Admin | Cria agendamento sem cobrança |
 | GET | `/my` | Autenticado | Lista os agendamentos do usuário |
 | GET | `/` | Autenticado | Lista agendamentos (admin vê todos) |
-| PATCH | `/:id` | Autenticado | Atualiza (remarcar, notas) |
+| PATCH | `/:id` | Autenticado | Atualiza (remarcar, notas, status; Falta/Não Realizado exigem motivo — admin) |
 | PATCH | `/:id/client-update` | Autenticado | Atualizações do cliente (plataformas, notas) |
 | PATCH | `/:id/reschedule` | Autenticado | Remarcação (janela de 7 dias) |
 | POST | `/:id/addons` | Autenticado | Adiciona serviços ao agendamento |
@@ -48,7 +48,7 @@ API REST sob o prefixo **`/api`**, registrada em [`backend/src/index.ts`](../../
 | PUT | `/:id/client-cancel` | Autenticado | Cliente cancela a própria sessão |
 | PUT | `/:id/check-in` | Admin | Check-in da sessão |
 | PUT | `/:id/complete` | Admin | Conclui a sessão (registra métricas) |
-| PUT | `/:id/mark-falta` | Admin | Marca falta (devolve crédito Flex) |
+| PUT | `/:id/start-recording` | Admin | Inicia a gravação (registra o operador; obrigatório antes de finalizar) |
 
 ## contracts — `/api/contracts` ([routes](../../backend/src/modules/contracts/routes.ts))
 

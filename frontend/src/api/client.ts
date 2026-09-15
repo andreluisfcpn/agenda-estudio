@@ -117,14 +117,14 @@ export const bookingsApi = {
     completePayment: (id: string, data: { paymentIntentId?: string }) => request<{ booking: Booking; message: string }>(`/bookings/${id}/complete-payment`, { method: 'POST', body: JSON.stringify(data) }),
     createBulk: (data: { contractId: string; slots: { date: string; startTime: string }[] }) => request<{ message: string }>('/bookings/bulk', { method: 'POST', body: JSON.stringify(data) }),
     adminCreate: (data: { userId: string; date: string; startTime: string; status?: string; addOns?: string[]; adminNotes?: string; customPrice?: number; paymentMethod?: 'CARTAO' | 'PIX' | 'BOLETO'; couponCode?: string }) => request<{ booking: Booking; message: string; paymentId?: string; paymentAmount?: number; couponDiscount?: number; boletoUrl?: string; boletoError?: string }>('/bookings/admin', { method: 'POST', body: JSON.stringify(data) }),
-    update: (id: string, data: { date?: string; startTime?: string; status?: string; adminNotes?: string; clientNotes?: string; platforms?: string; platformLinks?: string, durationMinutes?: number | null, peakViewers?: number | null, chatMessages?: number | null, audienceOrigin?: string | null, isLivestream?: boolean | null, streamMetrics?: string | null }) => request<{ booking: BookingWithUser; message: string }>(`/bookings/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    update: (id: string, data: { date?: string; startTime?: string; status?: string; statusReason?: string | null; adminNotes?: string; clientNotes?: string; platforms?: string; platformLinks?: string, durationMinutes?: number | null, peakViewers?: number | null, chatMessages?: number | null, audienceOrigin?: string | null, isLivestream?: boolean | null, streamMetrics?: string | null }) => request<{ booking: BookingWithUser; message: string }>(`/bookings/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    startRecording: (id: string) => request<{ booking: BookingWithUser; message: string }>(`/bookings/${id}/start-recording`, { method: 'PUT' }),
     confirm: (id: string) => request<{ booking: Booking; message: string }>(`/bookings/${id}/confirm`, { method: 'PATCH' }),
     cancel: (id: string) => request<{ message: string }>(`/bookings/${id}`, { method: 'DELETE' }),
     hardDelete: (id: string) => request<{ message: string; creditRestored: boolean }>(`/bookings/${id}/hard-delete`, { method: 'DELETE' }),
     clientCancel: (id: string) => request<{ message: string }>(`/bookings/${id}/client-cancel`, { method: 'PUT' }),
     checkIn: (id: string) => request<{ booking: Booking; message: string }>(`/bookings/${id}/check-in`, { method: 'PUT' }),
     complete: (id: string, data?: { durationMinutes?: number | null; isLivestream?: boolean | null; platforms?: string | null; platformLinks?: string | null; streamMetrics?: string | null; audienceOrigin?: string | null; adminNotes?: string | null; clientNotes?: string | null; peakViewers?: number | null; chatMessages?: number | null }) => request<{ booking: Booking; message: string }>(`/bookings/${id}/complete`, { method: 'PUT', body: JSON.stringify(data || {}) }),
-    markFalta: (id: string) => request<{ booking: Booking; message: string }>(`/bookings/${id}/mark-falta`, { method: 'PUT' }),
     getMy: () => request<{ bookings: Booking[] }>('/bookings/my'),
     getOne: (id: string) => request<{ booking: Booking }>(`/bookings/${id}`),
     getAll: (date?: string, status?: string) => {
@@ -350,6 +350,9 @@ export interface Booking {
     episodeTitle?: string | null;
     episodeDescription?: string | null;
     coverImageUrl?: string | null;
+    recordingStartedAt?: string | null;
+    recordingStartedByName?: string | null;
+    statusReason?: string | null;
     addOns?: string[];
     holdExpiresAt?: string | null;
     contract?: {

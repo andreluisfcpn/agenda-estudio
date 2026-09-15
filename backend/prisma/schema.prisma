@@ -271,6 +271,13 @@ model Booking {
   episodeDescription String? @map("episode_description") @db.Text
   coverImageUrl      String? @map("cover_image_url")
 
+  // Operação da gravação (área admin): quem iniciou a gravação e quando (marca que houve um operador
+  // presente; exigido antes de finalizar). statusReason guarda o motivo de FALTA / NÃO REALIZADO.
+  recordingStartedAt     DateTime? @map("recording_started_at")
+  recordingStartedById   String?   @map("recording_started_by_id")
+  recordingStartedByName String?   @map("recording_started_by_name")
+  statusReason           String?   @map("status_reason") @db.Text
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

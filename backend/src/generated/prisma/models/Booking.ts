@@ -65,6 +65,10 @@ export type BookingMinAggregateOutputType = {
   episodeTitle: string | null
   episodeDescription: string | null
   coverImageUrl: string | null
+  recordingStartedAt: Date | null
+  recordingStartedById: string | null
+  recordingStartedByName: string | null
+  statusReason: string | null
   createdAt: Date | null
   updatedAt: Date | null
 }
@@ -94,6 +98,10 @@ export type BookingMaxAggregateOutputType = {
   episodeTitle: string | null
   episodeDescription: string | null
   coverImageUrl: string | null
+  recordingStartedAt: Date | null
+  recordingStartedById: string | null
+  recordingStartedByName: string | null
+  statusReason: string | null
   createdAt: Date | null
   updatedAt: Date | null
 }
@@ -124,6 +132,10 @@ export type BookingCountAggregateOutputType = {
   episodeTitle: number
   episodeDescription: number
   coverImageUrl: number
+  recordingStartedAt: number
+  recordingStartedById: number
+  recordingStartedByName: number
+  statusReason: number
   createdAt: number
   updatedAt: number
   _all: number
@@ -169,6 +181,10 @@ export type BookingMinAggregateInputType = {
   episodeTitle?: true
   episodeDescription?: true
   coverImageUrl?: true
+  recordingStartedAt?: true
+  recordingStartedById?: true
+  recordingStartedByName?: true
+  statusReason?: true
   createdAt?: true
   updatedAt?: true
 }
@@ -198,6 +214,10 @@ export type BookingMaxAggregateInputType = {
   episodeTitle?: true
   episodeDescription?: true
   coverImageUrl?: true
+  recordingStartedAt?: true
+  recordingStartedById?: true
+  recordingStartedByName?: true
+  statusReason?: true
   createdAt?: true
   updatedAt?: true
 }
@@ -228,6 +248,10 @@ export type BookingCountAggregateInputType = {
   episodeTitle?: true
   episodeDescription?: true
   coverImageUrl?: true
+  recordingStartedAt?: true
+  recordingStartedById?: true
+  recordingStartedByName?: true
+  statusReason?: true
   createdAt?: true
   updatedAt?: true
   _all?: true
@@ -345,6 +369,10 @@ export type BookingGroupByOutputType = {
   episodeTitle: string | null
   episodeDescription: string | null
   coverImageUrl: string | null
+  recordingStartedAt: Date | null
+  recordingStartedById: string | null
+  recordingStartedByName: string | null
+  statusReason: string | null
   createdAt: Date
   updatedAt: Date
   _count: BookingCountAggregateOutputType | null
@@ -398,6 +426,10 @@ export type BookingWhereInput = {
   episodeTitle?: Prisma.StringNullableFilter<"Booking"> | string | null
   episodeDescription?: Prisma.StringNullableFilter<"Booking"> | string | null
   coverImageUrl?: Prisma.StringNullableFilter<"Booking"> | string | null
+  recordingStartedAt?: Prisma.DateTimeNullableFilter<"Booking"> | Date | string | null
+  recordingStartedById?: Prisma.StringNullableFilter<"Booking"> | string | null
+  recordingStartedByName?: Prisma.StringNullableFilter<"Booking"> | string | null
+  statusReason?: Prisma.StringNullableFilter<"Booking"> | string | null
   createdAt?: Prisma.DateTimeFilter<"Booking"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Booking"> | Date | string
   user?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>
@@ -431,6 +463,10 @@ export type BookingOrderByWithRelationInput = {
   episodeTitle?: Prisma.SortOrderInput | Prisma.SortOrder
   episodeDescription?: Prisma.SortOrderInput | Prisma.SortOrder
   coverImageUrl?: Prisma.SortOrderInput | Prisma.SortOrder
+  recordingStartedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  recordingStartedById?: Prisma.SortOrderInput | Prisma.SortOrder
+  recordingStartedByName?: Prisma.SortOrderInput | Prisma.SortOrder
+  statusReason?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   user?: Prisma.UserOrderByWithRelationInput
@@ -467,6 +503,10 @@ export type BookingWhereUniqueInput = Prisma.AtLeast<{
   episodeTitle?: Prisma.StringNullableFilter<"Booking"> | string | null
   episodeDescription?: Prisma.StringNullableFilter<"Booking"> | string | null
   coverImageUrl?: Prisma.StringNullableFilter<"Booking"> | string | null
+  recordingStartedAt?: Prisma.DateTimeNullableFilter<"Booking"> | Date | string | null
+  recordingStartedById?: Prisma.StringNullableFilter<"Booking"> | string | null
+  recordingStartedByName?: Prisma.StringNullableFilter<"Booking"> | string | null
+  statusReason?: Prisma.StringNullableFilter<"Booking"> | string | null
   createdAt?: Prisma.DateTimeFilter<"Booking"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Booking"> | Date | string
   user?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>
@@ -500,6 +540,10 @@ export type BookingOrderByWithAggregationInput = {
   episodeTitle?: Prisma.SortOrderInput | Prisma.SortOrder
   episodeDescription?: Prisma.SortOrderInput | Prisma.SortOrder
   coverImageUrl?: Prisma.SortOrderInput | Prisma.SortOrder
+  recordingStartedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  recordingStartedById?: Prisma.SortOrderInput | Prisma.SortOrder
+  recordingStartedByName?: Prisma.SortOrderInput | Prisma.SortOrder
+  statusReason?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   _count?: Prisma.BookingCountOrderByAggregateInput
@@ -538,6 +582,10 @@ export type BookingScalarWhereWithAggregatesInput = {
   episodeTitle?: Prisma.StringNullableWithAggregatesFilter<"Booking"> | string | null
   episodeDescription?: Prisma.StringNullableWithAggregatesFilter<"Booking"> | string | null
   coverImageUrl?: Prisma.StringNullableWithAggregatesFilter<"Booking"> | string | null
+  recordingStartedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Booking"> | Date | string | null
+  recordingStartedById?: Prisma.StringNullableWithAggregatesFilter<"Booking"> | string | null
+  recordingStartedByName?: Prisma.StringNullableWithAggregatesFilter<"Booking"> | string | null
+  statusReason?: Prisma.StringNullableWithAggregatesFilter<"Booking"> | string | null
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"Booking"> | Date | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"Booking"> | Date | string
 }
@@ -566,6 +614,10 @@ export type BookingCreateInput = {
   episodeTitle?: string | null
   episodeDescription?: string | null
   coverImageUrl?: string | null
+  recordingStartedAt?: Date | string | null
+  recordingStartedById?: string | null
+  recordingStartedByName?: string | null
+  statusReason?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   user: Prisma.UserCreateNestedOneWithoutBookingsInput
@@ -599,6 +651,10 @@ export type BookingUncheckedCreateInput = {
   episodeTitle?: string | null
   episodeDescription?: string | null
   coverImageUrl?: string | null
+  recordingStartedAt?: Date | string | null
+  recordingStartedById?: string | null
+  recordingStartedByName?: string | null
+  statusReason?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   payments?: Prisma.PaymentUncheckedCreateNestedManyWithoutBookingInput
@@ -628,6 +684,10 @@ export type BookingUpdateInput = {
   episodeTitle?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   episodeDescription?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   coverImageUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  recordingStartedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  recordingStartedById?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  recordingStartedByName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   user?: Prisma.UserUpdateOneRequiredWithoutBookingsNestedInput
@@ -661,6 +721,10 @@ export type BookingUncheckedUpdateInput = {
   episodeTitle?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   episodeDescription?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   coverImageUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  recordingStartedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  recordingStartedById?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  recordingStartedByName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   payments?: Prisma.PaymentUncheckedUpdateManyWithoutBookingNestedInput
@@ -692,6 +756,10 @@ export type BookingCreateManyInput = {
   episodeTitle?: string | null
   episodeDescription?: string | null
   coverImageUrl?: string | null
+  recordingStartedAt?: Date | string | null
+  recordingStartedById?: string | null
+  recordingStartedByName?: string | null
+  statusReason?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -720,6 +788,10 @@ export type BookingUpdateManyMutationInput = {
   episodeTitle?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   episodeDescription?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   coverImageUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  recordingStartedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  recordingStartedById?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  recordingStartedByName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -750,6 +822,10 @@ export type BookingUncheckedUpdateManyInput = {
   episodeTitle?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   episodeDescription?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   coverImageUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  recordingStartedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  recordingStartedById?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  recordingStartedByName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -790,6 +866,10 @@ export type BookingCountOrderByAggregateInput = {
   episodeTitle?: Prisma.SortOrder
   episodeDescription?: Prisma.SortOrder
   coverImageUrl?: Prisma.SortOrder
+  recordingStartedAt?: Prisma.SortOrder
+  recordingStartedById?: Prisma.SortOrder
+  recordingStartedByName?: Prisma.SortOrder
+  statusReason?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -826,6 +906,10 @@ export type BookingMaxOrderByAggregateInput = {
   episodeTitle?: Prisma.SortOrder
   episodeDescription?: Prisma.SortOrder
   coverImageUrl?: Prisma.SortOrder
+  recordingStartedAt?: Prisma.SortOrder
+  recordingStartedById?: Prisma.SortOrder
+  recordingStartedByName?: Prisma.SortOrder
+  statusReason?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -855,6 +939,10 @@ export type BookingMinOrderByAggregateInput = {
   episodeTitle?: Prisma.SortOrder
   episodeDescription?: Prisma.SortOrder
   coverImageUrl?: Prisma.SortOrder
+  recordingStartedAt?: Prisma.SortOrder
+  recordingStartedById?: Prisma.SortOrder
+  recordingStartedByName?: Prisma.SortOrder
+  statusReason?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -1012,6 +1100,10 @@ export type BookingCreateWithoutUserInput = {
   episodeTitle?: string | null
   episodeDescription?: string | null
   coverImageUrl?: string | null
+  recordingStartedAt?: Date | string | null
+  recordingStartedById?: string | null
+  recordingStartedByName?: string | null
+  statusReason?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   contract: Prisma.ContractCreateNestedOneWithoutBookingsInput
@@ -1043,6 +1135,10 @@ export type BookingUncheckedCreateWithoutUserInput = {
   episodeTitle?: string | null
   episodeDescription?: string | null
   coverImageUrl?: string | null
+  recordingStartedAt?: Date | string | null
+  recordingStartedById?: string | null
+  recordingStartedByName?: string | null
+  statusReason?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   payments?: Prisma.PaymentUncheckedCreateNestedManyWithoutBookingInput
@@ -1103,6 +1199,10 @@ export type BookingScalarWhereInput = {
   episodeTitle?: Prisma.StringNullableFilter<"Booking"> | string | null
   episodeDescription?: Prisma.StringNullableFilter<"Booking"> | string | null
   coverImageUrl?: Prisma.StringNullableFilter<"Booking"> | string | null
+  recordingStartedAt?: Prisma.DateTimeNullableFilter<"Booking"> | Date | string | null
+  recordingStartedById?: Prisma.StringNullableFilter<"Booking"> | string | null
+  recordingStartedByName?: Prisma.StringNullableFilter<"Booking"> | string | null
+  statusReason?: Prisma.StringNullableFilter<"Booking"> | string | null
   createdAt?: Prisma.DateTimeFilter<"Booking"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Booking"> | Date | string
 }
@@ -1131,6 +1231,10 @@ export type BookingCreateWithoutContractInput = {
   episodeTitle?: string | null
   episodeDescription?: string | null
   coverImageUrl?: string | null
+  recordingStartedAt?: Date | string | null
+  recordingStartedById?: string | null
+  recordingStartedByName?: string | null
+  statusReason?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   user: Prisma.UserCreateNestedOneWithoutBookingsInput
@@ -1162,6 +1266,10 @@ export type BookingUncheckedCreateWithoutContractInput = {
   episodeTitle?: string | null
   episodeDescription?: string | null
   coverImageUrl?: string | null
+  recordingStartedAt?: Date | string | null
+  recordingStartedById?: string | null
+  recordingStartedByName?: string | null
+  statusReason?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   payments?: Prisma.PaymentUncheckedCreateNestedManyWithoutBookingInput
@@ -1217,6 +1325,10 @@ export type BookingCreateWithoutPaymentsInput = {
   episodeTitle?: string | null
   episodeDescription?: string | null
   coverImageUrl?: string | null
+  recordingStartedAt?: Date | string | null
+  recordingStartedById?: string | null
+  recordingStartedByName?: string | null
+  statusReason?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   user: Prisma.UserCreateNestedOneWithoutBookingsInput
@@ -1249,6 +1361,10 @@ export type BookingUncheckedCreateWithoutPaymentsInput = {
   episodeTitle?: string | null
   episodeDescription?: string | null
   coverImageUrl?: string | null
+  recordingStartedAt?: Date | string | null
+  recordingStartedById?: string | null
+  recordingStartedByName?: string | null
+  statusReason?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -1293,6 +1409,10 @@ export type BookingUpdateWithoutPaymentsInput = {
   episodeTitle?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   episodeDescription?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   coverImageUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  recordingStartedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  recordingStartedById?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  recordingStartedByName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   user?: Prisma.UserUpdateOneRequiredWithoutBookingsNestedInput
@@ -1325,6 +1445,10 @@ export type BookingUncheckedUpdateWithoutPaymentsInput = {
   episodeTitle?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   episodeDescription?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   coverImageUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  recordingStartedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  recordingStartedById?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  recordingStartedByName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -1354,6 +1478,10 @@ export type BookingCreateManyUserInput = {
   episodeTitle?: string | null
   episodeDescription?: string | null
   coverImageUrl?: string | null
+  recordingStartedAt?: Date | string | null
+  recordingStartedById?: string | null
+  recordingStartedByName?: string | null
+  statusReason?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -1382,6 +1510,10 @@ export type BookingUpdateWithoutUserInput = {
   episodeTitle?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   episodeDescription?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   coverImageUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  recordingStartedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  recordingStartedById?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  recordingStartedByName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   contract?: Prisma.ContractUpdateOneRequiredWithoutBookingsNestedInput
@@ -1413,6 +1545,10 @@ export type BookingUncheckedUpdateWithoutUserInput = {
   episodeTitle?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   episodeDescription?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   coverImageUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  recordingStartedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  recordingStartedById?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  recordingStartedByName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   payments?: Prisma.PaymentUncheckedUpdateManyWithoutBookingNestedInput
@@ -1443,6 +1579,10 @@ export type BookingUncheckedUpdateManyWithoutUserInput = {
   episodeTitle?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   episodeDescription?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   coverImageUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  recordingStartedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  recordingStartedById?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  recordingStartedByName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -1472,6 +1612,10 @@ export type BookingCreateManyContractInput = {
   episodeTitle?: string | null
   episodeDescription?: string | null
   coverImageUrl?: string | null
+  recordingStartedAt?: Date | string | null
+  recordingStartedById?: string | null
+  recordingStartedByName?: string | null
+  statusReason?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -1500,6 +1644,10 @@ export type BookingUpdateWithoutContractInput = {
   episodeTitle?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   episodeDescription?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   coverImageUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  recordingStartedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  recordingStartedById?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  recordingStartedByName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   user?: Prisma.UserUpdateOneRequiredWithoutBookingsNestedInput
@@ -1531,6 +1679,10 @@ export type BookingUncheckedUpdateWithoutContractInput = {
   episodeTitle?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   episodeDescription?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   coverImageUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  recordingStartedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  recordingStartedById?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  recordingStartedByName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   payments?: Prisma.PaymentUncheckedUpdateManyWithoutBookingNestedInput
@@ -1561,6 +1713,10 @@ export type BookingUncheckedUpdateManyWithoutContractInput = {
   episodeTitle?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   episodeDescription?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   coverImageUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  recordingStartedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  recordingStartedById?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  recordingStartedByName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -1622,6 +1778,10 @@ export type BookingSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs 
   episodeTitle?: boolean
   episodeDescription?: boolean
   coverImageUrl?: boolean
+  recordingStartedAt?: boolean
+  recordingStartedById?: boolean
+  recordingStartedByName?: boolean
+  statusReason?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
@@ -1656,6 +1816,10 @@ export type BookingSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exten
   episodeTitle?: boolean
   episodeDescription?: boolean
   coverImageUrl?: boolean
+  recordingStartedAt?: boolean
+  recordingStartedById?: boolean
+  recordingStartedByName?: boolean
+  statusReason?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
@@ -1688,6 +1852,10 @@ export type BookingSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exten
   episodeTitle?: boolean
   episodeDescription?: boolean
   coverImageUrl?: boolean
+  recordingStartedAt?: boolean
+  recordingStartedById?: boolean
+  recordingStartedByName?: boolean
+  statusReason?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
@@ -1720,11 +1888,15 @@ export type BookingSelectScalar = {
   episodeTitle?: boolean
   episodeDescription?: boolean
   coverImageUrl?: boolean
+  recordingStartedAt?: boolean
+  recordingStartedById?: boolean
+  recordingStartedByName?: boolean
+  statusReason?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }
 
-export type BookingOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "userId" | "contractId" | "date" | "startTime" | "endTime" | "status" | "tierApplied" | "price" | "adminNotes" | "clientNotes" | "originalDate" | "platforms" | "platformLinks" | "addOns" | "holdExpiresAt" | "durationMinutes" | "peakViewers" | "chatMessages" | "audienceOrigin" | "isLivestream" | "streamMetrics" | "episodeTitle" | "episodeDescription" | "coverImageUrl" | "createdAt" | "updatedAt", ExtArgs["result"]["booking"]>
+export type BookingOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "userId" | "contractId" | "date" | "startTime" | "endTime" | "status" | "tierApplied" | "price" | "adminNotes" | "clientNotes" | "originalDate" | "platforms" | "platformLinks" | "addOns" | "holdExpiresAt" | "durationMinutes" | "peakViewers" | "chatMessages" | "audienceOrigin" | "isLivestream" | "streamMetrics" | "episodeTitle" | "episodeDescription" | "coverImageUrl" | "recordingStartedAt" | "recordingStartedById" | "recordingStartedByName" | "statusReason" | "createdAt" | "updatedAt", ExtArgs["result"]["booking"]>
 export type BookingInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
   contract?: boolean | Prisma.ContractDefaultArgs<ExtArgs>
@@ -1773,6 +1945,10 @@ export type $BookingPayload<ExtArgs extends runtime.Types.Extensions.InternalArg
     episodeTitle: string | null
     episodeDescription: string | null
     coverImageUrl: string | null
+    recordingStartedAt: Date | null
+    recordingStartedById: string | null
+    recordingStartedByName: string | null
+    statusReason: string | null
     createdAt: Date
     updatedAt: Date
   }, ExtArgs["result"]["booking"]>
@@ -2226,6 +2402,10 @@ export interface BookingFieldRefs {
   readonly episodeTitle: Prisma.FieldRef<"Booking", 'String'>
   readonly episodeDescription: Prisma.FieldRef<"Booking", 'String'>
   readonly coverImageUrl: Prisma.FieldRef<"Booking", 'String'>
+  readonly recordingStartedAt: Prisma.FieldRef<"Booking", 'DateTime'>
+  readonly recordingStartedById: Prisma.FieldRef<"Booking", 'String'>
+  readonly recordingStartedByName: Prisma.FieldRef<"Booking", 'String'>
+  readonly statusReason: Prisma.FieldRef<"Booking", 'String'>
   readonly createdAt: Prisma.FieldRef<"Booking", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"Booking", 'DateTime'>
 }
