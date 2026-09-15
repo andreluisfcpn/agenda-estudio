@@ -64,6 +64,7 @@ export const ModelName = {
   PricingConfig: 'PricingConfig',
   AddOnConfig: 'AddOnConfig',
   BusinessConfig: 'BusinessConfig',
+  GatewayFeeHistory: 'GatewayFeeHistory',
   PaymentMethodConfig: 'PaymentMethodConfig',
   AuditLog: 'AuditLog',
   IntegrationConfig: 'IntegrationConfig',
@@ -355,6 +356,18 @@ export const BusinessConfigScalarFieldEnum = {
 } as const
 
 export type BusinessConfigScalarFieldEnum = (typeof BusinessConfigScalarFieldEnum)[keyof typeof BusinessConfigScalarFieldEnum]
+
+
+export const GatewayFeeHistoryScalarFieldEnum = {
+  id: 'id',
+  provider: 'provider',
+  feePct: 'feePct',
+  feeFixedCents: 'feeFixedCents',
+  effectiveFrom: 'effectiveFrom',
+  createdAt: 'createdAt'
+} as const
+
+export type GatewayFeeHistoryScalarFieldEnum = (typeof GatewayFeeHistoryScalarFieldEnum)[keyof typeof GatewayFeeHistoryScalarFieldEnum]
 
 
 export const PaymentMethodConfigScalarFieldEnum = {

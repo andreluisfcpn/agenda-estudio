@@ -477,6 +477,21 @@ model BusinessConfig {
   @@map("business_config")
 }
 
+// Histórico temporal das taxas de gateway. Cada linha registra a taxa vigente de um provider a partir
+// de `effectiveFrom`. O relatório resolve a taxa de cada pagamento pela data em que ele foi pago,
+// então mudar a taxa no painel NÃO reescreve o líquido de pagamentos passados.
+model GatewayFeeHistory {
+  id            String          @id @default(uuid())
+  provider      PaymentProvider
+  feePct        Float           @map("fee_pct")         // percentual (ex.: 3.99); 0 quando não se aplica
+  feeFixedCents Int             @map("fee_fixed_cents")  // taxa fixa por transação em centavos (ex.: 39)
+  effectiveFrom DateTime        @map("effective_from")   // vigente a partir desta data/hora
+  createdAt     DateTime        @default(now()) @map("created_at")
+
+  @@index([provider, effectiveFrom])
+  @@map("gateway_fee_history")
+}
+
 model PaymentMethodConfig {
   key         String   @id              // "PIX", "CARTAO", "BOLETO"
   label       String                    // "PIX", "Cartão de Crédito"

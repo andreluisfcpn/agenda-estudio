@@ -107,6 +107,11 @@ export type AddOnConfig = Prisma.AddOnConfigModel
  */
 export type BusinessConfig = Prisma.BusinessConfigModel
 /**
+ * Model GatewayFeeHistory
+ * 
+ */
+export type GatewayFeeHistory = Prisma.GatewayFeeHistoryModel
+/**
  * Model PaymentMethodConfig
  * 
  */

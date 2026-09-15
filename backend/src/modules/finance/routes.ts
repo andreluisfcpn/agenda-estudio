@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import { authenticate, authorize } from '../../middleware/auth.js';
 import { getConfig } from '../../lib/businessConfig.js';
+import { resolveFeeAt, computeGatewayFee, type FeeRate } from '../../lib/gatewayFees.js';
 
 const router = Router();
 
@@ -57,9 +58,15 @@ router.get('/closing/:year/:month', authenticate, authorize('ADMIN'), async (req
         // Stripe (Brasil) cobra PERCENTUAL + TAXA FIXA por transação (ex.: 3,99% + R$0,39). O fixo
         // domina em valores pequenos (uma cobrança de R$0,52 fica líquida ~R$0,11). Sem somar o fixo,
         // o líquido do relatório ficava superestimado (divergia do extrato real do Stripe).
-        const stripeFeeRate = (await getConfig('gateway_stripe_fee_pct')) / 100;
-        const stripeFeeFixedCents = await getConfig('gateway_stripe_fee_cents');
-        const coraFeeCents = await getConfig('gateway_cora_fee_cents');
+        //
+        // A taxa aplicada é a VIGENTE na data em que cada pagamento foi pago (linha do tempo em
+        // GatewayFeeHistory), não a taxa atual — assim mudar a taxa no painel não reescreve o líquido
+        // de pagamentos passados. O fallback é a config atual (usado enquanto não houve mudança).
+        const feeHistory = await prisma.gatewayFeeHistory.findMany({ orderBy: { effectiveFrom: 'asc' } });
+        const stripeFallback: FeeRate = { pct: await getConfig('gateway_stripe_fee_pct'), fixedCents: await getConfig('gateway_stripe_fee_cents') };
+        const coraFallback: FeeRate = { pct: 0, fixedCents: await getConfig('gateway_cora_fee_cents') };
+        const fallbackFor = (provider: string): FeeRate =>
+            provider === 'STRIPE' ? stripeFallback : provider === 'CORA' ? coraFallback : { pct: 0, fixedCents: 0 };
 
         // Load admin-configured payment method labels
         const paymentMethodConfigs = await prisma.paymentMethodConfig.findMany({ orderBy: { sortOrder: 'asc' } });
@@ -81,21 +88,13 @@ router.get('/closing/:year/:month', authenticate, authorize('ADMIN'), async (req
                 grossRevenue += p.amount;
                 paidCount++;
 
-                // Deduct fees based on provider (dynamic from config)
-                if (p.provider === 'STRIPE') {
-                    // Percentual + taxa fixa; nunca ultrapassa o valor bruto (evita líquido negativo
-                    // num teste minúsculo). O Stripe cobra o fixo mesmo assim, mas o líquido não fica < 0.
-                    fee = Math.min(p.amount, Math.round(p.amount * stripeFeeRate) + stripeFeeFixedCents);
-                    stripeCount++;
-                } else if (p.provider === 'CORA') {
-                    fee = coraFeeCents;
-                    coraCount++;
-                } else if (p.provider === 'SICOOB') {
-                    // PIX Sicoob: sem tarifa por recebimento configurada (0). Se passar a
-                    // cobrar, adicionar gateway_sicoob_fee_* no businessConfigCatalog e aplicar aqui.
-                    fee = 0;
-                    sicoobCount++;
-                }
+                // Taxa vigente na data do pagamento (paidAt; senão vencimento; senão criação).
+                const feeAt = p.paidAt ?? p.dueDate ?? p.createdAt;
+                const rate = resolveFeeAt(feeHistory, p.provider, feeAt, fallbackFor(p.provider));
+                fee = computeGatewayFee(p.amount, p.provider, rate);
+                if (p.provider === 'STRIPE') stripeCount++;
+                else if (p.provider === 'CORA') coraCount++;
+                else if (p.provider === 'SICOOB') sicoobCount++;
                 totalFees += fee;
             } else if (p.status === 'PENDING' || p.status === 'FAILED') {
                 pendingRevenue += p.amount;

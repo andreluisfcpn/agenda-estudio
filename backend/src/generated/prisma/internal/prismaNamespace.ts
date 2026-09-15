@@ -397,6 +397,7 @@ export const ModelName = {
   PricingConfig: 'PricingConfig',
   AddOnConfig: 'AddOnConfig',
   BusinessConfig: 'BusinessConfig',
+  GatewayFeeHistory: 'GatewayFeeHistory',
   PaymentMethodConfig: 'PaymentMethodConfig',
   AuditLog: 'AuditLog',
   IntegrationConfig: 'IntegrationConfig',
@@ -417,7 +418,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "user" | "pushSubscription" | "contract" | "booking" | "payment" | "coupon" | "couponEligibleUser" | "couponRedemption" | "savedPaymentMethod" | "blockedSlot" | "pricingConfig" | "addOnConfig" | "businessConfig" | "paymentMethodConfig" | "auditLog" | "integrationConfig" | "notification" | "notificationTemplate"
+    modelProps: "user" | "pushSubscription" | "contract" | "booking" | "payment" | "coupon" | "couponEligibleUser" | "couponRedemption" | "savedPaymentMethod" | "blockedSlot" | "pricingConfig" | "addOnConfig" | "businessConfig" | "gatewayFeeHistory" | "paymentMethodConfig" | "auditLog" | "integrationConfig" | "notification" | "notificationTemplate"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -1383,6 +1384,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    GatewayFeeHistory: {
+      payload: Prisma.$GatewayFeeHistoryPayload<ExtArgs>
+      fields: Prisma.GatewayFeeHistoryFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.GatewayFeeHistoryFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$GatewayFeeHistoryPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.GatewayFeeHistoryFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$GatewayFeeHistoryPayload>
+        }
+        findFirst: {
+          args: Prisma.GatewayFeeHistoryFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$GatewayFeeHistoryPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.GatewayFeeHistoryFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$GatewayFeeHistoryPayload>
+        }
+        findMany: {
+          args: Prisma.GatewayFeeHistoryFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$GatewayFeeHistoryPayload>[]
+        }
+        create: {
+          args: Prisma.GatewayFeeHistoryCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$GatewayFeeHistoryPayload>
+        }
+        createMany: {
+          args: Prisma.GatewayFeeHistoryCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.GatewayFeeHistoryCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$GatewayFeeHistoryPayload>[]
+        }
+        delete: {
+          args: Prisma.GatewayFeeHistoryDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$GatewayFeeHistoryPayload>
+        }
+        update: {
+          args: Prisma.GatewayFeeHistoryUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$GatewayFeeHistoryPayload>
+        }
+        deleteMany: {
+          args: Prisma.GatewayFeeHistoryDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.GatewayFeeHistoryUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.GatewayFeeHistoryUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$GatewayFeeHistoryPayload>[]
+        }
+        upsert: {
+          args: Prisma.GatewayFeeHistoryUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$GatewayFeeHistoryPayload>
+        }
+        aggregate: {
+          args: Prisma.GatewayFeeHistoryAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateGatewayFeeHistory>
+        }
+        groupBy: {
+          args: Prisma.GatewayFeeHistoryGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.GatewayFeeHistoryGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.GatewayFeeHistoryCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.GatewayFeeHistoryCountAggregateOutputType> | number
+        }
+      }
+    }
     PaymentMethodConfig: {
       payload: Prisma.$PaymentMethodConfigPayload<ExtArgs>
       fields: Prisma.PaymentMethodConfigFieldRefs
@@ -2062,6 +2137,18 @@ export const BusinessConfigScalarFieldEnum = {
 export type BusinessConfigScalarFieldEnum = (typeof BusinessConfigScalarFieldEnum)[keyof typeof BusinessConfigScalarFieldEnum]
 
 
+export const GatewayFeeHistoryScalarFieldEnum = {
+  id: 'id',
+  provider: 'provider',
+  feePct: 'feePct',
+  feeFixedCents: 'feeFixedCents',
+  effectiveFrom: 'effectiveFrom',
+  createdAt: 'createdAt'
+} as const
+
+export type GatewayFeeHistoryScalarFieldEnum = (typeof GatewayFeeHistoryScalarFieldEnum)[keyof typeof GatewayFeeHistoryScalarFieldEnum]
+
+
 export const PaymentMethodConfigScalarFieldEnum = {
   key: 'key',
   label: 'label',
@@ -2404,20 +2491,6 @@ export type ListEnumCouponRedemptionStatusFieldRefInput<$PrismaModel> = FieldRef
 
 
 /**
- * Reference to a field of type 'NotificationType'
- */
-export type EnumNotificationTypeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'NotificationType'>
-    
-
-
-/**
- * Reference to a field of type 'NotificationType[]'
- */
-export type ListEnumNotificationTypeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'NotificationType[]'>
-    
-
-
-/**
  * Reference to a field of type 'Float'
  */
 export type FloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Float'>
@@ -2428,6 +2501,20 @@ export type FloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, '
  * Reference to a field of type 'Float[]'
  */
 export type ListFloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Float[]'>
+    
+
+
+/**
+ * Reference to a field of type 'NotificationType'
+ */
+export type EnumNotificationTypeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'NotificationType'>
+    
+
+
+/**
+ * Reference to a field of type 'NotificationType[]'
+ */
+export type ListEnumNotificationTypeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'NotificationType[]'>
     
 
 /**
@@ -2553,6 +2640,7 @@ export type GlobalOmitConfig = {
   pricingConfig?: Prisma.PricingConfigOmit
   addOnConfig?: Prisma.AddOnConfigOmit
   businessConfig?: Prisma.BusinessConfigOmit
+  gatewayFeeHistory?: Prisma.GatewayFeeHistoryOmit
   paymentMethodConfig?: Prisma.PaymentMethodConfigOmit
   auditLog?: Prisma.AuditLogOmit
   integrationConfig?: Prisma.IntegrationConfigOmit

@@ -2,7 +2,8 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import { authenticate, authorize } from '../../middleware/auth.js';
-import { invalidateConfigCache } from '../../lib/businessConfig.js';
+import { invalidateConfigCache, getConfig } from '../../lib/businessConfig.js';
+import type { FeeRate } from '../../lib/gatewayFees.js';
 import { BUSINESS_CONFIG_CATALOG, CONFIG_CATALOG_BY_KEY, DEPRECATED_CONFIG_KEYS, EMAIL_SECRET_KEYS } from '../../config/businessConfigCatalog.js';
 import { encryptCredentials } from '../../utils/crypto.js';
 import { deliverOtpEmail } from '../../lib/email.js';
@@ -12,6 +13,23 @@ import { getErrorMessage } from '../../utils/errors.js';
 // so a re-save without retyping the secret keeps the stored value.
 const SECRET_MASK = '••••••••';
 const isBlankOrMasked = (v: string) => !v || v.trim() === '' || v.includes('•') || v.startsWith('***');
+
+// Provedores com taxa versionada + as chaves de config que a compõem (Cora só tem taxa fixa).
+const FEE_PROVIDERS: { provider: string; pctKey: string | null; fixedKey: string }[] = [
+    { provider: 'STRIPE', pctKey: 'gateway_stripe_fee_pct', fixedKey: 'gateway_stripe_fee_cents' },
+    { provider: 'CORA', pctKey: null, fixedKey: 'gateway_cora_fee_cents' },
+];
+
+async function currentFeeRate(fp: { pctKey: string | null; fixedKey: string }): Promise<FeeRate> {
+    return { pct: fp.pctKey ? await getConfig(fp.pctKey) : 0, fixedCents: await getConfig(fp.fixedKey) };
+}
+
+// Número submetido no payload; se ausente ou inválido, mantém o valor anterior (não versiona lixo).
+function submittedNumber(submitted: Map<string, string>, key: string | null, fallback: number): number {
+    if (!key || !submitted.has(key)) return fallback;
+    const n = parseFloat(submitted.get(key)!);
+    return Number.isFinite(n) ? n : fallback;
+}
 
 export function registerConfigRoutes(router: Router) {
     // ─── GET /api/pricing/business-config/public (no auth, client-facing) ──────
@@ -99,34 +117,67 @@ export function registerConfigRoutes(router: Router) {
         try {
             const { configs } = updateBusinessConfigSchema.parse(req.body);
 
-            for (const { key, value } of configs) {
-                if (DEPRECATED_CONFIG_KEYS.has(key)) continue; // ignore retired keys
+            // Snapshot das taxas de gateway ANTES de aplicar (config atual no DB), para versionar mudanças.
+            const feeBefore = new Map<string, FeeRate>();
+            for (const fp of FEE_PROVIDERS) feeBefore.set(fp.provider, await currentFeeRate(fp));
+            // O "depois" vem do próprio payload (dentro da transação o getConfig não veria escritas ainda
+            // não commitadas). Fee keys não são secret nem deprecated, então o valor submetido é o que grava.
+            const submitted = new Map(configs.map(c => [c.key, c.value]));
 
-                // Secrets: skip when the admin left the masked placeholder / blank (keep existing),
-                // otherwise encrypt at rest before persisting.
-                let storeValue = value;
-                if (EMAIL_SECRET_KEYS.has(key)) {
-                    if (isBlankOrMasked(value)) continue;
-                    storeValue = encryptCredentials(value);
+            // Config + histórico de taxas gravam JUNTOS (atômico): se o histórico falhar, a mudança de
+            // config reverte também — o próximo retry recomeça com o "before" antigo intacto e versiona certo.
+            await prisma.$transaction(async (tx) => {
+                for (const { key, value } of configs) {
+                    if (DEPRECATED_CONFIG_KEYS.has(key)) continue; // ignore retired keys
+
+                    // Secrets: skip when the admin left the masked placeholder / blank (keep existing),
+                    // otherwise encrypt at rest before persisting.
+                    let storeValue = value;
+                    if (EMAIL_SECRET_KEYS.has(key)) {
+                        if (isBlankOrMasked(value)) continue;
+                        storeValue = encryptCredentials(value);
+                    }
+
+                    // Upsert so editing a catalog key that isn't persisted yet creates it
+                    // (with its catalog metadata) instead of failing.
+                    const meta = CONFIG_CATALOG_BY_KEY[key];
+                    await tx.businessConfig.upsert({
+                        where: { key },
+                        update: { value: storeValue },
+                        create: {
+                            key,
+                            value: storeValue,
+                            type: meta?.type ?? 'string',
+                            label: meta?.label ?? key,
+                            group: meta?.group ?? 'outros',
+                        },
+                    });
                 }
 
-                // Upsert so editing a catalog key that isn't persisted yet creates it
-                // (with its catalog metadata) instead of failing.
-                const meta = CONFIG_CATALOG_BY_KEY[key];
-                await prisma.businessConfig.upsert({
-                    where: { key },
-                    update: { value: storeValue },
-                    create: {
-                        key,
-                        value: storeValue,
-                        type: meta?.type ?? 'string',
-                        label: meta?.label ?? key,
-                        group: meta?.group ?? 'outros',
-                    },
-                });
-            }
+                // Versiona na linha do tempo cada taxa de gateway que mudou. A taxa dos pagamentos passados
+                // fica preservada: o relatório resolve pela data de pagamento (ver GatewayFeeHistory).
+                for (const fp of FEE_PROVIDERS) {
+                    const before = feeBefore.get(fp.provider)!;
+                    const after: FeeRate = {
+                        pct: submittedNumber(submitted, fp.pctKey, before.pct),
+                        fixedCents: submittedNumber(submitted, fp.fixedKey, before.fixedCents),
+                    };
+                    if (after.pct === before.pct && after.fixedCents === before.fixedCents) continue;
+                    const hasHistory = await tx.gatewayFeeHistory.findFirst({ where: { provider: fp.provider as any } });
+                    if (!hasHistory) {
+                        // 1ª mudança deste provider: grava o valor ANTIGO com vigência retroativa (epoch),
+                        // para que os pagamentos já existentes continuem com a taxa que valia até agora.
+                        await tx.gatewayFeeHistory.create({
+                            data: { provider: fp.provider as any, feePct: before.pct, feeFixedCents: before.fixedCents, effectiveFrom: new Date(0) },
+                        });
+                    }
+                    await tx.gatewayFeeHistory.create({
+                        data: { provider: fp.provider as any, feePct: after.pct, feeFixedCents: after.fixedCents, effectiveFrom: new Date() },
+                    });
+                }
+            });
 
-            // Bust the in-memory cache so next requests pick up new values
+            // Cache invalidado só APÓS o commit — se a transação falhar, a config não mudou e o cache velho vale.
             invalidateConfigCache();
 
             res.json({ message: 'Configurações atualizadas com sucesso!' });
