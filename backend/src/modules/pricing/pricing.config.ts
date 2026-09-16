@@ -190,6 +190,25 @@ export function registerConfigRoutes(router: Router) {
         }
     });
 
+    // ─── GET /api/pricing/business-config/fee-history (ADMIN) ───
+    // Linha do tempo das taxas de gateway: cada mudança com a data em que passou a valer.
+    router.get('/business-config/fee-history', authenticate, authorize('ADMIN'), async (_req: Request, res: Response) => {
+        try {
+            const rows = await prisma.gatewayFeeHistory.findMany({ orderBy: { effectiveFrom: 'asc' } });
+            const history: Record<string, { effectiveFrom: string; feePct: number; feeFixedCents: number }[]> = {};
+            const current: Record<string, FeeRate> = {};
+            for (const fp of FEE_PROVIDERS) {
+                history[fp.provider] = rows
+                    .filter(r => r.provider === fp.provider)
+                    .map(r => ({ effectiveFrom: r.effectiveFrom.toISOString(), feePct: r.feePct, feeFixedCents: r.feeFixedCents }));
+                current[fp.provider] = await currentFeeRate(fp);
+            }
+            res.json({ history, current });
+        } catch (err) {
+            res.status(500).json({ error: 'Erro ao carregar o histórico de taxas.' });
+        }
+    });
+
     // ─── POST /api/pricing/business-config/email/test (ADMIN) ──
     // Sends the configured OTP e-mail (code 123456) to validate the provider setup.
     const emailTestSchema = z.object({

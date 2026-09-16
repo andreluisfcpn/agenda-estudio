@@ -294,6 +294,10 @@ export const pricingApi = {
     getBusinessConfig: () => request<{ configs: BusinessConfigItem[]; grouped: Record<string, BusinessConfigItem[]> }>('/pricing/business-config'),
     updateBusinessConfig: (configs: { key: string; value: string }[]) => request<{ message: string }>('/pricing/business-config', { method: 'PUT', body: JSON.stringify({ configs }) }),
     getBusinessConfigPublic: () => request<{ config: Record<string, string | number> }>('/pricing/business-config/public'),
+    getFeeHistory: () => request<{
+        history: Record<string, { effectiveFrom: string; feePct: number; feeFixedCents: number }[]>;
+        current: Record<string, { pct: number; fixedCents: number }>;
+    }>('/pricing/business-config/fee-history'),
     testEmail: (to: string) => request<{ success: boolean; message?: string; error?: string }>('/pricing/business-config/email/test', { method: 'POST', body: JSON.stringify({ to }) }),
     getPaymentMethods: () => request<{ methods: PaymentMethodConfigItem[] }>('/pricing/payment-methods'),
     getPaymentMethodsAll: () => request<{ methods: PaymentMethodConfigItem[] }>('/pricing/payment-methods/all'),

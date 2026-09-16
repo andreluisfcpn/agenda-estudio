@@ -5,6 +5,7 @@ import { invalidateFrontendConfigCache } from '../../../hooks/useBusinessConfig'
 import LoadingSpinner from '../../ui/LoadingSpinner';
 import SettingsSaveBar, { SettingsMessages } from './SettingsSaveBar';
 import ScheduleEditor from './ScheduleEditor';
+import GatewayFeeTimeline from './GatewayFeeTimeline';
 import ToggleField from '../../ui/fields/ToggleField';
 import StepperField from '../../ui/fields/StepperField';
 import TimeField from '../../ui/fields/TimeField';
@@ -65,6 +66,7 @@ export default function SettingsBusinessConfigSection({ groups, title, subtitle,
     const [saving, setSaving] = useState(false);
     const [success, setSuccess] = useState('');
     const [error, setError] = useState('');
+    const [feeRefreshKey, setFeeRefreshKey] = useState(0); // recarrega o histórico de taxas após salvar
 
     useEffect(() => { loadConfigs(); }, []);
 
@@ -108,6 +110,7 @@ export default function SettingsBusinessConfigSection({ groups, title, subtitle,
             invalidateFrontendConfigCache();
             showMsg('✅ Regras de negócio atualizadas!');
             setConfigEdited(false);
+            setFeeRefreshKey(k => k + 1); // taxa pode ter mudado → recarrega a linha do tempo
         } catch (err: unknown) { setError(getErrorMessage(err)); }
         finally { setSaving(false); }
     };
@@ -185,6 +188,9 @@ export default function SettingsBusinessConfigSection({ groups, title, subtitle,
                                 })}
                             </div>
                             )}
+
+                            {/* Linha do tempo das taxas (só no grupo gateway) — logo abaixo dos campos editáveis. */}
+                            {groupKey === 'gateway' && <GatewayFeeTimeline refreshKey={feeRefreshKey} />}
                         </div>
                     );
                 })}
