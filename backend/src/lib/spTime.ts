@@ -40,3 +40,24 @@ export function spDdMm(bookingDate: Date): string {
     const iso = bookingDate.toISOString().slice(0, 10);
     return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 }
+
+const WEEKDAYS_PT = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+
+/** Dia da semana (pt-BR) da data-calendário armazenada (@db.Date). Ancorado ao meio-dia UTC para não
+ *  escorregar de dia por fuso. */
+export function spWeekday(bookingDate: Date): string {
+    const [y, m, d] = bookingDate.toISOString().slice(0, 10).split('-').map(Number);
+    return WEEKDAYS_PT[new Date(Date.UTC(y, m - 1, d, 12)).getUTCDay()];
+}
+
+/**
+ * Rótulo do dia para lembretes/notificações, calculado no fuso SP e SEM linguagem relativa que envelheça
+ * num push já entregue: "hoje (DD/MM)" quando é o próprio dia; caso contrário a data absoluta com o dia
+ * da semana — "quarta-feira (DD/MM)". Um push de 24h fica na bandeja e costuma ser lido no dia seguinte;
+ * "amanhã" viraria mentira, enquanto a data absoluta continua correta seja quando for lida. O lembrete
+ * que chega no PRÓPRIO dia (2h antes) cai em daysFromToday === 0 e diz "hoje".
+ */
+export function spDayLabel(bookingDate: Date, now: Date = new Date()): string {
+    const ddmm = spDdMm(bookingDate);
+    return spDaysFromToday(bookingDate, now) === 0 ? `hoje (${ddmm})` : `${spWeekday(bookingDate)} (${ddmm})`;
+}

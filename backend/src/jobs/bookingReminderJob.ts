@@ -1,16 +1,16 @@
 import { prisma } from '../lib/prisma.js';
 import { notifyEvent } from '../modules/notifications/notificationService.js';
-import { spDaysFromToday, spDdMm } from '../lib/spTime.js';
+import { spDayLabel, spDdMm } from '../lib/spTime.js';
 
 /**
  * Booking Reminder Job — runs every 30 minutes.
  * Sends reminders 24h and 2h before confirmed/reserved sessions.
  *
- * Copy rules (bugfix jun/2026):
- *  - The day label ("hoje"/"amanhã") is derived from the SP CALENDAR at creation
- *    time, never assumed from the window — and the explicit date (DD/MM) is always
- *    included, so a reminder read hours later (e.g. next morning, in the bell) can't
- *    claim "amanhã" for a session that is already today.
+ * Copy rules (bugfix set/2026):
+ *  - The day label (spDayLabel) is on the SP calendar and NEVER uses "amanhã": a push
+ *    is delivered once and read later (a 24h reminder sits in the tray until the next
+ *    morning), so "amanhã" would age into a lie. It says "hoje (DD/MM)" only on the very
+ *    day (the 2h reminder), otherwise the absolute date with weekday ("quarta-feira (DD/MM)").
  *  - Each window has its OWN dedup key: the default type+entity key made the 24h
  *    reminder (warning, 24h dedup TTL) swallow the day-of 2h reminder entirely.
  */
@@ -57,11 +57,10 @@ export async function runBookingReminderJob(): Promise<void> {
 
             try {
                 const ddmm = spDdMm(booking.date);
-                const daysAhead = spDaysFromToday(booking.date, now);
-                // SP-calendar label at creation time; date always explicit.
-                const rawLabel = daysAhead === 0 ? 'hoje' : daysAhead === 1 ? 'amanhã' : `em ${ddmm}`;
-                // "amanhã (12/07)" / "em 12/07" / "hoje (12/07)" — date always explicit.
-                const diaLabel = rawLabel === `em ${ddmm}` ? rawLabel : `${rawLabel} (${ddmm})`;
+                // Rótulo no fuso SP, sem "amanhã" que envelhece num push já entregue: "hoje (DD/MM)" no
+                // próprio dia (lembrete de 2h) ou a data absoluta com dia da semana (lembrete de 24h,
+                // lido no dia seguinte). Ver spDayLabel.
+                const diaLabel = spDayLabel(booking.date, now);
 
                 await notifyEvent(
                     window.label === '2h' ? 'booking_reminder_2h' : 'booking_reminder_24h',

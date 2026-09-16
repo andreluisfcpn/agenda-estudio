@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { saoPauloParts, spDaysFromToday, spDdMm } from '../src/lib/spTime';
+import { saoPauloParts, spDaysFromToday, spDdMm, spWeekday, spDayLabel } from '../src/lib/spTime';
 import { studioDateTime } from '../src/utils/pricing';
 
 describe('saoPauloParts', () => {
@@ -78,6 +78,47 @@ describe('spDdMm', () => {
   it('zero-pads and keeps two-digit values', () => {
     expect(spDdMm(new Date('2026-12-25T00:00:00Z'))).toBe('25/12');
     expect(spDdMm(new Date('2026-09-09T00:00:00Z'))).toBe('09/09');
+  });
+});
+
+describe('spWeekday', () => {
+  it('names the weekday of the stored calendar date (pt-BR)', () => {
+    expect(spWeekday(new Date('2026-01-15T00:00:00Z'))).toBe('quinta-feira');
+    expect(spWeekday(new Date('2026-01-16T00:00:00Z'))).toBe('sexta-feira');
+    expect(spWeekday(new Date('2026-09-16T00:00:00Z'))).toBe('quarta-feira');
+  });
+
+  it('does not slip a day due to timezone (00:00Z stored date)', () => {
+    // 00:00Z would be the previous evening in SP; anchoring at midday UTC keeps the calendar day.
+    expect(spWeekday(new Date('2026-09-16T00:00:00Z'))).toBe('quarta-feira');
+  });
+});
+
+describe('spDayLabel — rótulo de lembrete sem "amanhã" que envelheça no push', () => {
+  it('diz "hoje (DD/MM)" quando é o próprio dia (lembrete de 2h)', () => {
+    const now = new Date('2026-09-16T12:00:00Z'); // SP = 16/09
+    expect(spDayLabel(new Date('2026-09-16T00:00:00Z'), now)).toBe('hoje (16/09)');
+  });
+
+  it('usa a data absoluta com dia da semana para a véspera (lembrete de 24h), nunca "amanhã"', () => {
+    const now = new Date('2026-09-15T12:00:00Z'); // SP = 15/09
+    const label = spDayLabel(new Date('2026-09-16T00:00:00Z'), now);
+    expect(label).toBe('quarta-feira (16/09)');
+    expect(label).not.toContain('amanhã');
+  });
+
+  it('a véspera lida no dia seguinte continua correta (o texto não muda, mas nunca vira "amanhã")', () => {
+    // Rótulo gerado na véspera (24h) = "quarta-feira (16/09)"; lido no dia 16 ainda faz sentido.
+    const geradoNaVespera = spDayLabel(new Date('2026-09-16T00:00:00Z'), new Date('2026-09-15T12:00:00Z'));
+    expect(geradoNaVespera).toBe('quarta-feira (16/09)');
+  });
+
+  it('respeita a virada de dia SP (21h–24h ainda é o dia anterior)', () => {
+    // 02:00Z de 16/09 = 23:00 SP de 15/09 → uma sessão 16/09 ainda NÃO é "hoje"
+    const spAindaDia15 = new Date('2026-09-16T02:00:00Z');
+    expect(spDayLabel(new Date('2026-09-16T00:00:00Z'), spAindaDia15)).toBe('quarta-feira (16/09)');
+    // e a sessão de 15/09 é "hoje"
+    expect(spDayLabel(new Date('2026-09-15T00:00:00Z'), spAindaDia15)).toBe('hoje (15/09)');
   });
 });
 
