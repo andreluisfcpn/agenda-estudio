@@ -39,6 +39,8 @@ const V = {
     valor: { name: 'valor', label: 'Valor', example: 'R$ 250,00' },
     hora: { name: 'hora', label: 'Hora', example: '20:30' },
     data: { name: 'data', label: 'Data', example: '12/07' },
+    // Rótulo do dia no fuso SP (spDayLabel). O valor real depende do evento, então cada evento que usa
+    // diaLabel sobrescreve o exemplo (Prévia/Enviar teste do admin): 24h → 'amanhã (16/09)', 2h → 'hoje (16/09)'.
     diaLabel: { name: 'diaLabel', label: 'Dia (rótulo)', example: 'hoje (16/09)' },
     contrato: { name: 'contrato', label: 'Nome do contrato', example: 'Plano Fixo 3 meses' },
     servico: { name: 'servico', label: 'Nome do serviço', example: 'Gestão de Redes Sociais' },
@@ -48,6 +50,9 @@ const V = {
     total: { name: 'total', label: 'Total (R$)', example: 'R$ 480,00' },
     diasMax: { name: 'diasMax', label: 'Dias em atraso (máx.)', example: '12' },
     cliente: { name: 'cliente', label: 'Nome do cliente', example: 'Maria Silva' },
+    // Remarcação do avulso (D4/D5): último dia da janela e a nova data escolhida.
+    prazo: { name: 'prazo', label: 'Prazo para remarcar (DD/MM)', example: '22/09' },
+    novaData: { name: 'novaData', label: 'Nova data (DD/MM)', example: '19/09' },
 } as const;
 
 export const NOTIFICATION_EVENT_CATALOG: NotificationEventDef[] = [
@@ -100,21 +105,21 @@ export const NOTIFICATION_EVENT_CATALOG: NotificationEventDef[] = [
     // ── Sessões (cliente) ─────────────────────────────────
     {
         eventKey: 'booking_reminder_24h', label: 'Lembrete de sessão (24h antes)',
-        description: 'Lembrete enviado cerca de 24 horas antes da gravação.',
+        description: 'Enviado exatamente 24 horas antes da gravação (mesmo horário, na véspera). Sessões marcadas com menos de 24h de antecedência não recebem este lembrete.',
         group: 'sessoes', audience: 'client', kind: 'persisted',
         type: 'BOOKING_REMINDER', severity: 'warning', pushDefault: true, actionUrl: '/minhas-gravacoes',
         defaultTitle: 'Sessão {diaLabel}',
         defaultMessage: 'Lembrete: você tem uma gravação {diaLabel} às {hora}.',
-        variables: [V.diaLabel, V.data, V.hora],
+        variables: [{ ...V.diaLabel, example: 'amanhã (16/09)' }, V.data, V.hora],
     },
     {
         eventKey: 'booking_reminder_2h', label: 'Lembrete de sessão (2h antes)',
-        description: 'Lembrete enviado cerca de 2 horas antes da gravação.',
+        description: 'Enviado exatamente 2 horas antes da gravação.',
         group: 'sessoes', audience: 'client', kind: 'persisted',
         type: 'BOOKING_REMINDER', severity: 'critical', pushDefault: true, actionUrl: '/minhas-gravacoes',
         defaultTitle: 'Sessão em 2 horas',
         defaultMessage: 'Sua gravação é {diaLabel} às {hora} — prepare-se!',
-        variables: [V.diaLabel, V.hora],
+        variables: [{ ...V.diaLabel, example: 'hoje (16/09)' }, V.hora],
     },
     {
         eventKey: 'daily_confirmation_paid', label: 'Confirmação do dia (paga)',
@@ -133,6 +138,56 @@ export const NOTIFICATION_EVENT_CATALOG: NotificationEventDef[] = [
         defaultTitle: 'Pague para confirmar',
         defaultMessage: 'Sua gravação de hoje às {hora} ainda não está paga. Pague para confirmar.',
         variables: [V.hora],
+    },
+    // ── Remarcação do avulso (cliente) — D4/D5 ────────────
+    // Tipos NÃO efêmeros de propósito (BOOKING_CANCELLED / SYSTEM): a limpeza diária apaga os tipos
+    // efêmeros (BOOKING_REMINDER, BOOKING_CONFIRMED, BOOKING_UNCONFIRMED…) em 48h, e estes avisos valem
+    // pela janela inteira (7 dias) ou pedem ação do estúdio. Abertura/lembrete/expiração dividem a tag
+    // de push `BOOKING_CANCELLED-<booking>`: o mais recente substitui o anterior na bandeja.
+    {
+        eventKey: 'avulso_makeup_opened', label: 'Remarcação liberada (avulso)',
+        description: 'Enviada quando o estúdio justifica a falta de uma gravação avulsa ou marca a gravação como não realizada: o cliente pode remarcar sem novo pagamento até o prazo.',
+        group: 'sessoes', audience: 'client', kind: 'persisted',
+        type: 'BOOKING_CANCELLED', severity: 'critical', pushDefault: true, actionUrl: '/minhas-gravacoes',
+        defaultTitle: 'Você pode remarcar sua gravação',
+        defaultMessage: 'A gravação de {data} pode ser remarcada sem novo pagamento até {prazo}. Escolha o novo horário em Minhas Gravações.',
+        variables: [V.data, V.prazo],
+    },
+    {
+        eventKey: 'avulso_makeup_reminder', label: 'Lembrete de remarcação (avulso)',
+        description: 'Lembrete nos 2 últimos dias da janela de remarcação sem novo pagamento (no máximo 1 por dia).',
+        group: 'sessoes', audience: 'client', kind: 'persisted',
+        type: 'BOOKING_CANCELLED', severity: 'critical', pushDefault: true, actionUrl: '/minhas-gravacoes',
+        defaultTitle: 'Remarque sua gravação: {dias} dia(s) restante(s)',
+        defaultMessage: 'A gravação de {data} pode ser remarcada sem novo pagamento até {prazo}, às 23h59. Escolha o novo horário em Minhas Gravações.',
+        variables: [{ ...V.dias, example: '2' }, V.data, V.prazo],
+    },
+    {
+        eventKey: 'avulso_makeup_expired', label: 'Prazo de remarcação encerrado — falta',
+        description: 'Enviada quando termina, sem remarcação, a janela de uma falta justificada: o valor pago é perdido.',
+        group: 'sessoes', audience: 'client', kind: 'persisted',
+        type: 'BOOKING_CANCELLED', severity: 'critical', pushDefault: true, actionUrl: '/minhas-gravacoes',
+        defaultTitle: 'Prazo de remarcação encerrado',
+        defaultMessage: 'O prazo para remarcar a gravação de {data} terminou em {prazo}. Como ela não foi remarcada, o valor pago não é reembolsável.',
+        variables: [V.data, V.prazo],
+    },
+    {
+        eventKey: 'avulso_makeup_expired_studio', label: 'Prazo de remarcação encerrado — não realizada',
+        description: 'Enviada quando termina, sem remarcação, a janela de uma gravação que o estúdio não realizou: o valor continua garantido e o estúdio entra em contato.',
+        group: 'sessoes', audience: 'client', kind: 'persisted',
+        type: 'BOOKING_CANCELLED', severity: 'critical', pushDefault: true, actionUrl: '/minhas-gravacoes',
+        defaultTitle: 'Vamos combinar sua gravação',
+        defaultMessage: 'O prazo para remarcar a gravação de {data} terminou em {prazo}. Seu valor continua garantido: o estúdio vai entrar em contato para combinar a nova data.',
+        variables: [V.data, V.prazo],
+    },
+    {
+        eventKey: 'avulso_makeup_rescheduled', label: 'Gravação remarcada pelo estúdio (avulso)',
+        description: 'Enviada ao cliente quando o estúdio remarca a gravação avulsa perdida (falta justificada ou não realizada), sem novo pagamento. Não é enviada quando o próprio cliente remarca.',
+        group: 'sessoes', audience: 'client', kind: 'persisted',
+        type: 'SYSTEM', severity: 'warning', pushDefault: true, actionUrl: '/minhas-gravacoes',
+        defaultTitle: 'Gravação remarcada',
+        defaultMessage: 'O estúdio remarcou sua gravação de {data} para {novaData} às {hora}, sem novo pagamento.',
+        variables: [V.data, V.novaData, V.hora],
     },
     // ── Créditos FLEX (cliente) ───────────────────────────
     {
@@ -190,6 +245,24 @@ export const NOTIFICATION_EVENT_CATALOG: NotificationEventDef[] = [
         defaultTitle: 'Sessão cancelada',
         defaultMessage: '{cliente} cancelou a sessão de {data} às {hora}.',
         variables: [V.cliente, V.data, V.hora],
+    },
+    {
+        eventKey: 'admin_makeup_rescheduled', label: 'Admin — gravação avulsa remarcada',
+        description: 'Notifica os admins quando uma gravação avulsa perdida (falta justificada ou não realizada) é remarcada sem novo pagamento (quem remarcou não é notificado).',
+        group: 'admin', audience: 'admin', kind: 'persisted',
+        type: 'SYSTEM', severity: 'info', pushDefault: false, actionUrl: '/admin/today',
+        defaultTitle: 'Gravação remarcada',
+        defaultMessage: 'A gravação de {cliente} de {data} foi remarcada para {novaData} às {hora}.',
+        variables: [V.cliente, V.data, V.novaData, V.hora],
+    },
+    {
+        eventKey: 'admin_makeup_expired_studio', label: 'Admin — não realizada sem remarcação',
+        description: 'Avisa o admin quando termina a janela de uma gravação avulsa que o estúdio não realizou e o cliente não remarcou: resolver com o cliente (o admin ainda pode remarcar).',
+        group: 'admin', audience: 'admin', kind: 'persisted',
+        type: 'BOOKING_CANCELLED', severity: 'critical', pushDefault: true, actionUrl: '/admin/contracts',
+        defaultTitle: 'Gravação não realizada sem remarcação',
+        defaultMessage: '{cliente} não remarcou a gravação de {data} (não realizada pelo estúdio) até {prazo}. Entre em contato para combinar a nova data.',
+        variables: [V.cliente, V.data, V.prazo],
     },
     // ── Computed (cliente) ────────────────────────────────
     {
@@ -272,7 +345,7 @@ export const NOTIFICATION_EVENT_CATALOG: NotificationEventDef[] = [
         type: 'BOOKING_UNCONFIRMED', severity: 'critical', pushDefault: false, actionUrl: '/admin/today',
         defaultTitle: 'Sessão não confirmada',
         defaultMessage: '{cliente} tem uma sessão {diaLabel} às {hora} ainda não confirmada.',
-        variables: [V.cliente, V.hora, V.diaLabel],
+        variables: [V.cliente, V.hora, { ...V.diaLabel, example: 'hoje' }], // em runtime recebe 'hoje'
     },
     {
         eventKey: 'computed_cancellation_pending_admin', label: 'Admin — cancelamento pendente',

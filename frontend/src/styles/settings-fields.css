@@ -668,3 +668,33 @@ button.sf-card:hover { border-color: var(--border-hover); }
   font-size: 0.75rem;
   color: var(--text-muted);
 }
+
+/* ─── CurrencyInput (R$ em modo "banco", valor em centavos) ─── */
+.sf-money {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+}
+.sf-money-prefix {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1;
+  pointer-events: none;
+}
+.sf-money-input {
+  padding-left: 40px;
+  font-variant-numeric: tabular-nums;
+}
+.sf-money--no-prefix .sf-money-input {
+  padding-left: 14px;
+}
+.sf-money-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

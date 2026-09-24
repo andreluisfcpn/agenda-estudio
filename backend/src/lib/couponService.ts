@@ -274,27 +274,3 @@ export async function repointCouponRedemption(tx: Prisma.TransactionClient, from
     });
     return updated.count > 0;
 }
-
-/**
- * Remove every coupon redemption belonging to a user before the user (and their
- * payments) are hard-deleted. The redemption FKs to both users and payments are
- * RESTRICT, so without this the user/payment deletion aborts. Non-RELEASED rows
- * decrement usedCount so the coupon's cap stays accurate.
- */
-export async function purgeCouponRedemptionsForUser(userId: string): Promise<void> {
-    const rows = await prisma.couponRedemption.findMany({
-        where: { userId },
-        select: { id: true, couponId: true, status: true },
-    });
-    if (rows.length === 0) return;
-    const byCoupon = new Map<string, number>();
-    for (const r of rows) {
-        if (r.status !== 'RELEASED') byCoupon.set(r.couponId, (byCoupon.get(r.couponId) ?? 0) + 1);
-    }
-    await prisma.$transaction(async (tx) => {
-        await tx.couponRedemption.deleteMany({ where: { userId } });
-        for (const [couponId, count] of byCoupon) {
-            await tx.coupon.update({ where: { id: couponId }, data: { usedCount: { decrement: count } } });
-        }
-    });
-}

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { UserDetail } from '../../../api/client';
-import { ShieldCheck, UserRound, Mail, Phone, IdCard } from 'lucide-react';
+import { ShieldCheck, UserRound, Mail, Phone, IdCard, UserX } from 'lucide-react';
 import { maskPhone } from '../../../utils/mask';
 
 const ROLE_META: Record<string, { icon: typeof ShieldCheck; label: string }> = {
@@ -9,8 +9,10 @@ const ROLE_META: Record<string, { icon: typeof ShieldCheck; label: string }> = {
 };
 
 /** Cabeçalho do perfil do cliente: foto (com fallback p/ iniciais), nome,
- *  contatos e badges de papel/status/tags. */
+ *  contatos e badges de papel/status/tags. Cliente EXCLUÍDO (D3, `deletedAt`): os dados
+ *  pessoais vêm null (anonimizados) — mostra "Dados pessoais removidos" e o selo "Excluído". */
 export default function ProfileHeader({ user }: { user: UserDetail }) {
+    const isDeleted = !!user.deletedAt;
     // Foto de upload pode ter sumido do disco (uploads efêmeros) — cai nas iniciais.
     const [photoError, setPhotoError] = useState(false);
     useEffect(() => { setPhotoError(false); }, [user.photoUrl]);
@@ -35,13 +37,26 @@ export default function ProfileHeader({ user }: { user: UserDetail }) {
                     {user.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
                 </div>
                 )}
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
                     <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>{user.name}</h1>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', color: 'var(--text-secondary)', fontSize: '0.8125rem', marginTop: '6px' }}>
-                        <a href={`mailto:${user.email}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'inherit', textDecoration: 'none', minWidth: 0 }}>
-                            <Mail size={14} aria-hidden="true" style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.email}</span>
-                        </a>
+                        {isDeleted ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)' }}>
+                                <UserX size={14} aria-hidden="true" style={{ flexShrink: 0 }} />
+                                Dados pessoais removidos na exclusão
+                            </span>
+                        ) : (<>
+                        {user.email ? (
+                            <a href={`mailto:${user.email}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'inherit', textDecoration: 'none', minWidth: 0 }}>
+                                <Mail size={14} aria-hidden="true" style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.email}</span>
+                            </a>
+                        ) : (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                <Mail size={14} aria-hidden="true" style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                                Sem e-mail
+                            </span>
+                        )}
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                             <Phone size={14} aria-hidden="true" style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
                             {user.phone ? maskPhone(user.phone) : 'Sem telefone'}
@@ -52,17 +67,24 @@ export default function ProfileHeader({ user }: { user: UserDetail }) {
                                 <span style={{ fontFamily: 'monospace' }}>{user.cpfCnpj}</span>
                             </span>
                         )}
+                        </>)}
                     </div>
                     <div style={{ marginTop: '8px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                         <span className={`badge ${user.role === 'ADMIN' ? 'badge-sabado' : 'badge-comercial'}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                             {(() => { const RI = (ROLE_META[user.role] || ROLE_META.CLIENTE).icon; return <RI size={12} aria-hidden="true" />; })()} {(ROLE_META[user.role] || ROLE_META.CLIENTE).label}
                         </span>
+                        {isDeleted ? (
+                            <span className="badge" style={{ background: 'var(--danger-bg)', color: 'var(--danger)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                <UserX size={12} aria-hidden="true" /> Excluído
+                            </span>
+                        ) : (
                         <span className="badge" style={{
                             background: user.clientStatus === 'ACTIVE' ? 'rgba(16,185,129,0.15)' : user.clientStatus === 'BLOCKED' ? 'rgba(220,38,38,0.15)' : 'rgba(107,114,128,0.15)',
                             color: user.clientStatus === 'ACTIVE' ? 'var(--success)' : user.clientStatus === 'BLOCKED' ? 'var(--danger)' : 'var(--neutral)',
                         }}>
                             {user.clientStatus === 'ACTIVE' ? '● Ativo' : user.clientStatus === 'BLOCKED' ? '● Bloqueado' : '● Inativo'}
                         </span>
+                        )}
                         {user.tags?.map((t: string) => (
                             <span key={t} style={{
                                 fontSize: '0.6875rem', padding: '2px 8px', borderRadius: '999px',

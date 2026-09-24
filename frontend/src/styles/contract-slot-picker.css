@@ -1,0 +1,186 @@
+/* ═══════════════════════════════════════════════════════════
+   ContractSlotPicker — horários válidos de CONTRATO (D8)
+   components/contracts/ContractSlotPicker.tsx
+   Cor da faixa do horário via --csp-tier-color / --csp-tier-bg (inline, vindas do TIER_META).
+   ═══════════════════════════════════════════════════════════ */
+
+.csp {
+    --csp-tier-color: var(--accent-text);
+    --csp-tier-bg: var(--bg-elevated);
+    min-width: 0;
+}
+
+/* ── Variante botões ─────────────────────────────────────── */
+.csp--buttons {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+    gap: var(--space-1-5);
+}
+
+.csp-slot {
+    min-height: 48px;
+    padding: var(--space-2) var(--space-2);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-default);
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    font-family: inherit;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-1);
+    transition: border-color var(--transition-base), color var(--transition-base), transform var(--transition-fast);
+}
+
+.csp-slot__range {
+    font-size: 0.875rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.csp-slot__tier {
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 1px var(--space-1-5);
+    border-radius: var(--radius-sm);
+    background: var(--csp-tier-bg);
+    color: var(--csp-tier-color);
+}
+
+.csp-slot--selected {
+    background: var(--csp-tier-bg);
+    border-color: color-mix(in srgb, var(--csp-tier-color) 60%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--csp-tier-color) 35%, transparent);
+}
+
+.csp-slot--selected .csp-slot__range {
+    color: var(--csp-tier-color);
+}
+
+.csp-slot:focus-visible {
+    outline: 2px solid var(--accent-text);
+    outline-offset: 2px;
+}
+
+.csp-slot:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+}
+
+.csp-slot:disabled .csp-slot__tier {
+    background: var(--border-default);
+    color: var(--text-secondary);
+}
+
+@media (hover: hover) {
+    .csp-slot:not(:disabled):not(.csp-slot--selected):hover {
+        border-color: color-mix(in srgb, var(--csp-tier-color) 45%, transparent);
+    }
+}
+
+.csp-slot:not(:disabled):active {
+    transform: scale(0.98);
+}
+
+/* ── Variante select (compacta) ──────────────────────────── */
+.csp--select {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.csp-select {
+    flex: 1;
+    min-width: 0;
+    min-height: var(--control-h);
+    font-variant-numeric: tabular-nums;
+}
+
+.csp-dot {
+    flex: 0 0 auto;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--csp-tier-color);
+}
+
+.csp-dot--empty {
+    background: transparent;
+    border: 1.5px dashed var(--border-hover);
+}
+
+/* ── Estados (sem dia, carregando, vazio, erro) ──────────── */
+.csp-state {
+    grid-column: 1 / -1;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-3-5);
+    border-radius: var(--radius-md);
+    border: 1px dashed var(--border-default);
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    color: var(--text-secondary);
+}
+
+.csp-state--hint {
+    color: var(--text-muted);
+}
+
+.csp-state--empty svg {
+    color: var(--warning);
+    flex-shrink: 0;
+}
+
+.csp-state--error {
+    border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+    background: var(--danger-bg);
+    color: var(--text-primary);
+}
+
+.csp-state--error > svg {
+    color: var(--danger);
+    flex-shrink: 0;
+}
+
+.csp-retry {
+    margin-left: auto;
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1-5);
+    padding: var(--space-1-5) var(--space-3);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-default);
+    background: transparent;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color var(--transition-base);
+}
+
+.csp-retry:focus-visible {
+    outline: 2px solid var(--accent-text);
+    outline-offset: 2px;
+}
+
+@media (hover: hover) {
+    .csp-retry:hover {
+        border-color: var(--border-hover);
+    }
+}
+
+.csp-spin {
+    flex-shrink: 0;
+    color: var(--accent-text);
+    animation: spin 0.8s linear infinite;
+}

@@ -38,6 +38,13 @@ enum BookingStatus {
   CANCELLED
 }
 
+// Janela de remarcação do avulso após FALTA justificada / NÃO REALIZADO (remarcação única).
+enum MakeupStatus {
+  OPEN    // janela aberta até Booking.makeupDeadline
+  USED    // remarcação já feita (mesmo Payment reaproveitado)
+  EXPIRED // prazo passou sem remarcar
+}
+
 enum ContractStatus {
   ACTIVE
   AWAITING_PAYMENT
@@ -45,6 +52,7 @@ enum ContractStatus {
   CANCELLED
   PENDING_CANCELLATION
   PAUSED
+  COMPLETED // concluído: todas as sessões consumidas, nada pendente (avulso gravado/perdido; plano sem sessão nem crédito restante)
 }
 
 enum PaymentProvider {
@@ -132,6 +140,9 @@ model User {
   autoChargeEnabled Boolean  @default(false) @map("auto_charge_enabled")
   // When true, only critical notifications (payments, credit loss) are delivered.
   essentialNotificationsOnly Boolean @default(false) @map("essential_notifications_only")
+  // Soft delete: cliente com vínculos é marcado aqui e tem os dados pessoais anonimizados
+  // (e-mail/CPF/telefone/endereço... → null; o nome fica para o histórico). null = conta ativa.
+  deletedAt    DateTime? @map("deleted_at")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
@@ -278,6 +289,12 @@ model Booking {
   recordingStartedByName String?   @map("recording_started_by_name")
   statusReason           String?   @map("status_reason") @db.Text
 
+  // Remarcação do avulso (FALTA justificada / NÃO REALIZADO): makeupStatus != null ⇔ janela concedida
+  // (FALTA sem justificativa fica null). makeupDeadline = fim do dia D+7 em SP; missedDate = D (sessão perdida).
+  makeupStatus   MakeupStatus? @map("makeup_status")
+  makeupDeadline DateTime?     @map("makeup_deadline")
+  missedDate     DateTime?     @map("missed_date") @db.Date
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -291,6 +308,7 @@ model Booking {
   @@index([contractId])
   @@index([date])
   @@index([status])
+  @@index([makeupStatus, makeupDeadline]) // job que expira janelas de remarcação
   @@map("bookings")
 }
 
@@ -309,6 +327,8 @@ model Payment {
   status      PaymentStatus   @default(PENDING)
   dueDate     DateTime?       @map("due_date")
   pixString   String?         @map("pix_string") @db.Text
+  // Validade do QR/cobrança PIX atual (reuso só se viva e com o mesmo valor). null = legado → conferir no provedor.
+  pixExpiresAt DateTime?      @map("pix_expires_at")
   boletoUrl   String?         @map("boleto_url") @db.Text
   paymentUrl  String?         @map("payment_url") @db.Text // Checkout Link
   installments         Int?      @default(1)  // number of installments

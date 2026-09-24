@@ -4,6 +4,37 @@ import { useUI } from '../../../context/UIContext';
 
 const SAVE_ERROR = { message: 'Não foi possível salvar. Tente novamente.', type: 'error' as const };
 
+/** Chaves das redes sociais gravadas no JSON do campo `socialLinks` do perfil. */
+export type SocialNetworkKey = 'youtube' | 'instagram' | 'spotify' | 'website';
+
+/** Redes sociais do perfil do cliente (mesma lista do editor inline e dos modais de cliente). */
+export const SOCIAL_NETWORKS: ReadonlyArray<{ key: SocialNetworkKey; label: string; icon: string }> = [
+    { key: 'youtube', label: 'YouTube', icon: '📺' },
+    { key: 'instagram', label: 'Instagram', icon: '📷' },
+    { key: 'spotify', label: 'Spotify', icon: '🎧' },
+    { key: 'website', label: 'Site', icon: '🌐' },
+];
+
+/**
+ * Lê o campo `socialLinks` (JSON `{youtube, instagram, spotify, website, …}`). Texto que não é
+ * um objeto JSON (ex.: texto livre antigo) vira `{}`; só valores texto são mantidos.
+ * Chaves fora da lista (ex.: `linkedin`, gravado pelo perfil do próprio cliente) são preservadas.
+ */
+export function parseSocialLinks(raw: string | null | undefined): Record<string, string> {
+    if (!raw) return {};
+    try {
+        const obj: unknown = JSON.parse(raw);
+        if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return {};
+        return Object.fromEntries(Object.entries(obj as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === 'string'));
+    } catch { return {}; }
+}
+
+/** Serializa para o campo `socialLinks`: descarta os vazios; nada preenchido = `null`. */
+export function serializeSocialLinks(links: Record<string, string>): string | null {
+    const clean = Object.fromEntries(Object.entries(links).filter(([, v]) => v.trim()));
+    return Object.keys(clean).length ? JSON.stringify(clean) : null;
+}
+
 interface SocialLinksEditorProps {
     socialLinks: string | null;
     userId: string;
@@ -12,17 +43,16 @@ interface SocialLinksEditorProps {
 
 /** Editor de redes sociais (JSON serializado no campo socialLinks). */
 export default function SocialLinksEditor({ socialLinks, userId, onSaved }: SocialLinksEditorProps) {
-    const parsed: Record<string, string> = socialLinks ? (function() { try { return JSON.parse(socialLinks); } catch { return {}; } })() : {};
+    const parsed: Record<string, string> = parseSocialLinks(socialLinks);
     const [editing, setEditing] = useState(false);
     const [links, setLinks] = useState(parsed);
-    useEffect(() => { setLinks(socialLinks ? (function() { try { return JSON.parse(socialLinks); } catch { return {}; } })() : {}); }, [socialLinks]);
+    useEffect(() => { setLinks(parseSocialLinks(socialLinks)); }, [socialLinks]);
     const { showToast } = useUI();
     const save = async () => {
         setEditing(false);
-        const clean = Object.fromEntries(Object.entries(links).filter(([, v]) => v.trim()));
-        try { await usersApi.update(userId, { socialLinks: Object.keys(clean).length ? JSON.stringify(clean) : null } as any); onSaved(); } catch { showToast(SAVE_ERROR); }
+        try { await usersApi.update(userId, { socialLinks: serializeSocialLinks(links) } as any); onSaved(); } catch { showToast(SAVE_ERROR); }
     };
-    const socials = [{ key: 'youtube', label: 'YouTube', icon: '📺' }, { key: 'instagram', label: 'Instagram', icon: '📷' }, { key: 'spotify', label: 'Spotify', icon: '🎧' }, { key: 'website', label: 'Site', icon: '🌐' }];
+    const socials = SOCIAL_NETWORKS;
     return (
         <div style={{ gridColumn: 'span 2' }}>
             <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '4px' }}>Redes Sociais</div>

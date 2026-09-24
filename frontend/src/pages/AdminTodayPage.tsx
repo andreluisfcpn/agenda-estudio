@@ -12,7 +12,11 @@ import { HeroSkeleton } from '../components/ui/SkeletonLoader';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import StatusBadge from '../components/ui/StatusBadge';
 import FinalizeRecordingModal from '../components/admin/bookings/FinalizeRecordingModal';
-import StatusReasonModal, { type ReasonKind } from '../components/admin/bookings/StatusReasonModal';
+import StatusReasonModal, { type ReasonKind, type ReasonConfirmOptions } from '../components/admin/bookings/StatusReasonModal';
+import { MakeupStatusPanel } from '../components/admin/bookings/MakeupRescheduleModal';
+import { useBusinessConfig } from '../hooks/useBusinessConfig';
+import { buildReasonUpdate, reasonToastMessage } from '../utils/avulsoMakeup';
+import { bookingSummary, cancelBookingConsequences, cancelBookingRequest } from '../components/admin/bookings/bookingDanger';
 import { TIER_META, BOOKING_STATUS_META, getMeta } from '../constants/adminMeta';
 
 import { formatBRL, getInitials } from '../utils/format';
@@ -27,6 +31,7 @@ export default function AdminTodayPage() {
     const uid = useId();
     const navigate = useNavigate();
     const { showToast, showConfirm } = useUI();
+    const { get: getRule } = useBusinessConfig();
     const [bookings, setBookings] = useState<BookingWithUser[]>([]);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState(false);
@@ -66,7 +71,7 @@ export default function AdminTodayPage() {
             await bookingsApi.update(bookingId, { status: newStatus });
             showToast(`${label} registrado com sucesso!`);
             await loadData();
-        } catch (err: unknown) { console.error(err); }
+        } catch (err: unknown) { showToast({ message: getErrorMessage(err) || `Não foi possível registrar: ${label.toLowerCase()}.`, type: 'error' }); }
     };
 
     // Operador clica em "Iniciar Gravação" → registra quem operou e quando (pré-requisito p/ finalizar).
@@ -79,29 +84,37 @@ export default function AdminTodayPage() {
     };
 
     // Falta / Não Realizado passam por um modal que exige o MOTIVO antes de aplicar o status.
-    const handleConfirmReason = async (reason: string) => {
-        if (!reasonModal) return;
+    // Avulso (D4/D5): a FALTA pode ser justificada (noShowJustified) e o NAO_REALIZADO abre a remarcação.
+    const handleConfirmReason = async (reason: string, { justified }: ReasonConfirmOptions) => {
+        if (!reasonModal || savingReason) return;
+        const { booking, kind } = reasonModal;
+        const isAvulso = booking.contract?.type === 'AVULSO';
         setSavingReason(true);
         try {
-            await bookingsApi.update(reasonModal.booking.id, { status: reasonModal.kind, statusReason: reason });
-            showToast(reasonModal.kind === 'FALTA' ? 'Falta registrada.' : 'Marcado como não realizado — crédito liberado.');
+            await bookingsApi.update(booking.id, buildReasonUpdate(kind, reason, { isAvulso, justified }));
+            showToast(reasonToastMessage(kind, { isAvulso, justified, bookingDate: booking.date, makeupDays: getRule('avulso_makeup_days') }));
             setReasonModal(null);
             await loadData();
         } catch (err: unknown) { showToast({ message: getErrorMessage(err) || 'Erro ao registrar.', type: 'error' }); }
         finally { setSavingReason(false); }
     };
 
-    const handleCancel = (bookingId: string, clientName: string) => {
+    // D3: cancelar é destrutivo — diálogo de perigo com as consequências reais. Sem try/catch no
+    // onConfirm: um erro da API aparece DENTRO do diálogo (antes só ia para o console).
+    const handleCancel = (booking: BookingWithUser) => {
         showConfirm({
-            title: 'Cancelar Agendamento',
-            message: `Tem certeza que deseja cancelar a sessão de ${clientName}?`,
+            tone: 'danger',
+            icon: Ban,
+            title: 'Cancelar agendamento?',
+            message: bookingSummary(booking),
+            consequences: cancelBookingConsequences(booking),
+            confirmLabel: 'Cancelar agendamento',
+            loadingLabel: 'Cancelando…',
             onConfirm: async () => {
-                try {
-                    await bookingsApi.cancel(bookingId);
-                    showToast('Agendamento cancelado.');
-                    await loadData();
-                } catch (err: unknown) { console.error(err); }
-            }
+                await cancelBookingRequest(booking);
+                showToast('Agendamento cancelado.');
+                await loadData();
+            },
         });
     };
 
@@ -128,7 +141,7 @@ export default function AdminTodayPage() {
             });
             showToast('Métricas salvas com sucesso! ✅');
             await loadData();
-        } catch (err: unknown) { console.error(err); }
+        } catch (err: unknown) { showToast({ message: getErrorMessage(err) || 'Não foi possível salvar as alterações.', type: 'error' }); }
         finally { setSaving(false); }
     };
 
@@ -428,7 +441,7 @@ export default function AdminTodayPage() {
                                                     </button>
                                                     <div style={{ flex: 1 }} />
                                                     <button className="today-action-btn today-action-btn--danger"
-                                                        onClick={() => handleCancel(booking.id, booking.user.name)}>
+                                                        onClick={() => handleCancel(booking)}>
                                                         <Ban size={14} aria-hidden="true" /> Cancelar
                                                     </button>
                                                 </div>
@@ -450,6 +463,9 @@ export default function AdminTodayPage() {
                                                     {booking.statusReason}
                                                 </div>
                                             )}
+
+                                            {/* Remarcação do avulso (D4/D5): status + Justificar falta / Remarcar. */}
+                                            <MakeupStatusPanel booking={booking} clientName={booking.user.name} onChanged={loadData} />
 
                                             {/* Metrics grid (COMPLETED) */}
                                             {booking.status === 'COMPLETED' && (
@@ -545,6 +561,9 @@ export default function AdminTodayPage() {
                 isOpen={!!reasonModal}
                 kind={reasonModal?.kind ?? null}
                 subtitle={reasonModal ? `${reasonModal.booking.user.name} · ${reasonModal.booking.startTime}` : undefined}
+                isAvulso={reasonModal?.booking.contract?.type === 'AVULSO'}
+                bookingDate={reasonModal?.booking.date}
+                makeupStatus={reasonModal?.booking.makeupStatus ?? null}
                 onConfirm={handleConfirmReason}
                 onClose={() => setReasonModal(null)}
                 saving={savingReason}

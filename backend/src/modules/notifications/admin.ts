@@ -153,7 +153,7 @@ router.post('/broadcast', async (req: Request, res: Response) => {
         const batchId = randomUUID();
 
         const recipients = [...new Set(data.target === 'all'
-            ? (await prisma.user.findMany({ where: { role: 'CLIENTE' }, select: { id: true } })).map(u => u.id)
+            ? (await prisma.user.findMany({ where: { role: 'CLIENTE', deletedAt: null }, select: { id: true } })).map(u => u.id)
             : data.target)];
         if (recipients.length === 0) {
             res.status(400).json({ error: 'Nenhum destinatário.' });

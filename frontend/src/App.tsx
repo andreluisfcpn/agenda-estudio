@@ -16,6 +16,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import { usePushSubscription } from './hooks/usePushSubscription';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { loadPaymentMethods } from './constants/paymentMethods';
+import { clearPendingIntent, getPostLoginPath } from './utils/pendingIntent';
 
 // Lazy-loaded pages (code-split for faster navigation)
 const DashboardPage = React.lazy(() => import('./pages/DashboardPage'));
@@ -150,6 +151,8 @@ function AppRoutes() {
     // so navigating between tabs is instant instead of downloading on first click.
     useEffect(() => {
         if (!user) return;
+        // D16: intenção da landing é só do CLIENTE — admin nunca retoma (e não a deixa para o próximo login da aba).
+        if (user.role !== 'CLIENTE') clearPendingIntent();
         loadPaymentMethods();
         const ric: (cb: () => void) => void =
             (window as unknown as { requestIdleCallback?: (cb: () => void) => void }).requestIdleCallback
@@ -167,9 +170,11 @@ function AppRoutes() {
 
     return (
         <Routes>
-            {/* Logged-in users (incl. installed PWA launching at start_url '/') go straight to the app. */}
-            <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <LandingPage />} />
-            <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
+            {/* Logged-in users (incl. installed PWA launching at start_url '/') go straight to the app.
+                D16: este guard é a FONTE ÚNICA do destino pós-login (o LoginModal só fecha): cliente com
+                horário escolhido na landing (pendingIntent válido) vai para a agenda; o resto, painel. */}
+            <Route path="/" element={user ? <Navigate to={getPostLoginPath(user)} replace /> : <LandingPage />} />
+            <Route path="/login" element={user ? <Navigate to={getPostLoginPath(user)} replace /> : <LoginPage />} />
             <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
             <Route path="/calendar" element={<ProtectedRoute><CalendarPage /></ProtectedRoute>} />
             <Route path="/minhas-gravacoes" element={<ProtectedRoute><MyBookingsPage /></ProtectedRoute>} />

@@ -26,6 +26,15 @@ Onde você reserva horários de gravação. É também por aqui que se inicia a 
 ![Pagamento do agendamento](../images/cliente/agenda-03-pagamento.png)
 <!-- TODO screenshot: checkout do agendamento avulso -->
 
+## Horário escolhido na página inicial
+
+Se você escolheu um horário na agenda da **página inicial** antes de entrar, ao **entrar ou criar a conta** (senha, código por e-mail ou Google) a agenda abre **direto naquela semana e naquele dia**, já com as opções do horário: **usar um plano ativo**, **contratar avulso** ou **criar um novo contrato** — neste caso o assistente de contratação já vem com a faixa, a data e a hora do horário marcadas (você só escolhe Fixo ou Flex e segue).
+
+- Se o horário foi **ocupado** nesse meio-tempo, você recebe o aviso **"Horário indisponível"** e a agenda já está naquele dia para escolher outro.
+- Se ele ficou **em cima da hora** (menos que a antecedência mínima), aparece o aviso de antecedência.
+- A escolha vale por **30 minutos** e só nesta aba do navegador. Entrar pelo botão **Área do Cliente** é um login comum (não retoma horário).
+- A página inicial só mostra **RESERVAR →** em horários que respeitam a antecedência mínima do estúdio.
+
 ## Reserva temporária (hold)
 
 Ao agendar, o horário fica **reservado por 10 minutos** aguardando o pagamento — você vê um **contador** no slot. Se o tempo acabar sem pagamento, o horário é liberado automaticamente.

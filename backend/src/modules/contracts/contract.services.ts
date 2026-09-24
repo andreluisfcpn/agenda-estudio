@@ -8,6 +8,10 @@ import { resolvePlanAmounts, type BillingCadence } from '../../lib/paymentPolicy
 import { addMonths } from '../../utils/pricing.js';
 import { serviceContractSchema } from './validators.js';
 import { CouponError, validateCoupon, reserveCouponUse, releaseAndPurgeCouponsForPayments, type CouponQuote } from '../../lib/couponService.js';
+import { config } from '../../config/index.js';
+import { purgeAwaitingContract } from '../../jobs/cleanExpiredHolds.js';
+import { acquireMutex, releaseMutex } from '../../lib/redis.js';
+import { buildPixDiscountMeta } from '../../lib/pixGateway.js';
 
 export function registerServiceRoutes(router: Router) {
 
@@ -18,6 +22,10 @@ export function registerServiceRoutes(router: Router) {
 // materializes the ACTIVE contract + installments 2..N once the first payment confirms.
 
 router.post('/service', authenticate, async (req: Request, res: Response) => {
+    // pagamentos-9: trava por usuário+serviço envolvendo "substituir a tentativa anterior" + criar —
+    // duas criações simultâneas (duas abas, reenvio) não geram duas contratações aguardando pagamento.
+    // Liberada no finally assim que ESTA criação termina (o TTL só cobre um processo que caiu).
+    let hireLock: string | null = null;
     try {
         const data = serviceContractSchema.parse(req.body);
         const userId = req.user!.userId;
@@ -59,6 +67,21 @@ router.post('/service', authenticate, async (req: Request, res: Response) => {
             ? requestedPlan
             : (allowedPlans[0] || 'FULL');
 
+        // D1 — forma de cobrança do serviço:
+        //  • Mensal + PIX (ou cartão sem cardSplit) → 1ª mensalidade agora, demais mês a mês (como antes).
+        //  • Mensal + Cartão com cardSplit → o TOTAL agora, parcelado em até N× SEM juros
+        //    (N = meses da fidelidade): grava paymentPlan 'FULL' (cobrança única, sem desconto PIX —
+        //    é cartão) + Payment.metadata.installmentCap = N (lido pela paymentPolicy).
+        //  • À vista (FULL) → pagamento ÚNICO: PIX com desconto PIX ou cartão 1× (installmentCap = 1,
+        //    sem 2x–12x).
+        if (data.cardSplit && !(plan === 'MONTHLY' && data.paymentMethod === 'CARTAO')) {
+            res.status(400).json({ error: 'O parcelamento do total no cartão só vale para o plano mensal pago com cartão.' });
+            return;
+        }
+        const cardSplit = !!data.cardSplit;
+        const storedPlan: 'FULL' | 'MONTHLY' = cardSplit ? 'FULL' : plan;
+        const installmentCap: number | undefined = cardSplit ? duration : (plan === 'FULL' ? 1 : undefined);
+
         const cadence: BillingCadence = addon.billingCadence === 'CALENDAR_MONTH'
             ? 'CALENDAR_MONTH'
             : 'BILLING_CYCLE_28';
@@ -76,12 +99,39 @@ router.post('/service', authenticate, async (req: Request, res: Response) => {
         const servicePlan = await resolvePlanAmounts({
             baseMonthly: monthlyDiscounted,
             durationMonths: duration,
-            plan,
+            plan: storedPlan,
             paymentMethod: data.paymentMethod,
             startDate,
             billingCadence: cadence,
         });
         const firstAmount = servicePlan.firstAmount;
+
+        const lockKey = `mutex:service-hire:${userId}:${addon.key}`;
+        if (!(await acquireMutex(lockKey, 90))) {
+            res.status(409).json({ error: `Já há uma contratação de ${addon.name} sendo criada. Aguarde alguns instantes e confira em Meus Contratos.` });
+            return;
+        }
+        hireLock = lockKey;
+
+        // D2: cada nova tentativa SUBSTITUI a contratação anterior ainda não paga deste mesmo serviço
+        // (ex.: "Voltar" no wizard + outra forma de pagamento) — mesma rotina segura da varredura:
+        // concilia no provedor (se pagou, promove e NÃO cria outra), cancela a cobrança viva e apaga.
+        // Feito ANTES do cupom, para liberar um uso reservado pela tentativa abandonada.
+        const previous = await prisma.contract.findMany({
+            where: { userId, type: 'SERVICO', status: 'AWAITING_PAYMENT', addOns: { has: addon.key } },
+            select: { id: true },
+        });
+        for (const prev of previous) {
+            const r = await purgeAwaitingContract(prev.id);
+            if (r === 'paid') {
+                res.status(409).json({ error: `O pagamento da contratação anterior de ${addon.name} foi confirmado — o serviço já está ativo em Meus Contratos.` });
+                return;
+            }
+            if (r === 'inflight') {
+                res.status(409).json({ error: `Há um pagamento em processamento para a contratação anterior de ${addon.name}. Aguarde alguns instantes e confira em Meus Contratos.` });
+                return;
+            }
+        }
 
         // Coupon: discounts the first charge; ALL_INSTALLMENTS scope propagates to
         // months 2..N via couponForInstallments (applied at fulfillment).
@@ -91,13 +141,38 @@ router.post('/service', authenticate, async (req: Request, res: Response) => {
         }
         const chargeAmount = couponQuote ? couponQuote.finalAmount : firstAmount;
 
+        // D1 (pagamentos-3): "À vista" com PIX grava o valor JÁ com o desconto PIX. O desconto vale só no
+        // PIX: guarda o valor do CARTÃO (total sem o desconto PIX, mesmo cupom em R$) para o checkout
+        // cobrar certo se o cliente trocar de aba.
+        let pixDiscountMeta: ReturnType<typeof buildPixDiscountMeta>;
+        if (storedPlan === 'FULL' && data.paymentMethod === 'PIX') {
+            const cardPlan = await resolvePlanAmounts({
+                baseMonthly: monthlyDiscounted,
+                durationMonths: duration,
+                plan: 'FULL',
+                paymentMethod: 'CARTAO',
+                startDate,
+                billingCadence: cadence,
+            });
+            pixDiscountMeta = buildPixDiscountMeta({
+                pixAmount: chargeAmount,
+                cardAmount: Math.max(0, cardPlan.firstAmount - (couponQuote?.discountAmount ?? 0)),
+                pct: Number(await getConfig('pix_extra_discount_pct')) || 0,
+            });
+        }
+        const paymentMetadata = {
+            ...(installmentCap !== undefined ? { installmentCap } : {}),
+            ...(pixDiscountMeta ? { pixDiscount: pixDiscountMeta } : {}),
+        };
+
         // Create-then-pay: materialize the SERVICO contract already in AWAITING_PAYMENT plus its
         // first payment, so it is payable/retryable from Meus Contratos even if the client closes
         // the checkout. On confirmation, onPaymentConfirmed activates the contract and generates
         // installments 2..N (derived from the first paid amount). Coupon reserved atomically.
         const endDate = addMonths(startDate, duration);
-        const pDeadline = new Date(startDate);
-        pDeadline.setDate(pDeadline.getDate() + 3); // 3 dias para pagar (limpo pelo hold-cleanup)
+        // D2: 10 minutos para pagar (config.studio.lockTtlSeconds); depois a varredura concilia no
+        // provedor e apaga a contratação não paga.
+        const pDeadline = new Date(Date.now() + config.studio.lockTtlSeconds * 1000);
 
         const { contract, firstPayment } = await prisma.$transaction(async (tx) => {
             const c = await tx.contract.create({
@@ -113,7 +188,7 @@ router.post('/service', authenticate, async (req: Request, res: Response) => {
                     status: 'AWAITING_PAYMENT',
                     paymentDeadline: pDeadline,
                     paymentMethod: data.paymentMethod as any,
-                    paymentPlan: plan,
+                    paymentPlan: storedPlan,
                     addOns: [addon.key],
                     flexCreditsTotal: 0,
                     flexCreditsRemaining: 0,
@@ -127,6 +202,7 @@ router.post('/service', authenticate, async (req: Request, res: Response) => {
                     amount: chargeAmount,
                     status: 'PENDING',
                     dueDate: startDate,
+                    ...(Object.keys(paymentMetadata).length > 0 ? { metadata: paymentMetadata } : {}),
                     ...(couponQuote ? {
                         couponId: couponQuote.coupon.id,
                         couponCode: couponQuote.coupon.code,
@@ -176,13 +252,14 @@ router.post('/service', authenticate, async (req: Request, res: Response) => {
         });
         let clientSecret: string | undefined;
         let pixString: string | undefined;
+        let pixExpiresAt: Date | null = null;
 
         if (data.paymentMethod !== 'CARTAO') {
             try {
                 const result = await gatewayCreatePayment({
                     paymentMethod: data.paymentMethod as 'PIX' | 'BOLETO' | 'CARTAO',
                     amount: chargeAmount,
-                    description: plan === 'FULL' ? `Serviço ${addon.name}` : `Serviço ${addon.name} - 1ª Parcela`,
+                    description: storedPlan === 'FULL' ? `Serviço ${addon.name}` : `Serviço ${addon.name} - 1ª Parcela`,
                     customer: {
                         name: userInfo?.name || 'Cliente',
                         email: userInfo?.email || '',
@@ -191,10 +268,13 @@ router.post('/service', authenticate, async (req: Request, res: Response) => {
                     dueDate: startDate,
                     paymentId: firstPayment.id,
                     userId,
+                    // QR vale só enquanto a contratação existe (10 min) — nunca pagável após a varredura.
+                    expiresSeconds: config.studio.lockTtlSeconds,
                 });
                 await updatePaymentWithGatewayResult(firstPayment.id, result);
                 if (result.clientSecret) clientSecret = result.clientSecret;
                 if (result.pixString) pixString = result.pixString;
+                if (result.pixString && result.expiresAt) pixExpiresAt = result.expiresAt;
             } catch (err) {
                 // Gateway failed BEFORE any charge was generated (invalid CPF, Cora down, etc.).
                 // Nothing to pay yet, so roll back cleanly: release the coupon, drop the payment AND
@@ -214,10 +294,17 @@ router.post('/service', authenticate, async (req: Request, res: Response) => {
             contractId: contract.id,
             firstPaymentId: firstPayment.id,
             amount: chargeAmount,
+            // D2: prazo para concluir o pagamento (ISO) — o front mostra a contagem de 10 min.
+            paymentDeadline: pDeadline.toISOString(),
+            // D1: plano efetivamente gravado ('FULL' também no mensal parcelado no cartão) e o teto
+            // de parcelas sem juros no cartão (undefined = mensalidade 1×/mês).
+            paymentPlan: storedPlan,
+            ...(installmentCap !== undefined && { installmentCap }),
             ...(couponQuote && { couponDiscount: couponQuote.discountAmount }),
             ...(clientSecret && { clientSecret }),
             ...(pixString && { pixString }),
-            message: plan === 'FULL'
+            ...(pixExpiresAt && { expiresAt: pixExpiresAt.toISOString() }),
+            message: storedPlan === 'FULL'
                 ? `Pagamento gerado. Conclua para ativar o serviço ${addon.name}.`
                 : `1ª parcela gerada. Conclua para ativar o serviço ${addon.name}.`,
         });
@@ -230,7 +317,10 @@ router.post('/service', authenticate, async (req: Request, res: Response) => {
             res.status(err.httpStatus).json({ error: err.message, code: err.code });
             return;
         }
+        console.error('[Contract:Service]', err);
         res.status(500).json({ error: 'Erro interno ao processar serviço.' });
+    } finally {
+        if (hireLock) await releaseMutex(hireLock).catch(() => {});
     }
 });
 

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '../../src/lib/prisma';
 import { redis } from '../../src/lib/redis';
 import { runFlexCreditExpiryJob } from '../../src/jobs/flexCreditExpiryJob';
+import { syncContractCompletion } from '../../src/lib/contractCompletion';
 import { mkUser, mkContract, mkBooking } from './factories';
 
 // ─── FLEX credit expiry — TIME-TRAVEL integration ──────────────────────────
@@ -170,5 +171,68 @@ describe('runFlexCreditExpiryJob — time travel', () => {
         const after = await readContract(c.id);
         expect(after.flexCycleStart).not.toBeNull();          // ancorou no dia 0
         expect(after.flexCreditsForfeited).toBe(4);           // 5 semanas, 1 gravação → confisca 4
+    });
+});
+
+// ─── D5 no FLEX: NAO_REALIZADO (culpa do estúdio) devolve o crédito — o job não pode desfazer ──
+describe('runFlexCreditExpiryJob — NAO_REALIZADO devolve o crédito (status-remarcacao-2 / jobs-tempo-migrations-1)', () => {
+    const readFull = (id: string) => prisma.contract.findUniqueOrThrow({
+        where: { id },
+        select: { status: true, flexCreditsForfeited: true, flexCreditsRemaining: true },
+    });
+
+    it('3 gravadas + 1 NAO_REALIZADO (crédito devolvido): o job mantém o crédito e o contrato ACTIVE, inclusive depois do fim do ciclo', async () => {
+        const { u, c } = await seedFlex({ flexCreditsTotal: 4, flexCreditsRemaining: 1 }); // 4 − 3 gravadas (o NAO devolveu 1)
+        for (const d of [0, 7, 14]) await mkBooking(u.id, c.id, { date: at(d), status: 'COMPLETED' });
+        await mkBooking(u.id, c.id, { date: at(21), status: 'NAO_REALIZADO' });
+
+        await runFlexCreditExpiryJob(at(22));
+        expect(await readFull(c.id)).toEqual({ status: 'ACTIVE', flexCreditsForfeited: 0, flexCreditsRemaining: 1 });
+
+        // Ciclo encerrado (4 semanas): a semana do NAO_REALIZADO conta como coberta → nada confiscado.
+        await runFlexCreditExpiryJob(new Date(CS + 6 * WEEK));
+        expect(await readFull(c.id)).toEqual({ status: 'ACTIVE', flexCreditsForfeited: 0, flexCreditsRemaining: 1 });
+
+        // Reposição agendada com o crédito devolvido: consome (0) mas a sessão pendente segura ACTIVE…
+        const makeup = await mkBooking(u.id, c.id, { date: new Date(CS + 6 * WEEK + DAY), status: 'CONFIRMED' });
+        await prisma.contract.update({ where: { id: c.id }, data: { flexCreditsRemaining: 0 } }); // deductCredit da reserva
+        await runFlexCreditExpiryJob(new Date(CS + 6 * WEEK + 2 * DAY));
+        expect(await readFull(c.id)).toEqual({ status: 'ACTIVE', flexCreditsForfeited: 0, flexCreditsRemaining: 0 });
+
+        // …e só a reposição gravada conclui o contrato.
+        await prisma.booking.update({ where: { id: makeup.id }, data: { status: 'COMPLETED' } });
+        await syncContractCompletion(c.id);
+        await runFlexCreditExpiryJob(new Date(CS + 6 * WEEK + 3 * DAY));
+        expect(await readFull(c.id)).toEqual({ status: 'COMPLETED', flexCreditsForfeited: 0, flexCreditsRemaining: 0 });
+    });
+
+    it('confisco por atraso nas OUTRAS semanas não leva o crédito devolvido pelo NAO_REALIZADO', async () => {
+        // 4 créditos: semana 1 gravada, semana 2 NAO_REALIZADO, semanas 3 e 4 sem nada.
+        const { u, c } = await seedFlex({ flexCreditsTotal: 4, flexCreditsRemaining: 3 });
+        await mkBooking(u.id, c.id, { date: at(0), status: 'COMPLETED' });
+        await mkBooking(u.id, c.id, { date: at(7), status: 'NAO_REALIZADO' });
+
+        await runFlexCreditExpiryJob(new Date(CS + 5 * WEEK));
+        // shortfall 2 (semanas 3 e 4) → confisca 2; restante = 4 − 1 consumida − 2 = 1 (o crédito do NAO).
+        expect(await readFull(c.id)).toEqual({ status: 'ACTIVE', flexCreditsForfeited: 2, flexCreditsRemaining: 1 });
+    });
+
+    it('autocorreção: FLEX concluído por engano (crédito do NAO_REALIZADO zerado) é reaberto pelo job', async () => {
+        const { u, c } = await seedFlex({ flexCreditsTotal: 4, flexCreditsRemaining: 0, status: 'COMPLETED' });
+        for (const d of [0, 7, 14]) await mkBooking(u.id, c.id, { date: at(d), status: 'COMPLETED' });
+        await mkBooking(u.id, c.id, { date: at(21), status: 'NAO_REALIZADO' });
+
+        await runFlexCreditExpiryJob(new Date(CS + 5 * WEEK));
+        expect(await readFull(c.id)).toEqual({ status: 'ACTIVE', flexCreditsForfeited: 0, flexCreditsRemaining: 1 });
+        expect(await prisma.auditLog.count({ where: { entityType: 'CONTRACT', entityId: c.id, action: 'REOPENED' } })).toBe(1);
+    });
+
+    it('FLEX concluído de verdade (tudo gravado) continua COMPLETED e sem aviso de risco', async () => {
+        const { u, c } = await seedFlex({ flexCreditsTotal: 2, flexCreditsRemaining: 0, status: 'COMPLETED' });
+        await mkBooking(u.id, c.id, { date: at(0), status: 'COMPLETED' });
+        await mkBooking(u.id, c.id, { date: at(7), status: 'COMPLETED' });
+        await runFlexCreditExpiryJob(new Date(CS + 3 * WEEK));
+        expect(await readFull(c.id)).toEqual({ status: 'COMPLETED', flexCreditsForfeited: 0, flexCreditsRemaining: 0 });
+        expect(await countFlexNotifs(u.id)).toBe(0);
     });
 });

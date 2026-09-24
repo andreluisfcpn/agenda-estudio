@@ -3,6 +3,7 @@ import { prisma } from '../../lib/prisma.js';
 import { authenticate, authorize } from '../../middleware/auth.js';
 import { getConfig } from '../../lib/businessConfig.js';
 import { resolveFeeAt, computeGatewayFee, type FeeRate } from '../../lib/gatewayFees.js';
+import { paidChargedAmount } from '../../lib/pixGateway.js';
 
 const router = Router();
 
@@ -73,6 +74,10 @@ router.get('/closing/:year/:month', authenticate, authorize('ADMIN'), async (req
 
         const enrichedPayments = payments.map(p => {
             let fee = 0;
+            // Bruto de um pagamento PAGO = o que foi efetivamente cobrado (cartão: chargedAmount — sem o
+            // desconto PIX do à vista e com os juros do parcelamento; PIX/boleto: amount). Pendentes
+            // continuam pelo amount (a base que o PIX/boleto cobra).
+            const gross = p.status === 'PAID' ? paidChargedAmount(p) : p.amount;
             // Look up label from admin-configured PaymentMethodConfig
             const pmKey = p.contract?.paymentMethod;
             let methodLabel = 'PIX / Boleto';
@@ -85,13 +90,14 @@ router.get('/closing/:year/:month', authenticate, authorize('ADMIN'), async (req
             }
 
             if (p.status === 'PAID') {
-                grossRevenue += p.amount;
+                grossRevenue += gross;
                 paidCount++;
 
-                // Taxa vigente na data do pagamento (paidAt; senão vencimento; senão criação).
+                // Taxa vigente na data do pagamento (paidAt; senão vencimento; senão criação), sobre o
+                // valor efetivamente cobrado (o gateway desconta a taxa do valor da transação).
                 const feeAt = p.paidAt ?? p.dueDate ?? p.createdAt;
                 const rate = resolveFeeAt(feeHistory, p.provider, feeAt, fallbackFor(p.provider));
-                fee = computeGatewayFee(p.amount, p.provider, rate);
+                fee = computeGatewayFee(gross, p.provider, rate);
                 if (p.provider === 'STRIPE') stripeCount++;
                 else if (p.provider === 'CORA') coraCount++;
                 else if (p.provider === 'SICOOB') sicoobCount++;
@@ -108,10 +114,14 @@ router.get('/closing/:year/:month', authenticate, authorize('ADMIN'), async (req
 
             return {
                 ...p,
+                // `amount` do relatório = bruto efetivamente cobrado (coluna "Bruto" e totais do painel);
+                // a base gravada no Payment segue em `baseAmount`.
+                amount: gross,
+                baseAmount: p.amount,
                 methodLabel,
                 methodEmoji: resolvedConfig?.emoji || '💰',
                 feeDeduced: fee,
-                netAmount: p.amount - fee
+                netAmount: gross - fee
             };
         });
 

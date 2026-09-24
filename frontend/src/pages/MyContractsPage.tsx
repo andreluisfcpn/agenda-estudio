@@ -18,6 +18,7 @@ import ContractCard from '../components/client/ContractCard';
 import { renderServiceIcon } from '../utils/serviceIcons';
 import { formatBRL } from '../utils/format';
 import { isContractCurrent } from '../utils/contractStatus';
+import { getStatusLabel } from '../constants/adminMeta';
 import { ContractsSkeleton } from '../components/ui/SkeletonLoader';
 import '../styles/my-contracts.css';
 
@@ -71,7 +72,7 @@ export default function MyContractsPage() {
     const [showBulkModalFor, setShowBulkModalFor] = useState<ContractWithStats | null>(null);
 
     // Cancel Modal
-    const [showCancelModalFor, setShowCancelModalFor] = useState<{ id: string, feeNote: string } | null>(null);
+    const [showCancelModalFor, setShowCancelModalFor] = useState<{ id: string } | null>(null);
 
     // Renew Modal
     const [showRenewModalFor, setShowRenewModalFor] = useState<ContractWithStats | null>(null);
@@ -132,24 +133,26 @@ export default function MyContractsPage() {
     // Regra compartilhada com o KPI do dashboard (utils/contractStatus.ts).
     const activeContracts = contracts.filter(isContractCurrent);
 
-    const archivedContracts = contracts.filter(c => {
-        if (c.status === 'CANCELLED' || c.status === 'PENDING_CANCELLATION' || c.status === 'EXPIRED' || c.status === 'AWAITING_PAYMENT') return false;
+    // Aba "Finalizados": Concluído (D6) e Expirado sempre; Ativo/Pausado só quando tudo foi
+    // consumido e NÃO conta como atual (ex.: avulso com remarcação aberta fica em "Ativos").
+    // A mesma regra decide o `isArchived` do card, então um contrato nunca aparece em duas abas.
+    const isContractArchived = (c: ContractWithStats) => {
+        if (c.status === 'COMPLETED' || c.status === 'EXPIRED') return true;
+        if (c.status !== 'ACTIVE' && c.status !== 'PAUSED') return false;
+        if (isContractCurrent(c)) return false;
 
         const bookings = c.bookings || [];
-        const totalBookings = c.type === 'FIXO' ? c.durationMonths * 4 : c.totalBookings;
-        const usedBookingsCount = c.type === 'FIXO' ? bookings.filter(b => b.status !== 'NAO_REALIZADO' && b.status !== 'CANCELLED').length : (c.flexCreditsTotal || 0) - (c.flexCreditsRemaining || 0);
-
-        const now = new Date();
+        const total = c.type === 'FIXO' ? c.durationMonths * 4 : c.totalBookings;
+        const used = c.type === 'FIXO' ? bookings.filter(b => b.status !== 'NAO_REALIZADO' && b.status !== 'CANCELLED').length : (c.flexCreditsTotal || 0) - (c.flexCreditsRemaining || 0);
         const hasPending = bookings.some(b => {
             if (b.status === 'CANCELLED' || b.status === 'NAO_REALIZADO') return false;
-            const bookingDateTime = new Date(`${b.date.split('T')[0]}T${b.startTime}:00`);
-            return bookingDateTime >= now && (b.status === 'RESERVED' || b.status === 'CONFIRMED');
+            const dt = new Date(`${b.date.split('T')[0]}T${b.startTime}:00`);
+            return dt >= new Date() && (b.status === 'RESERVED' || b.status === 'CONFIRMED');
         });
+        return !hasPending && total > 0 && used >= total;
+    };
 
-        if (hasPending) return false;
-
-        return totalBookings > 0 && usedBookingsCount >= totalBookings;
-    });
+    const archivedContracts = contracts.filter(isContractArchived);
 
     const cancelledContracts = contracts.filter(c => {
         if (c.status !== 'CANCELLED') return false;
@@ -164,19 +167,6 @@ export default function MyContractsPage() {
     });
 
     const contractsToDisplay = tab === 'active' ? activeContracts : tab === 'archived' ? archivedContracts : cancelledContracts;
-
-    const isContractArchived = (c: ContractWithStats) => {
-        if (c.status === 'EXPIRED') return true;
-        const bookings = c.bookings || [];
-        const total = c.type === 'FIXO' ? c.durationMonths * 4 : c.totalBookings;
-        const used = c.type === 'FIXO' ? bookings.filter(b => b.status !== 'NAO_REALIZADO' && b.status !== 'CANCELLED').length : (c.flexCreditsTotal || 0) - (c.flexCreditsRemaining || 0);
-        const hasPending = bookings.some(b => {
-            if (b.status === 'CANCELLED' || b.status === 'NAO_REALIZADO') return false;
-            const dt = new Date(`${b.date.split('T')[0]}T${b.startTime}:00`);
-            return dt >= new Date() && (b.status === 'RESERVED' || b.status === 'CONFIRMED');
-        });
-        return !hasPending && total > 0 && used >= total;
-    };
 
     const getPlanConfig = (tier: string) => pricing.find(p => p.tier === tier);
 
@@ -215,20 +205,17 @@ export default function MyContractsPage() {
         finally { setSaving(false); }
     };
 
-    const handleRequestCancel = async (id: string, feeNote: string) => {
-        setShowCancelModalFor({ id, feeNote });
+    const handleRequestCancel = (id: string) => {
+        setShowCancelModalFor({ id });
     };
 
+    // D3: o CancelContractModal (DangerConfirmDialog) aguarda esta promise e mostra o erro dentro
+    // dele — por isso sem try/catch aqui. No sucesso o próprio diálogo fecha (onClose).
     const confirmCancelContract = async () => {
         if (!showCancelModalFor) return;
-        try {
-            await contractsApi.requestCancellation(showCancelModalFor.id);
-            showToast('Cancelamento solicitado com sucesso. Os agendamentos futuros foram liberados.');
-            loadData();
-            setShowCancelModalFor(null);
-        } catch (err: unknown) {
-            showAlert({ message: 'Erro ao solicitar cancelamento: ' + getErrorMessage(err), type: 'error' });
-        }
+        const res = await contractsApi.requestCancellation(showCancelModalFor.id);
+        showToast(res.message || 'Cancelamento solicitado. O estúdio vai analisar o pedido.');
+        loadData();
     };
 
     const handlePurchaseAddon = async (bookingId: string, addonKey: string) => {
@@ -269,8 +256,84 @@ export default function MyContractsPage() {
             case 'FALTA': return 'Falta';
             case 'NAO_REALIZADO': return 'Não Realizado';
             case 'PAUSED': return 'Pausado';
-            default: return 'Cancelado';
+            // Demais (HELD "Em espera", CANCELLED…) pelo mapa único; desconhecido → '—' (nunca "Cancelado").
+            default: return getStatusLabel(s);
         }
+    };
+
+    // "Pagar Agora" do banner de contrato AGUARDANDO PAGAMENTO.
+    const payAwaitingContract = async (c: ContractWithStats) => {
+        // A 1ª cobrança a vencer (menor vencimento) — no personalizado do cliente TODAS as parcelas
+        // nascem PENDING, e a que se paga agora é a 1ª (contratos-2).
+        const byDue = [...(c.payments || [])].sort((a, b) =>
+            (a.dueDate ? new Date(a.dueDate).getTime() : Infinity) - (b.dueDate ? new Date(b.dueDate).getTime() : Infinity));
+        const pending = byDue.find(p => p.status === 'PENDING');
+        // AVULSO é pago pelo pagamento do PRÓPRIO agendamento (o backend rejeita /contracts/:id/pay,
+        // que cobraria mês×faixa) e o SERVIÇO já nasce com a 1ª cobrança criada (D2): o /pay forçaria
+        // cartão e aposentaria o QR PIX. Os dois vão direto ao pagamento pendente — ou à cobrança que
+        // FALHOU (cartão recusado): o checkout reabre a FAILED com uma cobrança nova (pagamentos-11).
+        if (c.type === 'AVULSO' || c.type === 'SERVICO') {
+            const payable = pending ?? byDue.find(p => p.status === 'FAILED');
+            if (payable) {
+                navigate('/meus-pagamentos', { state: { autoOpenPaymentId: payable.id } });
+            } else {
+                showToast({
+                    type: 'error',
+                    message: c.type === 'AVULSO'
+                        ? 'Pagamento do agendamento não encontrado. Abra "Minhas Reservas" para pagar.'
+                        : 'Pagamento da contratação não encontrado. Atualize a página ou contrate o serviço de novo.',
+                });
+            }
+            return;
+        }
+        // Demais (renovação, personalizado): /pay com a forma de pagamento DO CONTRATO — o padrão do
+        // backend é CARTÃO e aposentaria um PIX vivo (e daria 503 com o Stripe desligado). Boleto não
+        // passa pelo /pay: com a cobrança já criada, vai direto ao checkout (que gera o boleto).
+        if (c.paymentMethod === 'BOLETO' && pending) {
+            navigate('/meus-pagamentos', { state: { autoOpenPaymentId: pending.id } });
+            return;
+        }
+        try {
+            const res = await contractsApi.pay(c.id, { paymentMethod: c.paymentMethod === 'PIX' ? 'PIX' : 'CARTAO' });
+            if (res.alreadyPaid) {
+                showToast({ type: 'success', message: res.message || 'Pagamento já confirmado.' });
+                loadData();
+                return;
+            }
+            showToast({ type: 'success', message: 'Abrindo pagamento...' });
+            // FE-H1 FIX: Never expose clientSecret in URL — use navigate state instead
+            // MyPaymentsPage already handles location.state.autoOpenPaymentId
+            // contratos-2: abre EXATAMENTE a linha em que o backend gerou a cobrança.
+            navigate('/meus-pagamentos', {
+                state: { autoOpenPaymentId: res.paymentId || pending?.id }
+            });
+        } catch (err: unknown) {
+            // Cobrança já existente (ex.: PIX sem CPF no perfil): o checkout resolve (pede o CPF).
+            if (pending) {
+                navigate('/meus-pagamentos', { state: { autoOpenPaymentId: pending.id } });
+                return;
+            }
+            showToast({ type: 'error', message: getErrorMessage(err) || 'Erro ao iniciar pagamento' });
+        }
+    };
+
+    // Prazo de pagamento esgotado com a tela aberta (a varredura do backend apaga a contratação).
+    const expireAwaitingContract = (c: ContractWithStats) => {
+        setContracts(prev => prev.filter(ct => ct.id !== c.id));
+        if (c.type === 'SERVICO') {
+            const svcName = allAddons.find(a => a.key === (c.addOns || [])[0])?.name || c.name;
+            showToast(`Tempo esgotado. A contratação de ${svcName} não foi concluída.`);
+            return;
+        }
+        if (c.type === 'AVULSO') {
+            showToast('⏰ Tempo esgotado. O horário foi liberado.');
+            return;
+        }
+        // Personalizado do cliente: as sessões RESERVADAS voltam para a agenda junto com a contratação.
+        const holdsSlots = (c.bookings || []).some(b => b.status === 'RESERVED' || b.status === 'HELD');
+        showToast(holdsSlots
+            ? `Tempo esgotado. A contratação de ${c.name} não foi concluída e os horários foram liberados.`
+            : `Tempo esgotado. A contratação de ${c.name} não foi concluída.`);
     };
 
     if (loading) return <ContractsSkeleton />;
@@ -380,35 +443,8 @@ export default function MyContractsPage() {
                                 }}
                                 onSubscribeContract={() => setShowSubscribeModalFor(c)}
                                 onPayInstallment={(payment) => setPayingInstallment({ payment, contract: c })}
-                                onPayContract={c.status === 'AWAITING_PAYMENT' ? async () => {
-                                    // AVULSO é pago pelo pagamento do PRÓPRIO agendamento — o backend rejeita
-                                    // /contracts/:id/pay (evita cobrar mês×tier). Vai direto ao pagamento pendente.
-                                    if (c.type === 'AVULSO') {
-                                        const pending = c.payments?.find(p => p.status === 'PENDING');
-                                        if (pending) {
-                                            navigate('/meus-pagamentos', { state: { autoOpenPaymentId: pending.id } });
-                                        } else {
-                                            showToast({ type: 'error', message: 'Pagamento do agendamento não encontrado. Abra "Minhas Reservas" para pagar.' });
-                                        }
-                                        return;
-                                    }
-                                    try {
-                                        const res = await contractsApi.pay(c.id);
-                                        showToast({ type: 'success', message: 'Abrindo pagamento...' });
-                                        // FE-H1 FIX: Never expose clientSecret in URL — use navigate state instead
-                                        // MyPaymentsPage already handles location.state.autoOpenPaymentId (L69-91)
-                                        const firstPendingPayment = c.payments?.find(p => p.status === 'PENDING');
-                                        navigate('/meus-pagamentos', {
-                                            state: { autoOpenPaymentId: firstPendingPayment?.id || res.paymentId }
-                                        });
-                                    } catch (err: unknown) {
-                                        showToast({ type: 'error', message: getErrorMessage(err) || 'Erro ao iniciar pagamento' });
-                                    }
-                                } : undefined}
-                                onExpireContract={c.status === 'AWAITING_PAYMENT' ? () => {
-                                    setContracts(prev => prev.filter(ct => ct.id !== c.id));
-                                    showToast('⏰ Tempo esgotado. O horário foi liberado.');
-                                } : undefined} />
+                                onPayContract={c.status === 'AWAITING_PAYMENT' ? () => { void payAwaitingContract(c); } : undefined}
+                                onExpireContract={c.status === 'AWAITING_PAYMENT' ? () => expireAwaitingContract(c) : undefined} />
                         </div>
                     ))}
                 </div>
@@ -482,7 +518,7 @@ export default function MyContractsPage() {
             {/* Cancel Contract Modal */}
             <CancelContractModal
                 isOpen={!!showCancelModalFor}
-                feeNote={showCancelModalFor?.feeNote || ''}
+                contract={contracts.find(c => c.id === showCancelModalFor?.id) ?? null}
                 onClose={() => setShowCancelModalFor(null)}
                 onConfirm={confirmCancelContract}
             />
@@ -495,6 +531,8 @@ export default function MyContractsPage() {
                     mode={wizardMode}
                     onClose={() => setWizardAddon(null)}
                     onSuccess={() => { showToast('Serviço contratado! Ativando assim que o pagamento for confirmado.'); loadData(); }}
+                    // Saiu sem pagar (fica "Aguardando pagamento" por 10 min) ou 409: recarrega a lista.
+                    onPending={loadData}
                 />
             )}
 

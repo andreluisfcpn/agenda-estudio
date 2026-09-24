@@ -118,11 +118,99 @@ async function getStripeClient(): Promise<Stripe> {
     return cachedStripeClient;
 }
 
+// ─── Parcelamento no cartão: capacidade da conta ─────────
+
+/**
+ * Países cuja conta Stripe oferece parcelamento do emissor (docs.stripe.com/payments/installments: México —
+ * meses sin intereses — e Japão). A conta BRASILEIRA não oferece. Verificado no modo teste em 23/09/2026:
+ * `available_plans` vem sempre vazio (pm_card_br, pm_card_mx, pm_card_visa) e confirmar com
+ * `installments.plan` (direto ou por ConfirmationToken) é recusado pelo Stripe ("The selected installment plan
+ * is not supported for this payment method"). Se o Stripe liberar o Brasil, inclua 'BR': o cartão SALVO já
+ * confirma no servidor com o plano conferido; o cartão NOVO segue recusando N > 1 até existir a confirmação no
+ * servidor por ConfirmationToken (Elements em modo diferido + `stripe.createConfirmationToken` no navegador →
+ * endpoint confirma o PI com `confirmation_token` + `installments.plan` do teto → `stripe.handleNextAction`).
+ */
+export const STRIPE_INSTALLMENT_ACCOUNT_COUNTRIES: readonly string[] = ['MX', 'JP'];
+
+export function accountCountrySupportsCardInstallments(country: string | null | undefined): boolean {
+    return !!country && STRIPE_INSTALLMENT_ACCOUNT_COUNTRIES.includes(country.toUpperCase());
+}
+
+let installmentSupportCache: { key: string; supported: boolean; expiresAt: number } | null = null;
+const INSTALLMENT_SUPPORT_TTL_MS = 6 * 60 * 60 * 1000; // o país da conta não muda
+const INSTALLMENT_SUPPORT_FAIL_TTL_MS = 60 * 1000;
+
+/**
+ * A conta Stripe ativa oferece parcelamento no cartão? Lê o país da conta (cache por credencial). Na dúvida
+ * (Stripe não configurado, chave restrita sem leitura da conta, rede) responde NÃO — nunca oferecer N× que o
+ * gateway não entrega (ele cobraria 1× o total, com os juros do app).
+ */
+export async function stripeCardInstallmentsSupported(): Promise<boolean> {
+    let setup: Awaited<ReturnType<typeof getStripeConfig>> = null;
+    try { setup = await getStripeConfig(); } catch { setup = null; }
+    if (!setup) return false;
+    const key = `${setup.environment}:${setup.config.secretKey.slice(-8)}`;
+    const now = Date.now();
+    if (installmentSupportCache && installmentSupportCache.key === key && installmentSupportCache.expiresAt > now) {
+        return installmentSupportCache.supported;
+    }
+    try {
+        const stripe = await getStripeClient();
+        const account = await stripe.accounts.retrieveCurrent();
+        const supported = accountCountrySupportsCardInstallments(account.country);
+        installmentSupportCache = { key, supported, expiresAt: now + INSTALLMENT_SUPPORT_TTL_MS };
+        return supported;
+    } catch (err) {
+        console.warn('[Stripe] país da conta indisponível — parcelamento no cartão desativado:', getErrorMessage(err));
+        installmentSupportCache = { key, supported: false, expiresAt: now + INSTALLMENT_SUPPORT_FAIL_TTL_MS };
+        return false;
+    }
+}
+
+/**
+ * D1 / pagamentos-1: o servidor só cobra em N× (N > 1) quando ELE fixa o plano na confirmação — cartão SALVO
+ * (confirmado aqui com `installments.plan`, conferido em `available_plans`) numa conta que oferece
+ * parcelamento. O cartão NOVO é confirmado no navegador (Payment Element): o nº de parcelas ficaria a critério
+ * do seletor do Stripe (furando o teto da política) ou seria ignorado (1× do total, com os juros do app).
+ * Devolve a mensagem de recusa (nada é cobrado) ou null quando pode seguir.
+ */
+export function cardInstallmentsBlockReason(opts: { installments: number; savedCard: boolean; gatewaySupported: boolean }): string | null {
+    if (!(opts.installments > 1)) return null;
+    if (!opts.gatewaySupported) {
+        return 'O parcelamento no cartão não está disponível no momento. Pague em 1x no cartão ou use o PIX.';
+    }
+    if (!opts.savedCard) {
+        return `Para parcelar em ${opts.installments}x, salve o cartão e pague com o cartão salvo — ou pague em 1x.`;
+    }
+    return null;
+}
+
 // ─── Public API ──────────────────────────────────────────
 
 export async function stripeGetPaymentIntent(paymentIntentId: string): Promise<Stripe.PaymentIntent> {
     const stripe = await getStripeClient();
     return stripe.paymentIntents.retrieve(paymentIntentId);
+}
+
+/**
+ * Cancela um PaymentIntent abandonado (varredura de reservas/contratos não pagos, D2). Tolerante:
+ * se o PI já estiver cancelado/pago/processando (o cancel falha), relê e devolve o estado REAL —
+ * quem chama decide (succeeded → confirmar; processing → aguardar). Só lança se nem a leitura der.
+ * Cancelável pelo Stripe em: requires_payment_method, requires_confirmation, requires_action,
+ * requires_capture e (raramente) processing.
+ */
+export async function stripeCancelPaymentIntent(paymentIntentId: string): Promise<{ status: Stripe.PaymentIntent.Status; canceled: boolean }> {
+    const stripe = await getStripeClient();
+    try {
+        const pi = await stripe.paymentIntents.cancel(paymentIntentId, { cancellation_reason: 'abandoned' });
+        return { status: pi.status, canceled: pi.status === 'canceled' };
+    } catch (err) {
+        const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+        if (pi.status !== 'canceled') {
+            console.warn(`[Stripe] cancelar PI ${paymentIntentId} recusado (status=${pi.status}):`, getErrorMessage(err));
+        }
+        return { status: pi.status, canceled: pi.status === 'canceled' };
+    }
 }
 
 /** Verify Stripe webhook signature */
@@ -228,6 +316,27 @@ export async function stripeGetOrCreateCustomer(userId: string): Promise<string>
     return customer.id;
 }
 
+/**
+ * Apaga o Customer no Stripe (exclusão física do cliente — exclusao-auth-10). `customers.del` também
+ * desvincula os cartões salvos e encerra as assinaturas do Customer. Idempotente: Customer já apagado
+ * ou inexistente (404 / resource_missing) conta como sucesso. Demais erros propagam (o chamador decide;
+ * userDeletion trata como best-effort).
+ */
+export async function stripeDeleteCustomer(customerId: string): Promise<void> {
+    if (!customerId) return;
+    const stripe = await getStripeClient();
+    try {
+        await stripe.customers.del(customerId);
+    } catch (err: unknown) {
+        const e = err as { code?: string; statusCode?: number; raw?: { code?: string } };
+        if (e?.code === 'resource_missing' || e?.raw?.code === 'resource_missing' || e?.statusCode === 404) {
+            console.warn(`[Stripe] Customer ${customerId} já não existe — nada a apagar.`);
+            return;
+        }
+        throw err;
+    }
+}
+
 // ─── Payment Intents ────────────────────────────────────
 
 export interface CreatePaymentIntentOpts {
@@ -237,11 +346,21 @@ export interface CreatePaymentIntentOpts {
     paymentId: string;         // our internal Payment ID
     userId: string;
     contractId?: string;
+    /** Pedido de parcelamento. Só vira `installments.enabled` no PI junto de um plano fixado (cartão salvo, N > 1). */
     installmentsEnabled?: boolean;
     savedPaymentMethodId?: string; // if paying with saved card
     offSession?: boolean;
     paymentMethodTypes?: string[];
     savePaymentMethod?: boolean; // save card for future use
+    /**
+     * Nº de parcelas escolhido no app (> 1) para cartão SALVO (confirmação no servidor). O plano
+     * `fixed_count` só pode ser enviado na confirmação — então o PI é criado sem confirmar, o plano
+     * é conferido em `available_plans` do cartão e o PI é confirmado COM o plano. Se o cartão não
+     * oferecer esse parcelamento, o PI é cancelado e nada é cobrado (antes: cobrava 1x silenciosamente).
+     * No cartão NOVO (Payment Element) a confirmação é no navegador: o plano não passa por aqui e o PI sai
+     * SEM parcelamento — N > 1 com cartão novo é recusado antes, em POST /stripe/create-payment.
+     */
+    installmentPlanCount?: number;
 }
 
 export interface PaymentIntentResult {
@@ -275,8 +394,16 @@ export async function stripeCreatePaymentIntent(opts: CreatePaymentIntentOpts): 
         params.automatic_payment_methods = { enabled: true, allow_redirects: 'never' };
     }
 
-    // Enable installments for card payments
-    if (opts.installmentsEnabled) {
+    // Saved card + installment plan (> 1x): confirm in a SECOND step, with the plan (see below).
+    const planCount = opts.savedPaymentMethodId && opts.installmentsEnabled && (opts.installmentPlanCount ?? 1) > 1
+        ? Math.floor(opts.installmentPlanCount!)
+        : 0;
+
+    // Parcelamento só é habilitado no PI quando o SERVIDOR fixa o plano (cartão salvo, N > 1). Sem plano
+    // fixado (cartão novo no Payment Element, PIs criados na contratação/reserva) o `installments.enabled`
+    // deixaria o seletor do próprio Stripe escolher qualquer plano do emissor — ou, numa conta sem
+    // parcelamento (BR), seria ignorado e o total cairia em 1× (pagamentos-1 / cobertura-1).
+    if (planCount > 1) {
         params.payment_method_options = {
             card: {
                 installments: { enabled: true },
@@ -287,8 +414,8 @@ export async function stripeCreatePaymentIntent(opts: CreatePaymentIntentOpts): 
     // If using a saved payment method, attach and confirm (on-session or off-session)
     if (opts.savedPaymentMethodId) {
         params.payment_method = opts.savedPaymentMethodId;
-        params.confirm = true; // Always confirm when using a saved PM
-        if (opts.offSession) {
+        params.confirm = planCount === 0; // confirm now — unless a plan must be chosen first
+        if (opts.offSession && planCount === 0) {
             params.off_session = true;
         }
     }
@@ -302,14 +429,40 @@ export async function stripeCreatePaymentIntent(opts: CreatePaymentIntentOpts): 
         'pi', opts.paymentId, opts.amount,
         opts.savedPaymentMethodId || 'new',
         opts.savePaymentMethod ? 'save' : 'nosave',
+        // Mantido pelo pedido do chamador (estabilidade das chaves já emitidas); o corpo só leva
+        // `installments` quando há plano — e aí o sufixo `plan${N}` abaixo distingue a chave.
         opts.installmentsEnabled ? 'inst' : 'noinst',
         opts.offSession ? 'off' : 'on',
         opts.paymentMethodTypes ? opts.paymentMethodTypes.join('.') : 'auto',
+        // Só acrescenta quando há plano: a chave dos fluxos sem plano (ex.: auto-charge) não muda.
+        ...(planCount > 1 ? [`plan${planCount}`] : []),
     ].join('-');
 
     const intent = await stripe.paymentIntents.create(params, {
         idempotencyKey,
     });
+
+    if (planCount > 1) {
+        // Fluxo de parcelamento do Stripe (BR/MX): com installments.enabled e o cartão anexado, o PI
+        // lista os planos que ESTE cartão aceita; o plano escolhido vai na confirmação.
+        const available = intent.payment_method_options?.card?.installments?.available_plans ?? [];
+        const offered = available.some(p => p.type === 'fixed_count' && p.count === planCount && (p.interval ?? 'month') === 'month');
+        if (!offered) {
+            try { await stripe.paymentIntents.cancel(intent.id, { cancellation_reason: 'abandoned' }); } catch { /* best-effort */ }
+            throw new Error(`O parcelamento em ${planCount}x não está disponível para este cartão. Escolha outra quantidade de parcelas ou pague à vista.`);
+        }
+        const confirmed = await stripe.paymentIntents.confirm(intent.id, {
+            payment_method_options: {
+                card: { installments: { plan: { type: 'fixed_count', count: planCount, interval: 'month' } } },
+            },
+            ...(opts.offSession ? { off_session: true } : {}),
+        }, { idempotencyKey: `${idempotencyKey}-confirm` });
+        return {
+            clientSecret: confirmed.client_secret || '',
+            paymentIntentId: confirmed.id,
+            status: confirmed.status,
+        };
+    }
 
     return {
         clientSecret: intent.client_secret || '',

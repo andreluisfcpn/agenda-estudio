@@ -25,7 +25,8 @@ export interface ContractCardProps {
     onBookingClick: (b: ContractBooking) => void;
     statusLabel: (s: string) => string;
     canModify: (b: ContractBooking) => boolean;
-    onRequestCancel?: (id: string, feeNote: string) => void;
+    /** Abre a confirmação de cancelamento (CancelContractModal monta as consequências reais). */
+    onRequestCancel?: (id: string) => void;
     onBulkBooking?: () => void;
     isArchived?: boolean;
     isCancelled?: boolean;
@@ -99,13 +100,38 @@ export default function ContractCard({
     const flexTotal = c.flexCreditsTotal ?? 0;
     const flexUsed = Math.max(0, flexTotal - flexRemaining - flexForfeited);
 
+    // Nota do card arquivado ("Finalizados"): derivada das sessões — "Concluído" (D6) também vem de
+    // falta sem justificativa / janela de remarcação expirada (avulso) e de confisco de créditos (FLEX),
+    // e aí "Todas as gravações realizadas" seria falso. Conta só COMPLETED como gravação realizada.
+    const recordedCount = bookings.filter(b => b.status === 'COMPLETED').length;
+    const missedCount = bookings.filter(b => b.status === 'FALTA').length;
+    const recordedText = `${recordedCount} ${recordedCount === 1 ? 'gravação realizada' : 'gravações realizadas'}`;
+    const archivedNote = c.status === 'EXPIRED' ? 'Vigência encerrada'
+        : isAvulso && recordedCount === 0 && missedCount > 0 ? 'Gravação não realizada (falta)'
+        : isFlex && flexForfeited > 0 ? `${recordedText} · ${flexForfeited} ${flexForfeited === 1 ? 'crédito perdido' : 'créditos perdidos'}`
+        : missedCount > 0 ? `${recordedText} · ${missedCount} ${missedCount === 1 ? 'falta' : 'faltas'}`
+        : 'Todas as gravações realizadas';
+
     const daysLeft = Math.ceil((new Date(c.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-    const isExpiring = c.status === 'ACTIVE' && !isAvulso && daysLeft >= 0 && daysLeft <= 15;
+    // Plano "Concluído" (D6: todas as gravações feitas antes do fim da vigência) continua
+    // vencendo e renovável como um ativo; o avulso (sessão única) nunca vence nem renova.
+    const isPlanLive = (c.status === 'ACTIVE' || c.status === 'COMPLETED') && !isAvulso;
+    const isExpiring = isPlanLive && daysLeft >= 0 && daysLeft <= 15;
     // Botão "Renovar": janela de 7 dias antes de vencer (alinha com a regra do backend — a
     // renovação só pode acontecer 1× e só nos últimos 7 dias).
-    const isRenewable = c.status === 'ACTIVE' && !isAvulso && daysLeft >= 0 && daysLeft <= 7;
+    const isRenewable = isPlanLive && daysLeft >= 0 && daysLeft <= 7;
 
     const accentType = c.type === 'FIXO' ? 'fixo' : isAvulso ? 'avulso' : c.type === 'CUSTOM' ? 'custom' : c.type === 'SERVICO' ? 'servico' : 'flex';
+
+    // D1: o serviço "mensal parcelado no cartão" é gravado como FULL + CARTÃO (cobrança única do
+    // total, em até N× sem juros) — não é "quitado à vista". O nº de parcelas só aparece quando a
+    // API devolve `installments` do pagamento; sem ele, rótulo neutro.
+    const cardInstallments = Math.max(0, ...(c.payments || []).map(p => p.installments ?? 0));
+    const planLabel = c.paymentPlan !== 'FULL'
+        ? 'Mensal'
+        : isServico && c.paymentMethod === 'CARTAO'
+            ? (cardInstallments > 1 ? `Parcelado no cartão (${cardInstallments}x)` : 'Total no cartão')
+            : 'Quitado à vista';
 
     return (
         <div className="card contract-card">
@@ -135,6 +161,11 @@ export default function ContractCard({
                                         {isExpiring && <span className="badge badge-expiring">VENCE EM {daysLeft} DIAS</span>}
                                     </>
                                 )
+                            ) : c.status === 'COMPLETED' ? (
+                                <>
+                                    <span className="badge badge-muted">Concluído</span>
+                                    {isExpiring && <span className="badge badge-expiring">VENCE EM {daysLeft} DIAS</span>}
+                                </>
                             ) : c.status === 'AWAITING_PAYMENT' ? (
                                 <span className="badge badge-awaiting">AGUARDANDO PAGAMENTO</span>
                             ) : c.status === 'PENDING_CANCELLATION' ? (
@@ -162,8 +193,8 @@ export default function ContractCard({
                             ) : (
                                 <>
                                     {new Date(isFlex && c.flexCycleStart ? c.flexCycleStart : c.startDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })} — {new Date(c.endDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
-                                    {' · '}{c.durationMonths} meses · Desconto <strong className="contract-card__discount">{c.discountPct}%</strong>
-                                    {' · '}{c.paymentPlan === 'FULL' ? 'Quitado à vista' : 'Mensal'}
+                                    {' · '}{c.durationMonths} {c.durationMonths === 1 ? 'mês' : 'meses'} · Desconto <strong className="contract-card__discount">{c.discountPct}%</strong>
+                                    {' · '}{planLabel}
                                 </>
                             )}
                         </div>
@@ -236,6 +267,9 @@ export default function ContractCard({
                         paymentDeadline={c.paymentDeadline || null}
                         onPay={onPayContract}
                         onExpire={onExpireContract}
+                        variant={isServico ? 'service' : isAvulso ? 'booking' : 'contract'}
+                        holdsSlots={bookings.some(b => b.status === 'RESERVED' || b.status === 'HELD')}
+                        startedAt={(c as ContractWithStats & { createdAt?: string }).createdAt ?? null}
                     />
                 )}
 
@@ -412,7 +446,7 @@ export default function ContractCard({
                     </div>
                 ) : (
                     <div className="contract-card__archived-note">
-                        Todas as gravações realizadas
+                        {archivedNote}
                     </div>
                 )}
             </div>
@@ -575,7 +609,8 @@ export default function ContractCard({
                         </div>
                     )}
 
-                    {c.status === 'ACTIVE' && (
+                    {/* Concluído (D6) só mostra a ação de renovar; as demais exigem contrato ACTIVE. */}
+                    {(c.status === 'ACTIVE' || (c.status === 'COMPLETED' && isRenewable)) && (
                         <div className="contract-actions">
                             {(isRenewable || isServico) && onRenewContract && (
                                 <button className="btn btn-primary btn-sm contract-actions__renew"
@@ -599,7 +634,7 @@ export default function ContractCard({
                                 <button className="btn btn-sm contract-actions__cancel"
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        onRequestCancel(c.id, isServico ? 'o encerramento do serviço e a interrupção das próximas cobranças.' : c.type === 'FIXO' ? '20% do valor correspondente aos meses/agendamentos que faltavam realizar.' : '20% do valor correspondente aos créditos não utilizados.');
+                                        onRequestCancel(c.id);
                                     }}>
                                     Solicitar Cancelamento
                                 </button>

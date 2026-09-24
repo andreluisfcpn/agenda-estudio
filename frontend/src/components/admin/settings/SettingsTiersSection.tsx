@@ -4,6 +4,7 @@ import { pricingApi, PricingConfig, BusinessConfigItem } from '../../../api/clie
 import LoadingSpinner from '../../ui/LoadingSpinner';
 import SettingsSaveBar, { SettingsMessages } from './SettingsSaveBar';
 import { formatBRL } from '../../../utils/format';
+import CurrencyInput from '../../ui/fields/CurrencyInput';
 import { TIER_META, getMeta } from '../../../constants/adminMeta';
 import { Package } from 'lucide-react';
 
@@ -43,12 +44,14 @@ export default function SettingsTiersSection() {
 
     const showMsg = (msg: string) => { setSuccess(msg); setTimeout(() => setSuccess(''), 4000); };
 
-    const handleTierChange = (tier: string, field: string, value: string) => {
-        setPricing(prev => prev.map(p => {
-            if (p.tier !== tier) return p;
-            if (field === 'price') return { ...p, price: Math.round(parseFloat(value.replace(',', '.')) * 100) || 0 };
-            return { ...p, [field]: value };
-        }));
+    const handleTierChange = (tier: string, field: 'label' | 'description', value: string) => {
+        setPricing(prev => prev.map(p => p.tier === tier ? { ...p, [field]: value } : p));
+        setTierEdited(true); setSuccess('');
+    };
+
+    /** Preço vem do CurrencyInput já em CENTAVOS (D10) — sem parse de texto aqui. */
+    const handleTierPrice = (tier: string, cents: number) => {
+        setPricing(prev => prev.map(p => p.tier === tier ? { ...p, price: cents } : p));
         setTierEdited(true); setSuccess('');
     };
 
@@ -101,12 +104,13 @@ export default function SettingsTiersSection() {
 
                             <div className="form-group">
                                 <label className="form-label" htmlFor={`${uid}-${p.tier}-price`}>Preço do Pacote 2h</label>
-                                <div style={{ position: 'relative' }}>
-                                    <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontWeight: 600 }}>R$</span>
-                                    <input id={`${uid}-${p.tier}-price`} className="form-input" style={{ paddingLeft: 40, fontSize: '1.25rem', fontWeight: 700 }}
-                                        type="text" value={(p.price / 100).toFixed(2).replace('.', ',')}
-                                        onChange={e => handleTierChange(p.tier, 'price', e.target.value)} />
-                                </div>
+                                <CurrencyInput
+                                    id={`${uid}-${p.tier}-price`}
+                                    value={p.price}
+                                    onChange={c => handleTierPrice(p.tier, c ?? 0)}
+                                    style={{ fontSize: '1.25rem', fontWeight: 700, paddingLeft: 44 }}
+                                    prefixStyle={{ fontSize: '1rem' }}
+                                />
                             </div>
 
                             <div className="form-group">

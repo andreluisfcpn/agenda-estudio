@@ -23,6 +23,7 @@ import { URL } from 'node:url';
 import { X509Certificate } from 'node:crypto';
 import QRCode from 'qrcode';
 import { decryptConfigSafe } from '../utils/crypto.js';
+import { isValidBrCode, buildStaticBrCode, brCodeAmountCents } from './brcode.js';
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -72,9 +73,13 @@ export interface SicoobPixPayload {
 export interface SicoobPixResult {
     /** txid da cobrança (usado como providerRef). */
     id: string;
-    pixString: string;        // pixCopiaECola (EMV BRCode)
+    pixString: string;        // pixCopiaECola (EMV BRCode) — sempre um BR Code válido
     qrCodeBase64?: string;    // gerado localmente a partir do EMV
     status: string;           // ATIVA | CONCLUIDA | REMOVIDA_*
+    /** Fim da validade da cobrança (criação + calendario.expiracao). */
+    expiresAt: Date;
+    /** true quando o EMV é o BR Code SINTÉTICO de sandbox/dev (nunca em produção). */
+    synthetic?: boolean;
 }
 
 // ─── Credenciais fixas de sandbox (públicas, fornecidas pelo Sicoob) ─
@@ -224,6 +229,14 @@ function httpsCall(
             const chunks: Buffer[] = [];
             res.on('data', (c) => chunks.push(c));
             res.on('end', () => resolve({ status: res.statusCode || 500, body: Buffer.concat(chunks).toString('utf-8') }));
+            // Hardening: uma resposta cortada no meio (conexão resetada, proxy caindo) emite 'error'/
+            // 'aborted' no STREAM DA RESPOSTA — sem estes handlers isso vira exceção não tratada que
+            // derruba o processo (o 502 cru na borda). Aqui vira rejeição tratada pelo chamador.
+            res.on('error', reject);
+            res.on('aborted', () => reject(new Error('Resposta do Sicoob interrompida.')));
+            res.on('close', () => {
+                if (!res.complete) reject(new Error('Resposta do Sicoob interrompida (conexão encerrada).'));
+            });
         });
         req.on('error', reject);
         req.setTimeout(30_000, () => req.destroy(new Error('Request timeout (30s)')));
@@ -312,6 +325,87 @@ function sicoobHeaders(token: string, clientId: string, json = true): Record<str
     return h;
 }
 
+// ─── Validação do EMV (BR Code) ──────────────────────────
+
+/**
+ * Chave PIX FICTÍCIA do BR Code sintético de sandbox/dev (pagamentos-12): uma chave aleatória (EVP)
+ * zerada, que não existe no DICT — o banco lê o QR mas NÃO consegue pagar. Nunca a chave configurada
+ * (com a chave real do estúdio, o QR de teste seria pagável de verdade e nada conciliaria).
+ */
+export const SANDBOX_TEST_PIX_KEY = '00000000-0000-0000-0000-000000000000';
+/** Nome/cidade do recebedor usados SÓ no BR Code sintético de sandbox/dev — marcam o QR como teste. */
+export const SANDBOX_TEST_MERCHANT_NAME = 'TESTE SANDBOX NAO PAGAR';
+export const SANDBOX_TEST_MERCHANT_CITY = 'SANDBOX';
+
+/**
+ * Pode usar BR Code SINTÉTICO? Só com o Sicoob em sandbox E fora de produção (dupla trava:
+ * ambiente da integração + NODE_ENV do deploy). Em produção é sempre `false`.
+ */
+export function canUseSyntheticBrCode(environment: 'sandbox' | 'production', nodeEnv: string | undefined = process.env.NODE_ENV): boolean {
+    return environment === 'sandbox' && nodeEnv !== 'production';
+}
+
+/**
+ * Decide o EMV que vai para o cliente a partir do que o Sicoob devolveu (função pura, testável):
+ *  • EMV válido → usa o do Sicoob (em sandbox, só se o valor da tag 54 bater ou estiver ausente —
+ *    o mock devolve valores aleatórios).
+ *  • EMV inválido em PRODUÇÃO → erro (nunca exibir um QR que nenhum banco lê).
+ *  • EMV inválido/incoerente em SANDBOX/dev → BR Code sintético estruturalmente VÁLIDO com o valor e
+ *    o txid da cobrança, mas com CHAVE FICTÍCIA (SANDBOX_TEST_PIX_KEY) e recebedor "TESTE SANDBOX NAO
+ *    PAGAR": o banco lê o QR e recusa o pagamento (a chave não existe no DICT). A confirmação em
+ *    sandbox é pelo "Simular pagamento". `pixKey` (a chave configurada) é ignorada de propósito.
+ */
+export function resolveSicoobEmv(args: {
+    emv: string;
+    environment: 'sandbox' | 'production';
+    amountCents: number;
+    txid: string;
+    /** Ignorada no sintético (nunca a chave real — pagamentos-12). Mantida por compatibilidade. */
+    pixKey?: string;
+    nodeEnv?: string;
+}): { emv: string; synthetic: boolean } {
+    const synthetic = canUseSyntheticBrCode(args.environment, args.nodeEnv ?? process.env.NODE_ENV);
+    const valid = isValidBrCode(args.emv);
+    if (valid) {
+        if (!synthetic) return { emv: args.emv.trim(), synthetic: false };
+        const amt = brCodeAmountCents(args.emv);
+        if (amt === null || amt === args.amountCents) return { emv: args.emv.trim(), synthetic: false };
+    }
+    if (!synthetic) {
+        throw new Error('O Sicoob retornou um código PIX inválido. Tente novamente em instantes ou use outro método de pagamento.');
+    }
+    return {
+        emv: buildStaticBrCode({
+            key: SANDBOX_TEST_PIX_KEY,
+            amountCents: args.amountCents,
+            txid: args.txid,
+            merchantName: SANDBOX_TEST_MERCHANT_NAME,
+            city: SANDBOX_TEST_MERCHANT_CITY,
+        }),
+        synthetic: true,
+    };
+}
+
+/**
+ * Fim da validade da cob: em produção `calendario.criacao + expiracao` (quando a data de criação
+ * é plausível); no sandbox (criação aleatória, ex.: 1964) ou sem data → agora + expiracao.
+ */
+export function computeCobExpiresAt(
+    cob: any,
+    expiresSeconds: number,
+    environment: 'sandbox' | 'production',
+    now: Date = new Date(),
+): Date {
+    const fallback = new Date(now.getTime() + expiresSeconds * 1000);
+    if (environment !== 'production') return fallback;
+    const criacao = Date.parse(cob?.calendario?.criacao ?? '');
+    const exp = Number(cob?.calendario?.expiracao ?? expiresSeconds);
+    if (!Number.isFinite(criacao) || !Number.isFinite(exp) || exp <= 0) return fallback;
+    // Relógio do provedor muito distante do nosso (> 1 dia) → não confiar.
+    if (Math.abs(criacao - now.getTime()) > 24 * 60 * 60 * 1000) return fallback;
+    return new Date(criacao + exp * 1000);
+}
+
 // ─── API pública ─────────────────────────────────────────
 
 /** Cria uma cobrança PIX imediata (PUT /cob/{txid}) e retorna o copia-e-cola + QR. */
@@ -333,8 +427,9 @@ export async function sicoobCreatePix(payload: SicoobPixPayload): Promise<Sicoob
     }
 
     const devedorKey = payload.customer.document.type === 'CNPJ' ? 'cnpj' : 'cpf';
+    const expiresSeconds = Math.max(60, Math.round(payload.expiresSeconds ?? 3600));
     const body = JSON.stringify({
-        calendario: { expiracao: payload.expiresSeconds ?? 3600 },
+        calendario: { expiracao: expiresSeconds },
         devedor: {
             [devedorKey]: payload.customer.document.identity,
             nome: payload.customer.name,
@@ -365,7 +460,7 @@ export async function sicoobCreatePix(payload: SicoobPixPayload): Promise<Sicoob
         // crua do Sicoob, para achar erros de schema em produção sem ficar às cegas.
         console.error('[Sicoob PIX] cobrança rejeitada', response.status, `(env=${environment})`,
             '| campos:', JSON.stringify({
-                expiracao: payload.expiresSeconds ?? 3600,
+                expiracao: expiresSeconds,
                 devedor: devedorKey,
                 temDocumento: !!payload.customer.document.identity,
                 temNome: !!payload.customer.name,
@@ -379,9 +474,26 @@ export async function sicoobCreatePix(payload: SicoobPixPayload): Promise<Sicoob
         throw new Error(`Sicoob criar cobrança falhou — ${formatSicoobError(response.status, response.body)}`);
     }
 
-    const result = JSON.parse(response.body);
+    let result: any;
+    try {
+        result = JSON.parse(response.body);
+    } catch {
+        result = {};
+    }
     // BACen usa `pixCopiaECola`; o Sicoob (inclusive o sandbox mock) responde em `brcode`.
-    const emv: string = result.pixCopiaECola || result.brcode || '';
+    const rawEmv: string = String(result?.pixCopiaECola || result?.brcode || '');
+    // D15: nunca exibir um EMV que não seja BR Code válido. Produção → erro; sandbox/dev → BR Code
+    // sintético válido com o valor/txid reais e CHAVE FICTÍCIA (travado por ambiente + NODE_ENV).
+    const { emv, synthetic } = resolveSicoobEmv({
+        emv: rawEmv,
+        environment,
+        amountCents: payload.amount,
+        txid: payload.txid,
+    });
+    if (synthetic) {
+        console.warn(`[Sicoob PIX] sandbox: EMV do mock inválido/incoerente ("${rawEmv.slice(0, 30)}") — usando BR Code sintético (txid ${payload.txid}).`);
+    }
+    const expiresAt = computeCobExpiresAt(result, expiresSeconds, environment);
 
     let qrCodeBase64: string | undefined;
     if (emv) {
@@ -398,8 +510,40 @@ export async function sicoobCreatePix(payload: SicoobPixPayload): Promise<Sicoob
         id: payload.txid,
         pixString: emv,
         qrCodeBase64,
-        status: result.status || 'ATIVA',
+        // O status do mock é aleatório (ex.: CONCLUIDA recém-criada) — em sandbox a cob nasce ATIVA.
+        status: environment === 'sandbox' ? 'ATIVA' : (result?.status || 'ATIVA'),
+        expiresAt,
+        synthetic,
     };
+}
+
+/**
+ * Cancela (remove) uma cobrança imediata ainda não paga: PATCH /cob/{txid} com
+ * status REMOVIDA_PELO_USUARIO_RECEBEDOR (padrão API Pix Bacen). BEST-EFFORT: nunca lança;
+ * devolve `true` se o Sicoob aceitou a remoção. Usado antes de reemitir um QR (a cobrança antiga
+ * não pode continuar pagável com um txid que não casa mais com o Payment) e na varredura de
+ * reservas/contratos abandonados.
+ */
+export async function sicoobRemoveCob(txid: string): Promise<boolean> {
+    if (!/^[a-zA-Z0-9]{26,35}$/.test(txid || '')) return false;
+    try {
+        const { token, config, environment, api } = await sicoobAuth();
+        const response = await httpsCall(`${api}/cob/${txid}`, {
+            method: 'PATCH',
+            headers: sicoobHeaders(token, config.clientId),
+            body: JSON.stringify({ status: 'REMOVIDA_PELO_USUARIO_RECEBEDOR' }),
+            cert: environment === 'production' ? config.certificatePem : undefined,
+            key: environment === 'production' ? config.privateKeyPem : undefined,
+        });
+        if (response.status >= 400) {
+            console.warn(`[Sicoob PIX] remover cobrança ${txid} recusado — ${formatSicoobError(response.status, response.body)}`);
+            return false;
+        }
+        return true;
+    } catch (err) {
+        console.warn(`[Sicoob PIX] remover cobrança ${txid} falhou:`, err instanceof Error ? err.message : err);
+        return false;
+    }
 }
 
 /** Consulta uma cobrança (GET /cob/{txid}). Retorna o objeto cru da API. */

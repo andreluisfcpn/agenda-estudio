@@ -4,7 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '../context/NavigationContext';
 import Avatar from './Avatar';
 import { LucideIcon, ChevronRight, User, LogOut } from 'lucide-react';
-import { ADMIN_NAV, CLIENT_NAV } from '../config/nav';
+import { ADMIN_NAV, CLIENT_NAV, isNavItemActive } from '../config/nav';
+import Tooltip from './ui/Tooltip';
 
 interface NavItemProps {
     to: string;
@@ -13,33 +14,31 @@ interface NavItemProps {
     collapsed: boolean;
 }
 
+/**
+ * Recolhida, a sidebar só mostra ícones: cada item ganha `aria-label` (o rótulo
+ * visível some com display:none) e um <Tooltip> à direita — em portal, então não é
+ * cortado pelo overflow da .sidebar-nav. Expandida, o Tooltip fica desligado.
+ */
 function NavItem({ to, icon: Icon, label, collapsed }: NavItemProps) {
-    const [showTooltip, setShowTooltip] = useState(false);
     const { navigateTo } = useNavigation();
     const location = useLocation();
-    const isActive = location.pathname === to;
+    const isActive = isNavItemActive(location.pathname, to);
 
     return (
-        <div style={{ position: 'relative' }}>
+        <Tooltip content={label} placement="right" disabled={!collapsed} describe={false}>
             <button
+                type="button"
                 className={`sidebar-link ${isActive ? 'active' : ''}`}
                 onClick={() => navigateTo(to)}
-                onMouseEnter={() => collapsed && setShowTooltip(true)}
-                onMouseLeave={() => setShowTooltip(false)}
+                aria-label={collapsed ? label : undefined}
+                aria-current={isActive ? 'page' : undefined}
             >
                 <span className="sidebar-link-icon">
-                    <Icon size={20} strokeWidth={1.8} />
+                    <Icon size={20} strokeWidth={1.8} aria-hidden="true" />
                 </span>
                 <span className="sidebar-link-label">{label}</span>
             </button>
-
-            {collapsed && showTooltip && (
-                <div className="sidebar-tooltip">
-                    {label}
-                    <div className="sidebar-tooltip-arrow" />
-                </div>
-            )}
-        </div>
+        </Tooltip>
     );
 }
 
@@ -84,22 +83,29 @@ function ExpandableNavItem({ to, icon: Icon, label, collapsed, subItems }: Expan
 
     return (
         <div className="sidebar-group">
-            <button
-                className={`sidebar-link sidebar-link--parent ${onPage ? 'active' : ''}`}
-                onClick={handleParentClick}
-                aria-expanded={expanded}
-            >
-                <span className="sidebar-link-icon">
-                    <Icon size={20} strokeWidth={1.8} />
-                </span>
-                <span className="sidebar-link-label">{label}</span>
-                {!collapsed && (
-                    <ChevronRight
-                        size={14}
-                        className={`sidebar-link-caret ${expanded ? 'sidebar-link-caret--open' : ''}`}
-                    />
-                )}
-            </button>
+            <Tooltip content={label} placement="right" disabled={!collapsed} describe={false}>
+                <button
+                    type="button"
+                    className={`sidebar-link sidebar-link--parent ${onPage ? 'active' : ''}`}
+                    onClick={handleParentClick}
+                    // Recolhida, o submenu nunca abre: o botão só navega (sem aria-expanded).
+                    aria-expanded={collapsed ? undefined : expanded}
+                    aria-label={collapsed ? label : undefined}
+                    aria-current={onPage ? 'page' : undefined}
+                >
+                    <span className="sidebar-link-icon">
+                        <Icon size={20} strokeWidth={1.8} aria-hidden="true" />
+                    </span>
+                    <span className="sidebar-link-label">{label}</span>
+                    {!collapsed && (
+                        <ChevronRight
+                            size={14}
+                            className={`sidebar-link-caret ${expanded ? 'sidebar-link-caret--open' : ''}`}
+                            aria-hidden="true"
+                        />
+                    )}
+                </button>
+            </Tooltip>
 
             {expanded && (
                 <div className="sidebar-subnav" role="group" aria-label={label}>
@@ -159,28 +165,39 @@ export default function Sidebar({ collapsed }: SidebarProps) {
         <aside className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''}`}>
             {/* ─── User Profile Section (Top) ─── */}
             <div className="sidebar-user-section" ref={menuRef}>
-                <button
-                    className={`sidebar-user-block ${menuOpen ? 'sidebar-user-block--active' : ''}`}
-                    onClick={() => setMenuOpen(prev => !prev)}
-                    title="Menu do usuário"
-                    aria-haspopup="menu"
-                    aria-expanded={menuOpen}
+                {/* Recolhida: dica com o nome (que some junto com o papel). Desligada com o
+                    menu aberto — os dois abrem à direita e a dica cobriria o menu. */}
+                <Tooltip
+                    content={user?.name || 'Menu do usuário'}
+                    placement="right"
+                    disabled={!collapsed || menuOpen}
+                    describe={false}
                 >
-                    <Avatar className="sidebar-user-avatar" photoUrl={user?.photoUrl} name={user?.name} />
-                    <div className="sidebar-user-info">
-                        <span className="sidebar-user-name">{user?.name}</span>
-                        <span className="sidebar-user-role">
-                            {isAdmin ? 'Administrador' : 'Cliente'}
-                        </span>
-                    </div>
-                    {!collapsed && (
-                        <ChevronRight
-                            size={14}
-                            className={`sidebar-user-chevron ${menuOpen ? 'sidebar-user-chevron--rotated' : ''}`}
-                            strokeWidth={2.5}
-                        />
-                    )}
-                </button>
+                    <button
+                        type="button"
+                        className={`sidebar-user-block ${menuOpen ? 'sidebar-user-block--active' : ''}`}
+                        onClick={() => setMenuOpen(prev => !prev)}
+                        aria-label={collapsed ? (user?.name ? `Menu do usuário: ${user.name}` : 'Menu do usuário') : undefined}
+                        aria-haspopup="menu"
+                        aria-expanded={menuOpen}
+                    >
+                        <Avatar className="sidebar-user-avatar" photoUrl={user?.photoUrl} name={user?.name} />
+                        <div className="sidebar-user-info">
+                            <span className="sidebar-user-name">{user?.name}</span>
+                            <span className="sidebar-user-role">
+                                {isAdmin ? 'Administrador' : 'Cliente'}
+                            </span>
+                        </div>
+                        {!collapsed && (
+                            <ChevronRight
+                                size={14}
+                                className={`sidebar-user-chevron ${menuOpen ? 'sidebar-user-chevron--rotated' : ''}`}
+                                strokeWidth={2.5}
+                                aria-hidden="true"
+                            />
+                        )}
+                    </button>
+                </Tooltip>
 
                 {/* ─── Profile Dropdown Menu ─── */}
                 {menuOpen && (

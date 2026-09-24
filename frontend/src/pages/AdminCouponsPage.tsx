@@ -32,7 +32,7 @@ function formatDateBR(iso: string): string {
 }
 
 export default function AdminCouponsPage() {
-    const { showToast, showConfirm } = useUI();
+    const { showToast, showConfirm, showAlert } = useUI();
     const { coupons, loading, statusFilter, setStatusFilter, reload } = useAdminCoupons();
 
     const [showCreate, setShowCreate] = useState(false);
@@ -70,23 +70,59 @@ export default function AdminCouponsPage() {
         }
     };
 
+    // D3: excluir é irreversível (danger). O backend só exclui cupom SEM uso consumido
+    // (resgate RESERVED/CONFIRMED → 409 "desative-o em vez de excluir"); usedCount conta
+    // exatamente esses usos, então um cupom já usado vai direto para a alternativa reversível.
     const confirmDelete = (c: Coupon) => {
-        showConfirm({
-            title: 'Excluir cupom?',
-            message: `Essa ação não pode ser desfeita. O cupom ${c.code} será removido permanentemente.`,
-            onConfirm: () => handleDelete(c),
-        });
-    };
-
-    const handleDelete = async (c: Coupon) => {
-        try {
-            await couponsApi.remove(c.id);
-            await reload();
-            showToast('Cupom excluído.');
-        } catch (err: unknown) {
-            // Erro 409 (cupom já usado) e demais erros: mensagem do backend no toast.
-            showToast({ message: getErrorMessage(err) || 'Erro ao excluir cupom', type: 'error' });
+        const code = c.code.toUpperCase();
+        if (c.usedCount > 0) {
+            const uses = `${c.usedCount} ${c.usedCount === 1 ? 'vez' : 'vezes'}`;
+            if (!c.active) {
+                showAlert({
+                    title: 'Cupom já utilizado',
+                    message: `O cupom ${code} já foi usado ${uses} e não pode ser excluído, para preservar o histórico dos pagamentos. Ele já está desativado: nenhum cliente consegue usá-lo.`,
+                    type: 'info',
+                });
+                return;
+            }
+            showConfirm({
+                tone: 'warning',
+                icon: Pause,
+                title: 'Este cupom não pode ser excluído',
+                message: `O cupom ${code} já foi usado ${uses}. Para preservar o histórico dos pagamentos, cupons usados não são excluídos — você pode desativá-lo.`,
+                consequences: [
+                    `O código ${code} deixa de ser aceito em novos pagamentos, na hora.`,
+                    'Os pagamentos que já tiveram o desconto não mudam.',
+                    'Dá para reativar depois pelo mesmo botão.',
+                ],
+                confirmLabel: 'Desativar cupom',
+                onConfirm: async () => {
+                    await couponsApi.update(c.id, { active: false });
+                    showToast('Cupom desativado.');
+                    await reload();
+                },
+            });
+            return;
         }
+        const eligibles = c.eligibleUsers.length;
+        showConfirm({
+            tone: 'danger',
+            icon: Trash2,
+            title: `Excluir o cupom ${code}?`,
+            message: 'O cupom será apagado de vez. Se quiser só pausar o uso, desative-o em vez de excluir.',
+            consequences: [
+                `O código ${code} deixa de ser aceito imediatamente e não pode ser recuperado.`,
+                ...(eligibles > 0 ? [`A lista de ${eligibles} ${eligibles === 1 ? 'cliente elegível' : 'clientes elegíveis'} é apagada junto.`] : []),
+                'Nenhum pagamento é afetado: o cupom ainda não foi usado.',
+            ],
+            confirmLabel: 'Excluir cupom',
+            // Sem try/catch: um erro (ex.: 409 se o cupom foi usado nesse meio-tempo) aparece dentro do diálogo.
+            onConfirm: async () => {
+                const res = await couponsApi.remove(c.id);
+                showToast(res.message || 'Cupom excluído.');
+                await reload();
+            },
+        });
     };
 
     if (loading) return <div><HeroSkeleton /><TableSkeleton rows={6} cols={7} /></div>;

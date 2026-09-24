@@ -52,6 +52,7 @@ export type PaymentMinAggregateOutputType = {
   status: $Enums.PaymentStatus | null
   dueDate: Date | null
   pixString: string | null
+  pixExpiresAt: Date | null
   boletoUrl: string | null
   paymentUrl: string | null
   installments: number | null
@@ -77,6 +78,7 @@ export type PaymentMaxAggregateOutputType = {
   status: $Enums.PaymentStatus | null
   dueDate: Date | null
   pixString: string | null
+  pixExpiresAt: Date | null
   boletoUrl: string | null
   paymentUrl: string | null
   installments: number | null
@@ -102,6 +104,7 @@ export type PaymentCountAggregateOutputType = {
   status: number
   dueDate: number
   pixString: number
+  pixExpiresAt: number
   boletoUrl: number
   paymentUrl: number
   installments: number
@@ -144,6 +147,7 @@ export type PaymentMinAggregateInputType = {
   status?: true
   dueDate?: true
   pixString?: true
+  pixExpiresAt?: true
   boletoUrl?: true
   paymentUrl?: true
   installments?: true
@@ -169,6 +173,7 @@ export type PaymentMaxAggregateInputType = {
   status?: true
   dueDate?: true
   pixString?: true
+  pixExpiresAt?: true
   boletoUrl?: true
   paymentUrl?: true
   installments?: true
@@ -194,6 +199,7 @@ export type PaymentCountAggregateInputType = {
   status?: true
   dueDate?: true
   pixString?: true
+  pixExpiresAt?: true
   boletoUrl?: true
   paymentUrl?: true
   installments?: true
@@ -307,6 +313,7 @@ export type PaymentGroupByOutputType = {
   status: $Enums.PaymentStatus
   dueDate: Date | null
   pixString: string | null
+  pixExpiresAt: Date | null
   boletoUrl: string | null
   paymentUrl: string | null
   installments: number | null
@@ -356,6 +363,7 @@ export type PaymentWhereInput = {
   status?: Prisma.EnumPaymentStatusFilter<"Payment"> | $Enums.PaymentStatus
   dueDate?: Prisma.DateTimeNullableFilter<"Payment"> | Date | string | null
   pixString?: Prisma.StringNullableFilter<"Payment"> | string | null
+  pixExpiresAt?: Prisma.DateTimeNullableFilter<"Payment"> | Date | string | null
   boletoUrl?: Prisma.StringNullableFilter<"Payment"> | string | null
   paymentUrl?: Prisma.StringNullableFilter<"Payment"> | string | null
   installments?: Prisma.IntNullableFilter<"Payment"> | number | null
@@ -387,6 +395,7 @@ export type PaymentOrderByWithRelationInput = {
   status?: Prisma.SortOrder
   dueDate?: Prisma.SortOrderInput | Prisma.SortOrder
   pixString?: Prisma.SortOrderInput | Prisma.SortOrder
+  pixExpiresAt?: Prisma.SortOrderInput | Prisma.SortOrder
   boletoUrl?: Prisma.SortOrderInput | Prisma.SortOrder
   paymentUrl?: Prisma.SortOrderInput | Prisma.SortOrder
   installments?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -421,6 +430,7 @@ export type PaymentWhereUniqueInput = Prisma.AtLeast<{
   status?: Prisma.EnumPaymentStatusFilter<"Payment"> | $Enums.PaymentStatus
   dueDate?: Prisma.DateTimeNullableFilter<"Payment"> | Date | string | null
   pixString?: Prisma.StringNullableFilter<"Payment"> | string | null
+  pixExpiresAt?: Prisma.DateTimeNullableFilter<"Payment"> | Date | string | null
   boletoUrl?: Prisma.StringNullableFilter<"Payment"> | string | null
   paymentUrl?: Prisma.StringNullableFilter<"Payment"> | string | null
   installments?: Prisma.IntNullableFilter<"Payment"> | number | null
@@ -452,6 +462,7 @@ export type PaymentOrderByWithAggregationInput = {
   status?: Prisma.SortOrder
   dueDate?: Prisma.SortOrderInput | Prisma.SortOrder
   pixString?: Prisma.SortOrderInput | Prisma.SortOrder
+  pixExpiresAt?: Prisma.SortOrderInput | Prisma.SortOrder
   boletoUrl?: Prisma.SortOrderInput | Prisma.SortOrder
   paymentUrl?: Prisma.SortOrderInput | Prisma.SortOrder
   installments?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -486,6 +497,7 @@ export type PaymentScalarWhereWithAggregatesInput = {
   status?: Prisma.EnumPaymentStatusWithAggregatesFilter<"Payment"> | $Enums.PaymentStatus
   dueDate?: Prisma.DateTimeNullableWithAggregatesFilter<"Payment"> | Date | string | null
   pixString?: Prisma.StringNullableWithAggregatesFilter<"Payment"> | string | null
+  pixExpiresAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Payment"> | Date | string | null
   boletoUrl?: Prisma.StringNullableWithAggregatesFilter<"Payment"> | string | null
   paymentUrl?: Prisma.StringNullableWithAggregatesFilter<"Payment"> | string | null
   installments?: Prisma.IntNullableWithAggregatesFilter<"Payment"> | number | null
@@ -509,6 +521,7 @@ export type PaymentCreateInput = {
   status?: $Enums.PaymentStatus
   dueDate?: Date | string | null
   pixString?: string | null
+  pixExpiresAt?: Date | string | null
   boletoUrl?: string | null
   paymentUrl?: string | null
   installments?: number | null
@@ -539,6 +552,7 @@ export type PaymentUncheckedCreateInput = {
   status?: $Enums.PaymentStatus
   dueDate?: Date | string | null
   pixString?: string | null
+  pixExpiresAt?: Date | string | null
   boletoUrl?: string | null
   paymentUrl?: string | null
   installments?: number | null
@@ -563,6 +577,7 @@ export type PaymentUpdateInput = {
   status?: Prisma.EnumPaymentStatusFieldUpdateOperationsInput | $Enums.PaymentStatus
   dueDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pixString?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   boletoUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paymentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   installments?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -593,6 +608,7 @@ export type PaymentUncheckedUpdateInput = {
   status?: Prisma.EnumPaymentStatusFieldUpdateOperationsInput | $Enums.PaymentStatus
   dueDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pixString?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   boletoUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paymentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   installments?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -620,6 +636,7 @@ export type PaymentCreateManyInput = {
   status?: $Enums.PaymentStatus
   dueDate?: Date | string | null
   pixString?: string | null
+  pixExpiresAt?: Date | string | null
   boletoUrl?: string | null
   paymentUrl?: string | null
   installments?: number | null
@@ -643,6 +660,7 @@ export type PaymentUpdateManyMutationInput = {
   status?: Prisma.EnumPaymentStatusFieldUpdateOperationsInput | $Enums.PaymentStatus
   dueDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pixString?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   boletoUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paymentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   installments?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -668,6 +686,7 @@ export type PaymentUncheckedUpdateManyInput = {
   status?: Prisma.EnumPaymentStatusFieldUpdateOperationsInput | $Enums.PaymentStatus
   dueDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pixString?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   boletoUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paymentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   installments?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -704,6 +723,7 @@ export type PaymentCountOrderByAggregateInput = {
   status?: Prisma.SortOrder
   dueDate?: Prisma.SortOrder
   pixString?: Prisma.SortOrder
+  pixExpiresAt?: Prisma.SortOrder
   boletoUrl?: Prisma.SortOrder
   paymentUrl?: Prisma.SortOrder
   installments?: Prisma.SortOrder
@@ -737,6 +757,7 @@ export type PaymentMaxOrderByAggregateInput = {
   status?: Prisma.SortOrder
   dueDate?: Prisma.SortOrder
   pixString?: Prisma.SortOrder
+  pixExpiresAt?: Prisma.SortOrder
   boletoUrl?: Prisma.SortOrder
   paymentUrl?: Prisma.SortOrder
   installments?: Prisma.SortOrder
@@ -762,6 +783,7 @@ export type PaymentMinOrderByAggregateInput = {
   status?: Prisma.SortOrder
   dueDate?: Prisma.SortOrder
   pixString?: Prisma.SortOrder
+  pixExpiresAt?: Prisma.SortOrder
   boletoUrl?: Prisma.SortOrder
   paymentUrl?: Prisma.SortOrder
   installments?: Prisma.SortOrder
@@ -986,6 +1008,7 @@ export type PaymentCreateWithoutUserInput = {
   status?: $Enums.PaymentStatus
   dueDate?: Date | string | null
   pixString?: string | null
+  pixExpiresAt?: Date | string | null
   boletoUrl?: string | null
   paymentUrl?: string | null
   installments?: number | null
@@ -1014,6 +1037,7 @@ export type PaymentUncheckedCreateWithoutUserInput = {
   status?: $Enums.PaymentStatus
   dueDate?: Date | string | null
   pixString?: string | null
+  pixExpiresAt?: Date | string | null
   boletoUrl?: string | null
   paymentUrl?: string | null
   installments?: number | null
@@ -1070,6 +1094,7 @@ export type PaymentScalarWhereInput = {
   status?: Prisma.EnumPaymentStatusFilter<"Payment"> | $Enums.PaymentStatus
   dueDate?: Prisma.DateTimeNullableFilter<"Payment"> | Date | string | null
   pixString?: Prisma.StringNullableFilter<"Payment"> | string | null
+  pixExpiresAt?: Prisma.DateTimeNullableFilter<"Payment"> | Date | string | null
   boletoUrl?: Prisma.StringNullableFilter<"Payment"> | string | null
   paymentUrl?: Prisma.StringNullableFilter<"Payment"> | string | null
   installments?: Prisma.IntNullableFilter<"Payment"> | number | null
@@ -1093,6 +1118,7 @@ export type PaymentCreateWithoutContractInput = {
   status?: $Enums.PaymentStatus
   dueDate?: Date | string | null
   pixString?: string | null
+  pixExpiresAt?: Date | string | null
   boletoUrl?: string | null
   paymentUrl?: string | null
   installments?: number | null
@@ -1121,6 +1147,7 @@ export type PaymentUncheckedCreateWithoutContractInput = {
   status?: $Enums.PaymentStatus
   dueDate?: Date | string | null
   pixString?: string | null
+  pixExpiresAt?: Date | string | null
   boletoUrl?: string | null
   paymentUrl?: string | null
   installments?: number | null
@@ -1171,6 +1198,7 @@ export type PaymentCreateWithoutBookingInput = {
   status?: $Enums.PaymentStatus
   dueDate?: Date | string | null
   pixString?: string | null
+  pixExpiresAt?: Date | string | null
   boletoUrl?: string | null
   paymentUrl?: string | null
   installments?: number | null
@@ -1199,6 +1227,7 @@ export type PaymentUncheckedCreateWithoutBookingInput = {
   status?: $Enums.PaymentStatus
   dueDate?: Date | string | null
   pixString?: string | null
+  pixExpiresAt?: Date | string | null
   boletoUrl?: string | null
   paymentUrl?: string | null
   installments?: number | null
@@ -1249,6 +1278,7 @@ export type PaymentCreateWithoutCouponInput = {
   status?: $Enums.PaymentStatus
   dueDate?: Date | string | null
   pixString?: string | null
+  pixExpiresAt?: Date | string | null
   boletoUrl?: string | null
   paymentUrl?: string | null
   installments?: number | null
@@ -1278,6 +1308,7 @@ export type PaymentUncheckedCreateWithoutCouponInput = {
   status?: $Enums.PaymentStatus
   dueDate?: Date | string | null
   pixString?: string | null
+  pixExpiresAt?: Date | string | null
   boletoUrl?: string | null
   paymentUrl?: string | null
   installments?: number | null
@@ -1327,6 +1358,7 @@ export type PaymentCreateWithoutCouponRedemptionInput = {
   status?: $Enums.PaymentStatus
   dueDate?: Date | string | null
   pixString?: string | null
+  pixExpiresAt?: Date | string | null
   boletoUrl?: string | null
   paymentUrl?: string | null
   installments?: number | null
@@ -1356,6 +1388,7 @@ export type PaymentUncheckedCreateWithoutCouponRedemptionInput = {
   status?: $Enums.PaymentStatus
   dueDate?: Date | string | null
   pixString?: string | null
+  pixExpiresAt?: Date | string | null
   boletoUrl?: string | null
   paymentUrl?: string | null
   installments?: number | null
@@ -1395,6 +1428,7 @@ export type PaymentUpdateWithoutCouponRedemptionInput = {
   status?: Prisma.EnumPaymentStatusFieldUpdateOperationsInput | $Enums.PaymentStatus
   dueDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pixString?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   boletoUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paymentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   installments?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1424,6 +1458,7 @@ export type PaymentUncheckedUpdateWithoutCouponRedemptionInput = {
   status?: Prisma.EnumPaymentStatusFieldUpdateOperationsInput | $Enums.PaymentStatus
   dueDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pixString?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   boletoUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paymentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   installments?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1449,6 +1484,7 @@ export type PaymentCreateManyUserInput = {
   status?: $Enums.PaymentStatus
   dueDate?: Date | string | null
   pixString?: string | null
+  pixExpiresAt?: Date | string | null
   boletoUrl?: string | null
   paymentUrl?: string | null
   installments?: number | null
@@ -1472,6 +1508,7 @@ export type PaymentUpdateWithoutUserInput = {
   status?: Prisma.EnumPaymentStatusFieldUpdateOperationsInput | $Enums.PaymentStatus
   dueDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pixString?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   boletoUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paymentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   installments?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1500,6 +1537,7 @@ export type PaymentUncheckedUpdateWithoutUserInput = {
   status?: Prisma.EnumPaymentStatusFieldUpdateOperationsInput | $Enums.PaymentStatus
   dueDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pixString?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   boletoUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paymentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   installments?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1526,6 +1564,7 @@ export type PaymentUncheckedUpdateManyWithoutUserInput = {
   status?: Prisma.EnumPaymentStatusFieldUpdateOperationsInput | $Enums.PaymentStatus
   dueDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pixString?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   boletoUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paymentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   installments?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1551,6 +1590,7 @@ export type PaymentCreateManyContractInput = {
   status?: $Enums.PaymentStatus
   dueDate?: Date | string | null
   pixString?: string | null
+  pixExpiresAt?: Date | string | null
   boletoUrl?: string | null
   paymentUrl?: string | null
   installments?: number | null
@@ -1574,6 +1614,7 @@ export type PaymentUpdateWithoutContractInput = {
   status?: Prisma.EnumPaymentStatusFieldUpdateOperationsInput | $Enums.PaymentStatus
   dueDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pixString?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   boletoUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paymentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   installments?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1602,6 +1643,7 @@ export type PaymentUncheckedUpdateWithoutContractInput = {
   status?: Prisma.EnumPaymentStatusFieldUpdateOperationsInput | $Enums.PaymentStatus
   dueDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pixString?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   boletoUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paymentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   installments?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1628,6 +1670,7 @@ export type PaymentUncheckedUpdateManyWithoutContractInput = {
   status?: Prisma.EnumPaymentStatusFieldUpdateOperationsInput | $Enums.PaymentStatus
   dueDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pixString?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   boletoUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paymentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   installments?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1653,6 +1696,7 @@ export type PaymentCreateManyBookingInput = {
   status?: $Enums.PaymentStatus
   dueDate?: Date | string | null
   pixString?: string | null
+  pixExpiresAt?: Date | string | null
   boletoUrl?: string | null
   paymentUrl?: string | null
   installments?: number | null
@@ -1676,6 +1720,7 @@ export type PaymentUpdateWithoutBookingInput = {
   status?: Prisma.EnumPaymentStatusFieldUpdateOperationsInput | $Enums.PaymentStatus
   dueDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pixString?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   boletoUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paymentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   installments?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1704,6 +1749,7 @@ export type PaymentUncheckedUpdateWithoutBookingInput = {
   status?: Prisma.EnumPaymentStatusFieldUpdateOperationsInput | $Enums.PaymentStatus
   dueDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pixString?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   boletoUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paymentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   installments?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1730,6 +1776,7 @@ export type PaymentUncheckedUpdateManyWithoutBookingInput = {
   status?: Prisma.EnumPaymentStatusFieldUpdateOperationsInput | $Enums.PaymentStatus
   dueDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pixString?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   boletoUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paymentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   installments?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1756,6 +1803,7 @@ export type PaymentCreateManyCouponInput = {
   status?: $Enums.PaymentStatus
   dueDate?: Date | string | null
   pixString?: string | null
+  pixExpiresAt?: Date | string | null
   boletoUrl?: string | null
   paymentUrl?: string | null
   installments?: number | null
@@ -1778,6 +1826,7 @@ export type PaymentUpdateWithoutCouponInput = {
   status?: Prisma.EnumPaymentStatusFieldUpdateOperationsInput | $Enums.PaymentStatus
   dueDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pixString?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   boletoUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paymentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   installments?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1807,6 +1856,7 @@ export type PaymentUncheckedUpdateWithoutCouponInput = {
   status?: Prisma.EnumPaymentStatusFieldUpdateOperationsInput | $Enums.PaymentStatus
   dueDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pixString?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   boletoUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paymentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   installments?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1833,6 +1883,7 @@ export type PaymentUncheckedUpdateManyWithoutCouponInput = {
   status?: Prisma.EnumPaymentStatusFieldUpdateOperationsInput | $Enums.PaymentStatus
   dueDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pixString?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  pixExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   boletoUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paymentUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   installments?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1860,6 +1911,7 @@ export type PaymentSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs 
   status?: boolean
   dueDate?: boolean
   pixString?: boolean
+  pixExpiresAt?: boolean
   boletoUrl?: boolean
   paymentUrl?: boolean
   installments?: boolean
@@ -1891,6 +1943,7 @@ export type PaymentSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exten
   status?: boolean
   dueDate?: boolean
   pixString?: boolean
+  pixExpiresAt?: boolean
   boletoUrl?: boolean
   paymentUrl?: boolean
   installments?: boolean
@@ -1921,6 +1974,7 @@ export type PaymentSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exten
   status?: boolean
   dueDate?: boolean
   pixString?: boolean
+  pixExpiresAt?: boolean
   boletoUrl?: boolean
   paymentUrl?: boolean
   installments?: boolean
@@ -1951,6 +2005,7 @@ export type PaymentSelectScalar = {
   status?: boolean
   dueDate?: boolean
   pixString?: boolean
+  pixExpiresAt?: boolean
   boletoUrl?: boolean
   paymentUrl?: boolean
   installments?: boolean
@@ -1965,7 +2020,7 @@ export type PaymentSelectScalar = {
   updatedAt?: boolean
 }
 
-export type PaymentOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "userId" | "contractId" | "bookingId" | "provider" | "providerRef" | "amount" | "chargedAmount" | "status" | "dueDate" | "pixString" | "boletoUrl" | "paymentUrl" | "installments" | "paymentType" | "stripeSubscriptionId" | "metadata" | "couponId" | "couponCode" | "discountAmount" | "paidAt" | "createdAt" | "updatedAt", ExtArgs["result"]["payment"]>
+export type PaymentOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "userId" | "contractId" | "bookingId" | "provider" | "providerRef" | "amount" | "chargedAmount" | "status" | "dueDate" | "pixString" | "pixExpiresAt" | "boletoUrl" | "paymentUrl" | "installments" | "paymentType" | "stripeSubscriptionId" | "metadata" | "couponId" | "couponCode" | "discountAmount" | "paidAt" | "createdAt" | "updatedAt", ExtArgs["result"]["payment"]>
 export type PaymentInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
   contract?: boolean | Prisma.Payment$contractArgs<ExtArgs>
@@ -2007,6 +2062,7 @@ export type $PaymentPayload<ExtArgs extends runtime.Types.Extensions.InternalArg
     status: $Enums.PaymentStatus
     dueDate: Date | null
     pixString: string | null
+    pixExpiresAt: Date | null
     boletoUrl: string | null
     paymentUrl: string | null
     installments: number | null
@@ -2458,6 +2514,7 @@ export interface PaymentFieldRefs {
   readonly status: Prisma.FieldRef<"Payment", 'PaymentStatus'>
   readonly dueDate: Prisma.FieldRef<"Payment", 'DateTime'>
   readonly pixString: Prisma.FieldRef<"Payment", 'String'>
+  readonly pixExpiresAt: Prisma.FieldRef<"Payment", 'DateTime'>
   readonly boletoUrl: Prisma.FieldRef<"Payment", 'String'>
   readonly paymentUrl: Prisma.FieldRef<"Payment", 'String'>
   readonly installments: Prisma.FieldRef<"Payment", 'Int'>

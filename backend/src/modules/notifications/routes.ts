@@ -84,8 +84,15 @@ async function buildComputedNotifications(userId: string, userRole: string): Pro
         const thresholdDays = isAdmin ? 7 : 15;
         const targetDateFromNow = new Date(today);
         targetDateFromNow.setDate(targetDateFromNow.getDate() + thresholdDays);
+        // D6: avulso é sessão única (vigência = dia da gravação) — nunca "expira". Planos concluídos
+        // (COMPLETED antes do fim da vigência) seguem recebendo o aviso: é o gatilho da renovação.
         const expiringContracts = await prisma.contract.findMany({
-            where: { status: 'ACTIVE', endDate: { gte: today, lte: targetDateFromNow }, ...(isAdmin ? {} : { userId }) },
+            where: {
+                status: { in: ['ACTIVE', 'COMPLETED'] },
+                type: { not: 'AVULSO' },
+                endDate: { gte: today, lte: targetDateFromNow },
+                ...(isAdmin ? {} : { userId }),
+            },
             include: { user: { select: { name: true } } },
         });
         for (const c of expiringContracts) {

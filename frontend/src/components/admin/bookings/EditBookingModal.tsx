@@ -4,7 +4,13 @@ import { bookingsApi, BookingWithUser } from '../../../api/client';
 import BottomSheetModal from '../../BottomSheetModal';
 import { formatBRL } from '../../../utils/format';
 import { TIER_META, BOOKING_STATUS_META } from '../../../constants/adminMeta';
-import { Pencil, CalendarDays, Clock, Wallet } from 'lucide-react';
+import { Pencil, CalendarDays, Clock, Wallet, Ban } from 'lucide-react';
+import StatusReasonModal, { type ReasonConfirmOptions } from './StatusReasonModal';
+import { useBusinessConfig } from '../../../hooks/useBusinessConfig';
+import { buildReasonUpdate, reasonToastMessage } from '../../../utils/avulsoMakeup';
+import { useUI } from '../../../context/UIContext';
+import DangerConfirmDialog, { type DangerCloseReason } from '../../ui/DangerConfirmDialog';
+import { bookingSummary, cancelBookingConsequences, cancelBookingRequest } from './bookingDanger';
 
 // Statuses selecionáveis neste modal — cores/labels/ícones vêm do adminMeta
 // (source of truth); HELD é interno do fluxo de pagamento e fica de fora.
@@ -21,32 +27,88 @@ interface EditBookingModalProps {
 export default function EditBookingModal({ booking, onClose, onSaved }: EditBookingModalProps) {
     const [editForm, setEditForm] = useState({ date: '', startTime: '', status: '' });
     const [editError, setEditError] = useState('');
+    const [saving, setSaving] = useState(false);
+    // FALTA / NAO_REALIZADO exigem o MOTIVO (e, no avulso, decidir a falta justificada — D4/D5).
+    const [reasonKind, setReasonKind] = useState<'FALTA' | 'NAO_REALIZADO' | null>(null);
+    // CANCELLED pede a confirmação de perigo (D3) antes de gravar.
+    const [confirmCancel, setConfirmCancel] = useState(false);
+    const { get: getRule } = useBusinessConfig();
+    const { showToast } = useUI();
 
     useEffect(() => {
         if (booking) {
             setEditForm({ date: booking.date.split('T')[0], startTime: booking.startTime, status: booking.status });
             setEditError('');
+            setReasonKind(null);
+            setConfirmCancel(false);
         }
     }, [booking]);
 
-    const handleEdit = async () => {
-        if (!booking) return;
+    const isAvulso = booking?.contract?.type === 'AVULSO';
+
+    const save = async (reason?: { text: string; justified: boolean }) => {
+        if (!booking || saving) return;
         setEditError('');
+        setSaving(true);
         try {
-            const data: any = {};
+            const data: Parameters<typeof bookingsApi.update>[1] = {};
             if (editForm.date) data.date = editForm.date;
             if (editForm.startTime) data.startTime = editForm.startTime;
             if (editForm.status) data.status = editForm.status;
+            if (reason && (editForm.status === 'FALTA' || editForm.status === 'NAO_REALIZADO')) {
+                Object.assign(data, buildReasonUpdate(editForm.status, reason.text, { isAvulso, justified: reason.justified }));
+            }
             await bookingsApi.update(booking.id, data);
+            if (reason && (editForm.status === 'FALTA' || editForm.status === 'NAO_REALIZADO')) {
+                showToast(reasonToastMessage(editForm.status, { isAvulso, justified: reason.justified, bookingDate: booking.date, makeupDays: getRule('avulso_makeup_days') }));
+            }
+            setReasonKind(null);
             onSaved();
             onClose();
-        } catch (err: unknown) { setEditError(getErrorMessage(err)); }
+        } catch (err: unknown) {
+            setReasonKind(null);
+            setEditError(getErrorMessage(err));
+        } finally { setSaving(false); }
+    };
+
+    const handleEdit = () => {
+        if (!booking || saving) return;
+        // Mudou PARA Falta/Não Realizado → primeiro o modal de motivo; o save sai de lá.
+        if ((editForm.status === 'FALTA' || editForm.status === 'NAO_REALIZADO') && editForm.status !== booking.status) {
+            setReasonKind(editForm.status);
+            return;
+        }
+        // Mudou PARA Cancelado → confirmação de perigo; nada é gravado até confirmar.
+        if (editForm.status === 'CANCELLED' && booking.status !== 'CANCELLED') {
+            setEditError('');
+            setConfirmCancel(true);
+            return;
+        }
+        save();
+    };
+
+    const handleConfirmReason = (reason: string, { justified }: ReasonConfirmOptions) => save({ text: reason, justified });
+
+    // Cancelamento pela rota certa (bookingDanger): sessão não realizada → cancelamento canônico
+    // (libera o horário e devolve o crédito); demais → PATCH só do status (data/horário editados
+    // não se aplicam a uma reserva cancelada). Sem try/catch: o erro aparece dentro do diálogo.
+    const performCancel = async () => {
+        if (!booking) return;
+        await cancelBookingRequest(booking);
+        showToast('Agendamento cancelado.');
+    };
+
+    const handleCancelDialogClose = (reason: DangerCloseReason) => {
+        setConfirmCancel(false);
+        if (reason === 'confirmed') { onSaved(); onClose(); }
     };
 
     if (!booking) return null;
 
     return (
-        <BottomSheetModal isOpen onClose={onClose} hideHeader size="md" className="admin-sheet" title="Editar Agendamento">
+        // preventClose com o modal de motivo / a confirmação de cancelamento aberta: o Esc fecha só o de
+        // cima (os sheets escutam o mesmo keydown).
+        <BottomSheetModal isOpen onClose={onClose} hideHeader size="md" className="admin-sheet" title="Editar Agendamento" preventClose={saving || !!reasonKind || confirmCancel}>
                 {/* Header */}
                 <div className="admin-modal-head">
                     <h2 className="admin-modal-title">
@@ -67,7 +129,8 @@ export default function EditBookingModal({ booking, onClose, onSaved }: EditBook
                         }}>{booking.user.name.charAt(0).toUpperCase()}</div>
                         <div>
                             <div style={{ fontWeight: 700, fontSize: '0.8125rem' }}>{booking.user.name}</div>
-                            <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>{booking.user.email}</div>
+                            {/* e-mail null-safe: cliente excluído (D3) tem os dados pessoais anonimizados. */}
+                            {booking.user.email && <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>{booking.user.email}</div>}
                         </div>
                         {booking.contract && (
                             <span style={{
@@ -145,14 +208,42 @@ export default function EditBookingModal({ booking, onClose, onSaved }: EditBook
 
                     {/* Actions */}
                     <div className="admin-actions-row">
-                        <button onClick={onClose} className="btn-admin-ghost">
+                        <button key="cancel" type="button" onClick={onClose} className="btn-admin-ghost" disabled={saving}>
                             Cancelar
                         </button>
-                        <button onClick={handleEdit} className="btn-admin-go">
-                            Salvar Alterações
+                        <button key="save" type="button" onClick={handleEdit} className="btn-admin-go" disabled={saving} aria-busy={saving || undefined}>
+                            {saving && !reasonKind ? 'Salvando…' : 'Salvar Alterações'}
                         </button>
                     </div>
                 </div>
+
+                <StatusReasonModal
+                    isOpen={!!reasonKind}
+                    kind={reasonKind}
+                    subtitle={`${booking.user.name} · ${new Date((editForm.date || booking.date.split('T')[0]) + 'T12:00:00Z').toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit' })} às ${editForm.startTime || booking.startTime}`}
+                    isAvulso={isAvulso}
+                    // D = data ATUAL da reserva: o backend abre a janela antes de aplicar uma data nova.
+                    bookingDate={booking.date}
+                    makeupStatus={booking.makeupStatus ?? null}
+                    onConfirm={handleConfirmReason}
+                    onClose={() => setReasonKind(null)}
+                    saving={saving}
+                    zIndex={1100}
+                />
+
+                <DangerConfirmDialog
+                    isOpen={confirmCancel}
+                    tone="danger"
+                    icon={Ban}
+                    title="Cancelar agendamento?"
+                    description={bookingSummary(booking)}
+                    consequences={cancelBookingConsequences(booking)}
+                    confirmLabel="Cancelar agendamento"
+                    loadingLabel="Cancelando…"
+                    onConfirm={performCancel}
+                    onClose={handleCancelDialogClose}
+                    zIndex={1100}
+                />
         </BottomSheetModal>
     );
 }

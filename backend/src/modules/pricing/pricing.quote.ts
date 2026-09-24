@@ -5,7 +5,7 @@ import { getBasePriceDynamic, applyDiscount } from '../../utils/pricing.js';
 import { getConfig } from '../../lib/businessConfig.js';
 import { computeAddonsCost, computeAddonsBreakdown, computeFullContractTotal } from '../../lib/contractPricing.js';
 import { getInstallmentPolicy } from '../../lib/paymentPolicy.js';
-import { stripeGetInstallmentPlans } from '../../lib/stripeService.js';
+import { stripeGetInstallmentPlans, stripeCardInstallmentsSupported } from '../../lib/stripeService.js';
 import { Tier } from '../../generated/prisma/client.js';
 
 // ─── POST /api/pricing/checkout-quote ───────────────────
@@ -66,8 +66,12 @@ export function registerQuoteRoutes(router: Router) {
                 contractType: data.contractType,
                 durationMonths: data.durationMonths,
             });
+            // Só lista N× (N > 1) quando o gateway parcela de fato (conta Stripe BR não parcela — o
+            // create-payment recusa N > 1): sem parcelamento, só 1x. O dia em que o gateway parcelar,
+            // os planos voltam a aparecer sozinhos (mesma regra de POST /stripe/installment-plans).
+            const maxCount = (await stripeCardInstallmentsSupported()) ? policy.maxInstallments : 1;
             const installmentPlans = (await stripeGetInstallmentPlans(fullCard, policy.freeUpTo))
-                .filter(p => p.count <= policy.maxInstallments);
+                .filter(p => p.count <= maxCount);
 
             // Per-service breakdown for display: "valor por gravação" + monthly/total aggregate.
             const services = await computeAddonsBreakdown(data.addOns, resolvedDiscountPct, resolvedSessions, data.durationMonths);
@@ -79,8 +83,8 @@ export function registerQuoteRoutes(router: Router) {
                 monthlyTotal,
                 fullPix,
                 fullCard,
-                maxInstallments: policy.maxInstallments,
-                freeUpTo: policy.freeUpTo,
+                maxInstallments: maxCount,
+                freeUpTo: Math.min(policy.freeUpTo, maxCount),
                 installmentPlans,
                 services,
                 servicesPerRecordingCents,

@@ -134,9 +134,15 @@ async function computeUserEvents(userId: string, today: Date): Promise<PendingEv
         }
     }
 
-    // ── Expiring contracts ──
+    // ── Expiring contracts ── (paridade com GET /notifications: sem AVULSO; plano COMPLETED ainda
+    // recebe o lembrete de renovação — D6)
     const expiringContracts = await prisma.contract.findMany({
-        where: { status: 'ACTIVE', endDate: { gte: today, lte: targetDate }, ...(isAdmin ? {} : { userId }) },
+        where: {
+            status: { in: ['ACTIVE', 'COMPLETED'] },
+            type: { not: 'AVULSO' },
+            endDate: { gte: today, lte: targetDate },
+            ...(isAdmin ? {} : { userId }),
+        },
         include: { user: { select: { name: true } } },
         take: 3,
     });

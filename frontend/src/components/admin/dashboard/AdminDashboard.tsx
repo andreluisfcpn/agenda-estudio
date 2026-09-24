@@ -4,14 +4,17 @@ import { bookingsApi, contractsApi, usersApi, BookingWithUser, Contract, UserSum
 import { useUI } from '../../../context/UIContext';
 import { useNavigate } from 'react-router-dom';
 import StatusBadge from '../../ui/StatusBadge';
-import StatusReasonModal, { type ReasonKind } from '../bookings/StatusReasonModal';
+import StatusReasonModal, { type ReasonKind, type ReasonConfirmOptions } from '../bookings/StatusReasonModal';
 import AdminPageHeader from '../AdminPageHeader';
 import { DashboardSkeleton } from '../../ui/SkeletonLoader';
 import {
     CalendarDays, LayoutDashboard, Flag, XCircle, ClipboardCheck, AlertTriangle,
     AlertCircle, Clock, CheckCircle2, TrendingUp, CalendarClock, Target, Moon, Radio,
 } from 'lucide-react';
-import { TIER_META, BOOKING_STATUS_META, getMeta } from '../../../constants/adminMeta';
+import { TIER_META, BOOKING_STATUS_META, CONTRACT_TYPE_META, getMeta } from '../../../constants/adminMeta';
+import { isAvulsoContract, isBookingMakeupOpen } from '../../../utils/contractStatus';
+import { buildReasonUpdate, reasonToastMessage, makeupDeadlineDdmm } from '../../../utils/avulsoMakeup';
+import { useBusinessConfig } from '../../../hooks/useBusinessConfig';
 import { formatBRL, DAY_NAMES, getInitials } from '../../../utils/format';
 import { todayStrSaoPaulo } from '../../../utils/time';
 import { STUDIO_SLOTS } from '../../../constants/slots';
@@ -53,6 +56,7 @@ function daysUntil(dateStr: string): number {
 export default function AdminDashboard() {
     const navigate = useNavigate();
     const { showToast } = useUI();
+    const { get: getRule } = useBusinessConfig();
     const [allBookings, setAllBookings] = useState<BookingWithUser[]>([]);
     const [allContracts, setAllContracts] = useState<Contract[]>([]);
     const [allUsers, setAllUsers] = useState<UserSummary[]>([]);
@@ -89,12 +93,15 @@ export default function AdminDashboard() {
     };
 
     // Falta / Não Realizado passam pelo modal que exige o MOTIVO antes de aplicar o status (igual à tela Hoje).
-    const handleConfirmReason = async (reason: string) => {
-        if (!reasonModal) return;
+    // Avulso (D4/D5): a FALTA pode ser justificada (noShowJustified → remarcação sem novo pagamento).
+    const handleConfirmReason = async (reason: string, { justified }: ReasonConfirmOptions) => {
+        if (!reasonModal || savingReason) return;
+        const { booking, kind } = reasonModal;
+        const isAvulso = booking.contract?.type === 'AVULSO';
         setSavingReason(true);
         try {
-            await bookingsApi.update(reasonModal.booking.id, { status: reasonModal.kind, statusReason: reason });
-            showToast(reasonModal.kind === 'FALTA' ? 'Falta registrada.' : 'Marcado como não realizado — crédito liberado.');
+            await bookingsApi.update(booking.id, buildReasonUpdate(kind, reason, { isAvulso, justified }));
+            showToast(reasonToastMessage(kind, { isAvulso, justified, bookingDate: booking.date, makeupDays: getRule('avulso_makeup_days') }));
             setReasonModal(null);
             await loadAll();
         } catch (err: unknown) { showToast(getErrorMessage(err) || 'Erro ao registrar.'); }
@@ -124,7 +131,11 @@ export default function AdminDashboard() {
 
     const activeContracts = allContracts.filter(c => c.status === 'ACTIVE');
     const pendingCancellations = allContracts.filter(c => c.status === 'PENDING_CANCELLATION');
-    const expiringContracts = activeContracts.filter(c => daysUntil(c.endDate) <= 7 && daysUntil(c.endDate) >= 0);
+    // Planos a vencer: ACTIVE ou COMPLETED (o concluído continua renovável — D6). O AVULSO é uma
+    // sessão única e nunca "vence" (mesma regra do alerta de expiração do backend).
+    const expiringContracts = allContracts.filter(c =>
+        (c.status === 'ACTIVE' || c.status === 'COMPLETED') && !isAvulsoContract(c)
+        && daysUntil(c.endDate) <= 7 && daysUntil(c.endDate) >= 0);
     const unconfirmedToday = todaysBookings.filter(b => b.status === 'RESERVED');
 
     // Week occupancy
@@ -267,7 +278,17 @@ export default function AdminDashboard() {
                                         <span className="dash-status-chip dash-status-chip--success"><Flag size={13} aria-hidden="true" /> Concluído</span>
                                     )}
                                     {b && b.status === 'FALTA' && (
-                                        <span className="dash-status-chip dash-status-chip--danger"><XCircle size={13} aria-hidden="true" /> Falta</span>
+                                        <span className="dash-status-chip dash-status-chip--danger">
+                                            <XCircle size={13} aria-hidden="true" /> Falta
+                                            {/* D4: falta justificada do avulso → remarcação sem novo pagamento em aberto. */}
+                                            {isBookingMakeupOpen(b) && b.makeupDeadline ? ` · remarcável até ${makeupDeadlineDdmm(b.makeupDeadline)}` : ''}
+                                        </span>
+                                    )}
+                                    {b && b.status === 'NAO_REALIZADO' && isBookingMakeupOpen(b) && b.makeupDeadline && (
+                                        // D5: não realizada pelo estúdio → remarcação sem custo em aberto.
+                                        <span className="dash-status-chip" style={{ color: 'var(--warning)' }}>
+                                            <AlertCircle size={13} aria-hidden="true" /> Não realizado · remarcável até {makeupDeadlineDdmm(b.makeupDeadline)}
+                                        </span>
                                     )}
                                 </div>
                             );
@@ -316,9 +337,9 @@ export default function AdminDashboard() {
                                     <AlertCircle size={18} className="dash-alert__icon" aria-hidden="true" />
                                     <div className="dash-alert__body">
                                         <div className="dash-alert__title">
-                                            Contrato de <button type="button" className="dash-inline-link" onClick={() => c.user?.id && navigate(`/admin/clients/${c.user.id}`)}>{c.user?.name}</button> expira em {daysUntil(c.endDate)} dia(s)
+                                            Contrato de <button type="button" className="dash-inline-link" onClick={() => c.user?.id && navigate(`/admin/clients/${c.user.id}`)}>{c.user?.name}</button> {(() => { const d = daysUntil(c.endDate); return d === 0 ? 'expira hoje' : `expira em ${d} ${d === 1 ? 'dia' : 'dias'}`; })()}
                                         </div>
-                                        <div className="dash-alert__sub">{c.type} · {c.tier}</div>
+                                        <div className="dash-alert__sub">{getMeta(CONTRACT_TYPE_META, c.type).label} · {getMeta(TIER_META, c.tier).label}</div>
                                     </div>
                                 </div>
                             ))}
@@ -459,6 +480,9 @@ export default function AdminDashboard() {
                 isOpen={!!reasonModal}
                 kind={reasonModal?.kind ?? null}
                 subtitle={reasonModal ? `${reasonModal.booking.user.name} · ${reasonModal.booking.startTime}` : undefined}
+                isAvulso={reasonModal?.booking.contract?.type === 'AVULSO'}
+                bookingDate={reasonModal?.booking.date}
+                makeupStatus={reasonModal?.booking.makeupStatus ?? null}
                 onConfirm={handleConfirmReason}
                 onClose={() => setReasonModal(null)}
                 saving={savingReason}

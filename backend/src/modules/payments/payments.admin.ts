@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import { authenticate, authorize } from '../../middleware/auth.js';
 import { PaymentStatus, PaymentMethod } from '../../generated/prisma/client.js';
+import { paidChargedAmount } from '../../lib/pixGateway.js';
 
 // ─── PATCH /api/payments/:id (ADMIN) ────────────────────
 // Update payment status (mark as paid, refunded, etc.)
@@ -103,8 +104,12 @@ export function registerPaymentAdminRoutes(router: Router) {
                 },
             });
 
-            const totalRevenue = payments.reduce((s, p) => s + p.amount, 0);
-            const paidRevenue = payments.filter(p => p.status === 'PAID').reduce((s, p) => s + p.amount, 0);
+            // Receita de um pagamento PAGO = o valor efetivamente cobrado (cartão: chargedAmount — sem o
+            // desconto PIX do à vista, com juros de parcelamento; PIX/boleto: amount). Demais: amount.
+            const revenueOf = (p: { status: string; amount: number; chargedAmount?: number | null; provider?: string | null; providerRef?: string | null }) =>
+                p.status === 'PAID' ? paidChargedAmount(p) : p.amount;
+            const totalRevenue = payments.reduce((s, p) => s + revenueOf(p), 0);
+            const paidRevenue = payments.filter(p => p.status === 'PAID').reduce((s, p) => s + revenueOf(p), 0);
             const pendingRevenue = payments.filter(p => p.status === 'PENDING').reduce((s, p) => s + p.amount, 0);
             const failedCount = payments.filter(p => p.status === 'FAILED').length;
             const refundedAmount = payments.filter(p => p.status === 'REFUNDED').reduce((s, p) => s + p.amount, 0);
@@ -122,7 +127,7 @@ export function registerPaymentAdminRoutes(router: Router) {
             const sixMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
             const windowPayments = await prisma.payment.findMany({
                 where: { dueDate: { gte: sixMonthStart, lt: sixMonthEnd } },
-                select: { amount: true, status: true, dueDate: true },
+                select: { amount: true, chargedAmount: true, provider: true, providerRef: true, status: true, dueDate: true },
             });
 
             const monthlyBreakdown = [];
@@ -134,8 +139,8 @@ export function registerPaymentAdminRoutes(router: Router) {
                 monthlyBreakdown.push({
                     month: d.toISOString().slice(0, 7), // YYYY-MM
                     label: d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
-                    total: monthPayments.reduce((s, p) => s + p.amount, 0),
-                    paid: monthPayments.filter(p => p.status === 'PAID').reduce((s, p) => s + p.amount, 0),
+                    total: monthPayments.reduce((s, p) => s + revenueOf(p), 0),
+                    paid: monthPayments.filter(p => p.status === 'PAID').reduce((s, p) => s + revenueOf(p), 0),
                     pending: monthPayments.filter(p => p.status === 'PENDING').reduce((s, p) => s + p.amount, 0),
                 });
             }

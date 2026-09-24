@@ -69,6 +69,9 @@ export type BookingMinAggregateOutputType = {
   recordingStartedById: string | null
   recordingStartedByName: string | null
   statusReason: string | null
+  makeupStatus: $Enums.MakeupStatus | null
+  makeupDeadline: Date | null
+  missedDate: Date | null
   createdAt: Date | null
   updatedAt: Date | null
 }
@@ -102,6 +105,9 @@ export type BookingMaxAggregateOutputType = {
   recordingStartedById: string | null
   recordingStartedByName: string | null
   statusReason: string | null
+  makeupStatus: $Enums.MakeupStatus | null
+  makeupDeadline: Date | null
+  missedDate: Date | null
   createdAt: Date | null
   updatedAt: Date | null
 }
@@ -136,6 +142,9 @@ export type BookingCountAggregateOutputType = {
   recordingStartedById: number
   recordingStartedByName: number
   statusReason: number
+  makeupStatus: number
+  makeupDeadline: number
+  missedDate: number
   createdAt: number
   updatedAt: number
   _all: number
@@ -185,6 +194,9 @@ export type BookingMinAggregateInputType = {
   recordingStartedById?: true
   recordingStartedByName?: true
   statusReason?: true
+  makeupStatus?: true
+  makeupDeadline?: true
+  missedDate?: true
   createdAt?: true
   updatedAt?: true
 }
@@ -218,6 +230,9 @@ export type BookingMaxAggregateInputType = {
   recordingStartedById?: true
   recordingStartedByName?: true
   statusReason?: true
+  makeupStatus?: true
+  makeupDeadline?: true
+  missedDate?: true
   createdAt?: true
   updatedAt?: true
 }
@@ -252,6 +267,9 @@ export type BookingCountAggregateInputType = {
   recordingStartedById?: true
   recordingStartedByName?: true
   statusReason?: true
+  makeupStatus?: true
+  makeupDeadline?: true
+  missedDate?: true
   createdAt?: true
   updatedAt?: true
   _all?: true
@@ -373,6 +391,9 @@ export type BookingGroupByOutputType = {
   recordingStartedById: string | null
   recordingStartedByName: string | null
   statusReason: string | null
+  makeupStatus: $Enums.MakeupStatus | null
+  makeupDeadline: Date | null
+  missedDate: Date | null
   createdAt: Date
   updatedAt: Date
   _count: BookingCountAggregateOutputType | null
@@ -430,6 +451,9 @@ export type BookingWhereInput = {
   recordingStartedById?: Prisma.StringNullableFilter<"Booking"> | string | null
   recordingStartedByName?: Prisma.StringNullableFilter<"Booking"> | string | null
   statusReason?: Prisma.StringNullableFilter<"Booking"> | string | null
+  makeupStatus?: Prisma.EnumMakeupStatusNullableFilter<"Booking"> | $Enums.MakeupStatus | null
+  makeupDeadline?: Prisma.DateTimeNullableFilter<"Booking"> | Date | string | null
+  missedDate?: Prisma.DateTimeNullableFilter<"Booking"> | Date | string | null
   createdAt?: Prisma.DateTimeFilter<"Booking"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Booking"> | Date | string
   user?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>
@@ -467,6 +491,9 @@ export type BookingOrderByWithRelationInput = {
   recordingStartedById?: Prisma.SortOrderInput | Prisma.SortOrder
   recordingStartedByName?: Prisma.SortOrderInput | Prisma.SortOrder
   statusReason?: Prisma.SortOrderInput | Prisma.SortOrder
+  makeupStatus?: Prisma.SortOrderInput | Prisma.SortOrder
+  makeupDeadline?: Prisma.SortOrderInput | Prisma.SortOrder
+  missedDate?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   user?: Prisma.UserOrderByWithRelationInput
@@ -507,6 +534,9 @@ export type BookingWhereUniqueInput = Prisma.AtLeast<{
   recordingStartedById?: Prisma.StringNullableFilter<"Booking"> | string | null
   recordingStartedByName?: Prisma.StringNullableFilter<"Booking"> | string | null
   statusReason?: Prisma.StringNullableFilter<"Booking"> | string | null
+  makeupStatus?: Prisma.EnumMakeupStatusNullableFilter<"Booking"> | $Enums.MakeupStatus | null
+  makeupDeadline?: Prisma.DateTimeNullableFilter<"Booking"> | Date | string | null
+  missedDate?: Prisma.DateTimeNullableFilter<"Booking"> | Date | string | null
   createdAt?: Prisma.DateTimeFilter<"Booking"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Booking"> | Date | string
   user?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>
@@ -544,6 +574,9 @@ export type BookingOrderByWithAggregationInput = {
   recordingStartedById?: Prisma.SortOrderInput | Prisma.SortOrder
   recordingStartedByName?: Prisma.SortOrderInput | Prisma.SortOrder
   statusReason?: Prisma.SortOrderInput | Prisma.SortOrder
+  makeupStatus?: Prisma.SortOrderInput | Prisma.SortOrder
+  makeupDeadline?: Prisma.SortOrderInput | Prisma.SortOrder
+  missedDate?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   _count?: Prisma.BookingCountOrderByAggregateInput
@@ -586,6 +619,9 @@ export type BookingScalarWhereWithAggregatesInput = {
   recordingStartedById?: Prisma.StringNullableWithAggregatesFilter<"Booking"> | string | null
   recordingStartedByName?: Prisma.StringNullableWithAggregatesFilter<"Booking"> | string | null
   statusReason?: Prisma.StringNullableWithAggregatesFilter<"Booking"> | string | null
+  makeupStatus?: Prisma.EnumMakeupStatusNullableWithAggregatesFilter<"Booking"> | $Enums.MakeupStatus | null
+  makeupDeadline?: Prisma.DateTimeNullableWithAggregatesFilter<"Booking"> | Date | string | null
+  missedDate?: Prisma.DateTimeNullableWithAggregatesFilter<"Booking"> | Date | string | null
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"Booking"> | Date | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"Booking"> | Date | string
 }
@@ -618,6 +654,9 @@ export type BookingCreateInput = {
   recordingStartedById?: string | null
   recordingStartedByName?: string | null
   statusReason?: string | null
+  makeupStatus?: $Enums.MakeupStatus | null
+  makeupDeadline?: Date | string | null
+  missedDate?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   user: Prisma.UserCreateNestedOneWithoutBookingsInput
@@ -655,6 +694,9 @@ export type BookingUncheckedCreateInput = {
   recordingStartedById?: string | null
   recordingStartedByName?: string | null
   statusReason?: string | null
+  makeupStatus?: $Enums.MakeupStatus | null
+  makeupDeadline?: Date | string | null
+  missedDate?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   payments?: Prisma.PaymentUncheckedCreateNestedManyWithoutBookingInput
@@ -688,6 +730,9 @@ export type BookingUpdateInput = {
   recordingStartedById?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   recordingStartedByName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  makeupStatus?: Prisma.NullableEnumMakeupStatusFieldUpdateOperationsInput | $Enums.MakeupStatus | null
+  makeupDeadline?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  missedDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   user?: Prisma.UserUpdateOneRequiredWithoutBookingsNestedInput
@@ -725,6 +770,9 @@ export type BookingUncheckedUpdateInput = {
   recordingStartedById?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   recordingStartedByName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  makeupStatus?: Prisma.NullableEnumMakeupStatusFieldUpdateOperationsInput | $Enums.MakeupStatus | null
+  makeupDeadline?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  missedDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   payments?: Prisma.PaymentUncheckedUpdateManyWithoutBookingNestedInput
@@ -760,6 +808,9 @@ export type BookingCreateManyInput = {
   recordingStartedById?: string | null
   recordingStartedByName?: string | null
   statusReason?: string | null
+  makeupStatus?: $Enums.MakeupStatus | null
+  makeupDeadline?: Date | string | null
+  missedDate?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -792,6 +843,9 @@ export type BookingUpdateManyMutationInput = {
   recordingStartedById?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   recordingStartedByName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  makeupStatus?: Prisma.NullableEnumMakeupStatusFieldUpdateOperationsInput | $Enums.MakeupStatus | null
+  makeupDeadline?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  missedDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -826,6 +880,9 @@ export type BookingUncheckedUpdateManyInput = {
   recordingStartedById?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   recordingStartedByName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  makeupStatus?: Prisma.NullableEnumMakeupStatusFieldUpdateOperationsInput | $Enums.MakeupStatus | null
+  makeupDeadline?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  missedDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -870,6 +927,9 @@ export type BookingCountOrderByAggregateInput = {
   recordingStartedById?: Prisma.SortOrder
   recordingStartedByName?: Prisma.SortOrder
   statusReason?: Prisma.SortOrder
+  makeupStatus?: Prisma.SortOrder
+  makeupDeadline?: Prisma.SortOrder
+  missedDate?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -910,6 +970,9 @@ export type BookingMaxOrderByAggregateInput = {
   recordingStartedById?: Prisma.SortOrder
   recordingStartedByName?: Prisma.SortOrder
   statusReason?: Prisma.SortOrder
+  makeupStatus?: Prisma.SortOrder
+  makeupDeadline?: Prisma.SortOrder
+  missedDate?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -943,6 +1006,9 @@ export type BookingMinOrderByAggregateInput = {
   recordingStartedById?: Prisma.SortOrder
   recordingStartedByName?: Prisma.SortOrder
   statusReason?: Prisma.SortOrder
+  makeupStatus?: Prisma.SortOrder
+  makeupDeadline?: Prisma.SortOrder
+  missedDate?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -1060,6 +1126,10 @@ export type NullableBoolFieldUpdateOperationsInput = {
   set?: boolean | null
 }
 
+export type NullableEnumMakeupStatusFieldUpdateOperationsInput = {
+  set?: $Enums.MakeupStatus | null
+}
+
 export type BookingCreateNestedOneWithoutPaymentsInput = {
   create?: Prisma.XOR<Prisma.BookingCreateWithoutPaymentsInput, Prisma.BookingUncheckedCreateWithoutPaymentsInput>
   connectOrCreate?: Prisma.BookingCreateOrConnectWithoutPaymentsInput
@@ -1104,6 +1174,9 @@ export type BookingCreateWithoutUserInput = {
   recordingStartedById?: string | null
   recordingStartedByName?: string | null
   statusReason?: string | null
+  makeupStatus?: $Enums.MakeupStatus | null
+  makeupDeadline?: Date | string | null
+  missedDate?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   contract: Prisma.ContractCreateNestedOneWithoutBookingsInput
@@ -1139,6 +1212,9 @@ export type BookingUncheckedCreateWithoutUserInput = {
   recordingStartedById?: string | null
   recordingStartedByName?: string | null
   statusReason?: string | null
+  makeupStatus?: $Enums.MakeupStatus | null
+  makeupDeadline?: Date | string | null
+  missedDate?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   payments?: Prisma.PaymentUncheckedCreateNestedManyWithoutBookingInput
@@ -1203,6 +1279,9 @@ export type BookingScalarWhereInput = {
   recordingStartedById?: Prisma.StringNullableFilter<"Booking"> | string | null
   recordingStartedByName?: Prisma.StringNullableFilter<"Booking"> | string | null
   statusReason?: Prisma.StringNullableFilter<"Booking"> | string | null
+  makeupStatus?: Prisma.EnumMakeupStatusNullableFilter<"Booking"> | $Enums.MakeupStatus | null
+  makeupDeadline?: Prisma.DateTimeNullableFilter<"Booking"> | Date | string | null
+  missedDate?: Prisma.DateTimeNullableFilter<"Booking"> | Date | string | null
   createdAt?: Prisma.DateTimeFilter<"Booking"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Booking"> | Date | string
 }
@@ -1235,6 +1314,9 @@ export type BookingCreateWithoutContractInput = {
   recordingStartedById?: string | null
   recordingStartedByName?: string | null
   statusReason?: string | null
+  makeupStatus?: $Enums.MakeupStatus | null
+  makeupDeadline?: Date | string | null
+  missedDate?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   user: Prisma.UserCreateNestedOneWithoutBookingsInput
@@ -1270,6 +1352,9 @@ export type BookingUncheckedCreateWithoutContractInput = {
   recordingStartedById?: string | null
   recordingStartedByName?: string | null
   statusReason?: string | null
+  makeupStatus?: $Enums.MakeupStatus | null
+  makeupDeadline?: Date | string | null
+  missedDate?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   payments?: Prisma.PaymentUncheckedCreateNestedManyWithoutBookingInput
@@ -1329,6 +1414,9 @@ export type BookingCreateWithoutPaymentsInput = {
   recordingStartedById?: string | null
   recordingStartedByName?: string | null
   statusReason?: string | null
+  makeupStatus?: $Enums.MakeupStatus | null
+  makeupDeadline?: Date | string | null
+  missedDate?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   user: Prisma.UserCreateNestedOneWithoutBookingsInput
@@ -1365,6 +1453,9 @@ export type BookingUncheckedCreateWithoutPaymentsInput = {
   recordingStartedById?: string | null
   recordingStartedByName?: string | null
   statusReason?: string | null
+  makeupStatus?: $Enums.MakeupStatus | null
+  makeupDeadline?: Date | string | null
+  missedDate?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -1413,6 +1504,9 @@ export type BookingUpdateWithoutPaymentsInput = {
   recordingStartedById?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   recordingStartedByName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  makeupStatus?: Prisma.NullableEnumMakeupStatusFieldUpdateOperationsInput | $Enums.MakeupStatus | null
+  makeupDeadline?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  missedDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   user?: Prisma.UserUpdateOneRequiredWithoutBookingsNestedInput
@@ -1449,6 +1543,9 @@ export type BookingUncheckedUpdateWithoutPaymentsInput = {
   recordingStartedById?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   recordingStartedByName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  makeupStatus?: Prisma.NullableEnumMakeupStatusFieldUpdateOperationsInput | $Enums.MakeupStatus | null
+  makeupDeadline?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  missedDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -1482,6 +1579,9 @@ export type BookingCreateManyUserInput = {
   recordingStartedById?: string | null
   recordingStartedByName?: string | null
   statusReason?: string | null
+  makeupStatus?: $Enums.MakeupStatus | null
+  makeupDeadline?: Date | string | null
+  missedDate?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -1514,6 +1614,9 @@ export type BookingUpdateWithoutUserInput = {
   recordingStartedById?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   recordingStartedByName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  makeupStatus?: Prisma.NullableEnumMakeupStatusFieldUpdateOperationsInput | $Enums.MakeupStatus | null
+  makeupDeadline?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  missedDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   contract?: Prisma.ContractUpdateOneRequiredWithoutBookingsNestedInput
@@ -1549,6 +1652,9 @@ export type BookingUncheckedUpdateWithoutUserInput = {
   recordingStartedById?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   recordingStartedByName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  makeupStatus?: Prisma.NullableEnumMakeupStatusFieldUpdateOperationsInput | $Enums.MakeupStatus | null
+  makeupDeadline?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  missedDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   payments?: Prisma.PaymentUncheckedUpdateManyWithoutBookingNestedInput
@@ -1583,6 +1689,9 @@ export type BookingUncheckedUpdateManyWithoutUserInput = {
   recordingStartedById?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   recordingStartedByName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  makeupStatus?: Prisma.NullableEnumMakeupStatusFieldUpdateOperationsInput | $Enums.MakeupStatus | null
+  makeupDeadline?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  missedDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -1616,6 +1725,9 @@ export type BookingCreateManyContractInput = {
   recordingStartedById?: string | null
   recordingStartedByName?: string | null
   statusReason?: string | null
+  makeupStatus?: $Enums.MakeupStatus | null
+  makeupDeadline?: Date | string | null
+  missedDate?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -1648,6 +1760,9 @@ export type BookingUpdateWithoutContractInput = {
   recordingStartedById?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   recordingStartedByName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  makeupStatus?: Prisma.NullableEnumMakeupStatusFieldUpdateOperationsInput | $Enums.MakeupStatus | null
+  makeupDeadline?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  missedDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   user?: Prisma.UserUpdateOneRequiredWithoutBookingsNestedInput
@@ -1683,6 +1798,9 @@ export type BookingUncheckedUpdateWithoutContractInput = {
   recordingStartedById?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   recordingStartedByName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  makeupStatus?: Prisma.NullableEnumMakeupStatusFieldUpdateOperationsInput | $Enums.MakeupStatus | null
+  makeupDeadline?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  missedDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   payments?: Prisma.PaymentUncheckedUpdateManyWithoutBookingNestedInput
@@ -1717,6 +1835,9 @@ export type BookingUncheckedUpdateManyWithoutContractInput = {
   recordingStartedById?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   recordingStartedByName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  makeupStatus?: Prisma.NullableEnumMakeupStatusFieldUpdateOperationsInput | $Enums.MakeupStatus | null
+  makeupDeadline?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  missedDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -1782,6 +1903,9 @@ export type BookingSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs 
   recordingStartedById?: boolean
   recordingStartedByName?: boolean
   statusReason?: boolean
+  makeupStatus?: boolean
+  makeupDeadline?: boolean
+  missedDate?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
@@ -1820,6 +1944,9 @@ export type BookingSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exten
   recordingStartedById?: boolean
   recordingStartedByName?: boolean
   statusReason?: boolean
+  makeupStatus?: boolean
+  makeupDeadline?: boolean
+  missedDate?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
@@ -1856,6 +1983,9 @@ export type BookingSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exten
   recordingStartedById?: boolean
   recordingStartedByName?: boolean
   statusReason?: boolean
+  makeupStatus?: boolean
+  makeupDeadline?: boolean
+  missedDate?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
@@ -1892,11 +2022,14 @@ export type BookingSelectScalar = {
   recordingStartedById?: boolean
   recordingStartedByName?: boolean
   statusReason?: boolean
+  makeupStatus?: boolean
+  makeupDeadline?: boolean
+  missedDate?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }
 
-export type BookingOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "userId" | "contractId" | "date" | "startTime" | "endTime" | "status" | "tierApplied" | "price" | "adminNotes" | "clientNotes" | "originalDate" | "platforms" | "platformLinks" | "addOns" | "holdExpiresAt" | "durationMinutes" | "peakViewers" | "chatMessages" | "audienceOrigin" | "isLivestream" | "streamMetrics" | "episodeTitle" | "episodeDescription" | "coverImageUrl" | "recordingStartedAt" | "recordingStartedById" | "recordingStartedByName" | "statusReason" | "createdAt" | "updatedAt", ExtArgs["result"]["booking"]>
+export type BookingOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "userId" | "contractId" | "date" | "startTime" | "endTime" | "status" | "tierApplied" | "price" | "adminNotes" | "clientNotes" | "originalDate" | "platforms" | "platformLinks" | "addOns" | "holdExpiresAt" | "durationMinutes" | "peakViewers" | "chatMessages" | "audienceOrigin" | "isLivestream" | "streamMetrics" | "episodeTitle" | "episodeDescription" | "coverImageUrl" | "recordingStartedAt" | "recordingStartedById" | "recordingStartedByName" | "statusReason" | "makeupStatus" | "makeupDeadline" | "missedDate" | "createdAt" | "updatedAt", ExtArgs["result"]["booking"]>
 export type BookingInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
   contract?: boolean | Prisma.ContractDefaultArgs<ExtArgs>
@@ -1949,6 +2082,9 @@ export type $BookingPayload<ExtArgs extends runtime.Types.Extensions.InternalArg
     recordingStartedById: string | null
     recordingStartedByName: string | null
     statusReason: string | null
+    makeupStatus: $Enums.MakeupStatus | null
+    makeupDeadline: Date | null
+    missedDate: Date | null
     createdAt: Date
     updatedAt: Date
   }, ExtArgs["result"]["booking"]>
@@ -2406,6 +2542,9 @@ export interface BookingFieldRefs {
   readonly recordingStartedById: Prisma.FieldRef<"Booking", 'String'>
   readonly recordingStartedByName: Prisma.FieldRef<"Booking", 'String'>
   readonly statusReason: Prisma.FieldRef<"Booking", 'String'>
+  readonly makeupStatus: Prisma.FieldRef<"Booking", 'MakeupStatus'>
+  readonly makeupDeadline: Prisma.FieldRef<"Booking", 'DateTime'>
+  readonly missedDate: Prisma.FieldRef<"Booking", 'DateTime'>
   readonly createdAt: Prisma.FieldRef<"Booking", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"Booking", 'DateTime'>
 }

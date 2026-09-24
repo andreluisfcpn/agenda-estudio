@@ -16,10 +16,10 @@ Há três formas de começar (tela `/login`):
 <!-- TODO screenshot: /login etapa de cadastro com campo de OTP -->
 
 ### Com o Google
-Clique em **Entrar com Google** e autorize. Se você já tem uma conta com senha no mesmo e-mail, faça login com a senha primeiro (por segurança, não vinculamos o Google automaticamente).
+Na tela **Criar conta**, clique em **Cadastrar com o Google** e autorize. Se você já tem conta, use **Acessar com o Google** na tela de login. Se você já tem uma conta com senha no mesmo e-mail, faça login com a senha primeiro (por segurança, não vinculamos o Google automaticamente).
 
-![Entrar com Google](../images/cliente/login-03-google.png)
-<!-- TODO screenshot: /login botão Entrar com Google -->
+![Acessar com o Google](../images/cliente/login-03-google.png)
+<!-- TODO screenshot: /login botão Acessar com o Google (login) e Cadastrar com o Google (criar conta) -->
 
 ## Entrar
 
@@ -29,6 +29,8 @@ Na tela de login, informe **e-mail e senha**.
 <!-- TODO screenshot: /login formulário de login -->
 
 > Sua sessão **fica salva por cerca de 30 dias** — você não precisa logar toda vez. Ao abrir o app, ele te leva direto para o painel.
+
+> **Escolheu um horário na página inicial?** Ao entrar ou criar a conta, a agenda abre direto nele com as opções (usar plano, avulso ou novo contrato). Se o horário tiver sido ocupado, você é avisado e a agenda abre naquele dia. Detalhes em [Agenda e agendamento](agenda-e-agendamento.md#horário-escolhido-na-página-inicial).
 
 ## Instalar o app (PWA)
 

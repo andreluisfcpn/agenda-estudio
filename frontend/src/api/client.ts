@@ -3,16 +3,26 @@ const API_BASE = '/api';
 export class ApiError extends Error {
     status: number;
     details?: any;
+    /** Código de erro de máquina enviado pelo backend (ex.: 'INVALID_SLOT', 'CPF_CNPJ_REQUIRED', 'ALL_SLOTS_TAKEN'). */
+    code?: string;
 
-    constructor(message: string, status: number, details?: any) {
+    constructor(message: string, status: number, details?: any, code?: string) {
         super(message);
         this.name = 'ApiError';
         this.status = status;
         this.details = details;
+        this.code = code;
     }
 }
 
 let refreshPromise: Promise<boolean> | null = null;
+
+/**
+ * D3: disparado em `window` quando o refresh responde 401 de conta inexistente/excluída
+ * ('Conta não encontrada.' / 'Usuário não encontrado.'). O AuthContext escuta e faz logout limpo.
+ */
+export const AUTH_ACCOUNT_GONE_EVENT = 'auth:account-gone';
+const ACCOUNT_GONE_ERRORS = new Set(['Conta não encontrada.', 'Usuário não encontrado.']);
 
 async function tryRefresh(): Promise<boolean> {
     // Deduplicate: all callers share the same in-flight refresh
@@ -22,7 +32,15 @@ async function tryRefresh(): Promise<boolean> {
         method: 'POST',
         credentials: 'include',
     })
-        .then(r => r.ok)
+        .then(async r => {
+            if (r.status === 401) {
+                const body = await r.json().catch(() => null) as { error?: unknown } | null;
+                if (body && typeof body.error === 'string' && ACCOUNT_GONE_ERRORS.has(body.error)) {
+                    try { window.dispatchEvent(new Event(AUTH_ACCOUNT_GONE_EVENT)); } catch { /* ignore */ }
+                }
+            }
+            return r.ok;
+        })
         .catch(() => false)
         .finally(() => { refreshPromise = null; });
 
@@ -52,8 +70,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     if (!res.ok) {
         // Fallback vazio (não truthy): quando o corpo não é JSON (proxy 502, rate-limit
         // em texto), a mensagem cai no status HTTP real em vez de "Erro desconhecido".
-        const body = await res.json().catch(() => ({} as { error?: string; details?: unknown }));
-        throw new ApiError(body.error || `Erro ${res.status} do servidor`, res.status, body.details);
+        const body = await res.json().catch(() => ({} as { error?: string; details?: unknown; code?: string }));
+        throw new ApiError(body.error || `Erro ${res.status} do servidor`, res.status, body.details, typeof body.code === 'string' ? body.code : undefined);
     }
 
     return res.json();
@@ -117,7 +135,9 @@ export const bookingsApi = {
     completePayment: (id: string, data: { paymentIntentId?: string }) => request<{ booking: Booking; message: string }>(`/bookings/${id}/complete-payment`, { method: 'POST', body: JSON.stringify(data) }),
     createBulk: (data: { contractId: string; slots: { date: string; startTime: string }[] }) => request<{ message: string }>('/bookings/bulk', { method: 'POST', body: JSON.stringify(data) }),
     adminCreate: (data: { userId: string; date: string; startTime: string; status?: string; addOns?: string[]; adminNotes?: string; customPrice?: number; paymentMethod?: 'CARTAO' | 'PIX' | 'BOLETO'; couponCode?: string }) => request<{ booking: Booking; message: string; paymentId?: string; paymentAmount?: number; couponDiscount?: number; boletoUrl?: string; boletoError?: string }>('/bookings/admin', { method: 'POST', body: JSON.stringify(data) }),
-    update: (id: string, data: { date?: string; startTime?: string; status?: string; statusReason?: string | null; adminNotes?: string; clientNotes?: string; platforms?: string; platformLinks?: string, durationMinutes?: number | null, peakViewers?: number | null, chatMessages?: number | null, audienceOrigin?: string | null, isLivestream?: boolean | null, streamMetrics?: string | null }) => request<{ booking: BookingWithUser; message: string }>(`/bookings/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    // noShowJustified (admin, D4): ao marcar FALTA num contrato AVULSO, true abre a janela de
+    // remarcação (makeupStatus OPEN até o fim do dia D+N em SP); false com OPEN desfaz a justificativa.
+    update: (id: string, data: { date?: string; startTime?: string; status?: string; statusReason?: string | null; noShowJustified?: boolean; adminNotes?: string; clientNotes?: string; platforms?: string; platformLinks?: string, durationMinutes?: number | null, peakViewers?: number | null, chatMessages?: number | null, audienceOrigin?: string | null, isLivestream?: boolean | null, streamMetrics?: string | null }) => request<{ booking: BookingWithUser; message: string }>(`/bookings/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     startRecording: (id: string) => request<{ booking: BookingWithUser; message: string }>(`/bookings/${id}/start-recording`, { method: 'PUT' }),
     confirm: (id: string) => request<{ booking: Booking; message: string }>(`/bookings/${id}/confirm`, { method: 'PATCH' }),
     cancel: (id: string) => request<{ message: string }>(`/bookings/${id}`, { method: 'DELETE' }),
@@ -146,6 +166,13 @@ export const bookingsApi = {
     getMyResults: (days = 90) => request<BookingResults>(`/bookings/my/results?days=${days}`),
     reschedule: (id: string, data: { date: string; startTime: string }) =>
         request<{ booking: Booking; message: string }>(`/bookings/${id}/reschedule`, { method: 'PATCH', body: JSON.stringify(data) }),
+    /**
+     * Remarcação ÚNICA de falta justificada / "Não Realizado" do avulso (D4/D5): reabre a MESMA
+     * reserva (mesmo Payment, sem nova cobrança) na nova data/horário. Cliente dono ou ADMIN.
+     * Exige makeupStatus 'OPEN' e data ≤ D+N (o admin pode remarcar NAO_REALIZADO após o prazo).
+     */
+    makeup: (id: string, data: { date: string; startTime: string }) =>
+        request<{ booking: Booking; message: string }>(`/bookings/${id}/makeup`, { method: 'PATCH', body: JSON.stringify(data) }),
     purchaseAddon: (id: string, addonKeyOrKeys: string | string[]) =>
         request<{ paymentId: string; message: string; amount: number; activatedKeys: string[]; pendingKeys: string[] }>(
             `/bookings/${id}/addons`,
@@ -185,10 +212,25 @@ export const contractsApi = {
         }>('/contracts/check-fixo', { method: 'POST', body: JSON.stringify(data) }),
     create: (data: CreateContractData) => request<{ contract: Contract; payments: PaymentSummary[]; message: string; firstPaymentId?: string }>('/contracts', { method: 'POST', body: JSON.stringify(data) }),
     createSelf: (data: SelfContractData) => request<{ message: string; firstPaymentId: string; amount: number; duration: number; alreadyPaid?: boolean; couponDiscount?: number; clientSecret?: string; firstPixString?: string }>('/contracts/self', { method: 'POST', body: JSON.stringify(data) }),    // Standalone services (e.g. Social Media Management)
-    createService: (opts: { serviceKey: string, paymentMethod: 'CARTAO' | 'PIX' | 'BOLETO', durationMonths?: number, paymentPlan?: 'FULL' | 'MONTHLY', couponCode?: string }) => request<{ contract?: Contract; firstPaymentId: string; amount: number; alreadyPaid?: boolean; couponDiscount?: number; clientSecret?: string; pixString?: string; qrCodeBase64?: string; boletoUrl?: string; barcode?: string; checkoutUrl?: string; message: string }>('/contracts/service', { method: 'POST', body: JSON.stringify(opts) }),
-    createCustom: (data: CustomContractData) => request<{ contract: Contract; payments: PaymentSummary[]; summary: CustomContractSummary; message: string; clientSecret?: string; firstPaymentId?: string; firstPixString?: string }>('/contracts/custom', { method: 'POST', body: JSON.stringify(data) }),
-    checkCustom: (data: { tier: string; durationMonths: number; schedule: { day: number; time: string }[]; startDate: string }) =>
+    // D1/D2: `cardSplit` só vale com paymentPlan MONTHLY + CARTAO (total agora em até N× sem juros, N = meses);
+    // a resposta traz `paymentDeadline` (agora + 10 min) e `installmentCap` (cardSplit = duração; FULL = 1).
+    // 409 { error } quando a contratação anterior do mesmo serviço já foi paga ou está em processamento.
+    createService: (opts: { serviceKey: string, paymentMethod: 'CARTAO' | 'PIX' | 'BOLETO', durationMonths?: number, paymentPlan?: 'FULL' | 'MONTHLY', couponCode?: string, cardSplit?: boolean }) => request<{ contract?: Contract; contractId?: string; firstPaymentId: string; amount: number; alreadyPaid?: boolean; couponDiscount?: number; clientSecret?: string; pixString?: string; qrCodeBase64?: string; expiresAt?: string | null; boletoUrl?: string; barcode?: string; checkoutUrl?: string; paymentDeadline?: string | null; paymentPlan?: 'MONTHLY' | 'FULL'; installmentCap?: number; message: string }>('/contracts/service', { method: 'POST', body: JSON.stringify(opts) }),
+    // D7/D9: ADMIN → status ACTIVE, paymentDeadline null, sem cobrança no gateway (cobrança pelo ChargeNowSheet).
+    // CLIENTE → AWAITING_PAYMENT (10 min), só a 1ª parcela cobrada; ocorrências ocupadas voltam em `skipped`.
+    // Erros com `code`: INVALID_SLOT (400), CPF_CNPJ_REQUIRED (400), ALL_SLOTS_TAKEN (409); 502 = falha do provedor.
+    createCustom: (data: CustomContractData) => request<{ contract: Contract; status?: 'ACTIVE' | 'AWAITING_PAYMENT'; paymentDeadline?: string | null; payments: PaymentSummary[]; summary: CustomContractSummary; skipped?: { date: string; time: string }[]; message: string; clientSecret?: string; firstPaymentId?: string; firstPixString?: string; qrCodeDataUrl?: string; expiresAt?: string }>('/contracts/custom', { method: 'POST', body: JSON.stringify(data) }),
+    // frequency/weekPattern/customDates opcionais (padrão WEEKLY) — mesmo gerador de ocorrências do POST /custom.
+    // userId (só ADMIN): cliente-alvo, para o backend descartar as tentativas vencidas dele antes do check.
+    checkCustom: (data: { tier: string; durationMonths: number; schedule: { day: number; time: string }[]; startDate: string; frequency?: 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' | 'CUSTOM'; weekPattern?: number[]; customDates?: { date: string; time: string }[]; userId?: string }) =>
         request<{ available: boolean; conflicts: CustomConflict[]; totalConflicts: number; totalSessions: number }>('/contracts/custom/check', { method: 'POST', body: JSON.stringify(data) }),
+    /**
+     * Grade de horários válidos para CONTRATO de uma faixa (D8), vinda da BusinessConfig:
+     * SABADO → só sábados; COMERCIAL/AUDIENCIA → seg–sex; faixa superior inclui os horários
+     * da inferior. Fonte única para FIXO do admin, /self e personalizado (sem listas fixas no front).
+     */
+    slotOptions: (tier: ContractTier) =>
+        request<ContractSlotGrid>(`/contracts/slot-options?tier=${encodeURIComponent(tier)}`),
     getAll: () => request<{ contracts: Contract[] }>('/contracts'),
     getMy: () => request<{ contracts: ContractWithStats[] }>('/contracts/my'),
     getById: (id: string) => request<{ contract: ContractDetail }>(`/contracts/${id}`),
@@ -199,7 +241,9 @@ export const contractsApi = {
     renew: (id: string, data?: { durationMonths?: number; tier?: string; type?: string; startDate?: string }) => request<{ contract: Contract; message: string }>(`/contracts/${id}/renew`, { method: 'POST', body: JSON.stringify(data || {}) }),
     clientRenew: (id: string, data: { durationMonths: number; paymentMethod?: 'PIX' | 'CARTAO' | 'BOLETO'; installments?: number }) => request<{ contract: Contract; message: string }>(`/contracts/${id}/client-renew`, { method: 'POST', body: JSON.stringify(data) }),
     subscribe: (id: string, data: { paymentMethodId: string; durationMonths?: number }) => request<{ success: boolean; subscriptionId: string; status: string; message: string }>(`/contracts/${id}/subscribe`, { method: 'POST', body: JSON.stringify(data) }),
-    pay: (id: string, data?: { paymentMethod?: 'CARTAO' | 'PIX'; paymentType?: 'CREDIT' | 'DEBIT'; installments?: number; couponCode?: string }) => request<{ provider?: 'STRIPE' | 'CORA'; clientSecret?: string; paymentId: string; amount: number; alreadyPaid?: boolean; couponDiscount?: number; maxInstallments?: number; pixString?: string; qrCodeBase64?: string; message: string }>(`/contracts/${id}/pay`, { method: 'POST', body: JSON.stringify(data || {}) }),
+    // paymentMethod: o validator do backend (contractPaySchema) aceita só CARTAO | PIX (default CARTAO).
+    // Envie sempre o método do contrato numa renovação PIX — sem ele o backend cria PaymentIntent de cartão.
+    pay: (id: string, data?: { paymentMethod?: 'CARTAO' | 'PIX'; paymentType?: 'CREDIT' | 'DEBIT'; installments?: number; couponCode?: string }) => request<{ provider?: PaymentProvider; clientSecret?: string; paymentId: string; amount: number; alreadyPaid?: boolean; couponDiscount?: number; maxInstallments?: number; pixString?: string; qrCodeBase64?: string; qrCodeDataUrl?: string | null; expiresAt?: string | null; reused?: boolean; message: string }>(`/contracts/${id}/pay`, { method: 'POST', body: JSON.stringify(data || {}) }),
     confirmPayment: (id: string, data: { paymentIntentId?: string }) => request<{ contract: { id: string; status: string }; message: string }>(`/contracts/${id}/confirm-payment`, { method: 'POST', body: JSON.stringify(data) }),
     pause: (id: string, data?: { reason?: string; resumeDate?: string }) => request<{ contract: Contract; message: string }>(`/contracts/${id}/pause`, { method: 'PATCH', body: JSON.stringify(data || {}) }),
     resume: (id: string) => request<{ contract: Contract; message: string }>(`/contracts/${id}/resume`, { method: 'PATCH' }),
@@ -211,7 +255,12 @@ export const usersApi = {
     getById: (id: string) => request<{ user: UserDetail }>(`/users/${id}`),
     create: (data: { email: string; password: string; name: string; phone?: string; role?: string; notes?: string; cpfCnpj?: string | null; address?: string | null; addressNumber?: string | null; complement?: string | null; neighborhood?: string | null; city?: string | null; state?: string | null; zipCode?: string | null; tags?: string[]; socialLinks?: string | null; clientStatus?: string }) => request<{ user: UserSummary; message: string }>('/users', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: { name?: string; email?: string; phone?: string; role?: string; password?: string; notes?: string; cpfCnpj?: string | null; address?: string | null; addressNumber?: string | null; complement?: string | null; neighborhood?: string | null; city?: string | null; state?: string | null; zipCode?: string | null; tags?: string[]; socialLinks?: string | null; clientStatus?: string }) => request<{ user: UserSummary; message: string }>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-    remove: (id: string) => request<{ message: string }>(`/users/${id}`, { method: 'DELETE' }),
+    // D3: sem nenhum vínculo → exclusão física (softDeleted false); com qualquer vínculo → soft delete
+    // com anonimização (softDeleted true). `message` já vem pronta para o toast.
+    /** paidDuringDeletion: cobranças PENDING que o provedor confirmou como pagas DURANTE a exclusão (ficam PAID, sem estorno automático). */
+    remove: (id: string) => request<{ message: string; softDeleted: boolean; cancelled?: { contracts: number; bookings: number; payments: number }; paidDuringDeletion?: { payments: number; amount: number } }>(`/users/${id}`, { method: 'DELETE' }),
+    // Consequências reais da exclusão, para o modal de perigo montar a lista antes de confirmar.
+    deletionPreview: (id: string) => request<{ preview: UserDeletionPreview }>(`/users/${id}/deletion-preview`),
     paymentOverview: (id: string) => request<{
         autoChargeEnabled: boolean; hasSavedCard: boolean;
         cards: { id: string; brand: string; last4: string; expMonth: number; expYear: number; isDefault: boolean }[];
@@ -357,6 +406,10 @@ export interface Booking {
     recordingStartedAt?: string | null;
     recordingStartedByName?: string | null;
     statusReason?: string | null;
+    // Janela de remarcação do avulso (D4/D5). null = sem janela (FALTA sem justificativa ou não se aplica).
+    makeupStatus?: MakeupStatus | null;
+    makeupDeadline?: string | null; // ISO — fim do dia D+N em SP (23:59:59 -03:00)
+    missedDate?: string | null;     // ISO (@db.Date) — data da gravação perdida (histórico)
     addOns?: string[];
     holdExpiresAt?: string | null;
     contract?: {
@@ -384,10 +437,24 @@ export interface MyBookingSlot {
 export interface BookingWithUser extends Booking {
     user: { id: string; name: string; email: string; role: string };
 }
+/** Faixa de horário (Prisma enum Tier). */
+export type ContractTier = 'COMERCIAL' | 'AUDIENCIA' | 'SABADO';
+/** Status do ciclo de vida do contrato (Prisma enum ContractStatus). COMPLETED = "Concluído" (D6). */
+export type ContractStatus = 'ACTIVE' | 'AWAITING_PAYMENT' | 'EXPIRED' | 'CANCELLED' | 'PENDING_CANCELLATION' | 'PAUSED' | 'COMPLETED';
+/** Janela de remarcação de falta justificada / Não Realizado do avulso (Prisma enum MakeupStatus). */
+export type MakeupStatus = 'OPEN' | 'USED' | 'EXPIRED';
+/** Provedor que emitiu a cobrança (Payment.provider). SICOOB/CORA = PIX; CORA também emite boleto. */
+export type PaymentProvider = 'STRIPE' | 'CORA' | 'SICOOB';
+/** Um horário válido de contrato na grade (GET /contracts/slot-options). */
+export interface ContractSlotOption { time: string; end: string; tier: string; }
+/** Horários válidos de um dia da semana (0=dom … 6=sáb) para a faixa pedida. */
+export interface ContractSlotDay { dayOfWeek: number; slots: ContractSlotOption[]; }
+/** Resposta de GET /contracts/slot-options?tier= — grade de contrato vinda da BusinessConfig (D8). */
+export interface ContractSlotGrid { tier: string; slotDurationHours: number; days: ContractSlotDay[]; }
 export interface Contract {
     id: string; name: string; type: 'FIXO' | 'FLEX' | 'SERVICO' | 'CUSTOM' | 'AVULSO'; tier: 'COMERCIAL' | 'AUDIENCIA' | 'SABADO';
     durationMonths: number; discountPct: number; startDate: string; endDate: string;
-    status: 'ACTIVE' | 'AWAITING_PAYMENT' | 'EXPIRED' | 'CANCELLED' | 'PENDING_CANCELLATION' | 'PAUSED';
+    status: ContractStatus;
     fixedDayOfWeek?: number | null; fixedTime?: string | null;
     contractUrl?: string | null;
     flexCreditsTotal?: number | null; flexCreditsRemaining?: number | null;
@@ -416,6 +483,14 @@ export interface PaymentSummary {
     id: string; amount: number; status: 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED' | 'CANCELLED';
     dueDate: string; paidAt?: string; provider?: string;
     pixString?: string | null; boletoUrl?: string | null; paymentUrl?: string | null;
+    /** Nº de parcelas no cartão (1 = à vista). Presente no detalhe do contrato (GET /contracts/:id). */
+    installments?: number | null;
+    /** Total efetivamente cobrado no cartão (com juros de parcelamento); null = igual a `amount`. */
+    chargedAmount?: number | null;
+    /** Referência no provedor (pi_… = PaymentIntent do cartão). Com `provider`, decide se o `chargedAmount` vale para "pago". */
+    providerRef?: string | null;
+    /** Validade da cobrança PIX viva (D15); null/ausente = sem cobrança ou legado. */
+    pixExpiresAt?: string | null;
 }
 export interface ContractWithStats extends Contract {
     completedBookings: number;
@@ -434,6 +509,10 @@ export interface ContractBooking {
     chatMessages?: number | null;
     audienceOrigin?: string | null;
     addOns?: string[];
+    statusReason?: string | null;
+    makeupStatus?: MakeupStatus | null;
+    makeupDeadline?: string | null;
+    missedDate?: string | null;
 }
 export interface ContractDetail extends Contract { bookings: Booking[]; payments: PaymentSummary[]; }
 export interface CreateContractData {
@@ -488,8 +567,21 @@ export interface UserSummary {
     id: string; email: string; name: string; phone: string | null; role: string;
     cpfCnpj: string | null; clientStatus: string; tags: string[];
     createdAt: string; _count: { bookings: number; contracts: number };
-    contracts?: { type: 'FIXO' | 'FLEX' | 'SERVICO' | 'CUSTOM' | 'AVULSO'; status: string; addOns: string[] }[];
+    contracts?: { type: 'FIXO' | 'FLEX' | 'SERVICO' | 'CUSTOM' | 'AVULSO'; status: string; addOns: string[]; endDate?: string | null; durationMonths?: number | null }[];
+    /** Pago = valor efetivamente cobrado (cartão: o do PaymentIntent); pendente = amount. Centavos. */
     totalPaid: number; totalPending: number;
+    /** Soft delete (D3): preenchido = cliente excluído/anonimizado (e-mail/CPF podem vir null). */
+    deletedAt?: string | null;
+}
+/** GET /users/:id/deletion-preview — mode 'hard' = nada de negócio vinculado (apaga de vez); 'soft' = anonimiza e cancela pendências. Valores em centavos. */
+export interface UserDeletionPreview {
+    userId: string;
+    name: string;
+    mode: 'hard' | 'soft';
+    links: { contracts: number; bookings: number; payments: number; couponRedemptions: number; blockedSlots: number };
+    pending: { activeContracts: number; futureBookings: number; pendingPayments: number; pendingAmount: number };
+    preserved: { paidPayments: number; paidAmount: number };
+    accessories: { savedCards: number; pushSubscriptions: number; notifications: number; couponEligibilities: number; autoChargeEnabled: boolean };
 }
 export interface UserDetail {
     id: string; email: string; name: string; phone: string | null; role: string;
@@ -498,8 +590,11 @@ export interface UserDetail {
     addressNumber: string | null; complement: string | null; neighborhood: string | null; zipCode: string | null;
     tags: string[]; socialLinks: string | null; clientStatus: string;
     createdAt: string;
+    /** Soft delete (D3): preenchido = perfil só-histórico (dados pessoais anonimizados). */
+    deletedAt?: string | null;
     contracts: Contract[]; bookings: Booking[];
-    payments?: { id: string; amount: number; status: string; dueDate: string | null; createdAt: string }[];
+    /** chargedAmount/provider/providerRef: "pago" pelo valor efetivamente cobrado (utils/clientHealth.paidChargedAmount). */
+    payments?: { id: string; amount: number; status: string; dueDate: string | null; createdAt: string; chargedAmount?: number | null; provider?: string | null; providerRef?: string | null }[];
 }
 export interface BlockedSlot { id: string; date: string; startTime: string; endTime: string; reason: string | null; creator?: { name: string }; }
 export interface PricingConfig { tier: 'COMERCIAL' | 'AUDIENCIA' | 'SABADO'; price: number; label: string; description?: string | null; }
@@ -767,6 +862,34 @@ export interface SavedCard {
     isDefault: boolean;
 }
 
+/**
+ * Resposta de POST /stripe/create-payment — checkout único (cartão/PIX/boleto).
+ * PIX (D15): `qrCodeDataUrl` é o PNG pronto (data:image/png;base64,…) e `expiresAt` a validade
+ * da cobrança; `reused` = devolveu a cobrança viva já emitida; `alreadyPaid` = a cobrança anterior
+ * já constava paga no provedor (tratar como sucesso). `amount` = valor da cobrança em centavos — no CARTÃO,
+ * o valor do PaymentIntent (sem o desconto PIX do à vista, com juros quando parcelado), com `installments`.
+ * `qrCodeBase64` (legado) pode vir null em runtime no reuso; fica tipado sem null para não quebrar
+ * os `createPaymentFn` existentes (InlineCheckout/BookingModal) — trate como falsy.
+ */
+export interface CreatePaymentResponse {
+    provider: PaymentProvider;
+    clientSecret?: string;
+    paymentIntentId?: string;
+    pixString?: string;
+    qrCodeBase64?: string;
+    qrCodeDataUrl?: string | null;
+    expiresAt?: string | null;
+    amount?: number;
+    /** Cartão: nº de parcelas do PaymentIntent criado (o `amount` do cartão é o valor do PI = chargedAmount). */
+    installments?: number;
+    reused?: boolean;
+    alreadyPaid?: boolean;
+    status?: string;
+    boletoUrl?: string;
+    barcode?: string;
+    paymentId?: string;
+}
+
 export interface InstallmentPlan {
     count: number;
     perInstallment: number;
@@ -803,10 +926,11 @@ export const stripeApi = {
     removePaymentMethod: (pmId: string) => { invalidatePmCache(); return request<{ message: string }>(`/stripe/payment-methods/${pmId}`, { method: 'DELETE' }); },
     setDefaultPaymentMethod: (pmId: string) => { invalidatePmCache(); return request<{ message: string }>(`/stripe/payment-methods/${pmId}/default`, { method: 'PUT' }); },
     createPayment: (data: { paymentId: string; installments?: number; savedPaymentMethodId?: string; savePaymentMethod?: boolean; paymentMethod?: 'cartao' | 'pix' | 'boleto' }) =>
-        request<{ provider: 'STRIPE' | 'CORA'; clientSecret?: string; paymentIntentId?: string; pixString?: string; qrCodeBase64?: string; boletoUrl?: string; barcode?: string; paymentId?: string }>('/stripe/create-payment', { method: 'POST', body: JSON.stringify(data) }),
+        request<CreatePaymentResponse>('/stripe/create-payment', { method: 'POST', body: JSON.stringify(data) }),
     verifyPayment: (data: { paymentId: string; paymentIntentId: string }) =>
         request<{ status: string; message: string }>('/stripe/verify-payment', { method: 'POST', body: JSON.stringify(data) }),
-    getInstallmentPlans: (data: { paymentId?: string; amount?: number; contractDurationMonths?: number }) =>
+    // installmentCap (1..12): só para prévia sem paymentId; com paymentId o teto vem do próprio pagamento.
+    getInstallmentPlans: (data: { paymentId?: string; amount?: number; contractDurationMonths?: number; installmentCap?: number }) =>
         request<{ plans: InstallmentPlan[] }>('/stripe/installment-plans', { method: 'POST', body: JSON.stringify(data) }),
     setAutoCharge: (enabled: boolean) => { invalidatePmCache(); return request<{ message: string }>('/stripe/auto-charge', { method: 'PUT', body: JSON.stringify({ enabled }) }); },
 };

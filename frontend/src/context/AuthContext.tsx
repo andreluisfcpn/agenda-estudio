@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { authApi, User } from '../api/client';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { authApi, User, ApiError, AUTH_ACCOUNT_GONE_EVENT } from '../api/client';
+import { clearPendingIntent } from '../utils/pendingIntent';
 
 interface AuthContextType {
     user: User | null;
@@ -25,22 +26,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 
     const [loading, setLoading] = useState(true);
+    const userRef = useRef<User | null>(null);
+    userRef.current = user;
+    const accountGoneHandled = useRef(false);
+
+    // D3: conta excluída (GET /me 404 ou refresh 401 'Conta não encontrada.') = logout limpo:
+    // apaga os cookies no servidor (best-effort), descarta a intenção da landing e zera a sessão.
+    // Com sessão ativa na tela, recarrega em '/' como o logout normal; no carregamento inicial
+    // (visitante com cookie residual) só limpa, sem recarregar.
+    const handleAccountGone = useCallback(async () => {
+        if (accountGoneHandled.current) return;
+        accountGoneHandled.current = true;
+        const hadSession = !!userRef.current;
+        clearPendingIntent();
+        try { await authApi.logout(); } catch { /* cookies expiram sozinhos */ }
+        if (hadSession) {
+            window.location.href = '/';
+            return;
+        }
+        setUser(null);
+        accountGoneHandled.current = false;
+    }, []);
 
     // Check if user is already logged in
     const fetchUser = useCallback(async () => {
         try {
             const { user } = await authApi.me();
             setUser(user);
-        } catch {
+        } catch (err) {
             setUser(null);
+            if (err instanceof ApiError && err.status === 404) void handleAccountGone();
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [handleAccountGone]);
 
     useEffect(() => {
         fetchUser();
     }, [fetchUser]);
+
+    useEffect(() => {
+        const onGone = () => { void handleAccountGone(); };
+        window.addEventListener(AUTH_ACCOUNT_GONE_EVENT, onGone);
+        return () => window.removeEventListener(AUTH_ACCOUNT_GONE_EVENT, onGone);
+    }, [handleAccountGone]);
 
     const login = useCallback(async (email: string, password: string) => {
         const { user } = await authApi.login(email, password);
@@ -74,6 +103,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 
     const logout = useCallback(async () => {
+        // D16: a escolha feita na landing não sobrevive ao logout (outro usuário na mesma aba).
+        clearPendingIntent();
         try {
             await authApi.logout();
         } catch (err) {

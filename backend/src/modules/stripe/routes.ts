@@ -16,9 +16,12 @@ import {
     stripeCreatePaymentIntent,
     stripeGetInstallmentPlans,
     stripeGetPaymentIntent,
+    stripeCardInstallmentsSupported,
+    cardInstallmentsBlockReason,
 } from '../../lib/stripeService.js';
 import { onPaymentConfirmed } from '../../lib/paymentEffects.js';
 import { getInstallmentPolicy, policyInputsFromPayment } from '../../lib/paymentPolicy.js';
+import { issuePixCharge, retirePixCharge, isPixProvider, pixMetadataAfterDiscard, cardChargeBaseAmount, cancelStalePixCharge, PIX_LIVE_CHARGE_MESSAGE, settleExistingCardIntent, cardIntentInFlightMessage } from '../../lib/pixGateway.js';
 
 const router = Router();
 
@@ -277,69 +280,96 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
             return;
         }
 
+        // pagamentos-1 / cobertura-1 (D1): cartão em N× (N > 1) só quando o SERVIDOR fixa o plano (cartão salvo,
+        // conta com parcelamento). Recusa ANTES de qualquer efeito (reabrir FAILED, aposentar PIX, criar PI):
+        // numa conta sem parcelamento (Stripe BR) o total sairia em 1× com os juros do app; com cartão novo, o
+        // seletor do Payment Element escolheria qualquer plano do emissor, fora do teto da política.
+        if (data.paymentMethod === 'cartao') {
+            const requested = Math.min(data.installments || 1, getInstallmentPolicy(policyInputsFromPayment(payment)).maxInstallments);
+            if (requested > 1) {
+                const blocked = cardInstallmentsBlockReason({
+                    installments: requested,
+                    savedCard: !!data.savedPaymentMethodId,
+                    gatewaySupported: await stripeCardInstallmentsSupported(),
+                });
+                if (blocked) {
+                    res.status(400).json({ error: blocked, code: 'INSTALLMENTS_UNAVAILABLE' });
+                    return;
+                }
+            }
+        }
+
         // Re-pay of a FAILED/expired charge (e.g. an expired PIX the reconciliation marked
         // FAILED, shown as payable in "Meus Pagamentos"). Reset to PENDING and DROP the dead
         // gateway artifacts so we mint a FRESH charge — never reuse the stale, unpayable QR/PI
         // (the P2 reuse guard below keys off pixString) — and so the webhook/reconciliation,
         // which only act on PENDING, can confirm the new charge.
+        // PaymentIntent de cartão já emitido para esta cobrança (a reabertura de FAILED abaixo zera o
+        // providerRef): o ramo cartão o resolve antes de criar outro (settleExistingCardIntent).
+        const previousCardIntent = payment.providerRef?.startsWith('pi_') ? payment.providerRef : null;
+
         if (payment.status === 'FAILED') {
-            await prisma.payment.update({
-                where: { id: payment.id },
-                data: { status: 'PENDING', providerRef: null, pixString: null, boletoUrl: null, chargedAmount: null },
+            // pagamentos-6: uma linha FAILED com cobrança PIX pode ter o QR ainda VIVO (ex.: falhada por um
+            // evento de cartão atrasado). Zerar o providerRef aqui descartava o txid sem cancelar a cob —
+            // um pagamento nela nunca casaria. Por isso a linha PIX é reaberta COM a cobrança: a emissão
+            // (issuePixCharge) reaproveita a viva de mesmo valor ou a concilia/cancela antes de emitir
+            // outra; o ramo cartão a aposenta antes do PaymentIntent. Demais provedores: descarta como antes.
+            const keepPix = isPixProvider(payment.provider) && !!payment.providerRef;
+            const discardMeta = keepPix ? undefined : pixMetadataAfterDiscard(payment);
+            const reopened = await prisma.payment.updateMany({
+                where: { id: payment.id, status: 'FAILED' },
+                data: {
+                    status: 'PENDING', boletoUrl: keepPix ? payment.boletoUrl : null, chargedAmount: null,
+                    ...(keepPix ? {} : { providerRef: null, pixString: null, pixExpiresAt: null }),
+                    ...(discardMeta !== undefined ? { metadata: discardMeta } : {}),
+                },
             });
+            if (reopened.count === 0) {
+                res.status(409).json({ error: 'Esta cobrança mudou de situação. Atualize a página e tente novamente.' });
+                return;
+            }
             payment.status = 'PENDING';
-            payment.providerRef = null;
-            payment.pixString = null;
-            payment.boletoUrl = null;
             payment.chargedAmount = null;
+            if (!keepPix) {
+                payment.providerRef = null;
+                payment.pixString = null;
+                payment.pixExpiresAt = null;
+                payment.boletoUrl = null;
+            }
+            if (discardMeta !== undefined) payment.metadata = discardMeta as typeof payment.metadata;
         }
 
         // NOTA: o Stripe customer é criado apenas no fluxo de CARTÃO (abaixo). PIX/boleto não
         // precisam dele — criá-lo aqui quebrava o PIX quando o Stripe não está configurado.
 
         if (data.paymentMethod === 'pix') {
-            // P2: idempotent reuse. If a live PIX charge was already issued for this payment
-            // (QR string + provider ref on a PIX provider), return the SAME QR instead of
-            // minting a second charge — creating a new one (e.g. after the PIX provider was
-            // switched Sicoob↔Cora) would orphan the first, still-payable charge, so a client
-            // paying the old QR would never have their payment reconciled.
-            if (payment.status === 'PENDING' && payment.pixString && payment.providerRef && (payment.provider === 'CORA' || payment.provider === 'SICOOB')) {
-                res.json({
-                    provider: payment.provider,
-                    pixString: payment.pixString,
-                    qrCodeBase64: null,
-                    paymentId: payment.id,
-                    reused: true,
-                });
-                return;
-            }
-
-            // Roteamento dinâmico: Sicoob ou Cora, conforme o provedor de PIX habilitado.
-            const { createPixPayment } = await import('../../lib/pixGateway.js');
-
+            // D15: fonte única (issuePixCharge). Reusa a cobrança SÓ se viva (pixExpiresAt), com BR Code
+            // válido e o MESMO valor; senão concilia a anterior (paga → alreadyPaid), cancela-a e emite
+            // nova com txid de tentativa. A validade acompanha a reserva/prazo (avulso = 10 min).
             try {
-                const pixRes = await createPixPayment({
-                    userId: payerUserId,
-                    amount: payment.amount,
+                const pix = await issuePixCharge(payment.id, {
                     description: `Pagamento PIX - ${payment.contract?.name || 'Avulso'}`,
-                    withPixQrCode: true,
-                    idempotencyKey: payment.id,
                 });
-
-                await prisma.payment.update({
-                    where: { id: payment.id },
-                    data: {
-                        providerRef: pixRes.result.id,
-                        provider: pixRes.provider,
-                        installments: 1,
-                        pixString: pixRes.pixString,
-                    },
-                });
-
+                if (pix.alreadyPaid) {
+                    res.json({
+                        provider: pix.provider,
+                        status: 'PAID',
+                        alreadyPaid: true,
+                        amount: pix.amount,
+                        paymentId: payment.id,
+                    });
+                    return;
+                }
                 res.json({
-                    provider: pixRes.provider,
-                    pixString: pixRes.pixString,
-                    qrCodeBase64: pixRes.qrCodeBase64,
+                    provider: pix.provider,
+                    pixString: pix.pixString,
+                    qrCodeDataUrl: pix.qrCodeDataUrl,
+                    // Compat: o base64 cru (sem o prefixo data:) para quem ainda lê qrCodeBase64.
+                    qrCodeBase64: pix.qrCodeDataUrl ? pix.qrCodeDataUrl.replace(/^data:image\/png;base64,/, '') : null,
+                    expiresAt: pix.expiresAt,
+                    amount: pix.amount,
+                    reused: pix.reused,
+                    alreadyPaid: false,
                     paymentId: payment.id,
                 });
             } catch (e: unknown) {
@@ -354,6 +384,24 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
             if (!payment.contract?.boletoAllowed) {
                 res.status(400).json({ error: 'Boleto não está liberado para este contrato.' });
                 return;
+            }
+            // Troca PIX → boleto: a cobrança PIX viva é aposentada ANTES de sobrescrever o providerRef
+            // (senão o QR continua pagável e o webhook não acha mais o Payment pelo txid).
+            if (isPixProvider(payment.provider) && payment.providerRef && payment.pixString) {
+                const retired = await retirePixCharge(payment.id);
+                if (retired === 'paid') {
+                    res.status(400).json({ error: 'Este pagamento já foi confirmado via PIX.', status: 'PAID', alreadyPaid: true });
+                    return;
+                }
+                if (retired === 'live') {
+                    res.status(409).json({ error: PIX_LIVE_CHARGE_MESSAGE });
+                    return;
+                }
+                const boletoDiscardMeta = pixMetadataAfterDiscard(payment);
+                await prisma.payment.updateMany({
+                    where: { id: payment.id, status: 'PENDING' },
+                    data: { pixString: null, pixExpiresAt: null, ...(boletoDiscardMeta !== undefined ? { metadata: boletoDiscardMeta } : {}) },
+                });
             }
             const { createCoraPayment } = await import('../../lib/coraPaymentHelper.js');
             try {
@@ -394,7 +442,16 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
         //  - Avulso ("paid now")  → 1–12x, free in 1x, juros 2–12x.
         // Amounts here are pre-surcharge bases (the surcharge is no longer baked at creation),
         // so applying the juros once is correct and parity (persisted==charged) is preserved.
-        let amount = payment.amount;
+        // D1 (pagamentos-3): o desconto PIX do "à vista" nunca vale no cartão — um Payment criado com
+        // PIX é cobrado aqui pelo valor SEM o desconto PIX (a base marcada em metadata.pixDiscount na
+        // criação; sem marca, o próprio amount — nunca recalculado pelo % atual).
+        let amount = await cardChargeBaseAmount(payment);
+        // Valor zero (cupom 100%) nunca vai ao gateway (o Stripe recusa abaixo do mínimo).
+        if (amount <= 0) {
+            res.status(400).json({ error: 'Valor do pagamento inválido.' });
+            return;
+        }
+        // D1: a política lê também metadata.installmentCap (serviço parcelado / à vista = 1x).
         const policy = getInstallmentPolicy(policyInputsFromPayment(payment));
         let installments = Math.min(data.installments || 1, policy.maxInstallments);
 
@@ -404,10 +461,56 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
             if (plan) amount = plan.total;
         }
 
+        // PI anterior desta cobrança: aprovado/processando → não cria outro; pagável com OUTRO valor →
+        // cancelado antes (senão, pago numa aba aberta, vira dinheiro sem registro — o webhook recusa o
+        // valor divergente); não deu para conferir → não cria agora (fail-closed).
+        const previousPi = await settleExistingCardIntent(previousCardIntent, amount);
+        if (previousPi.state === 'in_flight') {
+            if (previousPi.status === 'succeeded') {
+                console.error(`[Stripe] create-payment: PI ${previousCardIntent} já aprovado para o payment ${payment.id} — nenhum PI novo (aguardando webhook/verify).`);
+            }
+            res.status(409).json({ error: cardIntentInFlightMessage(previousPi.status), code: 'CARD_PAYMENT_IN_FLIGHT' });
+            return;
+        }
+        if (previousPi.state === 'unknown') {
+            res.status(503).json({ error: 'Não foi possível conferir a tentativa anterior no cartão agora. Tente novamente em instantes.' });
+            return;
+        }
+
+        // Troca PIX → cartão: aposenta a cobrança PIX viva ANTES de sobrescrever o providerRef (senão
+        // o QR antigo continua pagável e o webhook do Sicoob não acha mais o Payment pelo txid).
+        // Se a conciliação mostrar que o PIX já foi pago, não cobra o cartão.
+        const pixDiscardMeta = pixMetadataAfterDiscard(payment);
+        if (isPixProvider(payment.provider) && payment.providerRef) {
+            const retired = await retirePixCharge(payment.id);
+            if (retired === 'paid') {
+                res.status(400).json({ error: 'Este pagamento já foi confirmado via PIX.', status: 'PAID', alreadyPaid: true });
+                return;
+            }
+            if (retired === 'live') {
+                // pagamentos-4: o QR anterior continua pagável e não pôde ser cancelado — cobrar o cartão
+                // agora arriscaria cobrança dupla (e o PIX pago ficaria sem registro).
+                res.status(409).json({ error: 'Há um QR PIX desta cobrança que ainda pode ser pago e não pôde ser cancelado agora. Pague pelo PIX ou tente o cartão novamente em instantes.' });
+                return;
+            }
+            // Aposentado: a linha deixa de ser PIX JÁ (se o PaymentIntent falhar abaixo, o QR cancelado
+            // não pode ser reaproveitado como vivo; a recusa do cartão casa com provider STRIPE sem ref).
+            await prisma.payment.updateMany({
+                where: { id: payment.id, status: 'PENDING' },
+                data: {
+                    provider: 'STRIPE', providerRef: null, pixString: null, pixExpiresAt: null,
+                    ...(pixDiscardMeta !== undefined ? { metadata: pixDiscardMeta } : {}),
+                },
+            });
+        }
+
         // Get or create Stripe Customer for the PAYER (client), not the requester. Só no cartão.
         const customerId = await stripeGetOrCreateCustomer(payerUserId);
 
-        // Create PaymentIntent (CARDS ONLY now)
+        // Create PaymentIntent (CARDS ONLY now).
+        // N > 1 aqui só chega com cartão SALVO numa conta com parcelamento (recusado acima nos demais casos):
+        // o nº escolhido vai ao Stripe na confirmação (installmentPlanCount), conferido em available_plans.
+        // Cartão novo sai sempre em 1× e sem parcelamento no PI (o Payment Element não mostra seletor).
         const result = await stripeCreatePaymentIntent({
             amount,
             customerId,
@@ -415,7 +518,8 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
             paymentId: payment.id,
             userId: payerUserId,
             contractId: payment.contractId || undefined,
-            installmentsEnabled: true,
+            installmentsEnabled: installments > 1,
+            installmentPlanCount: data.savedPaymentMethodId ? installments : undefined,
             savedPaymentMethodId: data.savedPaymentMethodId,
             savePaymentMethod: data.savePaymentMethod,
         });
@@ -432,6 +536,10 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
                 provider: 'STRIPE',
                 chargedAmount: amount,
                 installments,
+                // Cartão não tem QR: limpa o PIX anterior (o reuso do PIX exige cobrança viva).
+                pixString: null,
+                pixExpiresAt: null,
+                ...(pixDiscardMeta !== undefined ? { metadata: pixDiscardMeta } : {}),
             },
         });
 
@@ -439,6 +547,10 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
             provider: 'STRIPE',
             clientSecret: result.clientSecret,
             paymentIntentId: result.paymentIntentId,
+            // Valor EFETIVAMENTE cobrado no cartão (= chargedAmount: sem o desconto PIX do à vista, com os
+            // juros do parcelamento quando houver) — o checkout exibe este valor no formulário do cartão.
+            amount,
+            installments,
         });
     } catch (err: any) {
         if (err instanceof z.ZodError) {
@@ -456,6 +568,8 @@ const installmentSchema = z.object({
     paymentId: z.string().uuid().optional(),
     amount: z.number().min(100).optional(),
     contractDurationMonths: z.number().min(1).max(12).optional(),
+    // Prévia sem Payment (wizard de serviço, D1): teto de parcelas SEM juros (1 = só à vista).
+    installmentCap: z.number().int().min(1).max(12).optional(),
 });
 
 router.post('/installment-plans', authenticate, async (req: Request, res: Response) => {
@@ -476,8 +590,11 @@ router.post('/installment-plans', authenticate, async (req: Request, res: Respon
                 res.status(404).json({ error: 'Pagamento não encontrado.' });
                 return;
             }
-            amount = payment.amount;
+            // Parcelas do CARTÃO: sobre o valor cobrado no cartão (sem o desconto PIX do à vista — D1).
+            amount = await cardChargeBaseAmount(payment);
             policy = getInstallmentPolicy(policyInputsFromPayment(payment));
+        } else if (data.installmentCap) {
+            policy = getInstallmentPolicy({ plan: 'FULL', contractType: 'SERVICO', durationMonths: data.contractDurationMonths || 1, installmentCap: data.installmentCap });
         } else {
             policy = getInstallmentPolicy({ plan: 'FULL', durationMonths: data.contractDurationMonths || 1 });
         }
@@ -487,8 +604,11 @@ router.post('/installment-plans', authenticate, async (req: Request, res: Respon
             return;
         }
 
+        // pagamentos-1 / cobertura-1: sem parcelamento no gateway (conta Stripe BR), só 1x — nunca oferecer
+        // N× que seria cobrado em 1× (o create-payment recusa N > 1 nesse caso).
+        const maxCount = (await stripeCardInstallmentsSupported()) ? policy.maxInstallments : 1;
         const plans = (await stripeGetInstallmentPlans(amount, policy.freeUpTo))
-            .filter(p => p.count <= policy.maxInstallments);
+            .filter(p => p.count <= maxCount);
         res.json({ plans });
     } catch (err: any) {
         if (err instanceof z.ZodError) {
@@ -613,6 +733,10 @@ router.post('/verify-payment', authenticate, async (req: Request, res: Response)
             // already ran them). Centralizing here keeps verify/webhook/reconcile in lockstep and
             // restores the two effects the old inline copy was missing (push + renewal bookings).
             if (updated.count > 0) {
+                // A linha tinha um QR PIX (cartão aprovado depois da troca para PIX): cancela o QR.
+                if (payment.provider !== 'STRIPE' && payment.providerRef) {
+                    await cancelStalePixCharge(payment.provider, payment.providerRef, payment.pixString);
+                }
                 await onPaymentConfirmed(payment.id);
             }
 

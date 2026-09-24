@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getInstallmentPolicy } from '../src/lib/paymentPolicy';
+import { getInstallmentPolicy, policyInputsFromPayment, readInstallmentCap } from '../src/lib/paymentPolicy';
 
 describe('getInstallmentPolicy', () => {
   describe('AVULSO ("paid now")', () => {
@@ -119,5 +119,102 @@ describe('getInstallmentPolicy', () => {
         getInstallmentPolicy({ contractType: 'FLEX' }),
       ).toEqual({ maxInstallments: 1, freeUpTo: 1 });
     });
+  });
+});
+
+describe('SERVICO com installmentCap (D1)', () => {
+  it('"Mensal no cartão parcelado" 3 meses → até 3x, todas sem juros', () => {
+    expect(
+      getInstallmentPolicy({ plan: 'FULL', contractType: 'SERVICO', durationMonths: 3, installmentCap: 3 }),
+    ).toEqual({ maxInstallments: 3, freeUpTo: 3 });
+  });
+
+  it('"Mensal no cartão parcelado" 6 meses → até 6x sem juros', () => {
+    expect(
+      getInstallmentPolicy({ plan: 'FULL', contractType: 'SERVICO', durationMonths: 6, installmentCap: 6 }),
+    ).toEqual({ maxInstallments: 6, freeUpTo: 6 });
+  });
+
+  it('"À vista" (cap 1) → só 1x (acaba o 4x–12x com juros)', () => {
+    expect(
+      getInstallmentPolicy({ plan: 'FULL', contractType: 'SERVICO', durationMonths: 6, installmentCap: 1 }),
+    ).toEqual({ maxInstallments: 1, freeUpTo: 1 });
+  });
+
+  it('cap acima de 12 é limitado a 12', () => {
+    expect(
+      getInstallmentPolicy({ plan: 'FULL', contractType: 'SERVICO', installmentCap: 18 }),
+    ).toEqual({ maxInstallments: 12, freeUpTo: 12 });
+  });
+
+  it('SERVICO SEM cap (pagamento legado) mantém o comportamento antigo', () => {
+    expect(
+      getInstallmentPolicy({ plan: 'FULL', contractType: 'SERVICO', durationMonths: 3 }),
+    ).toEqual({ maxInstallments: 12, freeUpTo: 3 });
+    expect(
+      getInstallmentPolicy({ plan: 'MONTHLY', contractType: 'SERVICO', durationMonths: 3, installmentCap: null }),
+    ).toEqual({ maxInstallments: 1, freeUpTo: 1 });
+  });
+
+  it('cap inválido (0/NaN) é ignorado', () => {
+    expect(
+      getInstallmentPolicy({ plan: 'FULL', contractType: 'SERVICO', durationMonths: 3, installmentCap: 0 }),
+    ).toEqual({ maxInstallments: 12, freeUpTo: 3 });
+    expect(
+      getInstallmentPolicy({ plan: 'FULL', contractType: 'SERVICO', durationMonths: 3, installmentCap: Number.NaN }),
+    ).toEqual({ maxInstallments: 12, freeUpTo: 3 });
+  });
+
+  it('cap só vale para SERVICO: FIXO/FLEX/CUSTOM/AVULSO ignoram', () => {
+    expect(
+      getInstallmentPolicy({ plan: 'FULL', contractType: 'FIXO', durationMonths: 6, installmentCap: 1 }),
+    ).toEqual({ maxInstallments: 12, freeUpTo: 6 });
+    expect(
+      getInstallmentPolicy({ plan: 'MONTHLY', contractType: 'FLEX', durationMonths: 3, installmentCap: 3 }),
+    ).toEqual({ maxInstallments: 1, freeUpTo: 1 });
+    expect(
+      getInstallmentPolicy({ plan: 'FULL', contractType: 'CUSTOM', durationMonths: 3, installmentCap: 2 }),
+    ).toEqual({ maxInstallments: 12, freeUpTo: 3 });
+    expect(
+      getInstallmentPolicy({ contractType: 'AVULSO', installmentCap: 1 }),
+    ).toEqual({ maxInstallments: 12, freeUpTo: 1 });
+  });
+});
+
+describe('policyInputsFromPayment + readInstallmentCap', () => {
+  it('lê o cap do metadata junto com o contrato', () => {
+    expect(policyInputsFromPayment({
+      contract: { paymentPlan: 'FULL', type: 'SERVICO', durationMonths: 3 },
+      metadata: { installmentCap: 3, pixCharge: { attempt: 1 } },
+    })).toEqual({ plan: 'FULL', contractType: 'SERVICO', durationMonths: 3, installmentCap: 3 });
+  });
+
+  it('sem cap no metadata → sem installmentCap', () => {
+    expect(policyInputsFromPayment({
+      contract: { paymentPlan: 'MONTHLY', type: 'FIXO', durationMonths: 6 },
+      metadata: null,
+    })).toEqual({ plan: 'MONTHLY', contractType: 'FIXO', durationMonths: 6 });
+  });
+
+  it('draft do /self em metadata.contractData continua funcionando', () => {
+    expect(policyInputsFromPayment({
+      contract: null,
+      metadata: { contractData: { paymentPlan: 'FULL', type: 'FLEX', durationMonths: 3 } },
+    })).toEqual({ plan: 'FULL', contractType: 'FLEX', durationMonths: 3 });
+  });
+
+  it('readInstallmentCap tolera lixo', () => {
+    expect(readInstallmentCap(null)).toBeUndefined();
+    expect(readInstallmentCap([1])).toBeUndefined();
+    expect(readInstallmentCap({ installmentCap: 'x' })).toBeUndefined();
+    expect(readInstallmentCap({ installmentCap: 6 })).toBe(6);
+  });
+
+  it('fim a fim: pagamento de serviço à vista com cap 1 → 1x', () => {
+    const inputs = policyInputsFromPayment({
+      contract: { paymentPlan: 'FULL', type: 'SERVICO', durationMonths: 6 },
+      metadata: { installmentCap: 1 },
+    });
+    expect(getInstallmentPolicy(inputs)).toEqual({ maxInstallments: 1, freeUpTo: 1 });
   });
 });

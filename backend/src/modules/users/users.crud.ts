@@ -2,9 +2,10 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../../lib/prisma.js';
-import { authenticate, authorize } from '../../middleware/auth.js';
+import { authenticate, authorize, revokeUserSessions } from '../../middleware/auth.js';
 import { cleanDocument, isValidCpfCnpj } from '../../utils/document.js';
-import { purgeCouponRedemptionsForUser } from '../../lib/couponService.js';
+import { formatBRL } from '../../utils/pricing.js';
+import { deleteUser, getDeletionPreview, assertUserDeletable, UserDeletionError } from '../../lib/userDeletion.js';
 
 /**
  * Normalizes a CPF/CNPJ to digits-only and validates the check digits.
@@ -131,6 +132,11 @@ export function registerUserCrudRoutes(router: Router) {
                 res.status(404).json({ error: 'Usuário não encontrado.' });
                 return;
             }
+            // D3: cadastro excluído (anonimizado) é só histórico — não pode ser reeditado.
+            if (existing.deletedAt) {
+                res.status(409).json({ error: 'Este cliente foi excluído. O cadastro não pode ser alterado.' });
+                return;
+            }
 
             // Check email uniqueness if changing
             if (data.email && data.email !== existing.email) {
@@ -175,6 +181,12 @@ export function registerUserCrudRoutes(router: Router) {
                 select: { id: true, email: true, name: true, phone: true, role: true, createdAt: true },
             });
 
+            // D3: bloquear encerra NA HORA a sessão já aberta do cliente (o login/refresh já recusam
+            // conta bloqueada; sem isto o access token residual valia por até 1h).
+            if (data.clientStatus === 'BLOCKED' && existing.clientStatus !== 'BLOCKED') {
+                await revokeUserSessions(id);
+            }
+
             res.json({ user, message: 'Usuário atualizado com sucesso.' });
         } catch (err) {
             if (err instanceof z.ZodError) {
@@ -189,40 +201,52 @@ export function registerUserCrudRoutes(router: Router) {
         }
     });
 
-    // ─── DELETE /api/users/:id (ADMIN) ──────────────────────
-
-    router.delete('/:id', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
-        const id = req.params.id as string;
-
-        // Prevent self-delete
-        if (id === req.user!.userId) {
-            res.status(400).json({ error: 'Você não pode excluir sua própria conta.' });
-            return;
-        }
-
-        const user = await prisma.user.findUnique({ where: { id } });
-        if (!user) {
-            res.status(404).json({ error: 'Usuário não encontrado.' });
-            return;
-        }
-
+    // ─── GET /api/users/:id/deletion-preview (ADMIN) ────────
+    // D3: consequências reais da exclusão para o modal (modo hard × soft, o que será cancelado/anulado,
+    // o que fica preservado). Mesmas recusas do DELETE (auto-exclusão, ADMIN, já excluído).
+    router.get('/:id/deletion-preview', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
         try {
-            // Delete related records to respect foreign key constraints.
-            // Coupon redemptions FK to payments AND users with ON DELETE RESTRICT, so they
-            // must be purged (and their coupon usedCount decremented) before the payments.
-            await purgeCouponRedemptionsForUser(id);
-            await prisma.payment.deleteMany({ where: { userId: id } });
-            await prisma.booking.deleteMany({ where: { userId: id } });
-            await prisma.contract.deleteMany({ where: { userId: id } });
-            await prisma.blockedSlot.deleteMany({ where: { createdBy: id } });
+            const id = req.params.id as string;
+            await assertUserDeletable(id, req.user!.userId);
+            res.json({ preview: await getDeletionPreview(id) });
+        } catch (err) {
+            if (err instanceof UserDeletionError) {
+                res.status(err.httpStatus).json({ error: err.message });
+                return;
+            }
+            console.error('[USER-DELETION-PREVIEW]', err);
+            res.status(500).json({ error: 'Erro ao calcular as consequências da exclusão.' });
+        }
+    });
 
-            // Delete user
-            await prisma.user.delete({ where: { id } });
-
-            res.json({ message: `Usuário ${user.name} excluído com sucesso.` });
-        } catch (err: any) {
-            console.error(`[DELETE USER ERROR]:`, err);
-            res.status(500).json({ error: 'Erro ao excluir usuário.', details: err.message });
+    // ─── DELETE /api/users/:id (ADMIN) ──────────────────────
+    // D3: sem nenhum vínculo de negócio → exclusão física; com qualquer vínculo → soft delete com
+    // anonimização, cancelando contratos em andamento, gravações futuras e cobranças PENDING
+    // (histórico PAID preservado). Regras em lib/userDeletion.ts.
+    router.delete('/:id', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
+        try {
+            const id = req.params.id as string;
+            const result = await deleteUser(id, req.user!.userId);
+            const { contracts, bookings, payments } = result.cancelled;
+            const parts: string[] = [];
+            if (contracts > 0) parts.push(`${contracts} contrato(s) cancelado(s)`);
+            if (bookings > 0) parts.push(`${bookings} gravação(ões) futura(s) cancelada(s)`);
+            if (payments > 0) parts.push(`${payments} cobrança(s) pendente(s) anulada(s)`);
+            const paidLate = result.paidDuringDeletion;
+            const paidNote = paidLate.payments > 0
+                ? ` Atenção: ${paidLate.payments} pagamento(s) (${formatBRL(paidLate.amount)}) foi(ram) confirmado(s) no provedor durante a exclusão e ficou(aram) registrado(s) como pago(s), sem estorno automático — avalie a devolução.`
+                : '';
+            const message = result.softDeleted
+                ? `Cliente excluído. Dados pessoais removidos; histórico preservado.${parts.length ? ` ${parts.join(', ')}.` : ''}${paidNote}`
+                : 'Cliente excluído definitivamente.';
+            res.json({ message, softDeleted: result.softDeleted, cancelled: result.cancelled, paidDuringDeletion: paidLate });
+        } catch (err) {
+            if (err instanceof UserDeletionError) {
+                res.status(err.httpStatus).json({ error: err.message });
+                return;
+            }
+            console.error('[DELETE USER ERROR]:', err);
+            res.status(500).json({ error: 'Erro ao excluir o cliente.' });
         }
     });
 
@@ -277,6 +301,12 @@ export function registerUserCrudRoutes(router: Router) {
         try {
             const userId = req.params.id as string;
             const enabled = !!req.body?.enabled;
+            const target = await prisma.user.findUnique({ where: { id: userId }, select: { deletedAt: true } });
+            if (!target) { res.status(404).json({ error: 'Usuário não encontrado.' }); return; }
+            if (target.deletedAt) {
+                res.status(409).json({ error: 'Este cliente foi excluído. O cadastro não pode ser alterado.' });
+                return;
+            }
             if (enabled) {
                 const cardCount = await prisma.savedPaymentMethod.count({ where: { userId } });
                 if (cardCount === 0) {

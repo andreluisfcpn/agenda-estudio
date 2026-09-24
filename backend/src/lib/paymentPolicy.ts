@@ -10,6 +10,9 @@
 //    discount; card may split 1–12x, interest-free up to durationMonths and with the
 //    card_installment_surcharges juros above that.
 //  • AVULSO ("paid now") → one charge; card may split 1–12x, free in 1x, juros 2–12x.
+//  • SERVICO (D1) → the hire stamps Payment.metadata.installmentCap: "Mensal no cartão parcelado"
+//    = total now in up to N× interest-free (N = fidelity months); "À vista" = cap 1 (PIX with the
+//    PIX discount, or card 1×). Legacy SERVICO payments without a cap keep the FULL/MONTHLY rules.
 
 import { addBillingCycles, addMonths } from '../utils/pricing.js';
 import { computeFullContractTotal } from './contractPricing.js';
@@ -95,6 +98,10 @@ export interface InstallmentPolicy {
 /**
  * The single card-installment rule for ALL payment kinds:
  *  - AVULSO (paid now): 1–12x, free in 1x, juros 2–12x.
+ *  - SERVICO with `installmentCap` (D1, stamped on Payment.metadata at hire):
+ *      • "Mensal no cartão parcelado" → total now in up to N× (N = fidelity months), ALL interest-free;
+ *      • "À vista" → cap 1 (single charge, no splitting, no 4x–12x with juros).
+ *    SERVICO payments WITHOUT a cap (legacy) keep the rule below.
  *  - FULL / à vista on a contract: 1–12x, free up to durationMonths, juros above.
  *  - A monthly installment: a single 1x charge (no splitting).
  */
@@ -102,30 +109,46 @@ export function getInstallmentPolicy(args: {
     plan?: PaymentPlan | null;
     contractType?: CheckoutContractType | string | null;
     durationMonths?: number | null;
+    installmentCap?: number | null;
 }): InstallmentPolicy {
-    const { plan, contractType, durationMonths } = args;
+    const { plan, contractType, durationMonths, installmentCap } = args;
     if (contractType === 'AVULSO') return { maxInstallments: 12, freeUpTo: 1 };
+    if (contractType === 'SERVICO' && typeof installmentCap === 'number' && Number.isFinite(installmentCap) && installmentCap >= 1) {
+        const cap = Math.min(12, Math.floor(installmentCap));
+        return { maxInstallments: cap, freeUpTo: cap };
+    }
     if (plan === 'FULL') return { maxInstallments: 12, freeUpTo: Math.max(1, durationMonths || 1) };
     return { maxInstallments: 1, freeUpTo: 1 }; // monthly installment = single 1x charge
+}
+
+/** `metadata.installmentCap` de um Payment (D1 — serviço), ou undefined. */
+export function readInstallmentCap(metadata: unknown): number | undefined {
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return undefined;
+    const cap = Number((metadata as { installmentCap?: unknown }).installmentCap);
+    return Number.isFinite(cap) && cap >= 1 ? Math.floor(cap) : undefined;
 }
 
 /**
  * Resolve the installment-policy inputs for a Payment. Reads the linked contract when it
  * exists; for a self/SELF first payment created BEFORE its contract materializes, falls
  * back to the draft stashed in `metadata.contractData` so a FULL contract still gets 1–12x.
+ * Always carries `metadata.installmentCap` (D1) when the payment has one.
  */
 export function policyInputsFromPayment(payment: {
     contract?: { paymentPlan?: string | null; type?: string | null; durationMonths?: number | null } | null;
     metadata?: unknown;
-}): { plan?: PaymentPlan; contractType?: string; durationMonths?: number } {
+}): { plan?: PaymentPlan; contractType?: string; durationMonths?: number; installmentCap?: number } {
+    const installmentCap = readInstallmentCap(payment.metadata);
+    const capField = installmentCap !== undefined ? { installmentCap } : {};
     if (payment.contract) {
         return {
             plan: (payment.contract.paymentPlan as PaymentPlan) || undefined,
             contractType: payment.contract.type || undefined,
             durationMonths: payment.contract.durationMonths || undefined,
+            ...capField,
         };
     }
     const cd = (payment.metadata as { contractData?: { paymentPlan?: string; type?: string; durationMonths?: number } } | null)?.contractData;
-    if (cd) return { plan: cd.paymentPlan as PaymentPlan, contractType: cd.type, durationMonths: cd.durationMonths };
-    return {};
+    if (cd) return { plan: cd.paymentPlan as PaymentPlan, contractType: cd.type, durationMonths: cd.durationMonths, ...capField };
+    return { ...capField };
 }

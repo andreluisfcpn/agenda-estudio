@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import { authenticate, authorize } from '../../middleware/auth.js';
+import { paidChargedAmount } from '../../lib/pixGateway.js';
 
 export function registerUserListingRoutes(router: Router) {
     // ─── GET /api/users (ADMIN) ─────────────────────────────
@@ -16,6 +17,9 @@ export function registerUserListingRoutes(router: Router) {
             // "N resultados" e divergia do KPI "TOTAL N clientes". Um filtro explícito (?role=ADMIN) ainda funciona.
             where.role = { not: 'ADMIN' };
         }
+        // D3: cliente excluído (soft delete) some da lista, da busca, dos KPIs e de todos os seletores
+        // de cliente dos modais — o perfil histórico continua acessível por GET /:id.
+        where.deletedAt = null;
 
         const rawUsers = await prisma.user.findMany({
             where,
@@ -36,10 +40,15 @@ export function registerUserListingRoutes(router: Router) {
                     select: { bookings: true, contracts: true },
                 },
                 contracts: {
-                    select: { type: true, status: true, addOns: true },
+                    // endDate/durationMonths: o front decide se um plano "Concluído" (D6) ainda está
+                    // vigente (carência após o fim — clientHealth.isPlanInForce) e reconhece o FLEX
+                    // legado de 1 mês como avulso. Sem eles, todo plano concluído contava como ativo.
+                    select: { type: true, status: true, addOns: true, endDate: true, durationMonths: true },
                 },
                 payments: {
-                    select: { amount: true, status: true },
+                    // chargedAmount/provider/providerRef: "total pago" pelo valor EFETIVAMENTE cobrado (no cartão,
+                    // o valor do PaymentIntent) — mesmo critério do fechamento financeiro (paidChargedAmount).
+                    select: { amount: true, status: true, chargedAmount: true, provider: true, providerRef: true },
                 },
             },
         });
@@ -47,7 +56,8 @@ export function registerUserListingRoutes(router: Router) {
         const users = rawUsers.map(u => {
             const totalPaid = u.payments
                 .filter(p => p.status === 'PAID')
-                .reduce((sum, p) => sum + p.amount, 0);
+                .reduce((sum, p) => sum + paidChargedAmount(p), 0);
+            // Pendente = o valor da cobrança (amount), como no fechamento.
             const totalPending = u.payments
                 .filter(p => p.status === 'PENDING')
                 .reduce((sum, p) => sum + p.amount, 0);
@@ -84,6 +94,7 @@ export function registerUserListingRoutes(router: Router) {
                 tags: true,
                 socialLinks: true,
                 clientStatus: true,
+                deletedAt: true, // D3: perfil histórico de cliente excluído (front mostra o aviso)
                 createdAt: true,
                 contracts: {
                     orderBy: { createdAt: 'desc' },
@@ -132,6 +143,10 @@ export function registerUserListingRoutes(router: Router) {
                         status: true,
                         dueDate: true,
                         createdAt: true,
+                        // Saúde do cliente (front): "pago" pelo valor efetivamente cobrado (paidChargedAmount).
+                        chargedAmount: true,
+                        provider: true,
+                        providerRef: true,
                     },
                 },
             },

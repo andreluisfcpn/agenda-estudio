@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { prisma } from '../../lib/prisma.js';
 import { authenticate, authorize } from '../../middleware/auth.js';
-import { acquireMultiSlotLock, releaseMultiSlotLock } from '../../lib/redis.js';
+import { releaseMultiSlotLock } from '../../lib/redis.js';
 import { getProviderForMethod } from '../../lib/paymentGateway.js';
 import {
     getSlotTier,
@@ -15,8 +15,6 @@ import {
     applyDiscount,
     getPackageSlots,
     calculateEndTime,
-    getSlotDuration,
-    isOperatingDay,
     studioDateTime,
 } from '../../utils/pricing.js';
 import { BookingStatus, Prisma } from '../../generated/prisma/client.js';
@@ -26,9 +24,17 @@ import {
     adminUpdateBookingSchema,
     clientUpdateBookingSchema,
     rescheduleSchema,
+    makeupSchema,
     addOnPurchaseSchema,
 } from './validators.js';
-import { restoreCredit, deductCredit, hasBlockedConflict } from './booking.service.js';
+import { restoreCredit, deductCredit, checkMoveSlotTier, withMovableSlot, SlotUnavailableError, syncAvulsoContractSchedule } from './booking.service.js';
+import { syncContractCompletion } from '../../lib/contractCompletion.js';
+import {
+    MakeupError,
+    applyMakeupOnStatusChange,
+    rescheduleAvulsoMakeup,
+    validateNoShowJustification,
+} from '../../lib/avulsoMakeup.js';
 
 // ─── Cover image upload (memory storage → optimized with sharp) ──────────────
 const __dirname_bm = path.dirname(fileURLToPath(import.meta.url));
@@ -99,6 +105,8 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
             if (diffHours < 24) {
                 // Aviso < 24h: consome a sessão (FALTA), sem devolver crédito.
                 await prisma.booking.update({ where: { id }, data: { status: BookingStatus.FALTA } });
+                // D6: FALTA sem justificativa encerra o avulso (e pode concluir um plano sem sessões restantes).
+                await syncContractCompletion(booking.contractId, userId);
                 res.json({ message: 'Agendamento desmarcado. Aviso menor que 24h: o crédito desta sessão foi consumido.' });
                 return;
             }
@@ -129,6 +137,7 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
     if (booking.contractId) {
         await restoreCredit(booking.contractId);
     }
+    await syncContractCompletion(booking.contractId, userId);
 
     res.json({ message: 'Reserva cancelada com sucesso.' });
 });
@@ -167,6 +176,8 @@ router.delete('/:id/hard-delete', authenticate, authorize('ADMIN'), async (req: 
 
         // Hard delete from database
         await prisma.booking.delete({ where: { id } });
+        // D6: sem esta sessão o contrato pode ter virado (ou deixado de ser) "concluído".
+        await syncContractCompletion(booking.contractId, req.user!.userId);
 
         res.json({
             message: creditRestored
@@ -214,6 +225,12 @@ router.get('/my', authenticate, async (req: Request, res: Response) => {
             episodeDescription: true,
             coverImageUrl: true,
             addOns: true,
+            originalDate: true,
+            // Motivo da falta/não realização + janela de remarcação do avulso (D4/D5).
+            statusReason: true,
+            makeupStatus: true,
+            makeupDeadline: true,
+            missedDate: true,
             contract: {
                 select: {
                     id: true,
@@ -315,6 +332,7 @@ router.get('/:id', authenticate, async (req: Request, res: Response) => {
             episodeTitle: true, episodeDescription: true, coverImageUrl: true,
             durationMinutes: true, peakViewers: true, chatMessages: true, audienceOrigin: true,
             isLivestream: true, streamMetrics: true, addOns: true, holdExpiresAt: true,
+            originalDate: true, statusReason: true, makeupStatus: true, makeupDeadline: true, missedDate: true,
             contract: { select: { id: true, name: true, type: true, tier: true, discountPct: true, addOns: true } },
         },
     });
@@ -362,10 +380,32 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
         const id = req.params.id as string;
         const data = adminUpdateBookingSchema.parse(req.body);
 
-        const booking = await prisma.booking.findUnique({ where: { id } });
+        const booking = await prisma.booking.findUnique({
+            where: { id },
+            include: { contract: { select: { type: true } }, user: { select: { deletedAt: true } } },
+        });
         if (!booking) {
             res.status(404).json({ error: 'Agendamento não encontrado.' });
             return;
+        }
+
+        // D3: cliente EXCLUÍDO (soft delete) não ganha obrigação nova. Recusa reabrir a gravação
+        // (→ Reservado/Em espera/Confirmado vindo de outro status), mudar data/horário de uma gravação
+        // que fica ativa e justificar falta (abre remarcação). Finalizar, marcar falta/não realizado,
+        // cancelar e editar notas/métricas continuam permitidos (o histórico é do operador).
+        if (booking.user?.deletedAt) {
+            const OPEN: string[] = ['RESERVED', 'HELD', 'CONFIRMED'];
+            const target = data.status || booking.status;
+            const reopening = !!data.status && OPEN.includes(data.status) && !OPEN.includes(booking.status);
+            const moving = (!!data.date && data.date !== booking.date.toISOString().slice(0, 10))
+                || (!!data.startTime && data.startTime !== booking.startTime);
+            if (reopening || (moving && OPEN.includes(target)) || data.noShowJustified === true) {
+                res.status(409).json({
+                    error: 'Este cliente foi excluído. Não é possível reabrir, remarcar ou justificar a falta desta gravação.',
+                    code: 'CLIENT_DELETED',
+                });
+                return;
+            }
         }
 
         // Não se marca FALTA em uma sessão já concluída ou cancelada (replica o guard da antiga
@@ -373,6 +413,22 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
         if (data.status === 'FALTA' && (booking.status === 'COMPLETED' || booking.status === 'CANCELLED')) {
             res.status(400).json({ error: `Não é possível marcar falta em um agendamento ${booking.status}.` });
             return;
+        }
+
+        // D4: "falta justificada" (só avulso) — valida ANTES de qualquer escrita, para um 400 não deixar
+        // o status trocado sem a janela de remarcação.
+        if (data.noShowJustified === true) {
+            const justifyError = await validateNoShowJustification({
+                finalStatus: data.status || booking.status,
+                contractType: booking.contract?.type,
+                makeupStatus: booking.makeupStatus,
+                bookingDate: data.date ? new Date(data.date + 'T00:00:00Z') : booking.date,
+                bookingId: booking.id, // contrato cancelado / pagamento estornado ou não pago → 400
+            });
+            if (justifyError) {
+                res.status(400).json({ error: justifyError });
+                return;
+            }
         }
 
         const updateData: Prisma.BookingUncheckedUpdateInput = {};
@@ -444,11 +500,13 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
         // ajusta o crédito só se ESTA requisição venceu — e só aqui, DEPOIS de todas as validações.
         // Antes, restoreCredit/deductCredit rodavam no topo: um 400 posterior deixava o crédito
         // alterado sem a mudança de status, e um duplo-clique dupla-restaurava (mesmo snapshot).
+        let statusMoved = false;
         if (data.status && data.status !== booking.status) {
             const moved = await prisma.booking.updateMany({
                 where: { id, status: booking.status },
                 data: { status: data.status },
             });
+            statusMoved = moved.count > 0;
             if (moved.count > 0 && booking.contractId) {
                 if (data.status === 'NAO_REALIZADO') {
                     await restoreCredit(booking.contractId);
@@ -459,6 +517,36 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
         }
         delete updateData.status; // já aplicado atomicamente acima
 
+        // D4/D5: janela de remarcação do avulso (FALTA justificada abre; NAO_REALIZADO abre sozinho;
+        // saindo de FALTA/NAO_REALIZADO pelo admin a janela vira USED ou é retirada).
+        let makeupChanged = false;
+        if (statusMoved || data.noShowJustified !== undefined) {
+            // Compara VALORES (o EditBookingModal sempre manda date e startTime): voltar Falta →
+            // Confirmado no MESMO dia/horário desfaz a justificativa; só mudança real gasta a remarcação.
+            const slotChanged = (!!data.date && data.date !== booking.date.toISOString().slice(0, 10))
+                || (!!data.startTime && data.startTime !== booking.startTime);
+            makeupChanged = await applyMakeupOnStatusChange({
+                booking: {
+                    id,
+                    date: booking.date,
+                    originalDate: booking.originalDate,
+                    missedDate: booking.missedDate,
+                    makeupStatus: booking.makeupStatus,
+                    contractType: booking.contract?.type,
+                },
+                from: booking.status,
+                to: statusMoved ? data.status! : booking.status,
+                statusChanged: statusMoved,
+                noShowJustified: data.noShowJustified,
+                slotChanged,
+                actorId: req.user!.userId,
+            });
+        }
+        // D6: o status do contrato acompanha as sessões (conclui / reabre).
+        if (statusMoved || makeupChanged) {
+            await syncContractCompletion(booking.contractId, req.user!.userId);
+        }
+
         const updated = await prisma.booking.update({
             where: { id },
             data: updateData,
@@ -466,6 +554,11 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
                 user: { select: { id: true, name: true, email: true, role: true } },
             },
         });
+
+        // Avulso: a vigência e o nome do micro-contrato acompanham a nova data/horário da gravação.
+        if ((data.date || data.startTime) && booking.contract?.type === 'AVULSO') {
+            await syncAvulsoContractSchedule(updated.contractId, { date: updated.date, startTime: updated.startTime });
+        }
 
         res.json({
             booking: updated,
@@ -622,88 +715,79 @@ router.patch('/:id/reschedule', authenticate, async (req: Request, res: Response
             return;
         }
 
-        // Rule 3: Operating day check
-        const dayOfWeek = newDate.getUTCDay();
-        if (!(await isOperatingDay(dayOfWeek))) {
-            res.status(400).json({ error: 'O estúdio não funciona neste dia da semana.' });
-            return;
-        }
-
-        // Rule 4: Tier must match original
-        const newTier = await getSlotTier(dayOfWeek, data.startTime);
-        if (!newTier) {
-            res.status(400).json({ error: 'Horário fora da grade de operação.' });
-            return;
-        }
-
-        if (newTier !== booking.tierApplied) {
-            res.status(400).json({ error: `O reagendamento deve manter a mesma faixa (${booking.tierApplied}). O horário selecionado é ${newTier}.` });
+        // Rules 3 + 4: operating day, slot in the grid and SAME tier as the original (shared helper,
+        // also used by PATCH /:id/makeup).
+        const tierError = await checkMoveSlotTier(data.date, data.startTime, booking.tierApplied);
+        if (tierError) {
+            res.status(400).json({ error: tierError });
             return;
         }
 
         // Rule 5: Check availability. FIX (B3): tranca o slot NOVO durante a checagem+escrita
         // (mesmo acquireMultiSlotLock do POST /) para fechar a janela TOCTOU entre a leitura do
         // conflito e a gravação — sem isto, duas remarcações/criações concorrentes no mesmo slot
-        // passavam ambas na findFirst e gravavam (double-booking).
-        const rescheduleSlotDur = await getSlotDuration();
-        const packageSlots = getPackageSlots(data.startTime, rescheduleSlotDur);
-        const locked = await acquireMultiSlotLock(data.date, packageSlots, req.user!.userId);
-        if (!locked) {
-            res.status(409).json({ error: 'Este horário está sendo reservado por outra pessoa. Tente novamente em instantes.' });
-            return;
-        }
-        try {
-            const conflicting = await prisma.booking.findFirst({
-                where: {
-                    id: { not: id },
-                    date: newDate,
-                    status: { not: BookingStatus.CANCELLED },
-                    OR: packageSlots.map(slot => ({
-                        startTime: { lte: slot },
-                        endTime: { gt: slot },
-                    })),
-                },
-            });
+        // passavam ambas na findFirst e gravavam (double-booking). Ver withMovableSlot.
+        const updated = await withMovableSlot(
+            { date: data.date, startTime: data.startTime, lockOwner: req.user!.userId, excludeBookingId: id },
+            async ({ dateObj, endTime }) => {
+                // Set originalDate if not already set (anchor for future reschedules)
+                const updateData: Prisma.BookingUncheckedUpdateInput = {
+                    date: dateObj,
+                    startTime: data.startTime,
+                    endTime,
+                };
+                if (!booking.originalDate) {
+                    updateData.originalDate = booking.date; // store the initial date as anchor
+                }
+                return prisma.booking.update({
+                    where: { id },
+                    data: updateData,
+                    select: {
+                        id: true, date: true, startTime: true, endTime: true,
+                        status: true, tierApplied: true, price: true, contractId: true,
+                    },
+                });
+            },
+        );
 
-            if (conflicting) {
-                res.status(409).json({ error: 'O horário selecionado já está ocupado.' });
-                return;
-            }
+        // Avulso: a vigência e o nome do micro-contrato acompanham a nova data (no-op p/ outros tipos).
+        await syncAvulsoContractSchedule(updated.contractId, { date: updated.date, startTime: updated.startTime });
 
-            // Não remarcar para dentro de um horário bloqueado (manutenção).
-            if (await hasBlockedConflict(newDate, packageSlots)) {
-                res.status(409).json({ error: 'Este horário está bloqueado (indisponível). Escolha outro.' });
-                return;
-            }
-
-            const endTime = calculateEndTime(data.startTime, rescheduleSlotDur);
-
-            // Set originalDate if not already set (anchor for future reschedules)
-            const updateData: Prisma.BookingUncheckedUpdateInput = {
-                date: new Date(data.date + 'T00:00:00'),
-                startTime: data.startTime,
-                endTime,
-            };
-            if (!booking.originalDate) {
-                updateData.originalDate = booking.date; // store the initial date as anchor
-            }
-
-            const updated = await prisma.booking.update({
-                where: { id },
-                data: updateData,
-                select: {
-                    id: true, date: true, startTime: true, endTime: true,
-                    status: true, tierApplied: true, price: true, contractId: true,
-                },
-            });
-
-            res.json({ booking: updated, message: 'Agendamento reagendado com sucesso!' });
-        } finally {
-            await releaseMultiSlotLock(data.date, packageSlots, req.user!.userId);
-        }
+        res.json({ booking: updated, message: 'Agendamento reagendado com sucesso!' });
     } catch (err) {
         if (err instanceof z.ZodError) {
             res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
+            return;
+        }
+        if (err instanceof SlotUnavailableError) {
+            res.status(err.httpStatus).json({ error: err.message });
+            return;
+        }
+        throw err;
+    }
+});
+
+// ─── PATCH /api/bookings/:id/makeup (Client owner or ADMIN) ─────
+// D4/D5: remarca a gravação perdida do AVULSO (FALTA justificada / NÃO REALIZADO) sem novo
+// pagamento, reabrindo a MESMA reserva (mesmo Payment). Regras em lib/avulsoMakeup.ts.
+
+router.patch('/:id/makeup', authenticate, async (req: Request, res: Response) => {
+    try {
+        const data = makeupSchema.parse(req.body);
+        const result = await rescheduleAvulsoMakeup({
+            bookingId: req.params.id as string,
+            actor: { userId: req.user!.userId, isAdmin: req.user!.role === 'ADMIN' },
+            date: data.date,
+            startTime: data.startTime,
+        });
+        res.json(result);
+    } catch (err) {
+        if (err instanceof z.ZodError) {
+            res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
+            return;
+        }
+        if (err instanceof MakeupError) {
+            res.status(err.httpStatus).json({ error: err.message });
             return;
         }
         throw err;

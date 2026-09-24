@@ -1891,6 +1891,7 @@ export const UserScalarFieldEnum = {
   stripeCustomerId: 'stripeCustomerId',
   autoChargeEnabled: 'autoChargeEnabled',
   essentialNotificationsOnly: 'essentialNotificationsOnly',
+  deletedAt: 'deletedAt',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
@@ -1984,6 +1985,9 @@ export const BookingScalarFieldEnum = {
   recordingStartedById: 'recordingStartedById',
   recordingStartedByName: 'recordingStartedByName',
   statusReason: 'statusReason',
+  makeupStatus: 'makeupStatus',
+  makeupDeadline: 'makeupDeadline',
+  missedDate: 'missedDate',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
@@ -2003,6 +2007,7 @@ export const PaymentScalarFieldEnum = {
   status: 'status',
   dueDate: 'dueDate',
   pixString: 'pixString',
+  pixExpiresAt: 'pixExpiresAt',
   boletoUrl: 'boletoUrl',
   paymentUrl: 'paymentUrl',
   installments: 'installments',
@@ -2403,6 +2408,20 @@ export type EnumBookingStatusFieldRefInput<$PrismaModel> = FieldRefInputType<$Pr
  * Reference to a field of type 'BookingStatus[]'
  */
 export type ListEnumBookingStatusFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'BookingStatus[]'>
+    
+
+
+/**
+ * Reference to a field of type 'MakeupStatus'
+ */
+export type EnumMakeupStatusFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'MakeupStatus'>
+    
+
+
+/**
+ * Reference to a field of type 'MakeupStatus[]'
+ */
+export type ListEnumMakeupStatusFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'MakeupStatus[]'>
     
 
 

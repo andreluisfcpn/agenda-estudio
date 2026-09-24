@@ -5,6 +5,8 @@ import LoadingSpinner from '../../ui/LoadingSpinner';
 import { SettingsMessages } from './SettingsSaveBar';
 import SegmentedControl from '../../ui/fields/SegmentedControl';
 import StepperField from '../../ui/fields/StepperField';
+import CurrencyInput from '../../ui/fields/CurrencyInput';
+import DangerConfirmDialog from '../../ui/DangerConfirmDialog';
 import { Plus, Trash2, Save, Check, CalendarDays, Mic } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { renderServiceIcon, SERVICE_ICON_OPTIONS } from '../../../utils/serviceIcons';
@@ -17,20 +19,19 @@ const PARSE_BENEFITS = (json?: string | null): string[] => {
 };
 
 /** One self-contained service card: owns its draft + dirty state + its OWN Save button. */
-function AddonCard({ initial, siblingKeys, onSaved, onDeleted }: {
+function AddonCard({ initial, siblingKeys, onSaved, onRequestDelete }: {
     initial: EditableAddon;
     siblingKeys: string[];
     onSaved: (prevKey: string, saved: AddOnConfig) => void;
-    onDeleted: (addon: EditableAddon) => void;
+    /** Remover: o pai descarta o rascunho novo ou abre a confirmação de perigo (D3). */
+    onRequestDelete: (addon: EditableAddon, dirty: boolean) => void;
 }) {
     const uid = useId();
     const [draft, setDraft] = useState<EditableAddon>(initial);
-    const [priceText, setPriceText] = useState((initial.price / 100).toFixed(2).replace('.', ','));
     const [benefitsText, setBenefitsText] = useState(PARSE_BENEFITS(initial.benefits).join('\n'));
     const [dirty, setDirty] = useState(!!initial._isNew);
     const [saving, setSaving] = useState(false);
     const [err, setErr] = useState('');
-    const [confirmDel, setConfirmDel] = useState(false);
 
     const set = (patch: Partial<EditableAddon>) => { setDraft(d => ({ ...d, ...patch })); setDirty(true); setErr(''); };
 
@@ -107,9 +108,9 @@ function AddonCard({ initial, siblingKeys, onSaved, onDeleted }: {
                     <input id={`${uid}-name`} className="form-input" value={draft.name} onChange={e => set({ name: e.target.value })} />
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label" htmlFor={`${uid}-price`}>Preço {monthly ? 'mensal' : 'por episódio'} (R$)</label>
-                    <input id={`${uid}-price`} className="form-input" type="text" value={priceText}
-                        onChange={e => { const clean = e.target.value.replace(/[^0-9,]/g, ''); setPriceText(clean); set({ price: Math.round(parseFloat(clean.replace(',', '.')) * 100) || 0 }); }} />
+                    <label className="form-label" htmlFor={`${uid}-price`}>Preço {monthly ? 'mensal' : 'por episódio'}</label>
+                    {/* D10: R$ em modo banco, valor já em centavos (o prefixo "R$" do campo dá a unidade). */}
+                    <CurrencyInput id={`${uid}-price`} value={draft.price} onChange={c => set({ price: c ?? 0 })} />
                 </div>
             </div>
 
@@ -199,17 +200,10 @@ function AddonCard({ initial, siblingKeys, onSaved, onDeleted }: {
                     <Save size={14} /> {saving ? 'Salvando…' : dirty ? 'Salvar' : 'Salvo'}
                 </button>
                 <div style={{ marginLeft: 'auto' }}>
-                    {confirmDel ? (
-                        <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Remover?</span>
-                            <button className="btn btn-sm" style={{ color: '#ef4444' }} onClick={() => { setConfirmDel(false); onDeleted(draft); }}>Sim</button>
-                            <button className="btn btn-ghost btn-sm" onClick={() => setConfirmDel(false)}>Não</button>
-                        </span>
-                    ) : (
-                        <button className="btn btn-ghost btn-sm" style={{ color: 'var(--text-muted)' }} onClick={() => setConfirmDel(true)}>
-                            <Trash2 size={14} /> Remover
-                        </button>
-                    )}
+                    {/* Card novo (nunca salvo) só descarta o rascunho; um salvo abre a confirmação de perigo. */}
+                    <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--text-muted)' }} onClick={() => onRequestDelete(draft, dirty)}>
+                        <Trash2 size={14} aria-hidden="true" /> {draft._isNew ? 'Descartar' : 'Remover'}
+                    </button>
                 </div>
             </div>
         </div>
@@ -226,6 +220,11 @@ export default function SettingsServicesSection() {
     const [loading, setLoading] = useState(true);
     const [success, setSuccess] = useState('');
     const [error, setError] = useState('');
+    // Serviço aguardando a confirmação de remoção (D3) + se o card tinha edição não salva.
+    const [pendingDelete, setPendingDelete] = useState<{ addon: EditableAddon; dirty: boolean } | null>(null);
+    // Revisão por chave: força remontar o card desativado pela remoção (o rascunho interno do
+    // card nasce do `initial` só na montagem, e ele precisa passar a mostrar "Inativo").
+    const [cardRev, setCardRev] = useState<Record<string, number>>({});
 
     useEffect(() => { loadAddons(); }, []);
 
@@ -257,13 +256,29 @@ export default function SettingsServicesSection() {
         showMsg('✅ Serviço salvo com sucesso!');
     };
 
-    const handleDelete = async (addon: EditableAddon) => {
+    const requestDelete = (addon: EditableAddon, dirty: boolean) => {
+        // Rascunho nunca salvo: só existe na tela, descarta direto (nada a confirmar no servidor).
         if (addon._isNew) { setAddons(prev => prev.filter(a => a.key !== addon.key)); return; }
-        try {
-            const res = await pricingApi.removeAddon(addon.key);
-            showMsg(res.softDeleted ? '⚠️ ' + res.message : '🗑️ ' + res.message);
-            loadAddons();
-        } catch (err) { setError(getErrorMessage(err)); }
+        // O diálogo mostra o serviço como está SALVO (o rascunho pode ter nome editado).
+        setPendingDelete({ addon: addons.find(a => a.key === addon.key) ?? addon, dirty });
+    };
+
+    // Chamado pelo DangerConfirmDialog, que aguarda: sem try/catch — o erro aparece dentro dele.
+    // O backend (DELETE /pricing/addons/:key) APAGA se nada usa o serviço, ou só DESATIVA
+    // (active=false) quando há contratos/gravações com ele. Atualiza a lista localmente, sem o
+    // spinner de recarga (que desmontaria o diálogo no meio da animação).
+    const confirmDelete = async () => {
+        if (!pendingDelete) return;
+        const { key } = pendingDelete.addon;
+        const res = await pricingApi.removeAddon(key);
+        if (res.softDeleted) {
+            setAddons(prev => prev.map(a => a.key === key ? { ...a, ...(res.addon ?? {}), active: false } : a));
+            setCardRev(r => ({ ...r, [key]: (r[key] ?? 0) + 1 }));
+        } else {
+            setAddons(prev => prev.filter(a => a.key !== key));
+        }
+        setError('');
+        showMsg(res.softDeleted ? '⚠️ ' + res.message : '🗑️ ' + res.message);
     };
 
     if (loading) return <LoadingSpinner />;
@@ -283,8 +298,8 @@ export default function SettingsServicesSection() {
             ) : (
                 <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 360px), 1fr))' }}>
                     {group.map(a => (
-                        <AddonCard key={a.key} initial={a} siblingKeys={allKeys.filter(k => k !== a.key)}
-                            onSaved={handleSaved} onDeleted={handleDelete} />
+                        <AddonCard key={`${a.key}#${cardRev[a.key] ?? 0}`} initial={a} siblingKeys={allKeys.filter(k => k !== a.key)}
+                            onSaved={handleSaved} onRequestDelete={requestDelete} />
                     ))}
                 </div>
             )}
@@ -305,6 +320,28 @@ export default function SettingsServicesSection() {
 
             {renderGroup('Serviços Mensais', 'Assinaturas contratáveis pelo cliente (ex.: Gestão de Redes Sociais).', CalendarDays, monthly)}
             {renderGroup('Serviços por Episódio', 'Adicionais que acompanham cada gravação.', Mic, perEpisode)}
+
+            <DangerConfirmDialog
+                isOpen={!!pendingDelete}
+                tone="danger"
+                // O desfecho pode ser só desativar (reversível): sem o selo "Irreversível" — as
+                // consequências abaixo explicam os dois casos.
+                irreversible={false}
+                icon={Trash2}
+                title={pendingDelete ? `Remover o serviço “${pendingDelete.addon.name || pendingDelete.addon.key}”?` : 'Remover serviço?'}
+                description="O sistema confere na hora se o serviço já foi usado e escolhe entre apagar ou só desativar."
+                consequences={[
+                    'Se nenhum contrato ou gravação usa este serviço, ele é apagado de vez.',
+                    'Se algum contrato ou gravação já usa, ele não é apagado: fica Inativo, para preservar o histórico.',
+                    'Nos dois casos, ele some na hora da landing page e das contratações.',
+                    'Contratos e gravações que já têm o serviço não são alterados.',
+                    ...(pendingDelete?.dirty ? ['As alterações não salvas deste card são descartadas.'] : []),
+                ]}
+                confirmLabel="Remover serviço"
+                loadingLabel="Removendo…"
+                onConfirm={confirmDelete}
+                onClose={() => setPendingDelete(null)}
+            />
         </div>
     );
 }

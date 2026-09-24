@@ -138,18 +138,32 @@ async function handleSicoobWebhook(req: Request, res: Response) {
             return;
         }
 
-        const { reconcileSicoobPayment } = await import('../../lib/sicoobReconciliation.js');
+        const { reconcileSicoobPayment, paymentIdFromTxid, isTxidOfPayment } = await import('../../lib/sicoobReconciliation.js');
 
         for (const pix of pixList) {
             const txid = pix?.txid;
             if (!txid) continue;
             // Casa pelo providerRef (txid). Re-verifica o estado real via API do Sicoob.
             const payment = await prisma.payment.findFirst({ where: { providerRef: String(txid), provider: 'SICOOB' } });
-            if (!payment) {
-                console.log(`[Webhook:Sicoob] Nenhum pagamento para txid: ${txid}`);
+            if (payment) {
+                await reconcileSicoobPayment(payment.id);
                 continue;
             }
-            await reconcileSicoobPayment(payment.id);
+            // pagamentos-4/regressoes-3 (defesa): um QR ANTERIOR do mesmo Payment (reemitido/aposentado)
+            // foi pago. Todo txid nosso começa pelo id do Payment — concilia pela cobrança recebida.
+            const derivedId = paymentIdFromTxid(String(txid));
+            const owner = derivedId
+                ? await prisma.payment.findUnique({ where: { id: derivedId }, select: { id: true, status: true, provider: true } })
+                : null;
+            if (!owner || !isTxidOfPayment(String(txid), owner.id)) {
+                console.error(`[Webhook:Sicoob][ALERTA] Nenhum pagamento para txid: ${txid} — conferir no extrato do Sicoob.`);
+                continue;
+            }
+            if (owner.status === 'PENDING' && owner.provider === 'SICOOB') {
+                if (await reconcileSicoobPayment(owner.id, { txid: String(txid) })) continue;
+            }
+            // Já pago por outro meio (ou trocado para cartão): nunca marcar PAID duas vezes — estorno manual.
+            console.error(`[Webhook:Sicoob][SECURITY] Pagamento no QR anterior ${txid} do payment ${owner.id} (status=${owner.status}, provider=${owner.provider}) não conciliado automaticamente — possível pagamento em duplicidade, conferir e estornar manualmente.`);
         }
 
         res.status(200).json({ received: true });
@@ -245,19 +259,32 @@ router.post('/stripe', async (req: Request, res: Response) => {
                 if (payment) {
                     // PAY-05 FIX: Atomic update — only mark as FAILED if still PENDING
                     // Prevents overwriting PAID status if a retry succeeded before this webhook
+                    // pagamentos-6: e só se ESTE PaymentIntent ainda é a cobrança atual da linha — cartão com
+                    // providerRef = PI (ou sem ref: a criação do PI falhou antes de gravá-lo). Uma recusa
+                    // atrasada/reentregue não pode falhar uma linha que já virou PIX/boleto (nem uma
+                    // tentativa de cartão mais nova). Guarda no where atômico (sem corrida com a emissão).
                     const failed = await prisma.payment.updateMany({
-                        where: { id: paymentId, status: 'PENDING' },
+                        where: {
+                            id: paymentId,
+                            status: 'PENDING',
+                            provider: 'STRIPE',
+                            OR: [{ providerRef: String(paymentIntent.id) }, { providerRef: null }],
+                        },
                         data: { status: 'FAILED' },
                     });
-                    console.log(`[Webhook:Stripe] Payment ${paymentId} marked as FAILED`);
-                    if (failed.count > 0) await releaseCouponForPayment(paymentId);
+                    if (failed.count > 0) {
+                        console.log(`[Webhook:Stripe] Payment ${paymentId} marked as FAILED`);
+                        await releaseCouponForPayment(paymentId);
 
-                    // Instant push: payment failed
-                    notifyEvent('payment_failed', {
-                        userId: payment.userId,
-                        entityType: 'PAYMENT',
-                        entityId: payment.id,
-                    }).catch(() => {});
+                        // Instant push: payment failed
+                        notifyEvent('payment_failed', {
+                            userId: payment.userId,
+                            entityType: 'PAYMENT',
+                            entityId: payment.id,
+                        }).catch(() => {});
+                    } else {
+                        console.log(`[Webhook:Stripe] payment_failed do PI ${paymentIntent.id} ignorado — não é a cobrança atual do payment ${paymentId} (provider=${payment.provider}, status=${payment.status}).`);
+                    }
                 }
             }
         }
@@ -316,6 +343,12 @@ router.post('/stripe', async (req: Request, res: Response) => {
 
                         if (updated.count > 0) {
                             console.log(`[Webhook:Stripe] Payment ${paymentId} marked as PAID (PaymentIntent)`);
+                            // A linha tinha um QR PIX (troca cartão→PIX com o 3DS aprovado depois): o QR não
+                            // pode continuar pagável — cancela no provedor (best-effort).
+                            if (payment.provider !== 'STRIPE' && payment.providerRef) {
+                                const { cancelStalePixCharge } = await import('../../lib/pixGateway.js');
+                                await cancelStalePixCharge(payment.provider, payment.providerRef, payment.pixString);
+                            }
                             await onPaymentConfirmed(paymentId);
                         }
                     }

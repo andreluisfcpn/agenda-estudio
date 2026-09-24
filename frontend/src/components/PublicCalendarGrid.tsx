@@ -1,9 +1,10 @@
 import { getErrorMessage } from '../utils/errors';
-import React, { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Clock, Loader2, Ban } from 'lucide-react';
 import { publicApi, pricingApi, PublicDayAvailability, PublicSlot } from '../api/client';
+import { useBusinessConfig } from '../hooks/useBusinessConfig';
+import { studioSlotDate } from '../utils/time';
 
 const COLORS = {
     primary: '#006C89',
@@ -57,6 +58,18 @@ export default function PublicCalendarGrid({ onSlotSelect }: { onSlotSelect?: (d
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    // D16: a landing só oferece "RESERVAR →" para horários que o backend aceita — antecedência
+    // mínima da config pública (booking_min_advance_hours; 0 é válido) contada no fuso do estúdio (SP),
+    // e não mais "30 min pela hora do aparelho". Assim o cliente não escolhe, entra e só então descobre
+    // que o horário não pode ser reservado.
+    const { get: getConfigNum } = useBusinessConfig();
+    const minAdvanceRaw = getConfigNum('booking_min_advance_hours');
+    const minAdvanceHours = Number.isFinite(minAdvanceRaw) ? minAdvanceRaw : 12;
+    const minAdvanceRef = useRef(minAdvanceHours);
+    minAdvanceRef.current = minAdvanceHours;
+    const isTooSoon = (date: string, time: string, now = Date.now()) =>
+        studioSlotDate(date, time).getTime() < now + minAdvanceRef.current * 60 * 60 * 1000;
+
     // A19: `isBackground` distingue o refresh de 60s do load inicial/troca de semana. Num refresh de
     // background NÃO mostramos o spinner nem re-selecionamos o 1º dia (senão o dia escolhido pelo visitante
     // era descartado e a lista sumia atrás do spinner a cada minuto — numa superfície crítica de conversão).
@@ -75,11 +88,7 @@ export default function PublicCalendarGrid({ onSlotSelect }: { onSlotSelect?: (d
                 for (let i = 0; i < res.days.length; i++) {
                     const d = res.days[i];
                     if (!d.closed && d.slots) {
-                        const hasValidSlot = d.slots.some((s: PublicSlot) => {
-                            const slotDateTime = new Date(`${d.date}T${s.time}:00`);
-                            const isPast = (slotDateTime.getTime() - now) / (1000 * 60) < 30;
-                            return s.available && !isPast;
-                        });
+                        const hasValidSlot = d.slots.some((s: PublicSlot) => s.available && !isTooSoon(d.date, s.time, now));
                         if (hasValidSlot) {
                             firstAvailIdx = i;
                             break;
@@ -204,8 +213,7 @@ export default function PublicCalendarGrid({ onSlotSelect }: { onSlotSelect?: (d
                         style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}
                     >
                         {selectedDay.slots.map((slot: PublicSlot) => {
-                            const slotDateTime = new Date(`${selectedDay.date}T${slot.time}:00`);
-                            const isPast = (slotDateTime.getTime() - Date.now()) / (1000 * 60) < 30;
+                            const isPast = isTooSoon(selectedDay.date, slot.time);
                             const isActuallyAvailable = slot.available && !isPast;
 
                             return (

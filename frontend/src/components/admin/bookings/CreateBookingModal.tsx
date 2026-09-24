@@ -1,12 +1,15 @@
 import { getErrorMessage } from '../../../utils/errors';
-import { useState, useCallback, useEffect, useId } from 'react';
+import { useState, useCallback, useEffect, useId, useRef } from 'react';
 import { bookingsApi, contractsApi, pricingApi, UserSummary, Contract, Slot, AddOnConfig, CouponValidation } from '../../../api/client';
 import { useUI } from '../../../context/UIContext';
 import BottomSheetModal from '../../BottomSheetModal';
 import CouponField from '../../CouponField';
 import ServiceLineItem from '../../ui/ServiceLineItem';
+import CurrencyInput from '../../ui/fields/CurrencyInput';
 import { formatBRL, DAY_NAMES } from '../../../utils/format';
 import { todayStrSaoPaulo, studioSlotDate } from '../../../utils/time';
+import { isAvulsoContract } from '../../../utils/contractStatus';
+import { ignoreMultiClick, wizardStepBodyStyle as stepBodyStyle, wizardStepContentStyle as stepContentStyle } from '../../../hooks/useWizardStep';
 import { TIER_META } from '../../../constants/adminMeta';
 import WizardSteps from '../WizardSteps';
 import ChargeNowSheet from '../ChargeNowSheet';
@@ -16,6 +19,22 @@ import {
     Plus, Pin, RefreshCw,
 } from 'lucide-react';
 
+
+// Altura mínima estável das etapas (stepBodyStyle/stepContentStyle, compartilhados em useWizardStep):
+// o sheet não encolhe ao avançar e o rodapé fica no mesmo lugar. Os botões do rodapé usam
+// ignoreMultiClick: o 2º clique de um duplo clique no "Próximo" da etapa 2 não agenda sem o admin ver
+// a confirmação, e o de um duplo "Voltar" (etapa 2) não cai no "Cancelar" da etapa 1.
+
+/**
+ * Contratos a que o admin pode vincular a nova sessão: ACTIVE, ou COMPLETED/"Concluído" (D6) de
+ * plano (não avulso) ainda na vigência — um FIXO/FLEX/CUSTOM vira COMPLETED quando não resta sessão,
+ * mesmo antes do fim; o backend reabre o contrato (ACTIVE) ao receber a sessão (syncContractCompletion).
+ * FLEX/CUSTOM concluídos continuam desabilitados pelo saldo (hasCredits), como quando ficavam ACTIVE.
+ */
+function isLinkableContract(c: Pick<Contract, 'status' | 'type' | 'durationMonths' | 'endDate'>, today: string): boolean {
+    if (c.status === 'ACTIVE') return true;
+    return c.status === 'COMPLETED' && !isAvulsoContract(c) && (!c.endDate || c.endDate.slice(0, 10) >= today);
+}
 
 interface CreateBookingModalProps {
     isOpen: boolean;
@@ -37,7 +56,10 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
     const [slotsLoading, setSlotsLoading] = useState(false);
     const [creating, setCreating] = useState(false);
     const [customPrice, setCustomPrice] = useState<number | null>(null);
-    const [priceDisplay, setPriceDisplay] = useState('');
+    // Rascunho do valor avulso em CENTAVOS (CurrencyInput, D10). Só vira `customPrice` no blur:
+    // o CouponField revalida (debounce 400ms) a cada mudança de `amount` e removeria o cupom
+    // aplicado com valores intermediários da digitação.
+    const [priceDraft, setPriceDraft] = useState<number | null>(null);
     // Per-episode services on this recording (inherit the linked contract's discount; avulso = 0%).
     const [addons, setAddons] = useState<AddOnConfig[]>([]);
     const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
@@ -52,6 +74,16 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
     // Cupom (só avulso — elegibilidade é do CLIENTE selecionado) + valor já descontado retornado pelo backend.
     const [appliedCoupon, setAppliedCoupon] = useState<CouponValidation | null>(null);
     const [chargeAmountApi, setChargeAmountApi] = useState<number | null>(null);
+    // Trava por requisição em voo (estado da chamada, nunca por tempo): um 2º clique em "Agendar"
+    // antes do re-render não cria um 2º agendamento.
+    const inFlightRef = useRef(false);
+
+    // Troca de etapa: volta a rolagem do sheet ao topo (o erro fica no topo do corpo).
+    const headRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        const body = headRef.current?.closest('.bottom-sheet-body');
+        if (body) body.scrollTop = 0;
+    }, [createStep]);
 
     const resetCreateModal = () => {
         onClose();
@@ -62,7 +94,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
         setClientContracts([]);
         setDaySlots([]);
         setCustomPrice(null);
-        setPriceDisplay('');
+        setPriceDraft(null);
         setSelectedAddons([]);
         setChargeNow(false);
         setChargeMethod('CARTAO');
@@ -72,6 +104,9 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
     };
 
     const handleCreate = async () => {
+        if (createStep !== 3) return; // rede de segurança: só cria na última etapa
+        if (inFlightRef.current) return;
+        inFlightRef.current = true;
         setCreateError('');
         setCreating(true);
         try {
@@ -89,25 +124,27 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
             // Cupom só vale para avulso (contrato tem fluxo próprio).
             if (!createForm.contractId && appliedCoupon) payload.couponCode = appliedCoupon.code;
             const res = await bookingsApi.adminCreate(payload);
-            onCreated();
             if (isAvulsoCharge && res.paymentId) {
                 // Open the same InlineCheckout the client uses — charges the CLIENT (payment.userId).
                 // O backend retorna o valor JÁ com o cupom descontado (paymentAmount).
+                // A lista só recarrega quando o sheet de cobrança fecha (fluxo encerrado).
                 setChargeAmountApi(res.paymentAmount ?? null);
                 setChargePaymentId(res.paymentId);
             } else {
+                onCreated();
                 resetCreateModal();
                 showToast('Agendamento criado com sucesso!');
             }
         } catch (err: unknown) { setCreateError(getErrorMessage(err)); }
-        finally { setCreating(false); }
+        finally { inFlightRef.current = false; setCreating(false); }
     };
 
     // Load contracts when client is selected
     const loadClientContracts = useCallback(async (userId: string) => {
         try {
             const res = await contractsApi.getAll();
-            setClientContracts(res.contracts.filter(c => c.user?.id === userId && c.status === 'ACTIVE'));
+            const today = todayStrSaoPaulo();
+            setClientContracts(res.contracts.filter(c => c.user?.id === userId && isLinkableContract(c, today)));
         } catch { setClientContracts([]); }
     }, []);
 
@@ -155,17 +192,17 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                 client={selectedUser ? { id: selectedUser.id, name: selectedUser.name, cpfCnpj: selectedUser.cpfCnpj } : undefined}
                 error={createError || undefined}
                 onError={(msg) => setCreateError(msg)}
-                onSuccess={() => { resetCreateModal(); showToast('Pagamento confirmado!'); }}
-                onDismiss={() => { resetCreateModal(); showToast('Agendamento criado (pagamento pendente).'); }}
+                onSuccess={() => { onCreated(); resetCreateModal(); showToast('Pagamento confirmado!'); }}
+                onDismiss={() => { onCreated(); resetCreateModal(); showToast('Agendamento criado (pagamento pendente).'); }}
                 dismissLabel="Fechar (deixar pendente)"
             />
         );
     }
 
     return (
-        <BottomSheetModal isOpen onClose={resetCreateModal} hideHeader size="lg" className="admin-sheet" title="Novo Agendamento">
+        <BottomSheetModal isOpen onClose={resetCreateModal} preventClose={creating} hideHeader size="lg" className="admin-sheet" title="Novo Agendamento">
                 {/* --- HEADER --- */}
-                <div className="admin-modal-head">
+                <div className="admin-modal-head" ref={headRef}>
                     <h2 className="admin-modal-title">
                         <span className="admin-modal-title__icon"><Plus size={18} aria-hidden="true" /></span>
                         Novo Agendamento
@@ -180,7 +217,8 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
 
                     {/* -------- STEP 1: Select Client -------- */}
                     {createStep === 1 && (
-                        <div>
+                        <div style={stepBodyStyle}>
+                            <div style={stepContentStyle}>
                             <div className="admin-search" style={{ marginBottom: '14px' }}>
                                 <input
                                     type="text" placeholder="Buscar cliente por nome ou e-mail..."
@@ -232,13 +270,14 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                     );
                                 })}
                             </div>
+                            </div>
 
-                            <div className="admin-actions-row" style={{ marginTop: '18px' }}>
-                                <button onClick={resetCreateModal} className="btn-admin-ghost">
+                            <div className="admin-actions-row" style={{ marginTop: '20px' }}>
+                                <button key="cancel" type="button" onClick={ignoreMultiClick(resetCreateModal)} className="btn-admin-ghost">
                                     Cancelar
                                 </button>
-                                <button disabled={!createForm.userId}
-                                    onClick={() => setCreateStep(2)}
+                                <button key="next" type="button" disabled={!createForm.userId}
+                                    onClick={ignoreMultiClick(() => { setTimeout(() => setCreateStep(2), 0); })}
                                     className="btn-admin-go">
                                     Próximo →
                                 </button>
@@ -278,12 +317,13 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                             : filteredSlots.filter(s => !(isToday && studioSlotDate(createForm.date, s.time).getTime() < nowMs));
 
                         return (
-                        <div>
+                        <div style={stepBodyStyle}>
+                            <div style={stepContentStyle}>
                             {/* -- Contract Selector (always shown) -- */}
                             <div style={{ marginBottom: '20px' }}>
                                 <label style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                     <FileText size={13} aria-hidden="true" /> Vincular a Contrato
-                                    {clientContracts.length > 0 && <span style={{ fontSize: '0.5625rem', fontWeight: 600, padding: '1px 6px', borderRadius: '4px', background: 'rgba(16,185,129,0.1)', color: 'var(--success)' }}>{clientContracts.length} ativo{clientContracts.length > 1 ? 's' : ''}</span>}
+                                    {clientContracts.length > 0 && <span style={{ fontSize: '0.5625rem', fontWeight: 600, padding: '1px 6px', borderRadius: '4px', background: 'rgba(16,185,129,0.1)', color: 'var(--success)' }}>{clientContracts.length} {clientContracts.length > 1 ? 'disponíveis' : 'disponível'}</span>}
                                 </label>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                     {/* Avulso card */}
@@ -376,6 +416,13 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                                             background: c.type === 'FIXO' ? 'rgba(245,158,11,0.1)' : 'rgba(59,130,246,0.1)',
                                                             color: c.type === 'FIXO' ? 'var(--warning)' : 'var(--info)',
                                                         }}>{c.type === 'FIXO' ? <><Pin size={10} aria-hidden="true" style={{ verticalAlign: '-1px' }} /> Fixo</> : <><RefreshCw size={10} aria-hidden="true" style={{ verticalAlign: '-1px' }} /> {TYPE_LABEL[c.type] || 'Flex'}</>}</span>
+                                                        {c.status === 'COMPLETED' && (
+                                                            <span style={{
+                                                                fontSize: '0.5625rem', fontWeight: 700, padding: '1px 6px', borderRadius: '4px',
+                                                                background: 'var(--success-bg)', color: 'var(--success)',
+                                                                display: 'inline-flex', alignItems: 'center', gap: 3,
+                                                            }}><CheckCircle2 size={10} aria-hidden="true" /> Concluído</span>
+                                                        )}
                                                     </div>
                                                     <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                                                         {c.type === 'FIXO' && c.fixedDayOfWeek != null && (
@@ -387,6 +434,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                                             </span>
                                                         )}
                                                         {!hasCredits && <span style={{ color: 'var(--danger)', fontWeight: 600 }}>Créditos esgotados</span>}
+                                                        {c.status === 'COMPLETED' && hasCredits && <span>Todas as sessões feitas · vincular reabre o plano</span>}
                                                     </div>
                                                 </div>
 
@@ -468,9 +516,9 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                                 const isSelected = createForm.startTime === slot.time;
                                                 const slotTc = tc(slot.tier || 'COMERCIAL');
                                                 return (
-                                                    <button key={slot.time}
+                                                    <button key={slot.time} type="button"
                                                         disabled={!slot.available}
-                                                        onClick={() => { setCreateForm({ ...createForm, startTime: slot.time }); if (!createForm.contractId && slot.price != null) { setCustomPrice(slot.price); setPriceDisplay((slot.price / 100).toFixed(2).replace('.', ',')); } }}
+                                                        onClick={() => { setCreateForm({ ...createForm, startTime: slot.time }); if (!createForm.contractId && slot.price != null) { setCustomPrice(slot.price); setPriceDraft(slot.price); } }}
                                                         style={{
                                                             padding: '10px 8px', borderRadius: '10px', cursor: slot.available ? 'pointer' : 'not-allowed',
                                                             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
@@ -499,13 +547,14 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                     )}
                                 </div>
                             )}
+                            </div>
 
                             <div className="admin-actions-row admin-actions-row--between" style={{ marginTop: '20px' }}>
-                                <button onClick={() => setCreateStep(1)} className="btn-admin-ghost">
+                                <button key="back" type="button" onClick={() => setCreateStep(1)} className="btn-admin-ghost">
                                     ← Voltar
                                 </button>
-                                <button disabled={!createForm.date || !createForm.startTime}
-                                    onClick={() => setCreateStep(3)}
+                                <button key="next" type="button" disabled={!createForm.date || !createForm.startTime}
+                                    onClick={ignoreMultiClick(() => { setTimeout(() => setCreateStep(3), 0); })}
                                     className="btn-admin-go">
                                     Próximo →
                                 </button>
@@ -516,7 +565,8 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
 
                     {/* -------- STEP 3: Confirm -------- */}
                     {createStep === 3 && (
-                        <div>
+                        <div style={stepBodyStyle}>
+                            <div style={stepContentStyle}>
                             {/* Summary card */}
                             <div style={{
                                 padding: '18px', borderRadius: '14px', marginBottom: '18px',
@@ -568,34 +618,28 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                     {/* Editable price for Avulso */}
                                     {!createForm.contractId && (
                                         <div style={{ gridColumn: '1 / -1', marginTop: '4px' }}>
-                                            <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '6px' }}><Wallet size={12} style={{ verticalAlign: '-2px', marginRight: 4 }} aria-hidden="true" />Valor do Agendamento</div>
+                                            <label htmlFor={`${uid}-price`} style={{ display: 'block', fontSize: '0.625rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '6px' }}><Wallet size={12} style={{ verticalAlign: '-2px', marginRight: 4 }} aria-hidden="true" />Valor do Agendamento</label>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                <div style={{ position: 'relative', flex: 1, maxWidth: '200px' }}>
-                                                    <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8125rem', fontWeight: 700, color: 'var(--success)' }}>R$</span>
-                                                    <input
-                                                        type="text"
-                                                        value={priceDisplay}
-                                                        onChange={e => setPriceDisplay(e.target.value.replace(/[^\d,]/g, ''))}
-                                                        style={{
-                                                            width: '100%', padding: '8px 12px 8px 38px', borderRadius: '10px',
-                                                            fontSize: '1.125rem', fontWeight: 800, fontVariantNumeric: 'tabular-nums',
-                                                            background: 'var(--bg-elevated)', border: '1px solid rgba(16,185,129,0.3)',
-                                                            color: 'var(--success)', outline: 'none', fontFamily: 'inherit',
-                                                        }}
-                                                        onFocus={e => (e.currentTarget.style.borderColor = 'var(--success)')}
-                                                        onBlur={e => {
-                                                            e.currentTarget.style.borderColor = 'rgba(16,185,129,0.3)';
-                                                            const num = parseFloat(priceDisplay.replace(',', '.'));
-                                                            if (!isNaN(num) && num >= 0) {
-                                                                setCustomPrice(Math.round(num * 100));
-                                                                setPriceDisplay(num.toFixed(2).replace('.', ','));
-                                                            } else {
-                                                                setCustomPrice(0);
-                                                                setPriceDisplay('0,00');
-                                                            }
-                                                        }}
-                                                    />
-                                                </div>
+                                                <CurrencyInput
+                                                    id={`${uid}-price`}
+                                                    value={priceDraft}
+                                                    onChange={setPriceDraft}
+                                                    wrapperStyle={{ flex: 1, maxWidth: '200px' }}
+                                                    prefixStyle={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--success)' }}
+                                                    style={{
+                                                        padding: '8px 12px 8px 38px', borderRadius: '10px',
+                                                        fontSize: '1.125rem', fontWeight: 800,
+                                                        background: 'var(--bg-elevated)', border: '1px solid rgba(16,185,129,0.3)',
+                                                        color: 'var(--success)',
+                                                    }}
+                                                    onFocus={e => (e.currentTarget.style.borderColor = 'var(--success)')}
+                                                    onBlur={e => {
+                                                        e.currentTarget.style.borderColor = 'rgba(16,185,129,0.3)';
+                                                        // Commit do rascunho (centavos). Sem digitação e sem preço do slot
+                                                        // (null), mantém customPrice null → o backend usa o preço da faixa.
+                                                        if (priceDraft != null) setCustomPrice(priceDraft);
+                                                    }}
+                                                />
                                                 <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
                                                     Editável · Apenas para este agendamento
                                                 </span>
@@ -674,7 +718,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                             {([{ key: 'PIX' as const, icon: Zap, label: 'PIX' }, { key: 'CARTAO' as const, icon: CreditCard, label: 'Cartão' }]).map(m => {
                                                 const active = chargeMethod === m.key;
                                                 return (
-                                                    <button key={m.key} onClick={() => setChargeMethod(m.key)} aria-pressed={active}
+                                                    <button key={m.key} type="button" onClick={() => setChargeMethod(m.key)} aria-pressed={active}
                                                         style={{ padding: '10px', minHeight: 44, borderRadius: '10px', cursor: 'pointer', textAlign: 'center', fontFamily: 'inherit', background: active ? 'rgba(17,129,155,0.10)' : 'var(--bg-elevated)', border: `1.5px solid ${active ? 'rgba(17,129,155,0.4)' : 'var(--border-default)'}`, transition: 'background 0.15s ease, border-color 0.15s ease' }}>
                                                         <m.icon size={14} style={{ verticalAlign: '-2px' }} aria-hidden="true" /> <span style={{ fontSize: '0.75rem', fontWeight: 700, color: active ? 'var(--accent-text)' : 'var(--text-primary)' }}>{m.label}</span>
                                                     </button>
@@ -689,7 +733,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                 <label style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px', display: 'block' }}>Status inicial</label>
                                 <div style={{ display: 'flex', gap: '6px' }}>
                                     {[{ key: 'CONFIRMED', icon: CheckCircle2, label: 'Confirmado' }, { key: 'RESERVED', icon: ClockIcon, label: 'Reservado' }].map(s => (
-                                        <button key={s.key}
+                                        <button key={s.key} type="button"
                                             onClick={() => setCreateForm({ ...createForm, status: s.key })}
                                             aria-pressed={createForm.status === s.key}
                                             style={{
@@ -720,12 +764,13 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                     style={{ fontSize: '0.8125rem', resize: 'vertical' }}
                                 />
                             </div>
+                            </div>
 
                             <div className="admin-actions-row admin-actions-row--between" style={{ marginTop: '20px' }}>
-                                <button onClick={() => setCreateStep(2)} className="btn-admin-ghost">
+                                <button key="back" type="button" onClick={() => setCreateStep(2)} className="btn-admin-ghost">
                                     ← Voltar
                                 </button>
-                                <button onClick={handleCreate} disabled={creating} className="btn-admin-go">
+                                <button key="submit" type="button" onClick={ignoreMultiClick(handleCreate)} disabled={creating} className="btn-admin-go">
                                     {creating ? 'Criando…' : <><CalendarDays size={15} aria-hidden="true" /> Agendar</>}
                                 </button>
                             </div>

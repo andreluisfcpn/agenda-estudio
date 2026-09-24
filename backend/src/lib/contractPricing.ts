@@ -1,7 +1,7 @@
 // ─── Contract Pricing (single source of truth) ─────────
 // Shared helpers used by EVERY contract-creation/renewal path (admin, self,
 // custom, fulfillment) so pricing can never diverge between endpoints again:
-//  - computeFullContractTotal: FULL upfront total (+ PIX à-vista discount)
+//  - computeFullContractTotal(s): FULL upfront total (+ PIX à-vista discount; `s` also gives the card base)
 //  - getCardInstallmentSurchargePct / applyCardInstallmentSurcharge: MONTHLY card fee
 //  - computeAddonsCost: add-ons cost (after loyalty discount)
 
@@ -21,12 +21,24 @@ export async function computeFullContractTotal(
     periodCount: number,
     paymentMethod?: string,
 ): Promise<number> {
-    let total = basePerPeriod * periodCount;
-    if (paymentMethod === 'PIX') {
-        const pixDisc = await getConfig('pix_extra_discount_pct');
-        total = Math.round(total * (1 - (pixDisc || 0) / 100));
-    }
-    return total;
+    return (await computeFullContractTotals(basePerPeriod, periodCount, paymentMethod)).total;
+}
+
+/**
+ * FULL upfront total nos dois meios (D1 — marca `pixDiscount`): `total` = o que a cobrança grava (com o
+ * desconto PIX quando o meio é PIX), `cardTotal` = o mesmo total SEM o desconto PIX (o VALOR BASE que o
+ * cartão cobra) e `pixDiscountPct` = o % aplicado (0 fora do PIX). Quem cria a cobrança grava a marca com
+ * pixDiscountMetaForCharge({ amount, cardTotal, couponDiscount, pct }).
+ */
+export async function computeFullContractTotals(
+    basePerPeriod: number,
+    periodCount: number,
+    paymentMethod?: string | null,
+): Promise<{ total: number; cardTotal: number; pixDiscountPct: number }> {
+    const cardTotal = basePerPeriod * periodCount;
+    if (paymentMethod !== 'PIX') return { total: cardTotal, cardTotal, pixDiscountPct: 0 };
+    const pixDisc = Number(await getConfig('pix_extra_discount_pct')) || 0;
+    return { total: Math.round(cardTotal * (1 - pixDisc / 100)), cardTotal, pixDiscountPct: pixDisc };
 }
 
 /**

@@ -9,7 +9,14 @@
  *   holds            cleanExpiredHolds        (hold_expires_at / payment_deadline sweep, 60s cron)
  *   autocharge       runAutoChargeJob         (charge saved cards for due_date <= today, daily cron)
  *   flex             runFlexCreditExpiryJob   (forfeit FLEX credits per closed 7d window, 6h cron)
- *   reminders        runBookingReminderJob    (24h / 2h session reminders, 30min cron)
+ *   reminders        runBookingReminderJob    (24h / 2h session reminders at the exact time, 1-min cron aligned to hh:mm:01;
+ *                                             scans (last-run, now] with ≤60 min catch-up — with no last-run in Redis it only
+ *                                             covers the last minute, so to test a given date call runBookingReminderJob(now)
+ *                                             from a script with an isolated Redis, e.g. REDIS_URL=redis://localhost:6380/7)
+ *   makeup           runAvulsoMakeupExpiryJob (avulso makeup window — D4/D5: expires OPEN windows past the deadline,
+ *                                             delivers deferred expiry notices and sends the 2-last-days reminders; notices
+ *                                             only go out 09:00–19:59 SP. 1h cron. Pass an ISO instant to simulate "now",
+ *                                             e.g. `makeup 2026-09-22T09:05:00-03:00`)
  *   push             runPushNotificationJob   (overdue + expiring-soon notifications, 5min cron)
  *   daily-confirm    runDailyConfirmationJob  (07:00 SP daily confirmations; pass a YYYY-MM-DD to force a date)
  *   notif-cleanup    runNotificationCleanupJob(delete old notifications, daily cron)
@@ -24,6 +31,13 @@ const JOBS: Record<string, () => Promise<unknown>> = {
     holds: async () => (await import('../src/jobs/cleanExpiredHolds.js')).cleanExpiredHolds(),
     autocharge: async () => (await import('../src/jobs/autoChargeJob.js')).runAutoChargeJob(),
     flex: async () => (await import('../src/jobs/flexCreditExpiryJob.js')).runFlexCreditExpiryJob(),
+    makeup: async () => {
+        const { runAvulsoMakeupExpiryJob } = await import('../src/jobs/avulsoMakeupExpiryJob.js');
+        const at = process.argv[3];
+        const now = at ? new Date(at) : new Date();
+        if (Number.isNaN(now.getTime())) throw new Error(`Invalid date "${at}" (use an ISO instant, e.g. 2026-09-22T09:05:00-03:00)`);
+        return runAvulsoMakeupExpiryJob(now);
+    },
     reminders: async () => (await import('../src/jobs/bookingReminderJob.js')).runBookingReminderJob(),
     push: async () => (await import('../src/jobs/pushNotificationJob.js')).runPushNotificationJob(),
     'daily-confirm': async () => {

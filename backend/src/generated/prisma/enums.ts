@@ -50,13 +50,23 @@ export const BookingStatus = {
 export type BookingStatus = (typeof BookingStatus)[keyof typeof BookingStatus]
 
 
+export const MakeupStatus = {
+  OPEN: 'OPEN',
+  USED: 'USED',
+  EXPIRED: 'EXPIRED'
+} as const
+
+export type MakeupStatus = (typeof MakeupStatus)[keyof typeof MakeupStatus]
+
+
 export const ContractStatus = {
   ACTIVE: 'ACTIVE',
   AWAITING_PAYMENT: 'AWAITING_PAYMENT',
   EXPIRED: 'EXPIRED',
   CANCELLED: 'CANCELLED',
   PENDING_CANCELLATION: 'PENDING_CANCELLATION',
-  PAUSED: 'PAUSED'
+  PAUSED: 'PAUSED',
+  COMPLETED: 'COMPLETED'
 } as const
 
 export type ContractStatus = (typeof ContractStatus)[keyof typeof ContractStatus]

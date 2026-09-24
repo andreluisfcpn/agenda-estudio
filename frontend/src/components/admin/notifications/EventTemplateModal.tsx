@@ -4,6 +4,7 @@ import { useUI } from '../../../context/UIContext';
 import { getErrorMessage } from '../../../utils/errors';
 import BottomSheetModal from '../../BottomSheetModal';
 import ToggleSwitch from '../../ui/ToggleSwitch';
+import DangerConfirmDialog from '../../ui/DangerConfirmDialog';
 import { Bell, Save, Send, RotateCcw, X } from 'lucide-react';
 
 interface Props {
@@ -33,6 +34,9 @@ export default function EventTemplateModal({ event, onClose, onSaved }: Props) {
     const [pushEnabled, setPushEnabled] = useState(event.effective.pushEnabled);
     const [saving, setSaving] = useState(false);
     const [testing, setTesting] = useState(false);
+    // Confirmação do "Padrão" (D3: warning). Enquanto aberta, este sheet não fecha no Esc/fundo
+    // (senão o Esc fecharia os dois sheets empilhados).
+    const [confirmReset, setConfirmReset] = useState(false);
 
     const titleRef = useRef<HTMLInputElement>(null);
     const msgRef = useRef<HTMLTextAreaElement>(null);
@@ -89,16 +93,30 @@ export default function EventTemplateModal({ event, onClose, onSaved }: Props) {
         } finally { setTesting(false); }
     };
 
+    // Chamado pelo DangerConfirmDialog, que aguarda: sem try/catch — o erro aparece dentro dele.
+    // O backend apaga a linha de personalização (DELETE /notifications/admin/templates/:key).
     const handleReset = async () => {
         setSaving(true);
         try {
             await notificationsAdminApi.resetTemplate(event.eventKey);
-            showToast('Restaurado para o padrão.');
-            onSaved();
-        } catch (err) {
-            showToast({ message: getErrorMessage(err), type: 'error' });
         } finally { setSaving(false); }
+        showToast('Restaurado para o padrão.');
+        onSaved();
     };
+
+    // O que muda de fato ao restaurar (comparado com o que está salvo hoje).
+    const defaultSeverityLabel = isDynamic ? 'automática' : event.defaults.severity === 'critical' ? 'crítica' : event.defaults.severity === 'warning' ? 'aviso' : 'info';
+    const draftDirty = enabled !== event.effective.enabled || title !== event.effective.title || message !== event.effective.message
+        || pushEnabled !== event.effective.pushEnabled
+        || severity !== (event.overrides?.severity ? (event.overrides.severity as SeverityChoice) : (isDynamic ? 'auto' : (event.effective.severity as SeverityChoice)));
+    const resetConsequences = [
+        event.isCustomized
+            ? 'O título e a mensagem personalizados são descartados e voltam ao texto padrão do sistema — não dá para recuperar a versão atual.'
+            : 'Esta notificação já usa o texto padrão salvo: nada personalizado é perdido.',
+        `Severidade (${defaultSeverityLabel}) e envio de push (${event.defaults.pushDefault ? 'ligado' : 'desligado'}) voltam ao padrão.`,
+        ...(!event.effective.enabled ? ['A notificação volta a ficar ativa e a ser enviada.'] : []),
+        ...(draftDirty ? ['As alterações não salvas neste formulário também são descartadas.'] : []),
+    ];
 
     const previewTitle = renderPreview(title, event.variables);
     const previewMsg = renderPreview(message, event.variables);
@@ -106,13 +124,13 @@ export default function EventTemplateModal({ event, onClose, onSaved }: Props) {
     const canSave = title.trim().length > 0 && message.trim().length > 0;
 
     return (
-        <BottomSheetModal isOpen onClose={onClose} hideHeader size="md" className="admin-sheet" title={event.label}>
+        <BottomSheetModal isOpen onClose={onClose} hideHeader size="md" className="admin-sheet" title={event.label} preventClose={confirmReset || saving}>
             <div className="notif-template-head">
                 <h2 className="notif-template-head__title">
                     <span className="notif-template-head__icon"><Bell size={18} aria-hidden="true" /></span>
                     {event.label}
                 </h2>
-                <button className="notif-template-head__close" onClick={onClose} aria-label="Fechar"><X size={18} /></button>
+                <button type="button" className="notif-template-head__close" onClick={onClose} disabled={confirmReset || saving} aria-label="Fechar"><X size={18} /></button>
                 <p className="notif-template-head__desc">{event.description}</p>
             </div>
 
@@ -200,8 +218,8 @@ export default function EventTemplateModal({ event, onClose, onSaved }: Props) {
                 </div>
 
                 <div className="notif-template-actions">
-                    <button className="btn-admin-ghost" onClick={handleReset} disabled={saving || testing} title="Restaurar o texto padrão">
-                        <RotateCcw size={15} /> Padrão
+                    <button type="button" className="btn-admin-ghost" onClick={() => setConfirmReset(true)} disabled={saving || testing} title="Restaurar o texto padrão">
+                        <RotateCcw size={15} aria-hidden="true" /> Padrão
                     </button>
                     <button className="btn-admin-ghost" onClick={handleTest} disabled={saving || testing || !canSave}>
                         <Send size={15} /> {testing ? 'Enviando…' : 'Enviar teste'}
@@ -211,6 +229,20 @@ export default function EventTemplateModal({ event, onClose, onSaved }: Props) {
                     </button>
                 </div>
             </div>
+
+            <DangerConfirmDialog
+                isOpen={confirmReset}
+                tone="warning"
+                icon={RotateCcw}
+                title="Restaurar o padrão desta notificação?"
+                description={`“${event.label}” volta a usar o texto do sistema:\n“${event.defaults.title}”`}
+                consequences={resetConsequences}
+                confirmLabel="Restaurar padrão"
+                loadingLabel="Restaurando…"
+                zIndex={1100}
+                onConfirm={handleReset}
+                onClose={() => setConfirmReset(false)}
+            />
         </BottomSheetModal>
     );
 }

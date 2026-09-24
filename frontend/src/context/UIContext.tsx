@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
 import { XCircle, CheckCircle2, AlertTriangle, Info, type LucideIcon } from 'lucide-react';
 import BottomSheetModal from '../components/BottomSheetModal';
+import DangerConfirmDialog, { type DangerTone, type DangerCloseReason } from '../components/ui/DangerConfirmDialog';
 
 type ModalType = 'info' | 'error' | 'success' | 'warning';
 
@@ -14,6 +15,46 @@ interface ModalOptions {
     onConfirm?: () => void;
 }
 
+/** 'danger' = irreversível (vermelho); 'warning' = reversível com impacto (âmbar). */
+export type ConfirmTone = DangerTone;
+
+export interface ConfirmOptions {
+    title?: string;
+    /**
+     * Corpo do diálogo. Sem `tone`: string (visual legado). Com `tone`: aceita
+     * ReactNode e respeita quebras de linha (\n).
+     */
+    message: React.ReactNode;
+    /** Verbo explícito do botão de confirmar (padrão "Confirmar"). */
+    confirmLabel?: string;
+    /** Padrão: "Cancelar" (legado) / "Voltar" (com tone). */
+    cancelLabel?: string;
+    /**
+     * Sem `tone`: disparado e o diálogo fecha na hora (legado).
+     * Com `tone`: se devolver Promise, o diálogo AGUARDA (spinner, fechamento
+     * bloqueado); se rejeitar/lançar, a mensagem aparece dentro do diálogo e ele
+     * continua aberto — então lance o erro em vez de só mostrar toast.
+     */
+    onConfirm: () => unknown;
+    /** Chamado ao cancelar (botão; com tone também Esc/fundo/arrastar). */
+    onCancel?: () => void;
+    /** Liga o DangerConfirmDialog (visual de perigo). Sem tone = diálogo genérico de sempre. */
+    tone?: ConfirmTone;
+    /** Só com tone: lista "O que vai acontecer". */
+    consequences?: string[];
+    /** Só com tone: palavra a digitar para liberar o botão (ex.: "EXCLUIR"; sem diferenciar maiúsculas). */
+    requireText?: string;
+    /** Só com tone: ícone do círculo (ex.: Trash2). */
+    icon?: LucideIcon;
+    /** Só com tone: texto do botão durante o onConfirm (padrão: o confirmLabel). */
+    loadingLabel?: string;
+    /**
+     * Só com tone: selo "Irreversível" (padrão: ligado no danger, desligado no warning). Use `false`
+     * numa ação vermelha que tem volta (ex.: bloquear cliente).
+     */
+    irreversible?: boolean;
+}
+
 interface ToastOptions {
     message: string;
     type?: 'success' | 'error';
@@ -21,15 +62,33 @@ interface ToastOptions {
 
 interface UIContextType {
     showAlert: (options: ModalOptions | string) => void;
-    showConfirm: (options: { title?: string; message: string; confirmLabel?: string; onConfirm: () => void; onCancel?: () => void }) => void;
+    showConfirm: (options: ConfirmOptions) => void;
     showToast: (options: ToastOptions | string) => void;
     closeModal: () => void;
+}
+
+/** Entrada da fila de modal global (alert, confirm legado ou confirm com tone). */
+interface ModalEntry {
+    title?: string;
+    message: React.ReactNode;
+    type?: ModalType;
+    isConfirm?: boolean;
+    confirmLabel?: string;
+    cancelLabel?: string;
+    loadingLabel?: string;
+    onConfirm?: () => unknown;
+    onCancel?: () => void;
+    tone?: ConfirmTone;
+    consequences?: string[];
+    requireText?: string;
+    icon?: LucideIcon;
+    irreversible?: boolean;
 }
 
 const UIContext = createContext<UIContextType | undefined>(undefined);
 
 export function UIProvider({ children }: { children: React.ReactNode }) {
-    const [modal, setModal] = useState<(ModalOptions & { isConfirm?: boolean; confirmLabel?: string; onCancel?: () => void }) | null>(null);
+    const [modal, setModal] = useState<ModalEntry | null>(null);
     const [toast, setToast] = useState<ToastOptions | null>(null);
 
     const showAlert = useCallback((options: ModalOptions | string) => {
@@ -40,7 +99,7 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
         }
     }, []);
 
-    const showConfirm = useCallback((options: { title?: string; message: string; confirmLabel?: string; onConfirm: () => void; onCancel?: () => void }) => {
+    const showConfirm = useCallback((options: ConfirmOptions) => {
         setModal({ ...options, type: 'warning', isConfirm: true });
     }, []);
 
@@ -57,23 +116,53 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
         setModal(null);
     }, []);
 
+    // Fecha SÓ a entrada indicada: se o onConfirm abriu outro alert/confirm, ele não é derrubado.
+    const closeEntry = useCallback((entry: ModalEntry) => {
+        setModal(prev => (prev === entry ? null : prev));
+    }, []);
+
+    // Caminho legado (sem tone): dispara e fecha na hora, como sempre.
     const handleConfirm = useCallback(() => {
-        if (modal?.onConfirm) modal.onConfirm();
-        setModal(null);
-    }, [modal]);
+        const entry = modal;
+        if (!entry) return;
+        if (entry.onConfirm) {
+            const result = entry.onConfirm();
+            if (result && typeof (result as Promise<unknown>).then === 'function') {
+                (result as Promise<unknown>).catch(err => console.error('[showConfirm] onConfirm falhou:', err));
+            }
+        }
+        closeEntry(entry);
+    }, [modal, closeEntry]);
 
     const handleCancel = useCallback(() => {
-        if (modal?.onCancel) modal.onCancel();
-        setModal(null);
-    }, [modal]);
+        const entry = modal;
+        if (!entry) return;
+        entry.onCancel?.();
+        closeEntry(entry);
+    }, [modal, closeEntry]);
+
+    // Caminho com tone → DangerConfirmDialog. Guarda a última entrada para o conteúdo
+    // continuar estável durante a animação de saída.
+    const toneEntry = modal?.tone ? modal : null;
+    const lastToneRef = useRef<ModalEntry | null>(null);
+    if (toneEntry) lastToneRef.current = toneEntry;
+    const toneView = toneEntry ?? lastToneRef.current;
+
+    const handleToneClose = (reason: DangerCloseReason) => {
+        if (!toneEntry) return;
+        if (reason === 'cancel') toneEntry.onCancel?.();
+        closeEntry(toneEntry);
+    };
+
+    const legacyOpen = !!modal && !modal.tone;
 
     return (
         <UIContext.Provider value={{ showAlert, showConfirm, showToast, closeModal }}>
             {children}
-            
+
             {/* Global Modal Render */}
             <BottomSheetModal
-                isOpen={!!modal}
+                isOpen={legacyOpen}
                 onClose={closeModal}
                 title={modal?.title || (modal?.type === 'error' ? 'Erro' : modal?.type === 'success' ? 'Sucesso' : modal?.type === 'warning' ? 'Atenção' : 'Aviso')}
                 maxWidth="400px"
@@ -93,21 +182,45 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
                             </div>
                         );
                     })()}
-                    <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', lineHeight: 1.5 }}>
-                        {modal?.message}
-                    </p>
+                    {typeof modal?.message === 'string' || modal?.message == null ? (
+                        <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', lineHeight: 1.5 }}>
+                            {modal?.message}
+                        </p>
+                    ) : (
+                        <div style={{ color: 'var(--text-secondary)', marginBottom: '24px', lineHeight: 1.5 }}>
+                            {modal.message}
+                        </div>
+                    )}
                     <div style={{ display: 'flex', gap: '12px' }}>
                         {modal?.isConfirm && (
-                            <button className="btn btn-secondary" style={{ flex: 1 }} onClick={handleCancel}>
-                                Cancelar
+                            <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={handleCancel}>
+                                {modal.cancelLabel || 'Cancelar'}
                             </button>
                         )}
-                        <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleConfirm}>
+                        <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={handleConfirm}>
                             {modal?.isConfirm ? (modal.confirmLabel || 'Confirmar') : 'Entendido'}
                         </button>
                     </div>
                 </div>
             </BottomSheetModal>
+
+            {/* Confirmação com visual de perigo (showConfirm com tone) */}
+            <DangerConfirmDialog
+                isOpen={!!toneEntry}
+                tone={toneView?.tone ?? 'danger'}
+                title={toneView?.title || (toneView?.tone === 'warning' ? 'Atenção' : 'Confirmar ação')}
+                description={toneView?.message}
+                consequences={toneView?.consequences}
+                confirmLabel={toneView?.confirmLabel}
+                cancelLabel={toneView?.cancelLabel}
+                loadingLabel={toneView?.loadingLabel}
+                requireText={toneView?.requireText}
+                icon={toneView?.icon}
+                irreversible={toneView?.irreversible}
+                onConfirm={() => toneEntry?.onConfirm?.()}
+                onClose={handleToneClose}
+                zIndex={10000}
+            />
 
             {/* Global Toast Render */}
             {toast && (

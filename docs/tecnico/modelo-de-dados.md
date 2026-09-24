@@ -28,6 +28,7 @@ erDiagram
         string stripeCustomerId UK
         boolean autoChargeEnabled
         boolean essentialNotificationsOnly
+        datetime deletedAt
     }
     Contract {
         string id PK
@@ -51,6 +52,10 @@ erDiagram
         int price
         boolean isLivestream
         string streamMetrics
+        string statusReason
+        MakeupStatus makeupStatus
+        datetime makeupDeadline
+        date missedDate
     }
     Payment {
         string id PK
@@ -61,6 +66,7 @@ erDiagram
         int amount
         PaymentStatus status
         datetime dueDate
+        datetime pixExpiresAt
     }
 ```
 
@@ -72,8 +78,9 @@ erDiagram
 | `ContractType` | `FIXO`, `FLEX`, `SERVICO`, `CUSTOM`, `AVULSO` |
 | `Tier` | `COMERCIAL`, `AUDIENCIA`, `SABADO` |
 | `BookingStatus` | `RESERVED`, `CONFIRMED`, `HELD`, `COMPLETED`, `FALTA`, `NAO_REALIZADO`, `CANCELLED` |
-| `ContractStatus` | `ACTIVE`, `AWAITING_PAYMENT`, `EXPIRED`, `CANCELLED`, `PENDING_CANCELLATION`, `PAUSED` |
-| `PaymentProvider` | `STRIPE`, `CORA` |
+| `ContractStatus` | `ACTIVE`, `AWAITING_PAYMENT`, `EXPIRED`, `CANCELLED`, `PENDING_CANCELLATION`, `PAUSED`, `COMPLETED` |
+| `MakeupStatus` | `OPEN`, `USED`, `EXPIRED` (janela de remarcação do avulso — ver Booking) |
+| `PaymentProvider` | `STRIPE`, `CORA`, `SICOOB` |
 | `PaymentStatus` | `PENDING`, `PAID`, `FAILED`, `REFUNDED`, `CANCELLED` |
 | `PaymentMethod` | `CARTAO`, `PIX`, `BOLETO` |
 | `NotificationType` | `CONTRACT_EXPIRING`, `PAYMENT_OVERDUE`, `PAYMENT_CONFIRMED`, `PAYMENT_FAILED`, `BOOKING_UNCONFIRMED`, `BOOKING_REMINDER`, `BOOKING_CONFIRMED`, `BOOKING_CANCELLED`, `CONTRACT_ACTIVATED`, `CONTRACT_RENEWED`*, `CANCELLATION_PENDING`, `FLEX_CREDITS_LOW`, `CLIENT_INACTIVE`*, `CONTRACT_AWAITING_PAYMENT`, `SYSTEM`* |
@@ -82,10 +89,12 @@ erDiagram
 
 > `PaymentStatus.CANCELLED` ≠ `FAILED`: representa uma **parcela anulada** porque o contrato dela foi cancelado (não uma cobrança recusada).
 
+> `ContractStatus.COMPLETED` ("Concluído", set/2026): não resta nada a fazer no contrato. É **automático** (`lib/contractCompletion.ts` → `syncContractCompletion`, chamado após toda transição de status de booking) e reversível: volta sozinho para `ACTIVE` quando a regra deixa de valer. Só alterna `ACTIVE ↔ COMPLETED`; nunca toca `PAUSED`/`PENDING_CANCELLATION`/`CANCELLED`/`AWAITING_PAYMENT`/`EXPIRED`, e `SERVICO` não entra. Regra: **AVULSO** — sessão `COMPLETED`, ou `FALTA` sem janela de remarcação aberta (sem justificativa, prazo `EXPIRED` ou 2ª falta); nunca com janela `OPEN` nem em `NAO_REALIZADO`. **FIXO/FLEX/CUSTOM** — nenhuma sessão `HELD`/`RESERVED`/`CONFIRMED`, houve consumo (`COMPLETED`/`FALTA`) e não resta crédito (`flexCreditsRemaining` / `customCreditsRemaining` / teto `durationMonths × sessions_per_month` do FIXO). Um plano concluído continua renovável pelo admin, recebe o aviso de "contrato expirando" e as parcelas pendentes seguem cobráveis (inclusive no auto-charge).
+
 ## Modelos
 
 ### User (`users`)
-Conta de cliente ou admin. Campos principais: `email`/`phone`/`googleId` (todos únicos e opcionais — login por e-mail, telefone ou Google), `passwordHash`, `role`, `cpfCnpj` (necessário para PIX), `address`/`city`/`state`, `tags[]`, `socialLinks` (JSON), `clientStatus` (`ACTIVE`/`INACTIVE`/`BLOCKED`), `stripeCustomerId`, `autoChargeEnabled` (cobrança automática no cartão), `essentialNotificationsOnly` (só notificações críticas), `notes` (observações internas do admin).
+Conta de cliente ou admin. Campos principais: `email`/`phone`/`googleId` (todos únicos e opcionais — login por e-mail, telefone ou Google), `passwordHash`, `role`, `cpfCnpj` (necessário para PIX), `address`/`city`/`state`, `tags[]`, `socialLinks` (JSON), `clientStatus` (`ACTIVE`/`INACTIVE`/`BLOCKED`), `stripeCustomerId`, `autoChargeEnabled` (cobrança automática no cartão), `essentialNotificationsOnly` (só notificações críticas), `notes` (observações internas do admin), `deletedAt` (soft delete com anonimização do cliente que tem vínculos; `null` = conta ativa — os dados pessoais viram `null`, o que libera e-mail/CPF para um novo cadastro).
 
 ### Contract (`contracts`)
 Plano contratado. Campos comuns: `name`, `type`, `tier`, `durationMonths` (3 ou 6), `discountPct` (30 ou 40), `startDate`/`endDate`, `status`, `addOns[]`, `paymentMethod`, `paymentPlan` (`MONTHLY` ou `FULL`), `boletoAllowed`.
@@ -93,6 +102,7 @@ Plano contratado. Campos comuns: `name`, `type`, `tier`, `durationMonths` (3 ou 
 - **FIXO:** `fixedDayOfWeek` (1=Seg…6=Sáb), `fixedTime` (`"14:00"`), `contractUrl`.
 - **FLEX:** `flexCreditsTotal` (12 ou 24), `flexCreditsRemaining`, `flexCycleStart`, `flexWeeksCompensated` (adiantamento), `flexCreditsForfeited` (perdidos por atraso, monotônico), `flexForfeitFloor` (baseline para não punir retroativamente).
 - **CUSTOM ("Monte Seu Plano"):** `customSchedule` (JSON de dias/horários), `sessionsPerWeek`/`sessionsPerCycle`/`totalSessions`, `addonCredits` (JSON), `accessMode` (`FULL`/`PROGRESSIVE`), `customCreditsRemaining`.
+- **AVULSO:** micro-contrato de uma sessão, criado junto com o agendamento avulso: `durationMonths` 1, `discountPct` 0, `flexCreditsTotal` 1 / `flexCreditsRemaining` 0, `startDate` = `endDate` = dia da gravação e `paymentPlan` `FULL` (pagamento único). Avulsos antigos têm `endDate` = gravação + 30 dias e `MONTHLY`; as telas derivam vigência e plano do tipo, não desses campos.
 - **Pausa/renovação:** `pausedAt`, `pauseReason`, `resumeDate`, `paymentDeadline`, `renewedFromId` (auto-relação para o contrato anterior).
 
 Índices: `userId`, `endDate`.
@@ -102,10 +112,14 @@ Sessão de gravação. `date` (DATE), `startTime`/`endTime`, `status`, `tierAppl
 
 Métricas de transmissão (Fase 2): `durationMinutes`, `peakViewers`, `chatMessages`, `audienceOrigin`, `isLivestream`, `streamMetrics` (JSON por rede: `{"YOUTUBE":{"views","peak","likes","comments"},...}`; `peakViewers`/`chatMessages` são agregados derivados).
 
-Índices: `(date, startTime, status)`, `userId`, `contractId`, `date`, `status`.
+Operação da gravação: `recordingStartedAt`/`recordingStartedById`/`recordingStartedByName` (quem clicou "Iniciar Gravação") e `statusReason` (motivo de `FALTA`/`NAO_REALIZADO`).
+
+Remarcação do avulso (set/2026 — `lib/avulsoMakeup.ts`): `makeupStatus` (`MakeupStatus`; `null` = sem janela, o que inclui FALTA sem justificativa e todo o legado), `makeupDeadline` (fim do dia D+N em São Paulo; N = `avulso_makeup_days`, padrão 7) e `missedDate` (D, a data da sessão perdida). A janela abre quando o admin justifica a FALTA, ou sozinha em `NAO_REALIZADO`. Vira `USED` quando a mesma reserva é remarcada (mesmo Payment) e `EXPIRED` pelo job quando o prazo passa. A remarcação é única.
+
+Índices: `(date, startTime, status)`, `userId`, `contractId`, `date`, `status`, `(makeupStatus, makeupDeadline)`.
 
 ### Payment (`payments`)
-Cobrança. `provider` (`STRIPE`/`CORA`), `providerRef` (id da transação no gateway), `amount`, `status`, `dueDate`, `pixString`/`boletoUrl`/`paymentUrl`, `installments`, `paymentType` (`DEBIT`/`CREDIT`), `stripeSubscriptionId`, `metadata` (JSON — guarda dados do contrato pendente, add-ons, etc.), `paidAt`. Relaciona-se a `user` e, opcionalmente, a `contract` e `booking`.
+Cobrança. `provider` (`STRIPE`/`CORA`/`SICOOB`), `providerRef` (id da transação no gateway), `amount`, `status`, `dueDate`, `pixString`/`boletoUrl`/`paymentUrl`, `pixExpiresAt` (validade do QR/cobrança PIX atual; `null` = registro antigo ou sem PIX), `installments`, `paymentType` (`DEBIT`/`CREDIT`), `stripeSubscriptionId`, `metadata` (JSON — guarda dados do contrato pendente, add-ons, etc.), `paidAt`. Relaciona-se a `user` e, opcionalmente, a `contract` e `booking`.
 
 Índices: `userId`, `contractId`, `bookingId`, `providerRef`, `status`, `stripeSubscriptionId`, `dueDate`.
 
@@ -133,11 +147,16 @@ stateDiagram-v2
     ACTIVE --> PENDING_CANCELLATION: cliente solicita cancelamento
     PENDING_CANCELLATION --> CANCELLED: admin resolve (multa/isenção)
     PENDING_CANCELLATION --> ACTIVE: cancelamento recusado
-    ACTIVE --> EXPIRED: chegou ao endDate
+    ACTIVE --> COMPLETED: nada mais a fazer (automático)
+    COMPLETED --> ACTIVE: sessão reaberta ou crédito devolvido (automático)
+    ACTIVE --> EXPIRED: manual (admin)
     ACTIVE --> CANCELLED: cancelado pelo admin
+    COMPLETED --> [*]
     EXPIRED --> [*]
     CANCELLED --> [*]
 ```
+
+`EXPIRED` **não** é aplicado automaticamente ao chegar no `endDate`: hoje só o admin marca (PATCH `/api/contracts/:id`). O admin também pode marcar ou desmarcar `COMPLETED` à mão; a próxima transição de sessão recalcula.
 
 ## Ciclo de vida do agendamento
 
@@ -150,6 +169,9 @@ stateDiagram-v2
     CONFIRMED --> COMPLETED: gravação concluída (métricas)
     RESERVED --> FALTA: cliente não compareceu
     CONFIRMED --> FALTA: cliente não compareceu
+    CONFIRMED --> NAO_REALIZADO: estúdio não realizou
+    FALTA --> CONFIRMED: avulso, falta justificada remarcada (mesma reserva)
+    NAO_REALIZADO --> CONFIRMED: avulso, remarcada sem novo pagamento
     RESERVED --> CANCELLED: cancelado
     COMPLETED --> [*]
     FALTA --> [*]
@@ -161,6 +183,7 @@ stateDiagram-v2
 - Migrations: `backend/prisma/migrations/`. Em dev: `npm run db:migrate` (`prisma migrate dev`). Em produção: `prisma migrate deploy` roda no start do container (ver [deploy.md](deploy.md)).
 - Após mudar o `schema.prisma`, **regenere** o cliente: `npm run db:generate -w backend`. No Windows/monorepo, use `cd backend && node ../node_modules/prisma/build/index.js generate` (ver [setup-dev.md](setup-dev.md)).
 - O cliente em `backend/src/generated/prisma` é **versionado** para builds reprodutíveis (Docker copia-o do estágio de build).
+- Lote de 23/09/2026 (todas aditivas e idempotentes): `20260923000000_add_contract_completed_status` (enum `COMPLETED`), `20260923000100_add_user_deleted_at`, `20260923000200_add_booking_makeup_window` (enum `MakeupStatus`, 3 colunas e índice), `20260923000300_add_payment_pix_expires_at` e `20260923000400_backfill_avulso_completed`. Esta última é migration de **dados**: passa para `COMPLETED` os avulsos `ACTIVE` já gravados ou perdidos, com a mesma regra do `syncContractCompletion`. Fica separada da do enum porque o Postgres não deixa usar um valor de enum novo na mesma transação.
 
 ## Relacionado
 

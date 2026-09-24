@@ -3,7 +3,7 @@ import { useState, useMemo } from 'react';
 import { bookingsApi, BookingWithUser } from '../api/client';
 import { useNavigate } from 'react-router-dom';
 import { useUI } from '../context/UIContext';
-import { ClipboardList, Search, FilterX, Pencil, Trash2, Clock, Moon } from 'lucide-react';
+import { ClipboardList, Search, FilterX, Pencil, Trash2, Clock, Moon, Ban } from 'lucide-react';
 import AdminPageHeader from '../components/admin/AdminPageHeader';
 import { HeroSkeleton, TableSkeleton } from '../components/ui/SkeletonLoader';
 import StatusBadge from '../components/ui/StatusBadge';
@@ -12,6 +12,12 @@ import { formatBRL } from '../utils/format';
 import { useAdminBookings } from '../hooks/useAdminBookings';
 import CreateBookingModal from '../components/admin/bookings/CreateBookingModal';
 import EditBookingModal from '../components/admin/bookings/EditBookingModal';
+import StatusReasonModal, { type ReasonKind, type ReasonConfirmOptions } from '../components/admin/bookings/StatusReasonModal';
+import { MakeupStatusPanel } from '../components/admin/bookings/MakeupRescheduleModal';
+import { useBusinessConfig } from '../hooks/useBusinessConfig';
+import { buildReasonUpdate, reasonToastMessage } from '../utils/avulsoMakeup';
+import { bookingSummary, cancelBookingConsequences, cancelBookingRequest, hardDeleteConsequences } from '../components/admin/bookings/bookingDanger';
+import CommitSelect from '../components/admin/CommitSelect';
 
 export default function AdminBookingsPage() {
     const navigate = useNavigate();
@@ -21,39 +27,100 @@ export default function AdminBookingsPage() {
 
     const [showCreate, setShowCreate] = useState(false);
     const [editBooking, setEditBooking] = useState<BookingWithUser | null>(null);
+    // Falta / Não Realizado pelo select inline passam pelo modal de MOTIVO (e, no avulso, a falta justificada).
+    const [reasonModal, setReasonModal] = useState<{ booking: BookingWithUser; kind: ReasonKind } | null>(null);
+    const [savingReason, setSavingReason] = useState(false);
+    const { get: getRule } = useBusinessConfig();
 
-    const handleHardDelete = async (b: BookingWithUser) => {
-        const hasContract = b.contractId && b.contract;
-        const creditWarning = hasContract && b.status !== 'CANCELLED'
-            ? `\n\n⚠️ O crédito consumido do contrato "${b.contract?.name}" será devolvido.`
-            : '';
+    // D3: exclusão PERMANENTE (hard-delete) — diálogo de perigo com as consequências reais do backend.
+    // Sem try/catch no onConfirm: o erro da API aparece dentro do diálogo.
+    const handleHardDelete = (b: BookingWithUser) => {
         showConfirm({
-            title: 'Excluir Agendamento Permanentemente',
-            message: `Tem certeza que deseja excluir este agendamento?\n\nCliente: ${b.user.name}\nData: ${new Date(b.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}\nHorário: ${b.startTime}\n\nEsta ação é irreversível — o agendamento será removido como se nunca tivesse existido.${creditWarning}`,
+            tone: 'danger',
+            icon: Trash2,
+            title: 'Excluir agendamento permanentemente?',
+            message: `${bookingSummary(b)}\n\nPara manter o registro no histórico, mude o status para "Cancelado" em vez de excluir.`,
+            consequences: hardDeleteConsequences(b),
+            confirmLabel: 'Excluir agendamento',
+            loadingLabel: 'Excluindo…',
             onConfirm: async () => {
-                try {
-                    const res = await bookingsApi.hardDelete(b.id);
-                    showToast(res.message);
-                    await reload();
-                } catch (err: unknown) { showAlert({ message: getErrorMessage(err), type: 'error' }); }
-            }
+                const res = await bookingsApi.hardDelete(b.id);
+                showToast(res.message);
+                await reload();
+            },
         });
     };
 
-    const handleInlineStatusChange = async (id: string, newStatus: string) => {
+    // D3: CANCELAR pelo select inline pede confirmação de perigo ANTES de gravar (o select controlado
+    // volta ao status atual enquanto isso). Sessão não realizada usa o cancelamento canônico
+    // (libera o horário e devolve o crédito); as demais, o PATCH de status.
+    const confirmCancelBooking = (b: BookingWithUser) => {
+        showConfirm({
+            tone: 'danger',
+            icon: Ban,
+            title: 'Cancelar agendamento?',
+            message: bookingSummary(b),
+            consequences: cancelBookingConsequences(b),
+            confirmLabel: 'Cancelar agendamento',
+            loadingLabel: 'Cancelando…',
+            onConfirm: async () => {
+                const { booking: u } = await cancelBookingRequest(b);
+                const mk = u ? { makeupStatus: u.makeupStatus ?? null, makeupDeadline: u.makeupDeadline ?? null, missedDate: u.missedDate ?? null } : {};
+                setBookings(prev => prev.map(x => x.id === b.id ? { ...x, status: 'CANCELLED' as const, ...mk } : x));
+                showToast('Agendamento cancelado.');
+            },
+        });
+    };
+
+    const handleInlineStatusChange = async (b: BookingWithUser, newStatus: string) => {
+        const id = b.id;
+        // FALTA / NAO_REALIZADO exigem motivo (e, no avulso, decidir a falta justificada): abre o modal
+        // em vez de gravar direto. O select controlado volta sozinho ao status atual até confirmar.
+        if ((newStatus === 'FALTA' || newStatus === 'NAO_REALIZADO') && newStatus !== b.status) {
+            setReasonModal({ booking: b, kind: newStatus });
+            return;
+        }
+        // CANCELADO: nada é gravado até o admin confirmar no diálogo de perigo.
+        if (newStatus === 'CANCELLED' && b.status !== 'CANCELLED') {
+            confirmCancelBooking(b);
+            return;
+        }
         try {
-            await bookingsApi.update(id, { status: newStatus });
+            const res = await bookingsApi.update(id, { status: newStatus });
             // Optimistic local patch (no refetch) — keeps the row visible even
             // under an active status filter and avoids a full table reload flash.
-            setBookings(prev => prev.map(b => b.id === id ? { ...b, status: newStatus as any } : b));
+            // A janela de remarcação do avulso pode mudar junto (ex.: Falta → Confirmado = remarcada).
+            const u = res?.booking;
+            const mk = u ? { makeupStatus: u.makeupStatus ?? null, makeupDeadline: u.makeupDeadline ?? null, missedDate: u.missedDate ?? null } : {};
+            setBookings(prev => prev.map(b => b.id === id ? { ...b, status: newStatus as any, ...mk } : b));
         } catch (err: unknown) { showAlert({ message: getErrorMessage(err), type: 'error' }); }
+    };
+
+    const handleConfirmReason = async (reason: string, { justified }: ReasonConfirmOptions) => {
+        if (!reasonModal || savingReason) return;
+        const { booking, kind } = reasonModal;
+        const isAvulso = booking.contract?.type === 'AVULSO';
+        setSavingReason(true);
+        try {
+            const res = await bookingsApi.update(booking.id, buildReasonUpdate(kind, reason, { isAvulso, justified }));
+            // Patch local (sem refetch, como o select inline): status + motivo + janela de remarcação.
+            const u = res.booking;
+            setBookings(prev => prev.map(x => x.id === booking.id ? {
+                ...x, status: kind, statusReason: u?.statusReason ?? reason,
+                makeupStatus: u?.makeupStatus ?? null, makeupDeadline: u?.makeupDeadline ?? null, missedDate: u?.missedDate ?? null,
+            } : x));
+            showToast(reasonToastMessage(kind, { isAvulso, justified, bookingDate: booking.date, makeupDays: getRule('avulso_makeup_days') }));
+            setReasonModal(null);
+        } catch (err: unknown) { showToast({ message: getErrorMessage(err) || 'Erro ao registrar.', type: 'error' }); }
+        finally { setSavingReason(false); }
     };
 
     const filtered = useMemo(() => {
         if (!searchQuery) return bookings;
         const q = searchQuery.toLowerCase();
+        // e-mail null-safe: cliente excluído (D3) tem os dados pessoais anonimizados (email = null).
         return bookings.filter(b =>
-            b.user.name.toLowerCase().includes(q) || b.user.email.toLowerCase().includes(q)
+            b.user.name.toLowerCase().includes(q) || (b.user.email ?? '').toLowerCase().includes(q)
         );
     }, [bookings, searchQuery]);
 
@@ -212,9 +279,11 @@ export default function AdminBookingsPage() {
                                                                 onClick={() => navigate(`/admin/clients/${b.user.id}`)}>
                                                                 {b.user.name}
                                                             </button>
-                                                            <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '1px' }}>
-                                                                {b.user.email}
-                                                            </div>
+                                                            {b.user.email && (
+                                                                <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '1px' }}>
+                                                                    {b.user.email}
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 </td>
@@ -259,9 +328,12 @@ export default function AdminBookingsPage() {
                                                             pointerEvents: 'none', zIndex: 1,
                                                             boxShadow: `0 0 6px ${sc.color}66`,
                                                         }} />
-                                                        <select
+                                                        {/* CommitSelect: com o select fechado, as setas não gravam cada status
+                                                            intermediário (antes ↓ em "Confirmado" gravava "Concluído" a caminho do
+                                                            "Cancelado"); Enter ou sair do campo aplica, clique na lista aplica na hora. */}
+                                                        <CommitSelect
                                                             value={b.status}
-                                                            onChange={e => handleInlineStatusChange(b.id, e.target.value)}
+                                                            onCommit={v => handleInlineStatusChange(b, v)}
                                                             aria-label={`Status do agendamento de ${b.user.name}`}
                                                             className="admin-status-select"
                                                             style={{ color: sc.color }}
@@ -269,8 +341,10 @@ export default function AdminBookingsPage() {
                                                             {Object.entries(BOOKING_STATUS_META).filter(([key]) => key !== 'HELD').map(([key, cfg]) => (
                                                                 <option key={key} value={key} style={{ background: 'var(--sheet-bg)', color: cfg.color, padding: '6px' }}>{cfg.label}</option>
                                                             ))}
-                                                        </select>
+                                                        </CommitSelect>
                                                     </div>
+                                                    {/* Remarcação do avulso (D4/D5): "Remarcar até DD/MM" / "Justificar falta" / status. */}
+                                                    <MakeupStatusPanel booking={b} clientName={b.user.name} layout="chips" onChanged={reload} />
                                                 </td>
 
                                                 {/* Actions */}
@@ -316,6 +390,18 @@ export default function AdminBookingsPage() {
                 booking={editBooking}
                 onClose={() => setEditBooking(null)}
                 onSaved={reload}
+            />
+
+            <StatusReasonModal
+                isOpen={!!reasonModal}
+                kind={reasonModal?.kind ?? null}
+                subtitle={reasonModal ? `${reasonModal.booking.user.name} · ${new Date(reasonModal.booking.date).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit' })} às ${reasonModal.booking.startTime}` : undefined}
+                isAvulso={reasonModal?.booking.contract?.type === 'AVULSO'}
+                bookingDate={reasonModal?.booking.date}
+                makeupStatus={reasonModal?.booking.makeupStatus ?? null}
+                onConfirm={handleConfirmReason}
+                onClose={() => setReasonModal(null)}
+                saving={savingReason}
             />
         </div>
     );

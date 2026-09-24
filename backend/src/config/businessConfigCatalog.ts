@@ -30,6 +30,8 @@ export const BUSINESS_CONFIG_CATALOG: ConfigCatalogItem[] = [
     { key: 'reschedule_max_days',         value: '7',  type: 'number',  label: 'Janela para Reagendamento (dias)',           group: 'policies' },
     { key: 'reschedule_min_hours',        value: '24', type: 'number',  label: 'Antecedência Mínima para Reagendar (horas)', group: 'policies' },
     { key: 'booking_min_advance_hours',   value: '12', type: 'number',  label: 'Antecedência Mínima para Agendar (horas)',   group: 'policies' },
+    // D4/D5: janela para remarcar a gravação avulsa perdida (falta justificada / não realizada), em dias após a gravação.
+    { key: 'avulso_makeup_days',          value: '7',  type: 'number',  label: 'Prazo para Remarcar Falta Justificada — Avulso (dias)', group: 'policies' },
     // ── Payments (taxas — editáveis pelo admin, nada hardcoded) ──
     { key: 'pix_extra_discount_pct',   value: '10', type: 'percent', label: 'Desconto Extra PIX à Vista (%)',          group: 'payments' },
     { key: 'card_fee_default_pct',     value: '5',  type: 'percent', label: 'Juros Cartão — padrão (parcelas sem taxa própria) (%)', group: 'payments' },

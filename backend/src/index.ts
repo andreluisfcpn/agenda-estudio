@@ -265,14 +265,33 @@ app.listen(config.port, async () => {
 
     // Hold Expiration Cronjob — clean expired HELD bookings & AWAITING_PAYMENT contracts every 60s
     import('./jobs/cleanExpiredHolds.js').then(({ cleanExpiredHolds }) => {
+        // Sem sobreposição (jobs-tempo-migrations-3): a varredura concilia no Sicoob/Stripe antes de
+        // apagar (cada chamada com timeout de 30s), então uma rodada pode passar de 60s. Flag no
+        // processo (o setInterval não empilha rodadas) + trava Redis entre instâncias com TTL acima do
+        // pior caso e liberação só pelo DONO (compare-and-delete) — um `del` incondicional de uma
+        // rodada lenta liberava a trava de outra que já rodava.
+        let holdCleanupRunning = false;
+        const HOLD_LOCK_TTL_SECONDS = 600;
         const runHoldCleanup = async () => {
+            if (holdCleanupRunning) return;
+            holdCleanupRunning = true;
             const holdLockKey = 'cron:hold-cleanup:lock';
-            const lockAcquired = await redis.set(holdLockKey, 'running', 'EX', 50, 'NX');
-            if (lockAcquired !== 'OK') return;
+            const token = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
             try {
-                await cleanExpiredHolds();
+                const lockAcquired = await redis.set(holdLockKey, token, 'EX', HOLD_LOCK_TTL_SECONDS, 'NX');
+                if (lockAcquired !== 'OK') return;
+                try {
+                    await cleanExpiredHolds();
+                } finally {
+                    await redis.eval(
+                        'if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end',
+                        1, holdLockKey, token,
+                    ).catch(() => { /* expira pelo TTL */ });
+                }
+            } catch (err) {
+                console.error('[HOLD-CLEANUP] Tick failed:', err);
             } finally {
-                await redis.del(holdLockKey);
+                holdCleanupRunning = false;
             }
         };
         setInterval(runHoldCleanup, 60 * 1000);
@@ -295,21 +314,53 @@ app.listen(config.port, async () => {
         console.log('   📱 Push notification job registered (every 5min)');
     }).catch(err => console.error('[PUSH-JOB] Failed to load:', err));
 
-    // Booking Reminder Cronjob — sends reminders 24h and 2h before sessions
+    // Booking Reminder Cronjob — sends reminders EXACTLY 24h and 2h before sessions (D14).
+    // Every 1 min aligned to the wall-clock minute (+1s), so a 10:00 session gets its 24h
+    // reminder at 10:00:01 the day before; the boot run does the ≤60 min catch-up (last-run in Redis).
     import('./jobs/bookingReminderJob.js').then(({ runBookingReminderJob }) => {
+        // Uma rodada NUNCA corre em paralelo com a seguinte (um catch-up lento passava de 55s, a trava
+        // vencia e o tick seguinte avaliava o mesmo intervalo):
+        //  • flag em processo: o tick pula enquanto a rodada anterior deste processo ainda roda;
+        //  • trava Redis com dono (token), renovada a cada 20s enquanto a rodada roda (outra instância
+        //    não entra no meio) e que some em ≤55s se o processo cair; só o dono a libera.
+        // A dedup atômica do createNotification é a 2ª barreira contra lembrete duplicado.
+        const REMINDER_LOCK_TTL_S = 55;
+        const DEL_IF_OWNER = "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
+        const RENEW_IF_OWNER = "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('expire', KEYS[1], ARGV[2]) else return 0 end";
+        let reminderRunning = false;
         const runReminderJob = async () => {
+            if (reminderRunning) return;
+            reminderRunning = true;
             const reminderLockKey = 'cron:booking-reminder:lock';
-            const lockAcquired = await redis.set(reminderLockKey, 'running', 'EX', 1500, 'NX');
-            if (lockAcquired !== 'OK') return;
+            const lockToken = `${process.pid}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
             try {
-                await runBookingReminderJob();
+                const lockAcquired = await redis.set(reminderLockKey, lockToken, 'EX', REMINDER_LOCK_TTL_S, 'NX');
+                if (lockAcquired !== 'OK') return;
+                const renew = setInterval(() => {
+                    redis.eval(RENEW_IF_OWNER, 1, reminderLockKey, lockToken, String(REMINDER_LOCK_TTL_S)).catch(() => {});
+                }, 20 * 1000);
+                try {
+                    await runBookingReminderJob();
+                } finally {
+                    clearInterval(renew);
+                    await redis.eval(DEL_IF_OWNER, 1, reminderLockKey, lockToken);
+                }
+            } catch (err) {
+                console.error('[REMINDER-JOB] Tick failed:', err);
             } finally {
-                await redis.del(reminderLockKey);
+                reminderRunning = false;
             }
         };
-        setInterval(runReminderJob, 30 * 60 * 1000);
-        setTimeout(runReminderJob, 5000); // run once on boot
-        console.log('   🔔 Booking reminder job registered (every 30min)');
+        // Recursive setTimeout re-aligned on every tick (setInterval drifts a little each fire).
+        const scheduleNextReminderTick = () => {
+            setTimeout(() => {
+                scheduleNextReminderTick();
+                void runReminderJob();
+            }, 60 * 1000 - (Date.now() % (60 * 1000)) + 1000);
+        };
+        scheduleNextReminderTick();
+        setTimeout(runReminderJob, 5000); // run once on boot (catch-up)
+        console.log('   🔔 Booking reminder job registered (every 1min, minute-aligned)');
     }).catch(err => console.error('[REMINDER-JOB] Failed to load:', err));
 
     // FLEX Credit Expiry Cronjob — forfeits weekly credits when a window closes behind pace
@@ -328,6 +379,28 @@ app.listen(config.port, async () => {
         setTimeout(runFlexExpiry, 8000); // run once on boot
         console.log('   🎟️ FLEX credit expiry job registered (every 6h)');
     }).catch(err => console.error('[FLEX-EXPIRY] Failed to load:', err));
+
+    // Avulso Makeup Expiry Cronjob (D4/D5) — expira janelas de remarcação vencidas (falta justificada
+    // → valor perdido + contrato concluído; não realizada → avisa os admins) e lembra nos 2 últimos dias.
+    import('./jobs/avulsoMakeupExpiryJob.js').then(({ runAvulsoMakeupExpiryJob }) => {
+        const runMakeupExpiry = async () => {
+            const lockKey = 'cron:avulso-makeup:lock';
+            try {
+                const lockAcquired = await redis.set(lockKey, 'running', 'EX', 1500, 'NX');
+                if (lockAcquired !== 'OK') return;
+                try {
+                    await runAvulsoMakeupExpiryJob();
+                } finally {
+                    await redis.del(lockKey);
+                }
+            } catch (err) {
+                console.error('[MAKEUP-EXPIRY] Tick failed:', err);
+            }
+        };
+        setInterval(runMakeupExpiry, 60 * 60 * 1000); // every 1h
+        setTimeout(runMakeupExpiry, 12000); // run once on boot
+        console.log('   🔁 Avulso makeup expiry job registered (every 1h)');
+    }).catch(err => console.error('[MAKEUP-EXPIRY] Failed to load:', err));
 
     // Notification Cleanup Cronjob — removes old read/unread notifications daily
     import('./jobs/notificationCleanupJob.js').then(({ runNotificationCleanupJob }) => {

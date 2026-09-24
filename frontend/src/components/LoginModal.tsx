@@ -3,7 +3,6 @@ import { useState, useEffect, useRef, FormEvent } from 'react';
 import BottomSheetModal from './BottomSheetModal';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Loader2, ChevronLeft, Eye, EyeOff, Mail } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { maskEmail, translateError } from '../utils/mask';
 import { ApiError } from '../api/client';
@@ -13,6 +12,11 @@ import { useGoogleLogin } from '@react-oauth/google';
 interface LoginModalProps {
     isOpen: boolean;
     onClose: () => void;
+    /**
+     * D16: horário escolhido na landing (ex.: 'Qui, 25/09 às 18:00'). Mostrado no login e no
+     * cadastro para o visitante saber que a escolha será retomada depois de entrar.
+     */
+    pendingSlotLabel?: string | null;
 }
 
 // Login social só é oferecido quando o client id do Google foi configurado no build
@@ -38,8 +42,7 @@ const variants = {
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
-    const navigate = useNavigate();
+export default function LoginModal({ isOpen, onClose, pendingSlotLabel }: LoginModalProps) {
     const { login, register, googleLogin, sendRegistrationCode, sendLoginCode, loginWithCode } = useAuth();
     const firstInputRef = useRef<HTMLInputElement>(null);
 
@@ -85,16 +88,11 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
         return () => clearTimeout(t);
     }, [isOpen, view]);
 
+    // D16: depois de autenticar o modal SÓ fecha. O destino (agenda retomando o horário escolhido
+    // na landing, ou painel) é decidido num lugar só — o guard de rota de App.tsx
+    // (getPostLoginPath) — o que elimina a corrida entre um navigate daqui e o <Navigate> do guard.
     const postAuthNavigate = () => {
         onClose();
-        const pending = sessionStorage.getItem('pendingBooking');
-        if (pending) {
-            const { date, time } = JSON.parse(pending);
-            sessionStorage.removeItem('pendingBooking');
-            navigate('/calendar', { state: { preSelectedDate: date, preSelectedTime: time } });
-        } else {
-            navigate('/dashboard');
-        }
     };
 
     const applyError = (err: unknown) => {
@@ -270,10 +268,14 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
 
     const getSubtitle = () => {
         switch (view) {
-            case 'login': return 'Gerencie seus agendamentos e contratos.';
+            case 'login': return pendingSlotLabel
+                ? `Entre para reservar ${pendingSlotLabel}.`
+                : 'Gerencie seus agendamentos e contratos.';
             case 'login_code': return `Enviamos um código de 6 dígitos para ${email}.`;
             case 'forgot_password': return 'Enviaremos um código de acesso ao seu e-mail para você entrar sem a senha e redefini-la no perfil.';
-            case 'register_form': return 'Preencha seus dados para começar.';
+            case 'register_form': return pendingSlotLabel
+                ? `Crie sua conta para reservar ${pendingSlotLabel}.`
+                : 'Preencha seus dados para começar.';
             case 'register_code': return `Enviamos um código de 6 dígitos para ${email}.`;
         }
     };
@@ -440,7 +442,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                                                     <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
                                                     <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
                                                 </svg>
-                                                Google
+                                                {view === 'register_form' ? 'Cadastrar com o Google' : 'Acessar com o Google'}
                                             </button>
                                           </>
                                         )}

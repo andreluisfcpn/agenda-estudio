@@ -83,6 +83,8 @@
   --z-savebar: 90;
   --z-bottomtab: 120;
   --z-modal: 1000;
+  /* Tooltip (components/ui/Tooltip) acima dos modais: funciona também dentro de sheets. */
+  --z-tooltip: 1100;
 
   /* Missing alias used across the admin (fell back to currentColor before) */
   --border-color: var(--border-default);

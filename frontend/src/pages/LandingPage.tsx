@@ -9,6 +9,7 @@ import InstallBanner from '../components/InstallBanner';
 import VideoModal from '../components/VideoModal';
 import { useAuth } from '../context/AuthContext';
 import { PublicSlot, pricingApi } from '../api/client';
+import { savePendingIntent, clearPendingIntent, formatIntentSlot } from '../utils/pendingIntent';
 
 import {
     PlayCircle, CheckCircle2, Sparkles, Menu, X,
@@ -61,6 +62,8 @@ export default function LandingPage() {
     const { user } = useAuth();
 
     const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+    // D16: rótulo do horário escolhido ("Qui, 25/09 às 18:00") mostrado no LoginModal; null = login comum.
+    const [pendingSlotLabel, setPendingSlotLabel] = useState<string | null>(null);
     const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [navScrolled, setNavScrolled] = useState(false);
@@ -78,6 +81,27 @@ export default function LandingPage() {
         setMobileMenuOpen(false);
         agendaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, []);
+
+    // D16: login pela "Área do Cliente" é um login comum — descarta uma escolha antiga de horário
+    // (senão o cliente cairia na agenda com um horário que já nem lembra).
+    const openClientArea = useCallback(() => {
+        clearPendingIntent();
+        setPendingSlotLabel(null);
+        setMobileMenuOpen(false);
+        setIsLoginModalOpen(true);
+    }, []);
+
+    // D16: clique num horário da agenda pública → guarda a escolha (TTL 30 min) e pede login/cadastro.
+    // Depois de autenticar, o guard de App.tsx leva o CLIENTE à agenda já nesse dia, com as opções abertas.
+    const handleSlotSelect = useCallback((date: string, slot: PublicSlot) => {
+        savePendingIntent({ kind: 'booking', date, time: slot.time, tier: slot.tier });
+        if (user) {
+            navigate('/calendar');
+            return;
+        }
+        setPendingSlotLabel(formatIntentSlot({ date, time: slot.time }));
+        setIsLoginModalOpen(true);
+    }, [user, navigate]);
 
     // Load branding
     useEffect(() => {
@@ -157,7 +181,7 @@ export default function LandingPage() {
                     onError={(e) => { const t = e.currentTarget; if (!t.dataset.fb) { t.dataset.fb = '1'; t.src = LOCAL_LOGO; } }}
                 />
                 <div className="landing-navbar-desktop">
-                    <button className="btn btn-ghost" onClick={() => setIsLoginModalOpen(true)} style={{ fontSize: '0.9rem', fontWeight: 600, color: COLORS.white }}>
+                    <button className="btn btn-ghost" onClick={openClientArea} style={{ fontSize: '0.9rem', fontWeight: 600, color: COLORS.white }}>
                         Área do Cliente
                     </button>
                     <button className="landing-navbar-cta" onClick={scrollToCalendar}>
@@ -182,7 +206,7 @@ export default function LandingPage() {
                         <button className="landing-mobile-sheet-btn landing-mobile-sheet-btn--primary" onClick={scrollToCalendar}>
                             Reservar Agora
                         </button>
-                        <button className="landing-mobile-sheet-btn landing-mobile-sheet-btn--secondary" onClick={() => { setMobileMenuOpen(false); setIsLoginModalOpen(true); }}>
+                        <button className="landing-mobile-sheet-btn landing-mobile-sheet-btn--secondary" onClick={openClientArea}>
                             Área do Cliente
                         </button>
                     </div>
@@ -322,16 +346,7 @@ export default function LandingPage() {
                         </div>
 
                         <div className="reveal reveal-delay-3">
-                            <PublicCalendarGrid onSlotSelect={(date, slot) => {
-                                if (user) {
-                                    navigate('/calendar', {
-                                        state: { preSelectedDate: date, preSelectedTime: slot.time }
-                                    });
-                                } else {
-                                    sessionStorage.setItem('pendingBooking', JSON.stringify({ date, time: slot.time }));
-                                    setIsLoginModalOpen(true);
-                                }
-                            }} />
+                            <PublicCalendarGrid onSlotSelect={handleSlotSelect} />
                         </div>
                     </div>
                 </section>
@@ -371,7 +386,7 @@ export default function LandingPage() {
                                 <button className="landing-footer-link" onClick={scrollToCalendar}>
                                     <CalendarCheck size={14} /> Agendar horário
                                 </button>
-                                <button className="landing-footer-link" onClick={() => setIsLoginModalOpen(true)}>
+                                <button className="landing-footer-link" onClick={openClientArea}>
                                     Área do Cliente
                                 </button>
                                 <a className="landing-footer-link" href="https://buzios.digital" target="_blank" rel="noreferrer">
@@ -393,7 +408,7 @@ export default function LandingPage() {
             <InstallBanner />
 
             {/* Modals */}
-            <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} />
+            <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} pendingSlotLabel={pendingSlotLabel} />
             <VideoModal isOpen={isVideoModalOpen} onClose={() => setIsVideoModalOpen(false)} videoUrl="https://www.youtube.com/embed/B6xNKgR3fQU?start=95" />
         </div>
     );

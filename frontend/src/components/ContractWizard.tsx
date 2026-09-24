@@ -1,9 +1,12 @@
 import { getErrorMessage } from '../utils/errors';
 import React, { useState, useEffect, useRef, useId } from 'react';
 import BottomSheetModal from './BottomSheetModal';
-import { PricingConfig, AddOnConfig, bookingsApi, contractsApi, Slot, pricingApi, stripeApi, authApi, ApiError, type CouponValidation } from '../api/client';
+import { PricingConfig, AddOnConfig, bookingsApi, contractsApi, Slot, pricingApi, stripeApi, authApi, ApiError, type CouponValidation, type ContractTier } from '../api/client';
 import CouponField from './CouponField';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
+import { useContractSlotGrid } from '../hooks/useContractSlotGrid';
+import { useCardInstallments } from '../hooks/useCardInstallments';
+import { studioSlotDate } from '../utils/time';
 import { getClientPaymentMethods, type PaymentMethodKey } from '../constants/paymentMethods';
 import InlineCheckout from './InlineCheckout';
 import StripeCardForm from './StripeCardForm';
@@ -13,11 +16,24 @@ import { isValidCpfCnpj } from '../utils/mask';
 import { formatBRL } from '../utils/format';
 import { X, Pin, Shuffle, CalendarDays, Clock, Lock, CheckCircle2, XCircle, AlertTriangle, ChevronLeft, ChevronRight, Sparkles, Film, TrendingUp, FileText, Receipt, Mic, Tag, CreditCard, ScrollText, ShieldCheck } from 'lucide-react';
 
+/** Horário de origem (BookingModal → "Criar Novo Contrato", D16): faixa, data 'YYYY-MM-DD' e hora 'HH:MM'. */
+export interface ContractWizardPrefill {
+    tier?: string | null;
+    date?: string | null;
+    time?: string | null;
+}
+
 export interface ContractWizardProps {
     pricing: PricingConfig[];
     onClose: () => void;
     onComplete: () => void;
     onOpenCustom?: () => void;
+    /**
+     * Pré-preenchimento opcional: a faixa já vem escolhida e, depois de escolher Fixo/Flex, a data e
+     * a hora já aparecem marcadas. Só vale enquanto a faixa for a do horário e a data couber na
+     * janela do wizard; se o horário deixar de ser selecionável, é desmarcado (o cliente escolhe outro).
+     */
+    prefill?: ContractWizardPrefill;
 }
 
 type WizardStep = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8; // 5=loading, 6=success, 7=conflicts, 8=card-payment
@@ -32,7 +48,11 @@ const DAY_NAMES_FULL = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sex
 const DAY_NAMES_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const MONTH_NAMES_SHORT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
-export default function ContractWizard({ pricing, onClose, onComplete, onOpenCustom }: ContractWizardProps) {
+/** 400 "Horário inválido" (D8): horário/dia fora da grade de contrato da faixa. */
+const isInvalidSlotError = (err: unknown) =>
+    err instanceof ApiError && (err.code === 'INVALID_SLOT' || (err.status === 400 && err.message.startsWith('Horário inválido')));
+
+export default function ContractWizard({ pricing, onClose, onComplete, onOpenCustom, prefill }: ContractWizardProps) {
     const { user, updateUser } = useAuth();
     const uid = useId();
     const [step, setStep] = useState<WizardStep>(1);
@@ -40,17 +60,28 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
     const [showCpfPrompt, setShowCpfPrompt] = useState(false);
     const pendingResolutions = useRef<any[]>([]);
 
+    // D16: faixa do horário de origem (se existir entre as faixas oferecidas).
+    const prefillTier = prefill?.tier && (pricing.length === 0 || pricing.some(p => p.tier === prefill.tier))
+        ? prefill.tier
+        : null;
+
     // Step 1: Tier + Plan selection
-    const [selectedTier, setSelectedTier] = useState<string>(pricing[0]?.tier || 'COMERCIAL');
+    const [selectedTier, setSelectedTier] = useState<string>(() => prefillTier || pricing[0]?.tier || 'COMERCIAL');
     const [selectedPlan, setSelectedPlan] = useState<'3MESES' | '6MESES'>('3MESES');
     const [contractName, setContractName] = useState<string>('');
 
     // Step 2: Fixo/Flex + First booking
     const [scheduleType, setScheduleType] = useState<'FIXO' | 'FLEX' | null>(null);
-    const [firstDate, setFirstDate] = useState('');
-    const [firstTime, setFirstTime] = useState('');
+    const [firstDate, setFirstDate] = useState(() => (prefillTier && prefill?.date) || '');
+    const [firstTime, setFirstTime] = useState(() => (prefillTier && prefill?.date && prefill?.time) || '');
     const [availableSlots, setAvailableSlots] = useState<Slot[]>([]);
+    // Data a que `availableSlots` se refere (evita validar o horário contra a lista de outra data).
+    const [slotsDate, setSlotsDate] = useState<string | null>(null);
     const [loadingSlots, setLoadingSlots] = useState(false);
+    // D8: grade de horários de CONTRATO da faixa (mesma regra que o backend valida no /self):
+    // hierarquia (AUDIÊNCIA também usa os comerciais), SÁBADO só aos sábados, COMERCIAL/AUDIÊNCIA seg–sex.
+    const slotGrid = useContractSlotGrid(selectedTier as ContractTier);
+    const dateScrollerRef = useRef<HTMLDivElement>(null);
 
     // Step 3: Terms + Payment
     const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -75,7 +106,6 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
     // Inline payment (card + PIX)
     const [cardClientSecret, setCardClientSecret] = useState<string | null>(null);
     const [firstPaymentId, setFirstPaymentId] = useState<string | null>(null);
-    const [firstPixString, setFirstPixString] = useState<string | null>(null);
     // Real amount of the first charge, returned by the backend. For FULL this is the
     // whole contract (with PIX-at-once discount); for MONTHLY it's the 1st installment.
     // Use this in the checkout so what is shown == what is charged.
@@ -140,11 +170,19 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
     const pixExtraDiscountPct = getRule('pix_extra_discount_pct');
     const contractFullTotal = monthlyTotal * duration; // FULL on card (no extra discount)
     const pixFullTotal = Math.round(contractFullTotal * (1 - pixExtraDiscountPct / 100)); // FULL on PIX (à vista)
+    // À vista no cartão: parcelar só se o GATEWAY parcela (conta Stripe BR não parcela → só 1x). Nunca
+    // prometer "ou parcelado" que o checkout não cumpre; volta a aparecer sozinho quando o gateway parcelar.
+    const fullCardInstallments = useCardInstallments({ amount: contractFullTotal, durationMonths: duration, enabled: step === 4 });
+    const fullCardSplits = fullCardInstallments.maxCount > 1;
 
     // Total corrente do plano/método escolhido — base do cupom (1ª cobrança).
     const couponBaseAmount = paymentPlan === 'FULL'
         ? (paymentMethod === 'PIX' ? pixFullTotal : contractFullTotal)
         : monthlyTotal;
+
+    // Antecedência mínima da 1ª gravação (o /self recusa abaixo disso; fuso SP). 0 é válido.
+    const minAdvanceRaw = getRule('booking_min_advance_hours');
+    const minAdvanceHours = Number.isFinite(minAdvanceRaw) ? minAdvanceRaw : 12;
 
     // Generate 14 days ahead
     const now = new Date();
@@ -154,21 +192,63 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
         return d;
     }).filter(d => {
         if (d.getDay() === 0) return false;
+        // D8: dias da grade de contrato da faixa (SÁBADO só sábado; COMERCIAL/AUDIÊNCIA seg–sex ∩ dias
+        // de funcionamento). Enquanto a grade carrega, a mesma regra sem os dias de funcionamento.
+        if (slotGrid.grid) return slotGrid.allowedDays.includes(d.getDay());
         if (selectedTier === 'SABADO') return d.getDay() === 6;
         return d.getDay() >= 1 && d.getDay() <= 5; // COMERCIAL + AUDIENCIA = Seg-Sex
     });
+    const toDateStr = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const allowedDateStrs = allowedDates.map(toDateStr);
+
+    /** Regras de seleção de um horário da 1ª gravação (grade da faixa + ocupação + antecedência). */
+    const describeSlot = (dateStr: string, s: Slot) => {
+        const dow = new Date(`${dateStr}T12:00:00`).getDay();
+        const isTierAllowed = slotGrid.isValidSlot(dow, s.time);
+        const isPast = studioSlotDate(dateStr, s.time).getTime() < Date.now() + minAdvanceHours * 60 * 60 * 1000;
+        return { isTierAllowed, isPast, isSelectable: s.available && isTierAllowed && !isPast };
+    };
 
     useEffect(() => {
         if (step === 2 && firstDate && tierConfig) {
             let alive = true;
             setLoadingSlots(true);
             bookingsApi.getAvailability(firstDate)
-                .then(res => { if (alive) setAvailableSlots(res.slots); })
-                .catch(err => console.error(err))
+                .then(res => { if (alive) { setAvailableSlots(res.slots); setSlotsDate(firstDate); } })
+                .catch(err => {
+                    console.error(err);
+                    // Nunca mostrar (e deixar escolher) a lista de OUTRA data depois de uma falha.
+                    if (alive) { setAvailableSlots([]); setSlotsDate(firstDate); }
+                })
                 .finally(() => { if (alive) setLoadingSlots(false); });
             return () => { alive = false; };
         }
     }, [step, firstDate, tierConfig]);
+
+    // D16: horário pré-preenchido (ou escolhido antes de voltar) que deixou de ser selecionável —
+    // ocupado nesse meio-tempo, fora da grade da faixa ou em cima da hora — é desmarcado.
+    useEffect(() => {
+        if (step !== 2 || !firstDate || !firstTime) return;
+        if (loadingSlots || slotsDate !== firstDate || !slotGrid.grid) return;
+        const s = availableSlots.find(x => x.time === firstTime);
+        if (!s || !describeSlot(firstDate, s).isSelectable) setFirstTime('');
+        // describeSlot lê a grade/antecedência atuais; as deps abaixo cobrem as mudanças relevantes.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [step, firstDate, firstTime, loadingSlots, slotsDate, availableSlots, slotGrid.grid, minAdvanceHours]);
+
+    // Etapa 2 concluída: modelo + data + hora, com a grade da faixa carregada e a disponibilidade da
+    // data já conferida (um horário pré-preenchido só passa depois de revalidado acima).
+    const canLeaveStep2 = !!scheduleType && !!firstDate && !!firstTime
+        && !!slotGrid.grid && !loadingSlots && slotsDate === firstDate;
+
+    // Com data pré-preenchida, o chip escolhido pode estar fora da área visível do carrossel.
+    useEffect(() => {
+        if (step !== 2 || !scheduleType || !firstDate) return;
+        const chip = dateScrollerRef.current?.querySelector<HTMLElement>('.wizard-date-chip--selected');
+        chip?.scrollIntoView({ block: 'nearest', inline: 'center' });
+        // Só ao abrir a seção de data (não a cada troca de data pelo próprio usuário).
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [step, scheduleType]);
 
     const executeCreation = async (resolutions: any[] = [], cpfChecked = false) => {
         // PIX is emitted as a Cora invoice in the user's name → requires a CPF/CNPJ.
@@ -221,7 +301,8 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
             }
 
             if (res.firstPaymentId) setFirstPaymentId(res.firstPaymentId);
-            if (res.firstPixString) setFirstPixString(res.firstPixString);
+            // D15: o QR do PIX NÃO é repassado daqui — o InlineCheckout chama /stripe/create-payment com
+            // o paymentId, que reusa a cobrança recém-criada e devolve QR + validade (fonte única).
             // Backend-authoritative amount of the first charge → drives the checkout.
             if (typeof res.amount === 'number') setCheckoutAmount(res.amount);
 
@@ -234,6 +315,9 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
             setStep(8);
         } catch (err: unknown) {
             setError(getErrorMessage(err) || 'Erro ao processar criação do contrato');
+            // D8: horário fora da grade é erro de CAMPO (etapa da agenda), nunca conflito. A grade em cache
+            // pode estar velha (admin mudou em Configurações) → recarrega antes de o cliente escolher de novo.
+            if (isInvalidSlotError(err)) { slotGrid.invalidate(); setFirstTime(''); setStep(2); return; }
             // Erro de negócio (< 500, ex.: cupom inválido/expirado) volta ao resumo
             // com a mensagem; demais erros mantêm o comportamento anterior.
             if (err instanceof ApiError && err.status < 500) setStep(4);
@@ -284,7 +368,8 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
             await executeCreation([]);
         } catch (err: unknown) {
             setError(getErrorMessage(err) || 'Erro ao validar agenda');
-            setStep(4);
+            if (isInvalidSlotError(err)) { slotGrid.invalidate(); setFirstTime(''); setStep(2); }
+            else setStep(4);
             setSubmitting(false);
         }
     };
@@ -294,10 +379,12 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
     // evitando criar com firstDate desatualizado.
     const switchWeekday = async (targetDow: number) => {
         if (!firstDate || !firstTime) return;
-        const domToDow = (dt: Date) => (dt.getDay() === 0 ? 7 : dt.getDay());
-        const d = new Date(`${firstDate}T12:00:00`);
-        for (let g = 0; g < 8 && domToDow(d) !== targetDow; g++) d.setDate(d.getDate() + 1);
-        const newFirst = d.toISOString().split('T')[0];
+        // Aritmética de CALENDÁRIO sobre o "YYYY-MM-DD" (datas do estúdio, fuso SP): tudo em UTC, sem
+        // depender do fuso do aparelho — antes, meio-dia local + toISOString (UTC) podia virar o dia.
+        const domToDow = (dt: Date) => (dt.getUTCDay() === 0 ? 7 : dt.getUTCDay());
+        const d = new Date(`${firstDate}T00:00:00Z`);
+        for (let g = 0; g < 8 && domToDow(d) !== targetDow; g++) d.setUTCDate(d.getUTCDate() + 1);
+        const newFirst = d.toISOString().slice(0, 10);
         setFirstDate(newFirst);
         setSubmitting(true);
         setError('');
@@ -440,10 +527,8 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                             contractDuration={paymentPlan === 'FULL' ? duration : 1}
                             allowedMethods={paymentMethod === 'PIX' ? ['PIX'] : ['CARTAO']}
                             context="contract"
-                            createPaymentFn={firstPaymentId ? async () => ({
-                                paymentId: firstPaymentId,
-                                pixString: firstPixString || undefined,
-                            }) : undefined}
+                            // D15: só o paymentId — o InlineCheckout emite/reusa a cobrança em
+                            // /stripe/create-payment (PIX: QR + validade; cartão: PaymentIntent com as parcelas).
                             onSuccess={() => setStep(6)}
                             onError={(msg) => { setError(msg); setStep(4); }}
                             onCancel={() => setShowCancelModal(true)}
@@ -559,8 +644,17 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
 
                         <div className="wizard-actions">
                             <div />
-                            <button className="btn btn-primary" style={{ flex: 1 }}
-                                onClick={() => { setFirstDate(''); setFirstTime(''); setStep(2); }}
+                            <button key="step1-next" type="button" className="btn btn-primary" style={{ flex: 1 }}
+                                onClick={() => {
+                                    // D16: a data/hora pré-preenchidas só valem para a faixa do horário de
+                                    // origem e dentro da janela do wizard; senão zera como sempre.
+                                    const keep = !!prefillTier && selectedTier === prefillTier
+                                        && !!firstDate && allowedDateStrs.includes(firstDate);
+                                    if (!keep) { setFirstDate(''); setFirstTime(''); }
+                                    setError('');
+                                    // Regra anti-submit: troca de etapa adiada 1 tick (nunca durante o clique).
+                                    setTimeout(() => setStep(2), 0);
+                                }}
                                 disabled={!selectedPlan || !contractName.trim()}>
                                 Continuar ➔
                             </button>
@@ -573,6 +667,13 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                     <div className="wizard-step2">
                         <h3 className="wizard-step__title">2. Configure sua Agenda</h3>
                         <p className="wizard-step__subtitle">Escolha o modelo e selecione seu primeiro horário de gravação.</p>
+
+                        {error && (
+                            <div className="wizard-info-banner" role="alert" style={{ background: 'rgba(239,68,68,0.08)', borderColor: 'rgba(239,68,68,0.2)', color: '#ef4444' }}>
+                                <XCircle size={16} />
+                                <span>{error}</span>
+                            </div>
+                        )}
 
                         {/* ── Schedule Type Toggle ── */}
                         <div className="wizard-schedule-toggle">
@@ -619,7 +720,7 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                                         <CalendarDays size={16} />
                                         Data do 1º Episódio
                                     </label>
-                                    <div className="wizard-date-scroller">
+                                    <div className="wizard-date-scroller" ref={dateScrollerRef}>
                                         <div className="wizard-date-scroller__track">
                                             {allowedDates.map(d => {
                                                 const y = d.getFullYear();
@@ -651,7 +752,17 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                                             <Clock size={16} />
                                             Horário — Pacote 2h
                                         </label>
-                                        {loadingSlots ? (
+                                        {slotGrid.error ? (
+                                            // D8: sem a grade da faixa não há como saber os horários válidos —
+                                            // bloqueia a escolha (nunca cai numa lista fixa).
+                                            <div className="wizard-time-empty" role="alert">
+                                                <XCircle size={24} />
+                                                <span>{slotGrid.error}</span>
+                                                <button type="button" className="btn btn-secondary btn-sm" onClick={slotGrid.invalidate}>
+                                                    Tentar novamente
+                                                </button>
+                                            </div>
+                                        ) : loadingSlots || slotGrid.loading || slotsDate !== firstDate ? (
                                             <div className="wizard-time-loading">
                                                 <div className="wizard-time-loading__spinner" />
                                                 <span>Verificando disponibilidade...</span>
@@ -664,10 +775,9 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                                         ) : (
                                             <div className="wizard-time-grid">
                                                 {availableSlots.map(s => {
-                                                    const isTierAllowed = selectedTier === 'COMERCIAL' ? s.time <= '15:30' : true;
-                                                    const slotDateTime = new Date(`${firstDate}T${s.time}:00`);
-                                                    const isPast = (slotDateTime.getTime() - Date.now()) / (1000 * 60) < 30;
-                                                    const isSelectable = s.available && isTierAllowed && !isPast;
+                                                    // D8: faixa do horário com hierarquia (grade de contrato da faixa),
+                                                    // no lugar do antigo "COMERCIAL → até 15:30"; antecedência em SP.
+                                                    const { isTierAllowed, isPast, isSelectable } = describeSlot(firstDate, s);
                                                     const isSelected = firstTime === s.time;
                                                     const [h] = s.time.split(':').map(Number);
                                                     const endTime = `${String(h + 2).padStart(2, '0')}:${s.time.split(':')[1]}`;
@@ -681,6 +791,7 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                                                     return (
                                                         <button
                                                             key={s.time}
+                                                            type="button"
                                                             className={`wizard-time-chip ${statusClass}`}
                                                             onClick={() => isSelectable && setFirstTime(s.time)}
                                                             disabled={!isSelectable}
@@ -689,8 +800,8 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                                                             <span className="wizard-time-chip__status">
                                                                 {isSelected ? <CheckCircle2 size={14} /> :
                                                                  !s.available ? 'Ocupado' :
-                                                                 !isTierAllowed ? <Lock size={14} /> :
-                                                                 isPast ? 'Passado' : 'Livre'}
+                                                                 !isTierAllowed ? <Lock size={14} aria-label="Fora da faixa do plano" /> :
+                                                                 isPast ? 'Indisponível' : 'Livre'}
                                                             </span>
                                                         </button>
                                                     );
@@ -703,11 +814,16 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                         )}
 
                         <div className="wizard-actions">
-                            <button className="btn btn-secondary" onClick={() => setStep(1)}>
+                            <button key="step2-back" type="button" className="btn btn-secondary" onClick={() => setStep(1)}>
                                 <ChevronLeft size={16} /> Voltar
                             </button>
-                            <button className="btn btn-primary" onClick={() => { setStep(3); }}
-                                disabled={!firstDate || !firstTime || !scheduleType}>
+                            <button key="step2-next" type="button" className="btn btn-primary"
+                                onClick={() => {
+                                    if (!canLeaveStep2) return;
+                                    setError('');
+                                    setTimeout(() => setStep(3), 0);
+                                }}
+                                disabled={!canLeaveStep2}>
                                 Continuar <ChevronRight size={16} />
                             </button>
                         </div>
@@ -789,10 +905,11 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                         )}
 
                         <div className="wizard-actions">
-                            <button className="btn btn-secondary" onClick={() => setStep(2)}>
+                            <button key="step3-back" type="button" className="btn btn-secondary" onClick={() => setStep(2)}>
                                 <ChevronLeft size={16} /> Voltar
                             </button>
-                            <button className="btn btn-primary" onClick={() => setStep(4)}>
+                            {/* Mesma posição do "Ir para Pagamento" da etapa 4 → avanço adiado 1 tick (anti-submit). */}
+                            <button key="step3-next" type="button" className="btn btn-primary" onClick={() => setTimeout(() => setStep(4), 0)}>
                                 {selectedAddons.length > 0 ? 'Continuar' : 'Pular Extras'} <ChevronRight size={16} />
                             </button>
                         </div>
@@ -978,12 +1095,18 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                                         </div>
                                         <div>
                                             <div className="wizard-pay-card__name">À vista no Cartão</div>
-                                            <div className="wizard-pay-card__desc">Integral à vista ou parcelado no cartão</div>
+                                            <div className="wizard-pay-card__desc">
+                                                {!fullCardSplits
+                                                    ? 'Pagamento único no cartão (1x)'
+                                                    : fullCardInstallments.freeCount > 1
+                                                        ? `Integral em 1x ou em até ${Math.min(fullCardInstallments.freeCount, fullCardInstallments.maxCount)}x sem juros`
+                                                        : 'Integral em 1x ou parcelado com juros'}
+                                            </div>
                                         </div>
                                     </div>
                                     <div className="wizard-pay-card__right">
                                         <div className="wizard-pay-card__price">{formatBRL(contractFullTotal)}</div>
-                                        <div className="wizard-pay-card__sub">ou parcelado</div>
+                                        {fullCardSplits && <div className="wizard-pay-card__sub">ou parcelado</div>}
                                     </div>
                                 </button>
                             </div>
@@ -1072,10 +1195,11 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
 
                         {/* ── Actions ── */}
                         <div className="wizard-actions">
-                            <button className="btn btn-secondary" onClick={() => setStep(3)}>
+                            <button key="step4-back" type="button" className="btn btn-secondary" onClick={() => setStep(3)}>
                                 <ChevronLeft size={16} /> Voltar
                             </button>
-                            <button className="wizard-cta-pay" onClick={handleSubmit} disabled={!acceptedTerms || submitting || !paymentMethod}>
+                            {/* Mesma posição do "Continuar" da etapa 3: ignora o 2º clique de um clique duplo (teclado = detail 0). */}
+                            <button key="step4-submit" type="button" className="wizard-cta-pay" onClick={e => { if (e.detail > 1) return; if (step === 4) handleSubmit(); }} disabled={!acceptedTerms || submitting || !paymentMethod}>
                                 {submitting ? (
                                     <><div className="wizard-time-loading__spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> Processando...</>
                                 ) : (
@@ -1116,7 +1240,8 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                                     <p className="wizard-state-screen__desc">Nenhum conflito em {curDowLabel.toLowerCase()} às {firstTime}. É só concluir.</p>
                                 </div>
                                 <div className="wizard-actions wizard-actions--stack">
-                                    <button className="btn btn-primary" style={{ width: '100%', padding: 14 }} onClick={() => executeCreation(resolvedConflicts)} disabled={submitting}>
+                                    <button key="conflicts-free-submit" type="button" className="btn btn-primary" style={{ width: '100%', padding: 14 }}
+                                        onClick={e => { if (e.detail > 1) return; void executeCreation(resolvedConflicts); }} disabled={submitting}>
                                         ✅ Concluir
                                     </button>
                                     <button className="btn btn-secondary" style={{ width: '100%', padding: 14 }} onClick={() => setStep(2)}>
@@ -1205,8 +1330,8 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                                 )}
 
                                 <div className="wizard-actions wizard-actions--stack">
-                                    <button className="btn btn-primary" style={{ width: '100%', padding: 14 }}
-                                        onClick={() => executeCreation(resolvedConflicts)}
+                                    <button key="conflicts-accept" type="button" className="btn btn-primary" style={{ width: '100%', padding: 14 }}
+                                        onClick={e => { if (e.detail > 1) return; void executeCreation(resolvedConflicts); }}
                                         disabled={submitting || unresolvedConflicts > 0}>
                                         ✅ Confirmar Substituições e Concluir
                                     </button>

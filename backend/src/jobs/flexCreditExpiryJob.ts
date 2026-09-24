@@ -1,27 +1,34 @@
 import { prisma } from '../lib/prisma.js';
 import { notifyEvent } from '../modules/notifications/notificationService.js';
 import { computeFlexState, targetForfeit } from '../lib/flexCredits.js';
+import { syncContractCompletion } from '../lib/contractCompletion.js';
 
 /**
  * FLEX Credit Expiry Job — runs a few times a day.
- * For each active FLEX contract:
+ * For each ACTIVE (or COMPLETED, D6) FLEX contract:
  *   1. Grandfather (first sight): set flexForfeitFloor = current shortfall, never
  *      forfeiting the past for existing contracts.
  *   2. Forfeit (monotonic): if the cumulative shortfall above the floor exceeds what
  *      we've already forfeited, mark the new credits as lost (banking/compensation).
- *   3. Warn: when the current 7-day window is closing without a recording.
+ *   3. Warn: when the current 7-day window is closing without a recording (ACTIVE only).
+ * COMPLETED entra na varredura para a reconciliação canônica poder REABRIR (syncContractCompletion)
+ * um contrato concluído que ainda tem crédito — ex.: concluído por engano quando o NAO_REALIZADO
+ * ainda era contado como consumo.
  */
 export async function runFlexCreditExpiryJob(now: Date = new Date()): Promise<void> {
 
     const contracts = await prisma.contract.findMany({
-        where: { type: 'FLEX', status: 'ACTIVE' },
+        where: { type: 'FLEX', status: { in: ['ACTIVE', 'COMPLETED'] } },
         include: {
             user: { select: { id: true, name: true } },
-            // "não fizer → come 1 crédito": um no-show (FALTA) JÁ custa 1 crédito — a reserva consumiu
-            // o crédito e ele NÃO é devolvido (diferente de CANCELLED/NAO_REALIZADO, que devolvem). Por
-            // isso a FALTA CONTA como gravação aqui: o crédito já foi cobrado na reserva; NÃO aplicar
-            // forfeiture extra (senão puniria 2× e, em semana bancada, o reconcile devolveria o crédito).
-            bookings: { where: { status: { not: 'CANCELLED' } }, select: { date: true, originalDate: true } },
+            // Contagem por status da reserva (CANCELLED fica de fora de tudo):
+            //  - FALTA (no-show) CONSOME o crédito — "não fizer → come 1 crédito": a reserva já cobrou e
+            //    ele NÃO é devolvido. Conta como gravação no ritmo E no consumo (sem forfeiture extra,
+            //    senão puniria 2× e, em semana bancada, o reconcile devolveria o crédito).
+            //  - NAO_REALIZADO (culpa do estúdio, D5) DEVOLVE o crédito (restoreCredit ao marcar): NÃO é
+            //    consumo — senão o reconcile apagaria o crédito devolvido e concluiria o contrato — mas
+            //    CONTA no ritmo semanal (âncora), para a semana em que o estúdio falhou não virar confisco.
+            bookings: { where: { status: { not: 'CANCELLED' } }, select: { date: true, originalDate: true, status: true } },
         },
     });
 
@@ -71,9 +78,12 @@ export async function runFlexCreditExpiryJob(now: Date = new Date()): Promise<vo
         }
 
         // ── 2. Forfeiture (monotonic) + canonical reconcile of flexCreditsRemaining ──
-        const target = targetForfeit(state.shortfall, c.flexForfeitFloor, c.flexCreditsTotal, state.recordings);
+        // Créditos CONSUMIDOS = reservas vivas menos NAO_REALIZADO (que devolveu o crédito). O ritmo
+        // (state/shortfall) segue contando o NAO_REALIZADO como semana coberta.
+        const consumed = c.bookings.filter(b => b.status !== 'NAO_REALIZADO').length;
+        const target = targetForfeit(state.shortfall, c.flexForfeitFloor, c.flexCreditsTotal, consumed);
         const newForfeited = Math.max(c.flexCreditsForfeited, target); // monotonic
-        const canonicalRemaining = Math.max(0, c.flexCreditsTotal - state.recordings - newForfeited);
+        const canonicalRemaining = Math.max(0, c.flexCreditsTotal - consumed - newForfeited);
         const justForfeited = newForfeited > c.flexCreditsForfeited;
 
         if (newForfeited !== c.flexCreditsForfeited || canonicalRemaining !== c.flexCreditsRemaining) {
@@ -83,6 +93,11 @@ export async function runFlexCreditExpiryJob(now: Date = new Date()): Promise<vo
                 where: { id: c.id },
                 data: { flexCreditsForfeited: newForfeited, flexCreditsRemaining: canonicalRemaining },
             });
+            // D6: o confisco (ou o ajuste canônico) pode zerar os créditos de um FLEX sem sessão
+            // pendente → o contrato vira "Concluído" agora, sem esperar a próxima transição de sessão;
+            // e um COMPLETED que voltou a ter crédito é reaberto (ACTIVE).
+            // Idempotente e nunca lança (erros só vão para o log).
+            await syncContractCompletion(c.id);
         }
 
         if (justForfeited) {
@@ -101,7 +116,9 @@ export async function runFlexCreditExpiryJob(now: Date = new Date()): Promise<vo
         }
 
         // ── 3. At-risk warning: current window closing soon, no recording yet ──
-        if (state.currentWindowIndex != null && (state.daysLeftInWindow ?? 99) <= 2
+        // Contrato concluído não recebe o aviso (se voltou a ter crédito, foi reaberto acima e a
+        // próxima rodada o trata como ACTIVE).
+        if (c.status === 'ACTIVE' && state.currentWindowIndex != null && (state.daysLeftInWindow ?? 99) <= 2
             && !state.recordedThisWindow && (c.flexCreditsRemaining ?? 0) > 0) {
             try {
                 await notifyEvent('flex_credit_at_risk', {

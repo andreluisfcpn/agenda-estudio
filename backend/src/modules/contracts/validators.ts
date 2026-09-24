@@ -70,8 +70,28 @@ export const customCheckSchema = z.object({
     schedule: z.array(z.object({
         day: z.number().min(1).max(6), // 1=Mon..6=Sat
         time: z.string().regex(/^\d{2}:\d{2}$/),
-    })).min(1, 'Selecione pelo menos um dia'),
+    })).max(14).optional().default([]),
     startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    // Opcionais (retrocompatível: sem eles = semanal). Mesmas opções do POST /custom, para o
+    // check do admin simular Quinzenal/Mensal/Datas Livres com as ocorrências reais (D7).
+    frequency: z.enum(['WEEKLY', 'BIWEEKLY', 'MONTHLY', 'CUSTOM']).optional().default('WEEKLY'),
+    weekPattern: z.array(z.number().int().min(1).max(5)).max(5).optional(),
+    customDates: z.array(z.object({
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        time: z.string().regex(/^\d{2}:\d{2}$/),
+    })).max(366).optional(),
+}).superRefine((d, ctx) => {
+    if (d.frequency === 'CUSTOM' && !(d.customDates && d.customDates.length > 0)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['customDates'], message: 'Selecione pelo menos uma data' });
+    } else if (d.frequency !== 'CUSTOM' && d.schedule.length === 0) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['schedule'], message: 'Selecione pelo menos um dia' });
+    }
+});
+
+// ─── SLOT OPTIONS (grade de horários de contrato — D8) ──
+
+export const slotOptionsQuerySchema = z.object({
+    tier: z.nativeEnum(Tier),
 });
 
 // ─── CUSTOM CONTRACT ────────────────────────────────────
@@ -92,12 +112,13 @@ export const customContractSchema = z.object({
         mode: z.enum(['all', 'credits']),
         perCycle: z.number().int().min(0).optional(), // B2: sem piso, perCycle negativo virava dinheiro grátis
     })).optional(),
+    // Teto = nº máximo de ocorrências (14 itens × 48 semanas); cada troca é conferida por ocorrência.
     resolvedConflicts: z.array(z.object({
         originalDate: z.string(),
         originalTime: z.string(),
         newDate: z.string(),
         newTime: z.string(),
-    })).optional(),
+    })).max(700).optional(),
     startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     userId: z.string().uuid().optional(),
     // Enhanced scheduling
@@ -112,7 +133,9 @@ export const customContractSchema = z.object({
 // ─── UPDATE (Admin) ─────────────────────────────────────
 
 export const updateContractSchema = z.object({
-    status: z.enum(['ACTIVE', 'EXPIRED', 'CANCELLED']).optional(),
+    // D6: COMPLETED permite concluir/reabrir manualmente. PENDING_CANCELLATION fica de fora de propósito: o
+    // PATCH não cancela as sessões futuras como o /request-cancellation, e o /resolve-cancellation conta com isso.
+    status: z.enum(['ACTIVE', 'EXPIRED', 'CANCELLED', 'COMPLETED']).optional(),
     endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     flexCreditsRemaining: z.number().int().min(0).optional(),
     contractUrl: z.string().url().optional().or(z.literal('')),
@@ -138,6 +161,9 @@ export const serviceContractSchema = z.object({
     // any legacy caller; the route still validates it against the addon's plansAllowed.
     paymentPlan: z.enum(['FULL', 'MONTHLY']).optional(),
     couponCode: z.string().trim().min(1).max(64).optional(),
+    // D1: "Mensal + Cartão" com o TOTAL cobrado agora, parcelado em até N× sem juros (N = meses da
+    // fidelidade). Só vale com paymentPlan MONTHLY + CARTAO (senão 400); omitido = mensalidade 1×/mês.
+    cardSplit: z.boolean().optional(),
 });
 
 // ─── PAY ────────────────────────────────────────────────

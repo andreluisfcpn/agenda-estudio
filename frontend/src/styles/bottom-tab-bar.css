@@ -1,8 +1,10 @@
 /* ─── Bottom Tab Bar (Mobile Only) ────────────────────── */
-/* Wrapper is fixed at the bottom and hosts the side arrows (absolute) outside the
-   scrollable nav. The nav scrolls horizontally; touch is native, mouse drag is
-   provided by useDragScroll. The visual treatment uses the teal palette so it
-   matches the rest of the system (background tint, border-top, hover ring). */
+/* No máximo 5 slots IGUAIS (config/nav.ts → MOBILE_BAR_SLOTS), sem rolagem
+   horizontal nem setas: o excedente do admin vai para o sheet "Mais"
+   (BottomSheetModal). A altura de 64px (--bottom-tab-h) e a classe
+   .bottom-tab-bar-wrap são contrato: BottomSheetModal mede o wrap para abrir
+   ACIMA da barra, e a save bar / banner PWA se posicionam por essa altura.
+   Visual em teal para casar com o resto do sistema. */
 
 .bottom-tab-bar-wrap {
   display: none;
@@ -30,49 +32,53 @@
 
 .bottom-tab-bar {
   flex: 1;
+  min-width: 0;
   height: 100%;
   padding-bottom: env(safe-area-inset-bottom, 0px);
   display: flex;
   align-items: stretch;
-
-  /* Horizontal scroll */
   flex-wrap: nowrap;
-  overflow-x: auto;
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
-  scroll-snap-type: x proximity;
-  scroll-behavior: smooth;
-  scrollbar-width: none; /* Firefox */
+  overflow: hidden;
 }
-.bottom-tab-bar::-webkit-scrollbar { display: none; } /* WebKit */
 
-/* ─── Tab Item ─── */
+/* ─── Tab Item (slot igual) ─── */
 .btb-tab {
-  flex: 0 0 auto;
-  min-width: 68px;
-  scroll-snap-align: center;
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 3px;
-  padding: 6px 12px;
+  padding: 6px 4px;
   background: none;
   border: none;
   color: var(--text-secondary);  /* readable inactive (was --text-muted) */
+  font-family: inherit;
   text-decoration: none;
   cursor: pointer;
-  transition: color 0.2s ease, background 0.2s ease;
+  transition: color 0.2s ease;
   -webkit-tap-highlight-color: transparent;
   position: relative;
 }
-.btb-tab:hover { color: var(--text-primary); }
+@media (hover: hover) {
+  .btb-tab:hover { color: var(--text-primary); }
+}
+.btb-tab:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: -4px;
+  border-radius: var(--radius-lg);
+}
 
 .btb-tab-icon {
+  flex-shrink: 0;
   transition: transform 0.2s ease;
 }
 
 .btb-tab-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 0.5625rem;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -103,6 +109,11 @@
   box-shadow: 0 0 8px rgba(17, 129, 155, 0.5);
 }
 
+/* "Mais" com o sheet aberto (sem ser a rota atual): realce leve. */
+.btb-tab--open:not(.btb-tab--active) {
+  color: var(--text-primary);
+}
+
 /* Pending: immediate tap feedback while the route transition resolves (no blink). */
 .btb-tab--pending {
   color: var(--accent-primary);
@@ -118,23 +129,92 @@
   .btb-tab--pending .btb-tab-icon { animation: none; opacity: 0.7; }
 }
 
-/* Side arrows tweaked for the bottom-bar context. */
-.bottom-tab-arrow.scrollrow-arrow {
-  width: 32px;
-  height: 32px;
-  /* Lift above safe-area so the arrow sits centered on the visible 64px row. */
-  margin-top: calc(env(safe-area-inset-bottom, 0px) / -2);
-}
-
 /* ─── Narrow Screens (iPhone SE, 320px devices) ─── */
 @media (max-width: 359px) {
   .btb-tab {
-    min-width: 60px;
-    padding: 6px 8px;
+    padding: 6px 2px;
     gap: 2px;
   }
   .btb-tab-label {
     font-size: 0.5rem;
     letter-spacing: 0;
+  }
+}
+
+/* ─── Sheet "Mais" (itens excedentes, agrupados por seção) ─── */
+.btb-more {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.btb-more-section-title {
+  margin: 0 0 var(--space-2);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.btb-more-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.btb-more-item {
+  width: 100%;
+  min-height: 76px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1-5);
+  padding: var(--space-2) var(--space-1);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  cursor: pointer;
+  transition: color var(--transition-base), border-color var(--transition-base), transform var(--transition-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+.btb-more-item-label {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.btb-more-item:active {
+  transform: scale(0.97);
+}
+@media (hover: hover) {
+  .btb-more-item:hover {
+    color: var(--text-primary);
+    border-color: var(--border-hover);
+  }
+}
+.btb-more-item:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+
+.btb-more-item--active {
+  color: var(--accent-text);
+  background: rgba(17, 129, 155, 0.14);
+  border-color: rgba(17, 129, 155, 0.45);
+}
+
+/* Até 359px, 3 colunas quebrariam "Configurações" no meio da palavra: 2 colunas. */
+@media (max-width: 359px) {
+  .btb-more-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

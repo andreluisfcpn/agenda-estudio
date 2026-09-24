@@ -4,11 +4,12 @@
 // Falls back to mock data when integrations are not configured.
 
 import { coraCreateBoleto, isCoraEnabled, type CoraBoletoPayload } from './coraService.js';
-import { sicoobCreatePix, sicoobAllowedEnvironment } from './sicoobService.js';
-import { resolvePixProvider, toSicoobTxid } from './pixGateway.js';
+import { sicoobCreatePix, sicoobAllowedEnvironment, SANDBOX_TEST_PIX_KEY, SANDBOX_TEST_MERCHANT_NAME, SANDBOX_TEST_MERCHANT_CITY } from './sicoobService.js';
+import { resolvePixProvider, toSicoobTxid, mergePaymentMetadata, PIX_DEFAULT_EXPIRES_SECONDS, PIX_MIN_EXPIRES_SECONDS } from './pixGateway.js';
 import { stripeCreatePaymentIntent, stripeGetOrCreateCustomer, isStripeEnabled } from './stripeService.js';
 import { prisma } from './prisma.js';
 import { cleanDocument, isValidCpfCnpj } from '../utils/document.js';
+import { buildStaticBrCode } from './brcode.js';
 
 /**
  * Cora REJECTS payments whose customer document is not a real CPF/CNPJ
@@ -138,6 +139,8 @@ export interface CreatePaymentOpts {
     contractId?: string;
     userId?: string;       // needed for Stripe PaymentIntent flow
     frontendUrl?: string;  // base URL for success/cancel redirects
+    /** PIX: validade da cobrança em segundos (default 3600). Ex.: serviço = 10 min (D2). */
+    expiresSeconds?: number;
 }
 
 export interface PaymentResult {
@@ -148,22 +151,45 @@ export interface PaymentResult {
     paymentUrl: string | null;
     clientSecret: string | null; // Stripe PaymentIntent secret for inline card payment
     qrCodeBase64: string | null;
+    /** PIX: fim da validade da cobrança emitida (persistido em Payment.pixExpiresAt). */
+    expiresAt?: Date | null;
+    /** PIX: valor (centavos) para o qual a cobrança foi emitida — base do reuso em issuePixCharge. */
+    chargeAmount?: number | null;
+}
+
+function pixExpiresSeconds(opts: CreatePaymentOpts): number {
+    return Math.max(PIX_MIN_EXPIRES_SECONDS, Math.round(opts.expiresSeconds ?? PIX_DEFAULT_EXPIRES_SECONDS));
 }
 
 // ─── Mock Data (fallback when no integration configured) ─
+// SÓ fora de produção (quem chama garante). O PIX mock é um BR Code VÁLIDO com o valor REAL
+// (antes era um EMV fixo de R$10,00 com CRC inválido, que nenhum banco lia).
 
 function generateMockResult(opts: CreatePaymentOpts): PaymentResult {
     const mockId = `mock-${opts.paymentId.slice(0, 8)}`;
 
     if (opts.paymentMethod === 'PIX') {
+        if (process.env.NODE_ENV === 'production') {
+            // Defesa em profundidade: nunca entregar QR falso em produção.
+            throw new Error('Nenhum provedor de PIX disponível. Tente novamente ou use outro método de pagamento.');
+        }
         return {
             provider: 'MOCK',
             providerRef: mockId,
-            pixString: '00020126580014br.gov.bcb.pix0136123e4567-e89b-12d3-a456-426614174000520400005303986540510.005802BR5913Buzios Studio6008BuziosRJ62070503***63041A2B',
+            // Chave FICTÍCIA e recebedor "TESTE…" (pagamentos-12): o QR de dev é lido, mas nunca pagável.
+            pixString: buildStaticBrCode({
+                key: SANDBOX_TEST_PIX_KEY,
+                amountCents: opts.amount,
+                txid: toSicoobTxid(opts.paymentId),
+                merchantName: SANDBOX_TEST_MERCHANT_NAME,
+                city: SANDBOX_TEST_MERCHANT_CITY,
+            }),
             boletoUrl: null,
             paymentUrl: null,
             clientSecret: null,
             qrCodeBase64: null,
+            expiresAt: new Date(Date.now() + pixExpiresSeconds(opts) * 1000),
+            chargeAmount: opts.amount,
         };
     }
 
@@ -200,7 +226,11 @@ export async function createPayment(opts: CreatePaymentOpts): Promise<PaymentRes
     if (paymentMethod === 'PIX') {
         const pixProvider = await resolvePixProvider();
         if (!pixProvider) {
-            console.log('[Gateway] Nenhum provedor de PIX configurado, usando mock');
+            // D15: em produção, sem provedor PIX é ERRO (nunca QR mock). Em dev, mock válido.
+            if (process.env.NODE_ENV === 'production') {
+                throw new Error('Nenhum provedor de PIX está habilitado. Use outro método de pagamento ou contate o estúdio.');
+            }
+            console.log('[Gateway] Nenhum provedor de PIX configurado, usando mock (dev)');
             return generateMockResult(opts);
         }
 
@@ -217,6 +247,7 @@ export async function createPayment(opts: CreatePaymentOpts): Promise<PaymentRes
                     txid: toSicoobTxid(opts.paymentId),
                     description: opts.description,
                     customer: { name: opts.customer.name, document: pix.doc },
+                    expiresSeconds: pixExpiresSeconds(opts),
                 });
                 if (!result.pixString) {
                     throw new Error('O Sicoob não retornou o código PIX. Tente novamente em instantes.');
@@ -229,6 +260,8 @@ export async function createPayment(opts: CreatePaymentOpts): Promise<PaymentRes
                     paymentUrl: null,
                     clientSecret: null,
                     qrCodeBase64: result.qrCodeBase64 || null,
+                    expiresAt: result.expiresAt,
+                    chargeAmount: opts.amount,
                 };
             } catch (err) {
                 console.error('[Gateway] Sicoob PIX creation failed:', err);
@@ -270,6 +303,9 @@ export async function createPayment(opts: CreatePaymentOpts): Promise<PaymentRes
                 paymentUrl: null,
                 clientSecret: null,
                 qrCodeBase64: result.qrCodeBase64 || null,
+                // A Cora vence por dia: registra a validade pedida (≤ 24h) como limite de reuso.
+                expiresAt: new Date(Date.now() + Math.min(pixExpiresSeconds(opts), 24 * 3600) * 1000),
+                chargeAmount: opts.amount,
             };
         } catch (err) {
             console.error('[Gateway] Cora PIX creation failed:', err);
@@ -379,8 +415,24 @@ export async function createPayment(opts: CreatePaymentOpts): Promise<PaymentRes
     return generateMockResult(opts);
 }
 
-/** Update a Payment record with gateway results */
+/**
+ * Update a Payment record with gateway results. Para PIX também grava a validade (pixExpiresAt) e
+ * o controle `metadata.pixCharge` (emissão nº 1 + valor emitido), preservando o resto do metadata
+ * (ex.: contractData do /self, installmentCap do serviço) — é o que permite ao issuePixCharge
+ * reaproveitar esta cobrança enquanto viva e com o mesmo valor.
+ */
 export async function updatePaymentWithGatewayResult(paymentId: string, result: PaymentResult): Promise<void> {
+    let metadata: ReturnType<typeof mergePaymentMetadata> | undefined;
+    if (result.pixString) {
+        const current = await prisma.payment.findUnique({ where: { id: paymentId }, select: { metadata: true, amount: true } });
+        metadata = mergePaymentMetadata(current?.metadata, {
+            pixCharge: {
+                attempt: 1,
+                amount: result.chargeAmount ?? current?.amount,
+                ...(result.providerRef ? { txid: result.providerRef } : {}),
+            },
+        });
+    }
     await prisma.payment.update({
         where: { id: paymentId },
         data: {
@@ -390,8 +442,10 @@ export async function updatePaymentWithGatewayResult(paymentId: string, result: 
                 : result.provider,
             providerRef: result.providerRef,
             pixString: result.pixString,
+            pixExpiresAt: result.pixString ? (result.expiresAt ?? null) : null,
             boletoUrl: result.boletoUrl,
             paymentUrl: result.paymentUrl,
+            ...(metadata !== undefined ? { metadata } : {}),
         },
     });
 }

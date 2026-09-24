@@ -1,20 +1,57 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { prisma } from '../../lib/prisma.js';
 import { authenticate } from '../../middleware/auth.js';
-import { BookingStatus } from '../../generated/prisma/client.js';
-import { generateTimeSlots } from '../../utils/pricing.js';
-import { getConfig, getConfigString } from '../../lib/businessConfig.js';
-import { getPublicDayAvailability } from '../bookings/availability.service.js';
-import { checkFixoSchema, customCheckSchema } from './validators.js';
+import {
+    getContractSlotGrid, checkSlotInGrid, checkCustomScheduleInGrid, slotAllowedForContract,
+    planCustomOccurrences, getPackageSlots, weekdayOfDateStr,
+} from '../../utils/pricing.js';
+import { getConfig } from '../../lib/businessConfig.js';
+import { getPublicDayAvailability, buildOccupiedSet } from '../bookings/availability.service.js';
+import { checkFixoSchema, customCheckSchema, slotOptionsQuerySchema } from './validators.js';
+import {
+    purgeExpiredCustomAwaiting, discardClientCustomAttempts, previousCustomAttemptError, tomorrowInSaoPaulo,
+    clientStartDateError, customUserLockKey, CUSTOM_USER_LOCK_TTL_SECONDS, CUSTOM_IN_PROGRESS_ERROR,
+} from './contract.creation.js';
+import { acquireMutex, releaseMutex } from '../../lib/redis.js';
+
+/** `userId` opcional do /custom/check do ADMIN (cliente-alvo), fora do customCheckSchema. */
+const checkTargetUserSchema = z.string().uuid().optional();
 
 export function registerCheckRoutes(router: Router) {
+
+// ─── GET /api/contracts/slot-options?tier= (grade de horários de CONTRATO — D8) ──
+// Fonte única da grade para as telas de contrato (FIXO do admin, /self, personalizado):
+// { tier, slotDurationHours, days: [{ dayOfWeek, slots: [{ time, end, tier }] }] } na raiz.
+// Registrada antes das rotas /:id (routes.ts monta registerCheckRoutes antes do lifecycle).
+
+router.get('/slot-options', authenticate, async (req: Request, res: Response) => {
+    try {
+        const { tier } = slotOptionsQuerySchema.parse(req.query);
+        res.json(await getContractSlotGrid(tier));
+    } catch (err) {
+        if (err instanceof z.ZodError) {
+            res.status(400).json({ error: 'Faixa inválida. Use COMERCIAL, AUDIENCIA ou SABADO.', details: err.errors });
+            return;
+        }
+        console.error('[slot-options]', err);
+        res.status(500).json({ error: 'Erro interno ao carregar os horários' });
+    }
+});
 
 // ─── POST /api/contracts/check-fixo (Dry-Run Validation) ──
 
 router.post('/check-fixo', authenticate, async (req: Request, res: Response) => {
     try {
         const data = checkFixoSchema.parse(req.body);
+
+        // D8: horário/dia fora da grade de contrato da faixa → 400 "Horário inválido" (nunca "conflito").
+        const grid = await getContractSlotGrid(data.tier);
+        const slotErr = checkSlotInGrid(grid, data.fixedDayOfWeek, data.fixedTime);
+        if (slotErr) {
+            res.status(400).json({ error: slotErr, code: 'INVALID_SLOT' });
+            return;
+        }
+        const allowedDays = grid.days.map(d => d.dayOfWeek);
 
         // Datas em UTC (determinístico; casa com bookings @db.Date = meia-noite UTC).
         const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
@@ -42,11 +79,13 @@ router.post('/check-fixo', authenticate, async (req: Request, res: Response) => 
             if (!av) { av = await getPublicDayAvailability(ds); availCache.set(ds, av); }
             return av;
         };
-        // Horários livres do TIER do contrato num dia (ordenados por proximidade ao horário fixo).
+        // Horários livres que o contrato pode usar num dia (hierarquia de faixas — D8 — e só nos
+        // dias permitidos da faixa), ordenados por proximidade ao horário fixo.
         const freeTierSlots = async (ds: string): Promise<string[]> => {
+            if (!allowedDays.includes(weekdayOf(ds))) return [];
             const av = await dayAvail(ds);
             if (av.closed) return [];
-            return av.slots.filter(s => s.available && s.tier === data.tier).map(s => s.time)
+            return av.slots.filter(s => s.available && slotAllowedForContract(data.tier, s.tier)).map(s => s.time)
                 .sort((a, b) => Math.abs(toMin(a) - toMin(data.fixedTime)) - Math.abs(toMin(b) - toMin(data.fixedTime)));
         };
         // Dia livre mais próximo ANTES (-1) ou DEPOIS (+1) de uma data, mesmo tier (até ±7 dias).
@@ -92,14 +131,15 @@ router.post('/check-fixo', authenticate, async (req: Request, res: Response) => 
         if (conflicts.length > 0 || (expected.length > 0 && occurrencesWithFreeDay === 0)) {
             const chosenConflicts = conflicts.length || totalWeeks;
             const alts: { dayOfWeek: number; conflictCount: number; conflictFree: boolean }[] = [];
-            for (let dow = 1; dow <= 6; dow++) {
+            for (const dow of allowedDays) {
                 if (dow === (data.fixedDayOfWeek % 7)) continue;
+                // O horário fixo precisa EXISTIR na grade de contrato desse dia-da-semana (senão não serve).
+                if (checkSlotInGrid(grid, dow, data.fixedTime)) continue;
                 // Alinha ao dia-da-semana candidato.
                 let s = data.startDate;
                 while (weekdayOf(s) !== (dow % 7)) s = addDays(s, 1);
-                // O horário fixo precisa EXISTIR como slot do tier nesse dia-da-semana (senão não serve).
                 const probe = await dayAvail(s);
-                if (probe.closed || !probe.slots.some(sl => sl.tier === data.tier && sl.time === data.fixedTime)) continue;
+                if (probe.closed || !probe.slots.some(sl => sl.time === data.fixedTime && slotAllowedForContract(data.tier, sl.tier))) continue;
                 let cc = 0;
                 for (let i = 0, ds = s; i < totalWeeks; i++, ds = addDays(ds, 7)) {
                     if (!(await freeTierSlots(ds)).includes(data.fixedTime)) cc++;
@@ -138,94 +178,123 @@ router.post('/check-fixo', authenticate, async (req: Request, res: Response) => 
 });
 
 // ─── POST /api/contracts/custom/check (Dry-Run multi-day) ──
+// Gera as MESMAS ocorrências do POST /custom (planCustomOccurrences: frequência, padrão de
+// semanas, datas livres e teto C8) e aponta as que caem em horário ocupado (pacote inteiro vs.
+// reservas não canceladas + bloqueios), sugerindo outro horário VÁLIDO da grade no mesmo dia.
+// Devolve TODOS os conflitos: o POST /custom recusa (409) qualquer ocorrência sem resolução, então
+// a tela precisa ver cada uma para decidir (aceitar só quando todas têm sugestão).
 
 router.post('/custom/check', authenticate, async (req: Request, res: Response) => {
     try {
         const data = customCheckSchema.parse(req.body);
-        const POSSIBLE_SLOTS = await generateTimeSlots();
-        const comercialSlotsCSV2 = await getConfigString('comercial_slots');
-        const comercialSlotsList2 = comercialSlotsCSV2.split(',').map(s => s.trim());
-        const startDate = new Date(data.startDate + 'T00:00:00');
-        const endDate = new Date(startDate);
-        endDate.setMonth(endDate.getMonth() + data.durationMonths);
+        const frequency = data.frequency ?? 'WEEKLY';
+        const isAdmin = req.user!.role === 'ADMIN';
 
-        const expectedDates: { date: Date; time: string; day: number }[] = [];
+        // D8: cada item precisa estar na grade de contrato da faixa → 400 "Horário inválido".
+        const grid = await getContractSlotGrid(data.tier);
+        const slotErr = checkCustomScheduleInGrid(grid, { frequency, schedule: data.schedule, customDates: data.customDates });
+        if (slotErr) {
+            res.status(400).json({ error: slotErr, code: 'INVALID_SLOT' });
+            return;
+        }
 
-        for (const slot of data.schedule) {
-            const current = new Date(startDate);
-            // Align to first occurrence of this day
-            while (current.getUTCDay() !== (slot.day % 7)) {
-                current.setDate(current.getDate() + 1);
+        // D7: o CLIENTE simula com o mesmo início fixo que a criação exige (amanhã, SP).
+        if (!isAdmin) {
+            const tomorrowSp = tomorrowInSaoPaulo();
+            if (data.startDate !== tomorrowSp) {
+                res.status(400).json(clientStartDateError(tomorrowSp));
+                return;
             }
-            // Generate weekly occurrences
-            while (current < endDate) {
-                expectedDates.push({ date: new Date(current), time: slot.time, day: slot.day });
-                current.setDate(current.getDate() + 7);
+        }
+
+        // Tentativas anteriores não pagas saem antes (mesma rotina segura da varredura), para as sessões
+        // RESERVED delas não aparecerem como conflito:
+        //  - CLIENTE: o check vem logo antes da criação ("Ir para pagamento") → a nova tentativa substitui a
+        //    anterior, viva ou vencida. Paga / pagamento em andamento → 409 (igual ao POST /custom).
+        //  - ADMIN: só as VENCIDAS do cliente-alvo (`userId`, se informado; sem ele, nada é descartado).
+        if (!isAdmin) {
+            const userId = req.user!.userId;
+            const lockKey = customUserLockKey(userId);
+            // Nunca descartar a tentativa que um POST /custom deste cliente está gravando agora.
+            if (!(await acquireMutex(lockKey, CUSTOM_USER_LOCK_TTL_SECONDS))) {
+                res.status(409).json(CUSTOM_IN_PROGRESS_ERROR);
+                return;
             }
+            let prev: Awaited<ReturnType<typeof discardClientCustomAttempts>>;
+            try {
+                prev = await discardClientCustomAttempts(userId);
+            } finally {
+                await releaseMutex(lockKey).catch(() => {});
+            }
+            if (prev !== 'ok') {
+                res.status(409).json(previousCustomAttemptError(prev));
+                return;
+            }
+        } else {
+            const targetParsed = checkTargetUserSchema.safeParse(req.body?.userId);
+            if (targetParsed.success && targetParsed.data) await purgeExpiredCustomAwaiting(targetParsed.data);
+        }
+
+        const occurrences = planCustomOccurrences({
+            frequency,
+            durationMonths: data.durationMonths,
+            schedule: data.schedule,
+            weekPattern: data.weekPattern,
+            customDates: data.customDates,
+            startDate: data.startDate,
+        });
+
+        const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+        const slotDuration = grid.slotDurationHours;
+        // Ocupação por dia (memoizada). As ocorrências já aceitas nesta simulação também ocupam
+        // (duas ocorrências do próprio pedido nunca podem se sobrepor).
+        const occupiedByDay = new Map<string, Set<string>>();
+        const occupiedOn = async (ds: string): Promise<Set<string>> => {
+            let set = occupiedByDay.get(ds);
+            if (!set) { set = await buildOccupiedSet(new Date(ds + 'T00:00:00Z')); occupiedByDay.set(ds, set); }
+            return set;
+        };
+        const overlaps = (time: string, occupied: Set<string>) => getPackageSlots(time, slotDuration).some(s => occupied.has(s));
+        // Pacotes das ocorrências do PRÓPRIO plano por dia: a sugestão nunca cai num horário que o plano já
+        // usa mais tarde no mesmo dia (senão a criação trocaria um conflito por outro).
+        const ownByDay = new Map<string, Set<string>>();
+        for (const occ of occurrences) {
+            const set = ownByDay.get(occ.date) ?? new Set<string>();
+            getPackageSlots(occ.time, slotDuration).forEach(s => set.add(s));
+            ownByDay.set(occ.date, set);
         }
 
         const conflicts: { date: string; originalTime: string; day: number; suggestedReplacement?: { date: string; time: string } }[] = [];
 
-        for (const expected of expectedDates) {
-            const dateStr = expected.date.toISOString().split('T')[0];
-            const dayOfWeek = expected.date.getUTCDay();
-
-            const existingBooking = await prisma.booking.findFirst({
-                where: {
-                    date: expected.date,
-                    status: { not: BookingStatus.CANCELLED },
-                    startTime: { lte: expected.time },
-                    endTime: { gt: expected.time },
-                },
-            });
-
-            const existingBlock = await prisma.blockedSlot.findFirst({
-                where: {
-                    date: expected.date,
-                    startTime: { lte: expected.time },
-                    endTime: { gt: expected.time },
-                },
-            });
-
-            if (existingBooking || existingBlock) {
-                let suggestion: { date: string; time: string } | undefined;
-
-                for (const altSlot of POSSIBLE_SLOTS) {
-                    if (altSlot === expected.time) continue;
-                    // Tier constraints
-                    if (dayOfWeek === 6 && data.tier !== 'SABADO') continue;
-                    if (dayOfWeek >= 1 && dayOfWeek <= 5 && data.tier === 'COMERCIAL' && !comercialSlotsList2.includes(altSlot)) continue;
-
-                    const overlapBooking = await prisma.booking.findFirst({
-                        where: { date: expected.date, status: { not: BookingStatus.CANCELLED }, startTime: { lte: altSlot }, endTime: { gt: altSlot } },
-                    });
-                    const overlapBlock = await prisma.blockedSlot.findFirst({
-                        where: { date: expected.date, startTime: { lte: altSlot }, endTime: { gt: altSlot } },
-                    });
-
-                    if (!overlapBooking && !overlapBlock) {
-                        suggestion = { date: dateStr, time: altSlot };
-                        break;
-                    }
-                }
-
-                conflicts.push({
-                    date: dateStr,
-                    originalTime: expected.time,
-                    day: expected.day,
-                    ...(suggestion && { suggestedReplacement: suggestion }),
-                });
+        for (const occ of occurrences) {
+            const occupied = await occupiedOn(occ.date);
+            if (!overlaps(occ.time, occupied)) {
+                getPackageSlots(occ.time, slotDuration).forEach(s => occupied.add(s));
+                continue;
             }
+            const own = ownByDay.get(occ.date) ?? new Set<string>();
+            const daySlots = grid.days.find(d => d.dayOfWeek === weekdayOfDateStr(occ.date))?.slots ?? [];
+            const alternative = daySlots
+                .map(s => s.time)
+                .filter(t => t !== occ.time && !overlaps(t, occupied) && !overlaps(t, own))
+                .sort((a, b) => Math.abs(toMin(a) - toMin(occ.time)) - Math.abs(toMin(b) - toMin(occ.time)))[0];
+            // A sugestão passa a ocupar o dia (a criação a aplica nesta mesma ordem): duas ocorrências em
+            // conflito no mesmo dia nunca recebem o mesmo horário substituto.
+            if (alternative) getPackageSlots(alternative, slotDuration).forEach(s => occupied.add(s));
+            conflicts.push({
+                date: occ.date,
+                originalTime: occ.time,
+                day: occ.day,
+                ...(alternative && { suggestedReplacement: { date: occ.date, time: alternative } }),
+            });
         }
 
-        // Limit to first 20 conflicts to avoid huge payloads
-        const limitedConflicts = conflicts.slice(0, 20);
-
+        // TODOS os conflitos (o teto do schema — 14 itens × 12 ciclos / 366 datas — limita o payload).
         res.json({
             available: conflicts.length === 0,
-            conflicts: limitedConflicts,
+            conflicts,
             totalConflicts: conflicts.length,
-            totalSessions: expectedDates.length,
+            totalSessions: occurrences.length,
         });
     } catch (err) {
         if (err instanceof z.ZodError) {

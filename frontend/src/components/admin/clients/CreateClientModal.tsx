@@ -1,9 +1,15 @@
-import { getErrorMessage } from '../../../utils/errors';
-import React, { useState, useId } from 'react';
-import { usersApi, ApiError } from '../../../api/client';
+import { useRef, useState } from 'react';
+import { usersApi } from '../../../api/client';
+import { useUI } from '../../../context/UIContext';
 import BottomSheetModal from '../../BottomSheetModal';
-import { UserPlus, UserRound, Mail, Lock, Smartphone, IdCard, Globe, NotebookPen, ShieldCheck, ChevronDown, Plus } from 'lucide-react';
-import { maskPhone, maskEmail, maskCpfCnpj, translateError, isValidCpfCnpj } from '../../../utils/mask';
+import WizardSteps from '../WizardSteps';
+import { useWizardStep, ignoreMultiClick, wizardStepBodyStyle, wizardStepContentStyle } from '../../../hooks/useWizardStep';
+import { UserPlus } from 'lucide-react';
+import { serializeSocialLinks } from './SocialLinksEditor';
+import {
+    CLIENT_WIZARD_STEPS, CLIENT_WIZARD_TOTAL, EMPTY_CLIENT_FORM, ADDRESS_KEYS,
+    ClientWizardStepFields, findFirstInvalidClientStep, mapClientApiError, useClientForm, useStepViewReset,
+} from './ClientWizardFields';
 
 interface CreateClientModalProps {
     isOpen: boolean;
@@ -11,313 +17,147 @@ interface CreateClientModalProps {
     onCreated: () => void;
 }
 
+/**
+ * "Novo cliente" — wizard de 3 etapas (D11): Dados pessoais → Contato e endereço → Segurança e notas.
+ * Anti-submit espúrio: sem <form>, botões type="button" com keys distintas, avanço adiado
+ * 1 tick (setTimeout 0), guard de etapa no cadastrar, botões do rodapé ignoram o 2º clique de um
+ * clique duplo (ignoreMultiClick) e nenhuma trava por tempo. Altura mínima estável por etapa.
+ */
 export default function CreateClientModal({ isOpen, onClose, onCreated }: CreateClientModalProps) {
-    const uid = useId();
-    const [createForm, setCreateForm] = useState({ name: '', email: '', phone: '', password: '', role: 'CLIENTE', notes: '', cpfCnpj: '', socialLinks: '', clientStatus: 'ACTIVE' });
+    const { showToast } = useUI();
+    const { step, back, goTo, isLast } = useWizardStep(CLIENT_WIZARD_TOTAL);
+    const form = useClientForm(EMPTY_CLIENT_FORM, 'create');
+    const { values } = form;
     const [createError, setCreateError] = useState('');
-    const [createFieldErrors, setCreateFieldErrors] = useState<Record<string, string>>({});
-    const [showAdvanced, setShowAdvanced] = useState(false);
+    // Campos a que o banner se refere: some sozinho quando todos forem corrigidos.
+    const [errorFields, setErrorFields] = useState<string[]>([]);
     const [creating, setCreating] = useState(false);
+    // Trava de requisição EM ANDAMENTO (não é trava por tempo): evita 2 POSTs num duplo clique.
+    const inFlightRef = useRef(false);
+    const stepRef = useStepViewReset(step);
 
-    const handleCreate = async () => {
-        setCreateError('');
-        setCreateFieldErrors({});
-        // Bloqueio no submit (o campo é opcional e vive numa seção recolhível — se inválido, abre a seção
-        // e mostra o erro no topo, sempre visível). Cobre também documento incompleto (< tamanho válido).
-        const cpfDig = createForm.cpfCnpj.replace(/\D/g, '');
-        if (cpfDig.length > 0 && !isValidCpfCnpj(cpfDig)) {
-            setShowAdvanced(true);
-            setCreateError('CPF/CNPJ inválido — confira os números.');
-            return;
-        }
-        setCreating(true);
-        try {
-            const payload: any = {
-                name: createForm.name,
-                email: createForm.email,
-                password: createForm.password,
-                phone: createForm.phone.replace(/\D/g, '') || undefined,
-                role: createForm.role,
-            };
-            if (createForm.notes.trim()) payload.notes = createForm.notes;
-            if (createForm.cpfCnpj.replace(/\D/g, '')) payload.cpfCnpj = createForm.cpfCnpj.replace(/\D/g, '');
-            if (createForm.socialLinks.trim()) payload.socialLinks = createForm.socialLinks;
-            if (createForm.clientStatus !== 'ACTIVE') payload.clientStatus = createForm.clientStatus;
-            await usersApi.create(payload);
-            resetCreateModal();
-            onCreated();
-        } catch (err: unknown) {
-            if (err instanceof Error && err.name === 'ApiError') {
-                const apiErr = err as ApiError;
-                if (apiErr.details && Array.isArray(apiErr.details)) {
-                    const mapped: Record<string, string> = {};
-                    apiErr.details.forEach((issue: any) => { mapped[issue.path.join('.')] = issue.message; });
-                    setCreateFieldErrors(mapped);
-                } else if (apiErr.status === 409) {
-                    setCreateFieldErrors({ email: apiErr.message });
-                }
-                setCreateError(apiErr.message);
-            } else {
-                setCreateError(getErrorMessage(err));
-            }
-        } finally { setCreating(false); }
+    // Avanço adiado 1 tick (anti-submit espúrio) e com destino fixo: um clique duplo no
+    // "Próximo" enfileira dois avanços para a MESMA etapa, sem pular a seguinte.
+    const goNext = () => {
+        if (!form.isStepValid(step)) return;
+        const target = step + 1;
+        setTimeout(() => goTo(target), 0);
     };
 
-    const resetCreateModal = () => {
-        onClose();
-        setCreateForm({ name: '', email: '', phone: '', password: '', role: 'CLIENTE', notes: '', cpfCnpj: '', socialLinks: '', clientStatus: 'ACTIVE' });
+    const handleCreate = async () => {
+        if (!isLast || inFlightRef.current) return; // rede de segurança: só cadastra na última etapa
         setCreateError('');
-        setCreateFieldErrors({});
-        setShowAdvanced(false);
+        const invalid = findFirstInvalidClientStep(values, 'create');
+        if (invalid) {
+            form.setFieldErrors(invalid.errors);
+            form.touchMany(Object.keys(invalid.errors));
+            setErrorFields(Object.keys(invalid.errors));
+            setCreateError('Revise os campos destacados antes de cadastrar.');
+            goTo(invalid.step);
+            return;
+        }
+        inFlightRef.current = true;
+        setCreating(true);
+        try {
+            const payload: Parameters<typeof usersApi.create>[0] = {
+                name: values.name.trim(),
+                email: values.email.trim(),
+                password: values.password,
+                role: values.role,
+            };
+            const phone = values.phone.replace(/\D/g, '');
+            if (phone) payload.phone = phone;
+            const doc = values.cpfCnpj.replace(/\D/g, '');
+            if (doc) payload.cpfCnpj = doc;
+            if (values.clientStatus !== 'ACTIVE') payload.clientStatus = values.clientStatus;
+            const social = serializeSocialLinks(Object.fromEntries(Object.entries(values.social).map(([k, v]) => [k, v.trim()])));
+            if (social) payload.socialLinks = social;
+            ADDRESS_KEYS.forEach(k => { const v = values[k].trim(); if (v) payload[k] = v; });
+            if (values.notes.trim()) payload.notes = values.notes;
+            await usersApi.create(payload);
+            showToast('Cliente cadastrado.');
+            onCreated();
+            onClose();
+        } catch (err: unknown) {
+            const mapped = mapClientApiError(err);
+            form.setFieldErrors(mapped.fieldErrors);
+            setErrorFields(Object.keys(mapped.fieldErrors));
+            setCreateError(mapped.message);
+            if (mapped.step) goTo(mapped.step);
+        } finally {
+            inFlightRef.current = false;
+            setCreating(false);
+        }
     };
 
     if (!isOpen) return null;
 
-    const labelStyle = {
-        fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)',
-        textTransform: 'uppercase' as const, letterSpacing: '0.1em', marginBottom: '6px', display: 'block',
-    };
-
-    const fieldErrorStyle = {
-        fontSize: '0.6875rem', color: 'var(--danger)', fontWeight: 600, marginTop: '4px', paddingLeft: '4px',
-    };
-
-    // CPF/CNPJ é opcional; quando preenchido precisa passar na validação da Receita (dígitos verificadores).
-    // Erro visual só quando o documento está em tamanho completo (11/14) — evita "vermelho" enquanto ainda
-    // se digita. O bloqueio real (qualquer valor não vazio inválido) é feito no submit (handleCreate).
-    const cpfDigits = createForm.cpfCnpj.replace(/\D/g, '');
-    const cpfShowError = (cpfDigits.length === 11 || cpfDigits.length === 14) && !isValidCpfCnpj(cpfDigits);
-    const canCreate = createForm.name.length >= 2 && createForm.email.includes('@') && createForm.password.length >= 6;
+    const stepValid = form.isStepValid(step);
+    const showError = !!createError && (errorFields.length === 0 || errorFields.some(f => f in form.fieldErrors));
 
     return (
-        <BottomSheetModal isOpen onClose={resetCreateModal} hideHeader size="md" className="admin-sheet" title="Novo Cliente">
-                {/* --- HEADER --- */}
-                <div style={{ padding: '28px 32px 0', borderBottom: 'none' }}>
-                    <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span style={{
-                            width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            background: 'var(--accent-gradient-go)', fontSize: '1rem'
-                        }}><UserPlus size={18} aria-hidden="true" style={{ color: '#fff' }} /></span>
-                        Novo Cliente
-                    </h2>
-                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px', marginBottom: 0 }}>
-                        Cadastre um novo cliente no sistema do estúdio
-                    </p>
-                </div>
+        <BottomSheetModal isOpen onClose={onClose} hideHeader size="md" className="admin-sheet" title="Novo Cliente">
+            <div className="admin-modal-head">
+                <h2 className="admin-modal-title">
+                    <span className="admin-modal-title__icon"><UserPlus size={18} aria-hidden="true" /></span>
+                    Novo Cliente
+                </h2>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '6px 0 0' }}>
+                    Cadastre um novo cliente no sistema do estúdio
+                </p>
+                <WizardSteps steps={CLIENT_WIZARD_STEPS} current={step} onStepClick={goTo} />
+            </div>
 
-                <div style={{ padding: '20px 32px 28px' }}>
-                    {createError && Object.keys(createFieldErrors).length === 0 && (
-                        <div style={{ marginBottom: '16px', padding: '10px 14px', borderRadius: '10px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)', color: 'var(--danger)', fontSize: '0.8125rem', fontWeight: 600 }}>{createError}</div>
+            <div className="admin-modal-body">
+                {showError && <div className="admin-alert admin-alert--danger" role="alert">{createError}</div>}
+
+                <div ref={stepRef} tabIndex={-1} role="group" aria-label={`Etapa ${step} de ${CLIENT_WIZARD_TOTAL}: ${CLIENT_WIZARD_STEPS[step - 1]}`} style={{ outline: 'none', ...wizardStepBodyStyle }}>
+                    <div style={wizardStepContentStyle}>
+                        <ClientWizardStepFields
+                            key={step}
+                            step={step}
+                            mode="create"
+                            values={values}
+                            errors={form.visibleErrors(step)}
+                            onPatch={form.patch}
+                            onTouch={form.touch}
+                        />
+                    </div>
+
+                    {step === 1 && (
+                        <div className="admin-actions-row">
+                            <button key="cancel" type="button" className="btn-admin-ghost" onClick={ignoreMultiClick(onClose)}>
+                                Cancelar
+                            </button>
+                            <button key="next" type="button" className="btn-admin-go" disabled={!stepValid} onClick={ignoreMultiClick(goNext)}>
+                                Próximo →
+                            </button>
+                        </div>
                     )}
 
-                    {/* --- SECTION 1: Dados Essenciais --- */}
-                    <div style={{ marginBottom: '20px' }}>
-                        <div style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ width: 18, height: 18, borderRadius: '50%', background: '#10b981', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.5rem', fontWeight: 800 }}>1</span>
-                            Dados Essenciais
+                    {step === 2 && (
+                        <div className="admin-actions-row admin-actions-row--between">
+                            <button key="back" type="button" className="btn-admin-ghost" onClick={back}>
+                                ← Voltar
+                            </button>
+                            <button key="next" type="button" className="btn-admin-go" disabled={!stepValid} onClick={ignoreMultiClick(goNext)}>
+                                Próximo →
+                            </button>
                         </div>
+                    )}
 
-                        {/* Name + Email row */}
-                        <div className="admin-grid-2" style={{ gap: '12px', marginBottom: '12px' }}>
-                            <div>
-                                <label style={labelStyle} htmlFor={`${uid}-name`}>Nome *</label>
-                                <div style={{ position: 'relative' }}>
-                                    <UserRound size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
-                                    <input
-                                        id={`${uid}-name`}
-                                        value={createForm.name} onChange={e => setCreateForm({ ...createForm, name: e.target.value })}
-                                        placeholder="Nome completo" autoFocus
-                                        className={`form-input form-input--raised${(!!createFieldErrors.name) ? ' error' : ''}`} style={{ paddingLeft: 36, fontSize: '0.8125rem' }}
-                                        onBlur={e => (e.currentTarget.style.borderColor = createFieldErrors.name ? 'rgba(239,68,68,0.5)' : 'var(--border-default)')}
-                                    />
-                                </div>
-                                {createFieldErrors.name && <div style={fieldErrorStyle}>{translateError(createFieldErrors.name)}</div>}
-                            </div>
-                            <div>
-                                <label style={labelStyle} htmlFor={`${uid}-email`}>E-mail *</label>
-                                <div style={{ position: 'relative' }}>
-                                    <Mail size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
-                                    <input
-                                        id={`${uid}-email`}
-                                        type="email" value={createForm.email}
-                                        onChange={e => setCreateForm({ ...createForm, email: maskEmail(e.target.value) })}
-                                        placeholder="email@exemplo.com"
-                                        className={`form-input form-input--raised${(!!createFieldErrors.email) ? ' error' : ''}`} style={{ paddingLeft: 36, fontSize: '0.8125rem' }}
-                                        onBlur={e => (e.currentTarget.style.borderColor = createFieldErrors.email ? 'rgba(239,68,68,0.5)' : 'var(--border-default)')}
-                                    />
-                                </div>
-                                {createFieldErrors.email && <div style={fieldErrorStyle}>{translateError(createFieldErrors.email)}</div>}
-                            </div>
+                    {step === 3 && (
+                        <div className="admin-actions-row admin-actions-row--between">
+                            <button key="back" type="button" className="btn-admin-ghost" onClick={back} disabled={creating}>
+                                ← Voltar
+                            </button>
+                            <button key="submit" type="button" className="btn-admin-go" disabled={!stepValid || creating} aria-busy={creating || undefined} onClick={ignoreMultiClick(handleCreate)}>
+                                {creating ? 'Cadastrando…' : <><UserPlus size={16} aria-hidden="true" /> Cadastrar cliente</>}
+                            </button>
                         </div>
-
-                        {/* Password + Phone row */}
-                        <div className="admin-grid-2" style={{ gap: '12px' }}>
-                            <div>
-                                <label style={labelStyle} htmlFor={`${uid}-password`}>Senha *</label>
-                                <div style={{ position: 'relative' }}>
-                                    <Lock size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
-                                    <input
-                                        id={`${uid}-password`}
-                                        type="password" value={createForm.password}
-                                        onChange={e => setCreateForm({ ...createForm, password: e.target.value })}
-                                        placeholder="Mínimo 6 caracteres"
-                                        className={`form-input form-input--raised${(!!createFieldErrors.password) ? ' error' : ''}`} style={{ paddingLeft: 36, fontSize: '0.8125rem' }}
-                                        onBlur={e => (e.currentTarget.style.borderColor = createFieldErrors.password ? 'rgba(239,68,68,0.5)' : 'var(--border-default)')}
-                                    />
-                                </div>
-                                {createFieldErrors.password && <div style={fieldErrorStyle}>{translateError(createFieldErrors.password)}</div>}
-                            </div>
-                            <div>
-                                <label style={labelStyle} htmlFor={`${uid}-phone`}>Telefone</label>
-                                <div style={{ position: 'relative' }}>
-                                    <Smartphone size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
-                                    <input
-                                        id={`${uid}-phone`}
-                                        value={createForm.phone}
-                                        onChange={e => setCreateForm({ ...createForm, phone: maskPhone(e.target.value) })}
-                                        placeholder="(21) 99999-9999"
-                                        className={`form-input form-input--raised${(!!createFieldErrors.phone) ? ' error' : ''}`} style={{ paddingLeft: 36, fontSize: '0.8125rem' }}
-                                        onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-default)')}
-                                    />
-                                </div>
-                                {createFieldErrors.phone && <div style={fieldErrorStyle}>{translateError(createFieldErrors.phone)}</div>}
-                            </div>
-                        </div>
-
-                        {/* Role toggle */}
-                        <div style={{ marginTop: '14px' }}>
-                            <label style={labelStyle}>Tipo de conta</label>
-                            <div style={{ display: 'flex', gap: '6px' }}>
-                                {[{ key: 'CLIENTE', icon: UserRound, label: 'Cliente', desc: 'Acesso ao painel do cliente' }, { key: 'ADMIN', icon: ShieldCheck, label: 'Admin', desc: 'Acesso total ao sistema' }].map(r => (
-                                    <button key={r.key}
-                                        onClick={() => setCreateForm({ ...createForm, role: r.key })}
-                                        style={{
-                                            flex: 1, padding: '10px 14px', borderRadius: '10px', cursor: 'pointer',
-                                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px',
-                                            background: createForm.role === r.key ? 'rgba(16,185,129,0.1)' : 'var(--bg-elevated)',
-                                            border: `1px solid ${createForm.role === r.key ? 'rgba(16,185,129,0.3)' : 'var(--border-default)'}`,
-                                            transition: 'all 0.15s',
-                                        }}>
-                                        <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: createForm.role === r.key ? '#10b981' : 'var(--text-primary)', display: 'inline-flex', alignItems: 'center', gap: 5 }}>{(() => { const RI = r.icon; return <RI size={14} aria-hidden="true" />; })()} {r.label}</span>
-                                        <span style={{ fontSize: '0.5625rem', color: 'var(--text-muted)' }}>{r.desc}</span>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* --- SECTION 2: Advanced (collapsible) --- */}
-                    <div style={{ marginBottom: '18px' }}>
-                        <button
-                            onClick={() => setShowAdvanced(!showAdvanced)}
-                            style={{
-                                width: '100%', padding: '10px 14px', borderRadius: '10px', cursor: 'pointer',
-                                background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                transition: 'all 0.2s',
-                            }}>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ width: 18, height: 18, borderRadius: '50%', background: 'rgba(45,212,191,0.15)', color: 'var(--accent-text)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.5rem', fontWeight: 800 }}>2</span>
-                                <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Dados Adicionais</span>
-                                <span style={{ fontSize: '0.5625rem', color: 'var(--text-muted)', fontWeight: 500, textTransform: 'none', letterSpacing: '0' }}>(opcional)</span>
-                            </span>
-                            <ChevronDown size={14} aria-hidden="true" style={{ color: 'var(--text-muted)', transition: 'transform 0.2s', transform: showAdvanced ? 'rotate(180deg)' : 'rotate(0)' }} />
-                        </button>
-
-                        {showAdvanced && (
-                            <div style={{ marginTop: '12px', padding: '16px', borderRadius: '10px', background: 'rgba(45,212,191,0.03)', border: '1px solid rgba(45,212,191,0.08)' }}>
-                                {/* CPF/CNPJ + Status */}
-                                <div className="admin-grid-2" style={{ gap: '12px', marginBottom: '12px' }}>
-                                    <div>
-                                        <label style={labelStyle} htmlFor={`${uid}-cpfCnpj`}>CPF/CNPJ</label>
-                                        <div style={{ position: 'relative' }}>
-                                            <IdCard size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
-                                            <input
-                                                id={`${uid}-cpfCnpj`}
-                                                value={createForm.cpfCnpj}
-                                                onChange={e => setCreateForm({ ...createForm, cpfCnpj: maskCpfCnpj(e.target.value) })}
-                                                placeholder="000.000.000-00"
-                                                aria-invalid={cpfShowError}
-                                                inputMode="numeric"
-                                                className={`form-input form-input--raised${cpfShowError ? ' error' : ''}`} style={{ paddingLeft: 36, fontSize: '0.8125rem', borderColor: cpfShowError ? 'rgba(239,68,68,0.5)' : undefined }}
-                                                onBlur={e => (e.currentTarget.style.borderColor = cpfShowError ? 'rgba(239,68,68,0.5)' : 'var(--border-default)')}
-                                            />
-                                        </div>
-                                        {cpfShowError && <div style={fieldErrorStyle}>CPF/CNPJ inválido — confira os números.</div>}
-                                    </div>
-                                    <div>
-                                        <label style={labelStyle}>Status</label>
-                                        <div style={{ display: 'flex', gap: '4px' }}>
-                                            {[{ key: 'ACTIVE', label: 'Ativo', color: 'var(--success)' }, { key: 'INACTIVE', label: 'Inativo', color: '#6b7280' }, { key: 'BLOCKED', label: 'Bloqueado', color: 'var(--danger)' }].map(s => (
-                                                <button key={s.key}
-                                                    onClick={() => setCreateForm({ ...createForm, clientStatus: s.key })}
-                                                    style={{
-                                                        flex: 1, padding: '8px 4px', borderRadius: '8px', fontSize: '0.625rem', fontWeight: 700, cursor: 'pointer',
-                                                        background: createForm.clientStatus === s.key ? `${s.color}15` : 'var(--bg-elevated)',
-                                                        border: `1px solid ${createForm.clientStatus === s.key ? `${s.color}44` : 'var(--border-default)'}`,
-                                                        color: createForm.clientStatus === s.key ? s.color : 'var(--text-muted)',
-                                                    }}>
-                                                    {s.label}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Social Links */}
-                                <div style={{ marginBottom: '12px' }}>
-                                    <label style={labelStyle} htmlFor={`${uid}-socialLinks`}>Redes Sociais</label>
-                                    <div style={{ position: 'relative' }}>
-                                        <Globe size={14} aria-hidden="true" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', opacity: 0.7 }} />
-                                        <input
-                                            id={`${uid}-socialLinks`}
-                                            value={createForm.socialLinks}
-                                            onChange={e => setCreateForm({ ...createForm, socialLinks: e.target.value })}
-                                            placeholder="Instagram, YouTube, TikTok..."
-                                            className={`form-input form-input--raised${(false) ? ' error' : ''}`} style={{ paddingLeft: 36, fontSize: '0.8125rem' }}
-                                            onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-default)')}
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Notes */}
-                                <div>
-                                    <label style={labelStyle} htmlFor={`${uid}-notes`}><NotebookPen size={12} aria-hidden="true" style={{ verticalAlign: '-2px' }} /> Notas internas</label>
-                                    <textarea
-                                        id={`${uid}-notes`}
-                                        value={createForm.notes}
-                                        onChange={e => setCreateForm({ ...createForm, notes: e.target.value })}
-                                        placeholder="Observações sobre o cliente..."
-                                        rows={2}
-                                        style={{
-                                            width: '100%', padding: '10px 14px', borderRadius: '10px', fontSize: '0.8125rem',
-                                            background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
-                                            color: 'var(--text-primary)', outline: 'none', resize: 'vertical', fontFamily: 'inherit',
-                                        }}
-                                    />
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* --- ACTIONS --- */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
-                        <button onClick={resetCreateModal}
-                            style={{ padding: '10px 20px', borderRadius: '10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer' }}>
-                            Cancelar
-                        </button>
-                        <button onClick={handleCreate} disabled={!canCreate || creating}
-                            style={{
-                                padding: '10px 28px', borderRadius: '10px', border: 'none', fontSize: '0.875rem', fontWeight: 700, cursor: 'pointer',
-                                background: canCreate && !creating ? 'linear-gradient(135deg, #10b981, #11819B)' : 'var(--bg-elevated)',
-                                color: canCreate && !creating ? '#fff' : 'var(--text-muted)',
-                                opacity: canCreate && !creating ? 1 : 0.5,
-                                display: 'flex', alignItems: 'center', gap: '8px',
-                            }}>
-                            {creating ? 'Criando...' : <><Plus size={16} aria-hidden="true" /> Cadastrar Cliente</>}
-                        </button>
-                    </div>
+                    )}
                 </div>
+            </div>
         </BottomSheetModal>
     );
 }

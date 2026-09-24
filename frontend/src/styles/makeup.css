@@ -1,0 +1,290 @@
+/* ═══════════════════════════════════════════════════════════
+   Remarcação do avulso (D4/D5) — falta justificada / não realizado
+   components/admin/bookings/MakeupRescheduleModal.tsx (sheet + bloco de status),
+   StatusReasonModal (checkbox "Falta justificada"), MyBookingsPage (chip do pôster).
+   Só tokens de index.css; sem animação de layout.
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Bloco de status da remarcação (Hoje / Detalhe do contrato) ── */
+.mkp-block {
+    margin-top: var(--space-2);
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border-default);
+    background: var(--bg-elevated);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+.mkp-block__head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: var(--text-primary);
+}
+.mkp-block__head svg { flex-shrink: 0; }
+.mkp-block__desc {
+    margin: 0;
+    font-size: 0.75rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+.mkp-block__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+.mkp-block--warning { background: var(--warning-bg); border-color: rgba(245, 158, 11, 0.3); }
+.mkp-block--warning .mkp-block__head { color: var(--warning); }
+.mkp-block--danger { background: var(--danger-bg); border-color: rgba(239, 68, 68, 0.28); }
+.mkp-block--danger .mkp-block__head { color: var(--danger); }
+.mkp-block--info { background: var(--info-bg); border-color: rgba(59, 130, 246, 0.28); }
+.mkp-block--info .mkp-block__head { color: var(--info); }
+.mkp-block--muted .mkp-block__head { color: var(--text-secondary); }
+/* No painel expandido do Hoje o bloco fica entre o motivo e as observações. */
+.today-expand-panel .mkp-block { margin: 10px 0 16px; }
+
+/* ── Chip compacto (tabela de Agendamentos, Centro de Comando) — span ou <button> ── */
+.mkp-chips {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px;
+    margin-top: 6px;
+}
+.mkp-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px;
+    min-height: 26px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    font-family: inherit;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    line-height: 1.2;
+    white-space: nowrap;
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+}
+button.mkp-chip {
+    cursor: pointer;
+    transition: filter var(--transition-base), transform var(--transition-fast);
+}
+@media (hover: hover) {
+    button.mkp-chip:hover { filter: brightness(1.15); }
+}
+button.mkp-chip:active { transform: scale(0.97); }
+button.mkp-chip:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+button.mkp-chip:disabled { cursor: not-allowed; opacity: 0.5; }
+@media (max-width: 768px) {
+    button.mkp-chip { min-height: 44px; padding: 6px 12px; }
+    /* Agendamentos no mobile (tabela vira card: td = linha "rótulo | valor"): o chip desce para
+       uma linha própria, alinhado à direita, em vez de estourar a largura do card. */
+    .admin-table--cards td:has(> .mkp-chips) { flex-wrap: wrap; row-gap: 6px; }
+    .admin-table--cards td > .mkp-chips { flex-basis: 100%; justify-content: flex-end; margin-top: 0; }
+}
+.mkp-chip--warning { background: var(--warning-bg); color: var(--warning); border-color: rgba(245, 158, 11, 0.3); }
+.mkp-chip--danger { background: var(--danger-bg); color: var(--danger); border-color: rgba(239, 68, 68, 0.28); }
+.mkp-chip--info { background: var(--info-bg); color: var(--info); border-color: rgba(59, 130, 246, 0.28); }
+.mkp-chip--muted { background: var(--bg-elevated); color: var(--text-secondary); border-color: var(--border-default); }
+
+/* ── Sheet de remarcação (etapa única) ── */
+.mkp-sheet {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+.mkp-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    line-height: 1.45;
+}
+.mkp-summary strong { color: var(--text-primary); }
+.mkp-summary__note { font-size: 0.75rem; color: var(--text-muted); }
+.mkp-label {
+    display: block;
+    margin: 0 0 var(--space-2);
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+/* Dias do prazo (só os da faixa) */
+.mkp-days {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+    gap: var(--space-1-5);
+}
+.mkp-day {
+    min-height: 52px;
+    padding: 6px 4px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-default);
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    font-family: inherit;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    transition: border-color var(--transition-base), color var(--transition-base), transform var(--transition-fast);
+}
+.mkp-day__dow { font-size: 0.625rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+.mkp-day__date { font-size: 0.875rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.mkp-day--selected { border-color: var(--accent-text); background: var(--accent-primary); color: #fff; }
+.mkp-day--selected .mkp-day__dow { color: rgba(255, 255, 255, 0.85); }
+.mkp-day:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+.mkp-day:not(:disabled):active { transform: scale(0.97); }
+@media (hover: hover) {
+    .mkp-day:not(:disabled):not(.mkp-day--selected):hover { border-color: var(--border-hover); }
+}
+
+/* "Outra data" — só para o admin remarcando um "Não realizado" (D5, sem teto de data) */
+.mkp-other-date {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: var(--space-3);
+    row-gap: 4px;
+    margin-top: var(--space-3);
+}
+.mkp-other-date label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+}
+.mkp-other-date input { max-width: 200px; }
+.mkp-other-date__hint {
+    grid-column: 1 / -1;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+.mkp-other-date__hint--error { color: var(--danger); font-weight: 600; }
+
+/* Horários do dia (área com altura estável: loading/erro/lista ocupam o mesmo espaço) */
+.mkp-slots-area { min-height: 124px; }
+.mkp-slots {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+    gap: var(--space-1-5);
+}
+.mkp-slot {
+    min-height: 52px;
+    padding: 6px 8px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-default);
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    font-family: inherit;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    transition: border-color var(--transition-base), color var(--transition-base), transform var(--transition-fast);
+}
+.mkp-slot__range { font-size: 0.875rem; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mkp-slot__state { font-size: 0.625rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--success); }
+.mkp-slot:disabled { cursor: not-allowed; opacity: 0.45; }
+.mkp-slot:disabled .mkp-slot__state { color: var(--text-secondary); }
+.mkp-slot--selected { border-color: var(--success); background: var(--success-bg); }
+.mkp-slot--selected .mkp-slot__range { color: var(--success); }
+.mkp-slot:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+.mkp-slot:not(:disabled):active { transform: scale(0.97); }
+@media (hover: hover) {
+    .mkp-slot:not(:disabled):not(.mkp-slot--selected):hover { border-color: var(--border-hover); }
+}
+.mkp-state {
+    min-height: 124px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    border: 1px dashed var(--border-default);
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    text-align: center;
+}
+.mkp-state--error { color: var(--danger); border-color: rgba(239, 68, 68, 0.35); }
+.mkp-spin { animation: mkp-spin 0.9s linear infinite; }
+@keyframes mkp-spin { to { transform: rotate(360deg); } }
+
+/* Rodapé do sheet do cliente (o admin usa .admin-actions-row) */
+.mkp-footer {
+    display: flex;
+    gap: 10px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-subtle);
+}
+.mkp-footer .btn { flex: 1; }
+.mkp-footer .btn-primary { flex: 2; } /* "Remarcar para DD/MM às HH:MM" cabe numa linha */
+@media (max-width: 480px) {
+    .mkp-footer { flex-direction: column-reverse; }
+}
+
+/* ── StatusReasonModal: opção "Falta justificada" ── */
+.mkp-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin: 0 0 16px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border-default);
+    background: var(--bg-elevated);
+    cursor: pointer;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    color: var(--text-primary);
+}
+.mkp-check input {
+    width: 18px;
+    height: 18px;
+    margin: 1px 0 0;
+    flex-shrink: 0;
+    accent-color: var(--warning);
+    cursor: pointer;
+}
+.mkp-check--on { border-color: rgba(245, 158, 11, 0.45); background: var(--warning-bg); }
+.mkp-check--disabled { cursor: not-allowed; opacity: 0.75; }
+.mkp-check--disabled input { cursor: not-allowed; }
+.mkp-check__title { font-weight: 700; }
+.mkp-check__hint { display: block; margin-top: 2px; font-size: 0.75rem; color: var(--text-secondary); }
+.mkp-check:focus-within { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+
+/* ── Detalhe da gravação (cliente): banner do prazo com o atalho "Escolher nova data" ── */
+.mkp-client-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px 12px;
+}
+.mkp-client-banner > span { flex: 1 1 260px; min-width: 0; }
+.mkp-client-banner > .btn { flex-shrink: 0; }
+
+/* ── Pôster de Minhas Gravações: chip "Remarcar até DD/MM" ── */
+.poster-chip--makeup { background: rgba(245, 158, 11, 0.92); color: #1f1300; }
+
+@media (prefers-reduced-motion: reduce) {
+    .mkp-spin { animation: none; }
+}

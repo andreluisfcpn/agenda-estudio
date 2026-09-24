@@ -16,12 +16,12 @@ Esta trilha cobre a **operação do estúdio**: conduzir a agenda do dia, gerenc
 
 ## Ações que só o admin faz
 
-- Confirmar/concluir sessões e marcar **falta** (que devolve crédito Flex).
+- Confirmar/concluir sessões e marcar **Falta** (o cliente não veio: consome o crédito Flex) ou **Não Realizado** (a sessão não aconteceu por causa do estúdio: devolve o crédito Flex; no avulso, abre a remarcação sem novo pagamento). No avulso, só o admin marca a falta como **justificada**, liberando uma remarcação em até 7 dias.
 - Criar agendamentos e contratos **sem cobrança imediata** (offline).
 - Liberar **boleto** para um contrato específico.
 - Resolver pedidos de cancelamento (**cobrar multa** ou **isentar**).
 - Editar **preços, descontos, taxas, horários e políticas** do negócio.
-- Configurar **integrações** de pagamento (Stripe e Cora).
+- Configurar **integrações** de pagamento (Stripe, Sicoob e Cora).
 
 ## Relacionado
 

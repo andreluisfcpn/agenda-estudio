@@ -1252,10 +1252,6 @@ export type NullableIntFieldUpdateOperationsInput = {
   divide?: number
 }
 
-export type NullableDateTimeFieldUpdateOperationsInput = {
-  set?: Date | string | null
-}
-
 export type ContractUpdateaddOnsInput = {
   set?: string[]
   push?: string | string[]

@@ -1,0 +1,88 @@
+/* ═══════════════════════════════════════════════════════════
+   Tooltip (components/ui/Tooltip.tsx)
+   Bolha em portal no <body>, position:fixed — posição (top/left),
+   lado final (data-placement) e deslocamento da seta
+   (--ui-tooltip-arrow) vêm do componente.
+   ═══════════════════════════════════════════════════════════ */
+
+.ui-tooltip {
+  position: fixed;
+  z-index: var(--z-tooltip, 1100);
+  max-width: 240px;
+  padding: 6px 10px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: break-word;
+  pointer-events: none;
+  animation: ui-tooltip-in 150ms ease-out;
+}
+
+/* Seta: quadrado girado 45° com borda só nos 2 lados externos. */
+.ui-tooltip::before {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  transform: rotate(45deg);
+}
+
+.ui-tooltip[data-placement='top'] { transform-origin: 50% 100%; }
+.ui-tooltip[data-placement='top']::before {
+  bottom: -5px;
+  left: calc(var(--ui-tooltip-arrow, 50%) - 4px);
+  border-top: 0;
+  border-left: 0;
+}
+
+.ui-tooltip[data-placement='bottom'] { transform-origin: 50% 0; }
+.ui-tooltip[data-placement='bottom']::before {
+  top: -5px;
+  left: calc(var(--ui-tooltip-arrow, 50%) - 4px);
+  border-bottom: 0;
+  border-right: 0;
+}
+
+.ui-tooltip[data-placement='right'] { transform-origin: 0 50%; }
+.ui-tooltip[data-placement='right']::before {
+  left: -5px;
+  top: calc(var(--ui-tooltip-arrow, 50%) - 4px);
+  border-top: 0;
+  border-right: 0;
+}
+
+.ui-tooltip[data-placement='left'] { transform-origin: 100% 50%; }
+.ui-tooltip[data-placement='left']::before {
+  right: -5px;
+  top: calc(var(--ui-tooltip-arrow, 50%) - 4px);
+  border-bottom: 0;
+  border-left: 0;
+}
+
+@keyframes ui-tooltip-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Segurança extra: dispositivo só de toque nunca mostra dica
+   (o componente já ignora pointerType 'touch'). */
+@media (hover: none) and (pointer: coarse) {
+  .ui-tooltip {
+    display: none;
+  }
+}

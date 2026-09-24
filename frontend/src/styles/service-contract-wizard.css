@@ -1,0 +1,451 @@
+/* ═══════════════════════════════════════════════════════════
+   ServiceContractWizard (components/ServiceContractWizard.tsx)
+   Contratação de serviço mensal pelo cliente (D1/D2). Classes .scw-*.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Etapa: coluna com o rodapé empurrado para baixo. No desktop (dialog centralizado) a altura
+   mínima é a mesma em todas as etapas — o dialog não encolhe/recentraliza entre elas e o 2º clique
+   de um clique duplo cai no botão da etapa seguinte, nunca no fundo (que fecharia o modal). */
+.scw-step {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Desktop: o dialog tem SEMPRE a mesma altura (min(100svh − 40px, 780px)); a etapa ocupa a área útil
+   (− cabeçalho 57px − padding 48px − bordas) e o conteúdo mais alto rola por dentro, com o rodapé
+   sticky no mesmo lugar. */
+@media (min-width: 640px) {
+  .bottom-sheet-card.scw-sheet {
+    max-height: min(calc(100svh - 40px), 780px);
+  }
+
+  .scw-step {
+    min-height: min(calc(100svh - 148px), 672px);
+  }
+}
+
+.scw-step--center {
+  text-align: center;
+}
+
+/* ── Rodapé fixo (mesma posição em todas as etapas) ── */
+.scw-footer {
+  position: sticky;
+  /* O sticky para na borda do CONTEÚDO do .bottom-sheet-body; o inset negativo (= padding inferior
+     do body) o leva até a borda de baixo, junto com a margem negativa que absorve esse padding:
+     os botões ficam à mesma distância da borda com ou sem rolagem e nada aparece por baixo. */
+  bottom: calc(-24px - env(safe-area-inset-bottom, 0px));
+  z-index: 1;
+  margin-top: auto;
+  margin-bottom: calc(-24px - env(safe-area-inset-bottom, 0px));
+  padding: var(--space-3) 0 calc(24px + env(safe-area-inset-bottom, 0px));
+  background: var(--sheet-bg);
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* Linha de dica reservada (mesmo vazia): a altura do rodapé não muda entre as etapas. */
+.scw-hint {
+  /* Altura FIXA (com ou sem texto): o rodapé tem o mesmo tamanho em todas as etapas. */
+  height: 1.35em;
+  line-height: 1.35;
+  margin: 0 0 var(--space-2);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scw-actions {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.scw-actions > .btn {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  /* Uma linha só (no celular "Ir para pagamento" quebrava e o botão crescia 8px, tirando o rodapé
+     do lugar entre as etapas — o 2º clique de um clique duplo deixava de cair no mesmo botão). */
+  white-space: nowrap;
+  padding-left: var(--space-3);
+  padding-right: var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.scw-actions--start > .btn {
+  flex: 0 1 auto;
+}
+
+/* ── Visão geral ── */
+.scw-hero {
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+.scw-hero__icon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-primary) 25%, transparent);
+}
+
+.scw-hero__desc {
+  max-width: 380px;
+  margin: 0 auto;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.scw-benefits {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0 0 20px;
+  padding: 14px 16px;
+  list-style: none;
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+}
+
+.scw-benefits li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.scw-benefits svg {
+  flex-shrink: 0;
+  color: var(--accent-primary);
+}
+
+.scw-from {
+  margin-bottom: var(--space-4);
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.scw-from strong {
+  color: var(--text-primary);
+}
+
+/* ── Rótulos de seção ── */
+.scw-label {
+  margin-bottom: 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.scw-label--sub {
+  margin: var(--space-3) 0 var(--space-2);
+}
+
+/* ── Blocos de escolha (fidelidade / forma de cobrança) ── */
+.scw-grid {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: 20px;
+}
+
+.scw-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-height: 72px;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--border-subtle);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color var(--transition-base), background-color var(--transition-base);
+}
+
+.scw-tile--active {
+  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 8%, transparent);
+}
+
+.scw-tile__title {
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
+.scw-tile__title--sm {
+  font-size: 0.95rem;
+}
+
+.scw-tile--active .scw-tile__title {
+  color: var(--accent-text);
+}
+
+.scw-tile__sub {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+/* ── Formas de pagamento (radio em cartão) ── */
+.scw-choices {
+  display: grid;
+  gap: 10px;
+}
+
+.scw-choice {
+  --scw-color: var(--accent-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 60px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--border-subtle);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--transition-base), background-color var(--transition-base);
+}
+
+.scw-choice:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.scw-choice--active {
+  border-color: var(--scw-color);
+  background: color-mix(in srgb, var(--scw-color) 8%, transparent);
+}
+
+.scw-choice--sub {
+  --scw-color: var(--accent-primary);
+  min-height: 56px;
+}
+
+.scw-choice__radio {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--border-hover);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
+}
+
+.scw-choice--active .scw-choice__radio {
+  border-color: var(--scw-color);
+  background: var(--scw-color);
+}
+
+.scw-choice__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.scw-choice__title {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.scw-choice__sub {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+.scw-choice__price {
+  flex-shrink: 0;
+  max-width: 45%;
+  font-size: 0.85rem;
+  font-weight: 800;
+  text-align: right;
+  color: var(--text-primary);
+}
+
+.scw-submodes {
+  padding: 2px 0 0 var(--space-4);
+  border-left: 2px solid var(--border-hover);
+  margin: var(--space-3) 0 0 10px;
+}
+
+@media (hover: hover) {
+  .scw-tile:not(.scw-tile--active):hover,
+  .scw-choice:not(:disabled):not(.scw-choice--active):hover {
+    border-color: var(--border-hover);
+  }
+}
+
+.scw-tile:active,
+.scw-choice:not(:disabled):active {
+  transform: scale(0.99);
+}
+
+/* ── Resumo de valores ── */
+.scw-summary {
+  display: grid;
+  gap: 6px;
+  margin: var(--space-4) 0 var(--space-3);
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+}
+
+.scw-summary__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.scw-summary__row strong {
+  flex-shrink: 0;
+  text-align: right;
+  color: var(--text-primary);
+  font-weight: 800;
+}
+
+.scw-summary__row--muted {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.scw-summary__row--discount,
+.scw-summary__row--discount strong {
+  color: var(--success);
+}
+
+.scw-summary__row--total {
+  padding-top: 6px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.scw-alert {
+  margin-bottom: var(--space-3);
+}
+
+.scw-empty {
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ── Pagamento: prazo de 10 min (D2) ── */
+.scw-timer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: 12px 16px;
+  border-radius: var(--radius-lg);
+  background: var(--success-bg);
+  border: 1px solid color-mix(in srgb, var(--success) 30%, transparent);
+}
+
+.scw-timer > svg {
+  flex-shrink: 0;
+  color: var(--success);
+}
+
+.scw-timer__text {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+
+.scw-timer__clock {
+  font-size: 1.25rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--success);
+}
+
+.scw-timer--warning {
+  background: var(--warning-bg);
+  border-color: color-mix(in srgb, var(--warning) 35%, transparent);
+}
+
+.scw-timer--warning > svg,
+.scw-timer--warning .scw-timer__clock {
+  color: var(--warning);
+}
+
+.scw-timer--danger {
+  background: var(--danger-bg);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+}
+
+.scw-timer--danger > svg,
+.scw-timer--danger .scw-timer__clock {
+  color: var(--danger);
+}
+
+/* ── Sucesso ── */
+.scw-success {
+  padding: var(--space-3) 0;
+}
+
+.scw-success__icon {
+  margin-bottom: var(--space-3);
+  color: var(--success);
+}
+
+.scw-success__title {
+  margin: 0 0 var(--space-2);
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.scw-success__desc {
+  max-width: 340px;
+  margin: 0 auto 20px;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 400px) {
+  .scw-choice {
+    flex-wrap: wrap;
+  }
+
+  .scw-choice__price {
+    max-width: none;
+    width: 100%;
+    padding-left: 32px;
+    text-align: left;
+  }
+}

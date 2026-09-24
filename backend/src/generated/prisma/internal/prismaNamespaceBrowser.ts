@@ -112,6 +112,7 @@ export const UserScalarFieldEnum = {
   stripeCustomerId: 'stripeCustomerId',
   autoChargeEnabled: 'autoChargeEnabled',
   essentialNotificationsOnly: 'essentialNotificationsOnly',
+  deletedAt: 'deletedAt',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
@@ -205,6 +206,9 @@ export const BookingScalarFieldEnum = {
   recordingStartedById: 'recordingStartedById',
   recordingStartedByName: 'recordingStartedByName',
   statusReason: 'statusReason',
+  makeupStatus: 'makeupStatus',
+  makeupDeadline: 'makeupDeadline',
+  missedDate: 'missedDate',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
@@ -224,6 +228,7 @@ export const PaymentScalarFieldEnum = {
   status: 'status',
   dueDate: 'dueDate',
   pixString: 'pixString',
+  pixExpiresAt: 'pixExpiresAt',
   boletoUrl: 'boletoUrl',
   paymentUrl: 'paymentUrl',
   installments: 'installments',

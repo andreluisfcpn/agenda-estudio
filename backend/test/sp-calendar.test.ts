@@ -94,31 +94,29 @@ describe('spWeekday', () => {
   });
 });
 
-describe('spDayLabel — rótulo de lembrete sem "amanhã" que envelheça no push', () => {
+describe('spDayLabel — "hoje"/"amanhã" no calendário SP com a data explícita (D14)', () => {
   it('diz "hoje (DD/MM)" quando é o próprio dia (lembrete de 2h)', () => {
     const now = new Date('2026-09-16T12:00:00Z'); // SP = 16/09
     expect(spDayLabel(new Date('2026-09-16T00:00:00Z'), now)).toBe('hoje (16/09)');
   });
 
-  it('usa a data absoluta com dia da semana para a véspera (lembrete de 24h), nunca "amanhã"', () => {
+  it('diz "amanhã (DD/MM)" na véspera (lembrete de 24h)', () => {
     const now = new Date('2026-09-15T12:00:00Z'); // SP = 15/09
-    const label = spDayLabel(new Date('2026-09-16T00:00:00Z'), now);
-    expect(label).toBe('quarta-feira (16/09)');
-    expect(label).not.toContain('amanhã');
-  });
-
-  it('a véspera lida no dia seguinte continua correta (o texto não muda, mas nunca vira "amanhã")', () => {
-    // Rótulo gerado na véspera (24h) = "quarta-feira (16/09)"; lido no dia 16 ainda faz sentido.
-    const geradoNaVespera = spDayLabel(new Date('2026-09-16T00:00:00Z'), new Date('2026-09-15T12:00:00Z'));
-    expect(geradoNaVespera).toBe('quarta-feira (16/09)');
+    expect(spDayLabel(new Date('2026-09-16T00:00:00Z'), now)).toBe('amanhã (16/09)');
   });
 
   it('respeita a virada de dia SP (21h–24h ainda é o dia anterior)', () => {
-    // 02:00Z de 16/09 = 23:00 SP de 15/09 → uma sessão 16/09 ainda NÃO é "hoje"
+    // 02:00Z de 16/09 = 23:00 SP de 15/09 → a sessão de 16/09 ainda é "amanhã"
     const spAindaDia15 = new Date('2026-09-16T02:00:00Z');
-    expect(spDayLabel(new Date('2026-09-16T00:00:00Z'), spAindaDia15)).toBe('quarta-feira (16/09)');
+    expect(spDayLabel(new Date('2026-09-16T00:00:00Z'), spAindaDia15)).toBe('amanhã (16/09)');
     // e a sessão de 15/09 é "hoje"
     expect(spDayLabel(new Date('2026-09-15T00:00:00Z'), spAindaDia15)).toBe('hoje (15/09)');
+  });
+
+  it('a partir de 2 dias usa o dia da semana com a data (fallback)', () => {
+    const now = new Date('2026-09-16T12:00:00Z'); // SP = 16/09 (quarta)
+    expect(spDayLabel(new Date('2026-09-19T00:00:00Z'), now)).toBe('sábado (19/09)');
+    expect(spDayLabel(new Date('2026-09-18T00:00:00Z'), now)).toBe('sexta-feira (18/09)');
   });
 });
 

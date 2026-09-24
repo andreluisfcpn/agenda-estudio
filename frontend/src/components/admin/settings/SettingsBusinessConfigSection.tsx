@@ -2,12 +2,14 @@ import { getErrorMessage } from '../../../utils/errors';
 import { useState, useEffect } from 'react';
 import { pricingApi, BusinessConfigItem } from '../../../api/client';
 import { invalidateFrontendConfigCache } from '../../../hooks/useBusinessConfig';
+import { invalidateContractSlotGridCache } from '../../../hooks/useContractSlotGrid';
 import LoadingSpinner from '../../ui/LoadingSpinner';
 import SettingsSaveBar, { SettingsMessages } from './SettingsSaveBar';
 import ScheduleEditor from './ScheduleEditor';
 import GatewayFeeTimeline from './GatewayFeeTimeline';
 import ToggleField from '../../ui/fields/ToggleField';
 import StepperField from '../../ui/fields/StepperField';
+import CurrencyInput from '../../ui/fields/CurrencyInput';
 import TimeField from '../../ui/fields/TimeField';
 import ColorField from '../../ui/fields/ColorField';
 import UrlField from '../../ui/fields/UrlField';
@@ -108,6 +110,9 @@ export default function SettingsBusinessConfigSection({ groups, title, subtitle,
             // B28: invalidar o cache module-level de business config — senão wizards/calendário leem
             // valores antigos até um reload (invalidateFrontendConfigCache existia mas nunca era chamada).
             invalidateFrontendConfigCache();
+            // D8: a grade de horários de contrato (useContractSlotGrid) deriva de time_slots/faixas/
+            // dias/duração salvos aqui (ScheduleEditor) — descarta o cache por faixa junto.
+            invalidateContractSlotGridCache();
             showMsg('✅ Regras de negócio atualizadas!');
             setConfigEdited(false);
             setFeeRefreshKey(k => k + 1); // taxa pode ter mudado → recarrega a linha do tempo
@@ -343,11 +348,24 @@ function SpecializedConfigField({ cfg, onChange }: { cfg: BusinessConfigItem; on
         return <EmailField value={cfg.value} onChange={v => onChange(cfg.key, v)} />;
     }
 
-    // Numeric (number/percent/cents) → stepper with sensible suffix
+    // Dinheiro em centavos (ex.: taxas fixas de gateway) → CurrencyInput em R$ (D10).
+    // Continua gravando a MESMA string em centavos ('39' = R$ 0,39): backend e
+    // GatewayFeeTimeline não mudam. Antes era um StepperField com sufixo "¢".
+    if (type === 'cents' || (type !== 'string' && key.includes('cents'))) {
+        const cents = Number(cfg.value);
+        return (
+            <CurrencyInput
+                value={Number.isFinite(cents) ? cents : 0}
+                onChange={c => onChange(cfg.key, String(c ?? 0))}
+                aria-label={cleanConfigLabel(cfg.label)}
+            />
+        );
+    }
+
+    // Numeric (number/percent) → stepper with sensible suffix
     if (type !== 'string') {
         const suffix =
             type === 'percent' ? '%' :
-            type === 'cents' || key.includes('cents') ? '¢' :
             key.includes('minute') ? 'min' :
             key.includes('hour') ? 'h' :
             key.includes('day') ? 'd' :

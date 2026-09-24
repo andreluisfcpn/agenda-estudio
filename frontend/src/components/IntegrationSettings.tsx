@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useId } from 'react';
+import { PowerOff, Trash2 } from 'lucide-react';
 import { integrationsApi } from '../api/client';
 import { getErrorMessage } from '../utils/errors';
+import { useUI } from '../context/UIContext';
 import {
   Icons, StatusBadge, Toggle, TestInfo, WebhookUrlBox,
   FileUploadZone, EnvSelector, envConfigured,
@@ -14,6 +16,7 @@ const emptyStripeCreds = { secretKey: '', publishableKey: '', webhookSecret: '' 
 
 export default function IntegrationSettings() {
   const uid = useId();
+  const { showConfirm } = useUI();
   const [integrations, setIntegrations] = useState<IntegrationSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -186,13 +189,59 @@ export default function IntegrationSettings() {
     finally { setTestingProvider(null); }
   };
 
+  const applyToggle = async (provider: string, enabled: boolean) => {
+    await integrationsApi.toggle(provider, enabled);
+    const listRes = await integrationsApi.list();
+    setIntegrations(listRes.integrations);
+    showMsg(`${provider} ${enabled ? 'ativado' : 'desativado'}`);
+  };
+
+  // Ativar é imediato. DESATIVAR pede confirmação em tom warning (D3: reversível, mas os clientes
+  // deixam de ver a forma de pagamento na hora). Com tone, o diálogo aguarda o toggle e mostra o
+  // erro dentro dele — por isso o caminho de desativar não captura o erro.
   const handleToggle = async (provider: string, enabled: boolean) => {
-    try {
-      await integrationsApi.toggle(provider, enabled);
-      const listRes = await integrationsApi.list();
-      setIntegrations(listRes.integrations);
-      showMsg(`${provider} ${enabled ? 'ativado' : 'desativado'}`);
-    } catch (e: unknown) { setError(getErrorMessage(e)); }
+    if (!enabled) { confirmDisable(provider); return; }
+    try { await applyToggle(provider, true); }
+    catch (e: unknown) { setError(getErrorMessage(e)); }
+  };
+
+  const confirmDisable = (provider: string) => {
+    // Espelha getAvailablePaymentMethods/resolvePixProvider: o PIX fica disponível enquanto
+    // Sicoob (no ambiente deste servidor) OU Cora estiver ativo.
+    const sicoobPixOn = !!sicoob?.enabled && !sicoobEnvMismatch;
+    const coraPixOn = !!cora?.enabled;
+    const name = provider === 'STRIPE' ? 'Stripe' : provider === 'SICOOB' ? 'Sicoob' : 'Cora';
+    const fem = provider === 'CORA'; // "a Cora", "o Sicoob", "o Stripe"
+    const pending = `Cobranças já emitidas ${fem ? 'pela' : 'pelo'} ${name} só voltam a ser conferidas automaticamente quando você reativar.`;
+    const consequences = provider === 'STRIPE'
+      ? [
+        'Os clientes deixam de ver a opção Cartão imediatamente (checkout, contratações e cobranças pelo painel).',
+        'Cobranças automáticas nos cartões salvos param, e ninguém consegue cadastrar cartão.',
+        'Pagamentos com cartão já iniciados só são confirmados depois que você reativar.',
+      ]
+      : provider === 'SICOOB'
+        ? [
+          coraPixOn
+            ? 'O PIX continua disponível, agora emitido pela Cora.'
+            : 'Os clientes deixam de ver a opção PIX imediatamente (checkout, contratações e cobranças pelo painel).',
+          pending,
+        ]
+        : [
+          sicoobPixOn
+            ? 'O PIX continua disponível pelo Sicoob.'
+            : 'Os clientes deixam de ver a opção PIX imediatamente (checkout, contratações e cobranças pelo painel).',
+          'A opção Boleto deixa de aparecer para os clientes.',
+          pending,
+        ];
+    showConfirm({
+      tone: 'warning',
+      icon: PowerOff,
+      title: `Desativar ${fem ? 'a' : 'o'} ${name}?`,
+      message: 'As credenciais continuam salvas: dá para reativar a qualquer momento pelo mesmo interruptor.',
+      consequences,
+      confirmLabel: `Desativar ${name}`,
+      onConfirm: () => applyToggle(provider, false),
+    });
   };
 
   const copyToClipboard = (text: string) => {
@@ -285,9 +334,34 @@ export default function IntegrationSettings() {
     finally { setRegisteringSicoobWebhook(false); }
   };
 
-  const deleteWebhook = async (id: string) => {
-    try { await integrationsApi.deleteCoraWebhook(id); showMsg('Webhook removido.'); await loadWebhooks(); }
-    catch (e: unknown) { setError(getErrorMessage(e) || 'Erro ao remover webhook'); }
+  // D3: remover webhook = danger. Sem try/catch no onConfirm: o erro aparece dentro do diálogo.
+  const deleteWebhook = (w: { id: string; url: string }) => {
+    const isOurs = w.url === webhookUrl;
+    showConfirm({
+      tone: 'danger',
+      // O webhook DESTE sistema pode ser registrado de novo aqui mesmo → sem o selo "Irreversível".
+      // Um endereço de terceiro não pode ser recriado pela interface → mantém o selo.
+      irreversible: !isOurs,
+      icon: Trash2,
+      title: 'Remover este webhook da Cora?',
+      message: w.url,
+      consequences: isOurs
+        ? [
+          'A Cora deixa de avisar este sistema na hora em que um PIX ou boleto é pago.',
+          'As confirmações passam a depender só da conferência automática, a cada 2 minutos — o cliente espera mais para ver o pagamento confirmado.',
+          'Para voltar ao normal, use “Registrar Webhook na Cora”.',
+        ]
+        : [
+          'A Cora deixa de enviar avisos de pagamento para esse endereço.',
+          'Esse endereço não é o deste sistema: as confirmações daqui não são afetadas.',
+        ],
+      confirmLabel: 'Remover webhook',
+      onConfirm: async () => {
+        await integrationsApi.deleteCoraWebhook(w.id);
+        showMsg('Webhook removido.');
+        await loadWebhooks();
+      },
+    });
   };
 
   const isWebhookRegistered = coraWebhooks.some(w => w.url === webhookUrl);
@@ -417,7 +491,7 @@ export default function IntegrationSettings() {
                         <span className="int-webhook-endpoint-url">
                           {w.url === webhookUrl && <><Icons.Check size={10} /> </>}{w.url}
                         </span>
-                        <button className="int-webhook-endpoint-delete" onClick={() => deleteWebhook(w.id)} type="button">
+                        <button className="int-webhook-endpoint-delete" onClick={() => deleteWebhook(w)} type="button">
                           <Icons.Trash /> Remover
                         </button>
                       </div>

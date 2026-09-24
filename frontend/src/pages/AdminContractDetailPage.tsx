@@ -10,12 +10,15 @@ import ServiceContractPanel from '../components/client/ServiceContractPanel';
 import BottomSheetModal from '../components/BottomSheetModal';
 import InlineCheckout from '../components/InlineCheckout';
 import FinalizeRecordingModal from '../components/admin/bookings/FinalizeRecordingModal';
-import { TIER_META, BOOKING_STATUS_META, CONTRACT_STATUS_META, CONTRACT_TYPE_META, getMeta } from '../constants/adminMeta';
-import { getPaymentBadge } from '../constants/paymentMethods';
+import { MakeupStatusPanel } from '../components/admin/bookings/MakeupRescheduleModal';
+import { TIER_META, BOOKING_STATUS_META, CONTRACT_STATUS_META, CONTRACT_TYPE_META, PAYMENT_STATUS_META, getMeta } from '../constants/adminMeta';
+import { getPaymentBadge, providerToMethod } from '../constants/paymentMethods';
+import { describeContractTerms } from '../utils/contractStatus';
 import { decomposeBookingPricing, AddonCatalogEntry } from '../utils/bookingPricing';
 import { formatBRL } from '../utils/format';
+import { paidChargedAmount } from '../utils/clientHealth';
 import { getErrorMessage } from '../utils/errors';
-import { ArrowLeft, Mic, CreditCard, Receipt, Sparkles, ExternalLink, CheckCircle2, Zap, Eye, MessageCircle, Radio, ClipboardCheck } from 'lucide-react';
+import { ArrowLeft, Mic, CreditCard, Receipt, Sparkles, ExternalLink, CheckCircle2, Zap, Eye, MessageCircle, Radio, ClipboardCheck, UserX } from 'lucide-react';
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' });
 
@@ -66,23 +69,52 @@ export default function AdminContractDetailPage() {
     const episodeServices = (contract.addOns || []).map(k => addons.find(a => a.key === k)).filter((a): a is AddOnConfig => !!a && !a.monthly);
     const monthlyServices = (contract.addOns || []).map(k => addons.find(a => a.key === k)).filter((a): a is AddOnConfig => !!a && !!a.monthly);
 
-    // Payment-derived totals (most reliable single source).
+    // Payment-derived totals (most reliable single source). "Pago" = valor EFETIVAMENTE cobrado (no
+    // cartão, o do PaymentIntent — mesmo critério do fechamento financeiro); em aberto = o amount.
     const payments = contract.payments || [];
-    const contractValue = payments.reduce((s, p) => s + p.amount, 0);
-    const paidValue = payments.filter(p => p.status === 'PAID').reduce((s, p) => s + p.amount, 0);
+    const valueOf = (p: PaymentSummary) => (p.status === 'PAID' ? paidChargedAmount(p) : p.amount);
+    const contractValue = payments.reduce((s, p) => s + valueOf(p), 0);
+    const paidValue = payments.filter(p => p.status === 'PAID').reduce((s, p) => s + paidChargedAmount(p), 0);
     const pendingValue = payments.filter(p => p.status === 'PENDING' || p.status === 'FAILED').reduce((s, p) => s + p.amount, 0);
 
     const bookings = contract.bookings || [];
     const completedCount = bookings.filter(b => b.status === 'COMPLETED').length;
 
+    // Vigência/duração/plano coerentes com o TIPO (avulso = data da gravação, sessão e pagamento únicos).
+    const terms = describeContractTerms(contract, bookings, payments);
+
+    // Forma de pagamento: a do contrato; sem ela (avulsos antigos criados pelo admin não a gravavam),
+    // a da parcela — a paga, senão a primeira — pelo provedor (SICOOB/CORA → PIX, STRIPE → Cartão).
+    const methodPayment = payments.find(p => p.status === 'PAID') ?? payments[0];
+    const paymentMethodKey = contract.paymentMethod
+        || (methodPayment ? providerToMethod(methodPayment.provider, { boletoUrl: methodPayment.boletoUrl, pixString: methodPayment.pixString }) : null);
+
     const cMeta = getMeta(CONTRACT_STATUS_META, contract.status);
     const tMeta = getMeta(CONTRACT_TYPE_META, contract.type);
     const tierMeta = getMeta(TIER_META, contract.tier);
 
+    // D3: marcar pago = warning. Efeitos reais do PATCH /payments/:id {PAID} (payments.admin.ts):
+    // roda onPaymentConfirmed (confirma gravação/contrato, cupom, notifica o cliente) e PAID só
+    // pode virar REFUNDED depois. Sem try/catch: com tone o erro aparece dentro do diálogo.
     const markPaid = (p: PaymentSummary) => showConfirm({
-        title: 'Marcar como pago',
-        message: `Confirmar recebimento de ${formatBRL(p.amount)} manualmente? Use apenas se o pagamento foi recebido por fora do sistema.`,
-        onConfirm: async () => { try { await paymentsApi.update(p.id, { status: 'PAID' }); showToast('Pagamento marcado como pago.'); load(); } catch { showToast('Erro ao atualizar.'); } },
+        tone: 'warning',
+        icon: CheckCircle2,
+        title: `Marcar ${formatBRL(p.amount)} como pago?`,
+        message: 'Use só se o valor foi recebido por fora do sistema (dinheiro, transferência, maquininha).',
+        consequences: [
+            'A parcela passa a Pago, com a data de hoje como data do pagamento.',
+            'O sistema segue como num pagamento online: confirma a gravação ou o contrato vinculado, confirma o cupom usado e avisa o cliente.',
+            ...(p.pixString || p.boletoUrl
+                ? ['Um PIX ou boleto já emitido para esta parcela continua válido no banco — oriente o cliente a não pagá-lo.']
+                : []),
+            'Depois disso ela não volta a Pendente (só pode ser marcada como estornada).',
+        ],
+        confirmLabel: 'Marcar como pago',
+        onConfirm: async () => {
+            await paymentsApi.update(p.id, { status: 'PAID' });
+            showToast('Pagamento marcado como pago.');
+            await load();
+        },
     });
 
     const simulate = async (p: PaymentSummary) => { try { await paymentsApi.simulate(p.id); showToast('Pagamento simulado (sandbox).'); load(); } catch { showToast('Erro na simulação.'); } };
@@ -137,6 +169,9 @@ export default function AdminContractDetailPage() {
                             <StatusBadge meta={tMeta} />
                             <StatusBadge meta={tierMeta} label={contract.tier} />
                             <StatusBadge meta={cMeta} />
+                            {(contract.user as { deletedAt?: string | null } | undefined)?.deletedAt && (
+                                <StatusBadge meta={{ label: 'Cliente excluído', color: 'var(--danger)', bg: 'var(--danger-bg)', icon: UserX }} />
+                            )}
                             {contract.contractUrl && (
                                 <a href={contract.contractUrl} target="_blank" rel="noopener noreferrer" className="status-badge status-badge--sm" style={{ color: 'var(--accent-primary)', background: 'var(--tier-audiencia-bg)', textDecoration: 'none' }}>
                                     <ExternalLink size={12} /> Contrato digital
@@ -147,10 +182,10 @@ export default function AdminContractDetailPage() {
                 </div>
 
                 <div className="admin-grid-2" style={{ marginTop: 16, gap: 12 }}>
-                    <Meta label="Vigência" value={`${fmtDate(contract.startDate)} – ${fmtDate(contract.endDate)}`} />
-                    <Meta label="Duração / Desconto" value={`${contract.durationMonths} meses · ${discountPct}% fidelidade`} />
-                    <Meta label="Plano de pagamento" value={contract.paymentPlan === 'FULL' ? 'Integral (à vista)' : 'Mensal (parcelado)'} />
-                    <Meta label="Forma de pagamento" value={contract.paymentMethod ? `${getPaymentBadge(contract.paymentMethod).emoji} ${getPaymentBadge(contract.paymentMethod).label}` : '—'} />
+                    <Meta label="Vigência" value={terms.vigencia} />
+                    <Meta label={terms.duracaoLabel} value={terms.duracao} />
+                    <Meta label="Plano de pagamento" value={terms.plano} />
+                    <Meta label="Forma de pagamento" value={paymentMethodKey ? `${getPaymentBadge(paymentMethodKey).emoji} ${getPaymentBadge(paymentMethodKey).label}` : '—'} />
                     {contract.type === 'FLEX' && contract.flexCreditsRemaining != null && (
                         <Meta label="Créditos restantes" value={`${contract.flexCreditsRemaining} de ${contract.flexCreditsTotal ?? '—'}`} />
                     )}
@@ -305,6 +340,9 @@ export default function AdminContractDetailPage() {
                                             {b.statusReason}
                                         </div>
                                     )}
+                                    {/* Remarcação do avulso (D4/D5): status da janela (explica por que o contrato
+                                        ainda não está "Concluído") + ações Justificar falta / Remarcar. */}
+                                    <MakeupStatusPanel booking={b} contractType={contract.type} clientName={contract.user?.name} onChanged={load} />
                                 </div>
                             );
                         })}
@@ -321,15 +359,20 @@ export default function AdminContractDetailPage() {
                 ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {payments.map((p, i) => {
-                            const pMeta = getMeta(BOOKING_STATUS_META, p.status);
+                            const pMeta = getMeta(PAYMENT_STATUS_META, p.status);
                             const isOpen = p.status === 'PENDING' || p.status === 'FAILED';
+                            // Forma de pagamento pelo PROVEDOR (SICOOB/CORA → PIX, STRIPE → Cartão; nunca a chave crua).
+                            const method = providerToMethod(p.provider, { boletoUrl: p.boletoUrl, pixString: p.pixString });
+                            const methodText = method
+                                ? `${getPaymentBadge(method).label}${method === 'CARTAO' && (p.installments ?? 1) > 1 ? ` em ${p.installments}x` : ''}`
+                                : '';
                             return (
                                 <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: 'var(--space-3)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-card)' }}>
                                     <div style={{ width: 30, height: 30, borderRadius: 8, display: 'grid', placeItems: 'center', background: 'var(--bg-elevated)', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>{i + 1}</div>
                                     <div style={{ minWidth: 0 }}>
-                                        <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>{formatBRL(p.amount)}</div>
+                                        <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>{formatBRL(valueOf(p))}</div>
                                         <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
-                                            Vence {p.dueDate ? fmtDate(p.dueDate) : '—'}{p.provider ? ` · ${getPaymentBadge(p.provider === 'STRIPE' ? 'CARTAO' : p.provider === 'CORA' ? 'PIX' : p.provider).label}` : ''}
+                                            Vence {p.dueDate ? fmtDate(p.dueDate) : '—'}{methodText ? ` · ${methodText}` : ''}
                                         </div>
                                     </div>
                                     <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>

@@ -1,6 +1,6 @@
 import HeroAmbient from '../components/client/HeroAmbient';
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { bookingsApi, pricingApi, Booking, AddOnConfig } from '../api/client';
 import { Clapperboard, Radio, BarChart3, Eye, TrendingUp, Heart, Youtube, Instagram, Facebook, Music2, type LucideIcon } from 'lucide-react';
 import StatCard from '../components/ui/StatCard';
@@ -9,13 +9,22 @@ import BookingDetailModal from '../components/BookingDetailModal';
 import { PosterGallery, PosterCard } from '../components/client/PosterGallery';
 import { studioSlotDate } from '../utils/time';
 import { PLATFORM_BY_KEY, parseStreamMetrics, parsePlatforms } from '../constants/platforms';
+import { isBookingMakeupOpen } from '../utils/contractStatus';
+import { makeupDeadlineDdmm } from '../utils/avulsoMakeup';
+import '../styles/makeup.css';
 
 const PLATFORM_ICON: Record<string, LucideIcon> = {
     YOUTUBE: Youtube, INSTAGRAM: Instagram, FACEBOOK: Facebook, TIKTOK: Music2,
 };
 
+/** Falta justificada / não realizada com a remarcação sem novo pagamento ainda em aberto (D4/D5). */
+const hasOpenMakeup = (b: Booking) => (b.status === 'FALTA' || b.status === 'NAO_REALIZADO') && isBookingMakeupOpen(b);
+
 export default function MyBookingsPage() {
     const navigate = useNavigate();
+    const location = useLocation();
+    // Vindo do aviso do Início ("Remarcar"): abre direto o detalhe da gravação a remarcar.
+    const openBookingId = (location.state as { openBookingId?: string } | null)?.openBookingId ?? null;
     const [bookings, setBookings] = useState<Booking[]>([]);
     const [addons, setAddons] = useState<AddOnConfig[]>([]);
     const [loading, setLoading] = useState(true);
@@ -37,17 +46,34 @@ export default function MyBookingsPage() {
         finally { setLoading(false); }
     };
 
-    const statusLabel = (s: string) => {
-        switch (s) {
+    // Abre (uma vez) a gravação pedida pelo aviso do Início, depois que a lista carrega.
+    useEffect(() => {
+        if (loading || !openBookingId) return;
+        const target = bookings.find(b => b.id === openBookingId);
+        if (target) setDetail(target);
+        navigate(location.pathname, { replace: true, state: null });
+    }, [loading, openBookingId, bookings, navigate, location.pathname]);
+
+    // Nunca exibir o status cru: falta justificada (D4) e não realizada (D5) têm rótulo próprio.
+    const statusLabel = (b: Booking) => {
+        switch (b.status) {
             case 'COMPLETED': return 'Concluída';
-            case 'FALTA': return 'Falta';
-            default: return s;
+            case 'FALTA': return b.makeupStatus === 'OPEN' || b.makeupStatus === 'EXPIRED' ? 'Falta justificada' : 'Falta';
+            case 'NAO_REALIZADO': return 'Não realizada';
+            default: return '—';
         }
     };
 
+    // Gravações passadas: concluídas, faltas e não realizadas (estas podem ter remarcação sem custo).
+    // As que ainda dá para remarcar vêm primeiro (prazo mais curto antes); o resto, da mais recente.
     const finalized = bookings
-        .filter(b => b.status === 'COMPLETED' || b.status === 'FALTA')
-        .sort((a, b) => studioSlotDate(b.date.split('T')[0], b.startTime).getTime() - studioSlotDate(a.date.split('T')[0], a.startTime).getTime());
+        .filter(b => b.status === 'COMPLETED' || b.status === 'FALTA' || b.status === 'NAO_REALIZADO')
+        .sort((a, b) => {
+            const ma = hasOpenMakeup(a), mb = hasOpenMakeup(b);
+            if (ma !== mb) return ma ? -1 : 1;
+            if (ma && mb) return new Date(a.makeupDeadline!).getTime() - new Date(b.makeupDeadline!).getTime();
+            return studioSlotDate(b.date.split('T')[0], b.startTime).getTime() - studioSlotDate(a.date.split('T')[0], a.startTime).getTime();
+        });
 
     const completedRecs = finalized.filter(b => b.status === 'COMPLETED');
     const agg = completedRecs.reduce((acc, b) => {
@@ -135,7 +161,9 @@ export default function MyBookingsPage() {
                                 peak = Math.max(peak, Number(pm.peak) || 0);
                             }
                             const hasStats = views > 0 || likes > 0 || peak > 0 || recPlatforms.length > 0;
-                            const a11yLabel = `${title}, ${b.isLivestream ? 'ao vivo, ' : ''}${statusLabel(b.status)}, ${dateLabel} às ${b.startTime}`
+                            const makeupOpen = hasOpenMakeup(b) && !!b.makeupDeadline;
+                            const chipText = makeupOpen ? `Remarcar até ${makeupDeadlineDdmm(b.makeupDeadline!)}` : statusLabel(b);
+                            const a11yLabel = `${title}, ${b.isLivestream ? 'ao vivo, ' : ''}${statusLabel(b)}${makeupOpen ? `, ${chipText.toLowerCase()} sem novo pagamento` : ''}, ${dateLabel} às ${b.startTime}`
                                 + (views > 0 ? `, ${fmtNum(views)} visualizações` : '')
                                 + (likes > 0 ? `, ${fmtNum(likes)} curtidas` : peak > 0 ? `, pico de ${fmtNum(peak)} ao vivo` : '')
                                 + (recPlatforms.length > 0 ? `, em ${recPlatforms.map(k => PLATFORM_BY_KEY[k]?.label || k).join(', ')}` : '');
@@ -147,7 +175,9 @@ export default function MyBookingsPage() {
                                     coverUrl={b.coverImageUrl}
                                     placeholder={<Clapperboard size={46} strokeWidth={1.25} />}
                                     badgeTopLeft={b.isLivestream ? <span className="poster-chip poster-chip--live"><Radio size={10} /> AO VIVO</span> : undefined}
-                                    badgeTopRight={<span className={`poster-chip poster-chip--status ${b.status === 'COMPLETED' ? 'poster-chip--ok' : 'poster-chip--miss'}`}>{statusLabel(b.status)}</span>}
+                                    badgeTopRight={makeupOpen
+                                        ? <span className="poster-chip poster-chip--makeup">{chipText}</span>
+                                        : <span className={`poster-chip poster-chip--status ${b.status === 'COMPLETED' ? 'poster-chip--ok' : 'poster-chip--miss'}`}>{chipText}</span>}
                                     eyebrow={<><span style={{ textTransform: 'capitalize' }}>{dateLabel}</span> · {b.startTime}</>}
                                     title={title}
                                     ariaLabel={a11yLabel}

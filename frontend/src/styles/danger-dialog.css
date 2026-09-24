@@ -1,0 +1,235 @@
+/* ═══════════════════════════════════════════════════════════
+   DangerConfirmDialog (components/ui/DangerConfirmDialog.tsx)
+   Confirmação de ação destrutiva (tom danger, vermelho) ou
+   reversível com impacto (tom warning, âmbar). Só tokens:
+   --danger/--danger-bg/--warning/--warning-bg; tons derivados
+   com color-mix (fallback sólido antes de cada color-mix).
+   Também define os botões sólidos .btn-danger-solid e
+   .btn-warning-solid (o .btn-danger global é translúcido).
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Card do sheet: borda e acento no tom ── */
+.bottom-sheet-card.danger-dialog-sheet {
+  --dd-tone: var(--danger);
+  --dd-tone-bg: var(--danger-bg);
+  border-color: var(--dd-tone-bg);
+  border-color: color-mix(in srgb, var(--dd-tone) 38%, transparent);
+  background:
+    radial-gradient(120% 140px at 50% 0%, var(--dd-tone-bg), transparent 75%),
+    var(--sheet-bg);
+  box-shadow: inset 0 3px 0 var(--dd-tone), 0 -8px 48px rgba(0, 0, 0, 0.6);
+}
+.bottom-sheet-card.danger-dialog-sheet--warning {
+  --dd-tone: var(--warning);
+  --dd-tone-bg: var(--warning-bg);
+}
+@media (min-width: 640px) {
+  .bottom-sheet-card.danger-dialog-sheet {
+    box-shadow: inset 0 3px 0 var(--dd-tone), 0 24px 64px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* ── Conteúdo ── */
+.danger-dialog {
+  --dd-tone: var(--danger);
+  --dd-tone-bg: var(--danger-bg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  color: var(--text-primary);
+}
+.danger-dialog--warning {
+  --dd-tone: var(--warning);
+  --dd-tone-bg: var(--warning-bg);
+}
+
+.danger-dialog__head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  text-align: center;
+}
+
+.danger-dialog__icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dd-tone);
+  background: var(--dd-tone-bg);
+  border: 1px solid var(--dd-tone-bg);
+  border: 1px solid color-mix(in srgb, var(--dd-tone) 35%, transparent);
+  box-shadow: 0 0 0 6px var(--dd-tone-bg);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--dd-tone) 7%, transparent);
+  margin-bottom: var(--space-1);
+}
+
+.danger-dialog__seal {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dd-tone);
+  background: var(--dd-tone-bg);
+  border: 1px solid var(--dd-tone-bg);
+  border: 1px solid color-mix(in srgb, var(--dd-tone) 30%, transparent);
+}
+
+.danger-dialog__title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 800;
+  line-height: 1.3;
+  letter-spacing: -0.2px;
+  color: var(--text-primary);
+}
+
+.danger-dialog__desc {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  text-align: center;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+/* ── "O que vai acontecer" ── */
+.danger-dialog__consequences {
+  padding: var(--space-3) var(--space-3-5);
+  border-radius: var(--radius-md);
+  background: var(--dd-tone-bg);
+  border: 1px solid var(--dd-tone-bg);
+  border: 1px solid color-mix(in srgb, var(--dd-tone) 28%, transparent);
+}
+.danger-dialog__consequences-title {
+  margin: 0 0 var(--space-2);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dd-tone);
+}
+.danger-dialog__consequences-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+.danger-dialog__consequences-list li::marker {
+  color: var(--dd-tone);
+}
+
+/* ── Digite para confirmar ── */
+.danger-dialog__typeconfirm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.danger-dialog__typeconfirm-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.danger-dialog__typeconfirm-label strong {
+  color: var(--dd-tone);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.danger-dialog__typeconfirm-input {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+.danger-dialog__typeconfirm-input::placeholder {
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+}
+.danger-dialog__typeconfirm-input[aria-invalid='true'] {
+  border-color: var(--dd-tone);
+}
+
+/* ── Erro da ação (fica dentro do diálogo) ── */
+.danger-dialog__error {
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--text-primary);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger);
+}
+
+/* ── Ações ── */
+.danger-dialog__actions {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-1);
+}
+.danger-dialog__btn {
+  flex: 1;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+@media (max-width: 639px) {
+  /* Mobile: empilha com a ação principal em cima (mesmo padrão de .admin-actions-row). */
+  .danger-dialog__actions {
+    flex-direction: column-reverse;
+  }
+}
+
+.danger-dialog__spinner {
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+/* ── Botões sólidos (globais — podem ser usados fora do diálogo) ── */
+.btn-danger-solid {
+  /* Vermelho escurecido a partir do token para o texto branco passar 4.5:1. */
+  background: var(--danger);
+  background: color-mix(in srgb, var(--danger) 85%, black);
+  color: #fff;
+  border: 1px solid transparent;
+  font-weight: 700;
+}
+.btn-warning-solid {
+  background: var(--warning);
+  color: var(--text-inverse);
+  border: 1px solid transparent;
+  font-weight: 700;
+}
+@media (hover: hover) {
+  .btn-danger-solid:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--danger) 72%, black);
+  }
+  .btn-warning-solid:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--warning) 88%, black);
+  }
+}
+.btn-danger-solid:active:not(:disabled),
+.btn-warning-solid:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.btn-danger-solid:focus-visible,
+.btn-warning-solid:focus-visible,
+.danger-dialog__btn:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}

@@ -51,13 +51,19 @@ export function spWeekday(bookingDate: Date): string {
 }
 
 /**
- * Rótulo do dia para lembretes/notificações, calculado no fuso SP e SEM linguagem relativa que envelheça
- * num push já entregue: "hoje (DD/MM)" quando é o próprio dia; caso contrário a data absoluta com o dia
- * da semana — "quarta-feira (DD/MM)". Um push de 24h fica na bandeja e costuma ser lido no dia seguinte;
- * "amanhã" viraria mentira, enquanto a data absoluta continua correta seja quando for lida. O lembrete
- * que chega no PRÓPRIO dia (2h antes) cai em daysFromToday === 0 e diz "hoje".
+ * Rótulo do dia para lembretes/notificações, calculado no calendário SP:
+ *  - "hoje (DD/MM)"   → a sessão é no próprio dia SP (lembrete de 2h);
+ *  - "amanhã (DD/MM)" → a sessão é no dia SP seguinte (lembrete de 24h, que sai na véspera no mesmo horário);
+ *  - "<dia da semana> (DD/MM)" → qualquer outra distância (fallback; o job de lembretes não envia nesses casos).
+ *
+ * Decisão do dono (D14, set/2026) — reverte o "nunca amanhã" do commit 9ae210f: o lembrete de 24h diz
+ * "amanhã". A data explícita entre parênteses desambigua um push lido depois (no dia da sessão o push de 2h,
+ * com a mesma tag BOOKING_REMINDER-<id>, ainda substitui o de 24h na bandeja).
  */
 export function spDayLabel(bookingDate: Date, now: Date = new Date()): string {
     const ddmm = spDdMm(bookingDate);
-    return spDaysFromToday(bookingDate, now) === 0 ? `hoje (${ddmm})` : `${spWeekday(bookingDate)} (${ddmm})`;
+    const diff = spDaysFromToday(bookingDate, now);
+    if (diff === 0) return `hoje (${ddmm})`;
+    if (diff === 1) return `amanhã (${ddmm})`;
+    return `${spWeekday(bookingDate)} (${ddmm})`;
 }

@@ -7,6 +7,7 @@ import { stripeGetPaymentIntent } from '../../lib/stripeService.js';
 import { getPackageSlots } from '../../utils/pricing.js';
 import { BookingStatus } from '../../generated/prisma/client.js';
 import { restoreCredit } from './booking.service.js';
+import { syncContractCompletion } from '../../lib/contractCompletion.js';
 import { notifyEvent } from '../notifications/notificationService.js';
 import { completeBookingSchema } from './validators.js';
 import { deriveStreamAggregates } from '../../lib/streamMetrics.js';
@@ -252,6 +253,7 @@ router.put('/:id/client-cancel', authenticate, async (req: Request, res: Respons
         if (booking.contractId) {
             await restoreCredit(booking.contractId);
         }
+        await syncContractCompletion(booking.contractId, userId);
 
         // Instant push: notify admin of cancellation
         const admins = await prisma.user.findMany({ where: { role: 'ADMIN' }, select: { id: true } });
@@ -274,6 +276,8 @@ router.put('/:id/client-cancel', authenticate, async (req: Request, res: Respons
             where: { id },
             data: { status: BookingStatus.FALTA },
         });
+        // D6: FALTA sem justificativa encerra o avulso (e pode concluir um plano sem sessões restantes).
+        await syncContractCompletion(booking.contractId, userId);
         res.json({ message: 'Agendamento desmarcado. Por causa do aviso prévio menor que 24h, o crédito desta sessão foi consumido.' });
     }
 });
@@ -336,6 +340,8 @@ router.put('/:id/complete', authenticate, authorize('ADMIN'), async (req: Reques
                 ...(chatMessages != null && { chatMessages }),
             },
         });
+        // D6: gravação finalizada → o contrato pode estar concluído (avulso sempre; plano se não resta nada).
+        await syncContractCompletion(booking.contractId, req.user!.userId);
         res.json({ booking: updated, message: '🏁 Sessão finalizada com sucesso!' });
     } catch (err) {
         if (err instanceof z.ZodError) { res.status(400).json({ error: 'Dados inválidos.', details: err.errors }); return; }

@@ -18,37 +18,56 @@ export interface CreateNotificationInput {
     bypassEssentialFilter?: boolean; // deliver even to "essential only" users (admin self-tests)
 }
 
+/** Valor provisório da chave de dedup enquanto a notificação está sendo criada (nunca é um id). */
+const DEDUP_PENDING = 'pending';
+
 /**
  * Create a notification in DB and optionally send push immediately.
- * Uses Redis dedup to avoid spamming the same notification.
+ * Uses Redis dedup (atomic claim) to avoid spamming the same notification.
+ * Returns the notification id, or '' when skipped (preference, excluded account, in-flight duplicate).
  */
 export async function createNotification(input: CreateNotificationInput): Promise<string> {
     const { userId, type, severity, title, message, entityType, entityId, actionUrl } = input;
     const shouldPush = input.sendPush ?? (severity === 'critical' || severity === 'warning');
 
+    const pref = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { essentialNotificationsOnly: true, deletedAt: true },
+    });
+    // D3: rede de segurança — nunca notifica (sino/push) conta inexistente ou excluída (soft delete),
+    // venha de evento, job ou broadcast.
+    if (!pref || pref.deletedAt) return '';
+
     // Respect the client's "essential only" preference: drop non-critical notifications
     // (no in-app, no push). Critical ones (payments, credit loss) always go through.
-    if (severity !== 'critical' && !input.bypassEssentialFilter) {
-        const pref = await prisma.user.findUnique({
-            where: { id: userId },
-            select: { essentialNotificationsOnly: true },
-        });
-        if (pref?.essentialNotificationsOnly) return '';
-    }
+    if (severity !== 'critical' && !input.bypassEssentialFilter && pref.essentialNotificationsOnly) return '';
 
     // Dedup key: same type + entity within a window (or a caller-provided identity)
     const dedupKey = input.dedupKey
         ? `notif:dedup:${input.dedupKey}`
         : `notif:dedup:${userId}:${type}:${entityId || 'global'}`;
-    const alreadyExists = await redis.get(dedupKey);
-    if (alreadyExists) return alreadyExists; // return existing notification ID
-
-    const notification = await prisma.notification.create({
-        data: { userId, type, severity, title, message, entityType, entityId, actionUrl },
-    });
-
-    // Set dedup window based on severity
+    // Dedup window based on severity
     const ttl = severity === 'critical' ? 6 * 3600 : severity === 'warning' ? 24 * 3600 : 72 * 3600;
+
+    // Claim ATÔMICO (SET NX) antes de criar: dois emissores concorrentes (ex.: duas rodadas do job de
+    // lembrete, várias instâncias) não passam juntos por um GET→create→SET. Quem perde o claim não
+    // cria nada: devolve o id já gravado, ou '' enquanto o outro ainda está criando ('pending').
+    const claimed = await redis.set(dedupKey, DEDUP_PENDING, 'EX', ttl, 'NX');
+    if (claimed !== 'OK') {
+        const existing = await redis.get(dedupKey);
+        return existing && existing !== DEDUP_PENDING ? existing : '';
+    }
+
+    let notification;
+    try {
+        notification = await prisma.notification.create({
+            data: { userId, type, severity, title, message, entityType, entityId, actionUrl },
+        });
+    } catch (err) {
+        // Não criou → libera o claim para a próxima tentativa não ser engolida pela dedup.
+        await redis.del(dedupKey).catch(() => {});
+        throw err;
+    }
     await redis.set(dedupKey, notification.id, 'EX', ttl);
 
     // Send push immediately

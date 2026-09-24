@@ -18,7 +18,7 @@ Este arquivo lista **todas as imagens de passo a passo** referenciadas pelos gui
 | --- | --- | --- |
 | `login-01-tela-login.png` | `/login` | Formulário de login (e-mail + senha) |
 | `login-02-cadastro-otp.png` | `/login` | Etapa de cadastro com campo de código (OTP) |
-| `login-03-google.png` | `/login` | Botão "Entrar com Google" em destaque |
+| `login-03-google.png` | `/login` | Botão "Acessar com o Google" em destaque (na tela de criar conta o texto é "Cadastrar com o Google") |
 | `pwa-01-instalar-prompt.png` | qualquer | Banner/prompt de instalação do PWA |
 | `dashboard-01-visao-geral.png` | `/dashboard` | Painel com stats, próximos 7 dias e faturas |
 | `dashboard-02-fatura-aberta.png` | `/dashboard` | Card de fatura aberta com contador regressivo |

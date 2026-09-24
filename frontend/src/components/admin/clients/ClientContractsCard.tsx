@@ -4,9 +4,15 @@ import { useBusinessConfig } from '../../../hooks/useBusinessConfig';
 import { FolderOpen, FileText, ClipboardCheck } from 'lucide-react';
 import StatusBadge from '../../ui/StatusBadge';
 import { TIER_META, CONTRACT_STATUS_META, CONTRACT_TYPE_META, getMeta } from '../../../constants/adminMeta';
+import { describeContractTerms, type TermsBooking } from '../../../utils/contractStatus';
 
-/** Lista de contratos do cliente. */
-export default function ClientContractsCard({ contracts }: { contracts: Contract[] }) {
+/** Lista de contratos do cliente.
+ *  `bookings` (opcional, ex.: `user.bookings` do perfil): com eles o AVULSO mostra a data/horário
+ *  REAIS da gravação (a remarcação muda a reserva, não o contrato); sem eles, a data do contrato. */
+export default function ClientContractsCard({ contracts, bookings }: {
+    contracts: Contract[];
+    bookings?: (TermsBooking & { contractId?: string | null })[];
+}) {
     const navigate = useNavigate();
     const { get: getRule } = useBusinessConfig();
 
@@ -17,7 +23,14 @@ export default function ClientContractsCard({ contracts }: { contracts: Contract
                 <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Nenhum contrato</div>
             ) : (
                 <div style={{ display: 'grid', gap: '12px', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
-                    {contracts.map((c: Contract) => (
+                    {contracts.map((c: Contract) => {
+                        const terms = describeContractTerms(c, bookings?.filter(b => b.contractId === c.id), null, { dateFormat: 'short' });
+                        // L6: derivar por TIPO — AVULSO = 1 (era 24 pelo ramo "≠3m → episodes_6months"),
+                        // CUSTOM = totalSessions real; demais = episódios do plano por duração.
+                        const episodes = terms.isAvulso ? 1
+                            : c.type === 'CUSTOM' ? (c.totalSessions ?? (c.durationMonths === 3 ? getRule('episodes_3months') : getRule('episodes_6months')))
+                                : (c.durationMonths === 3 ? getRule('episodes_3months') : getRule('episodes_6months'));
+                        return (
                         <div key={c.id} style={{
                             padding: '12px', borderRadius: 'var(--radius-sm)',
                             background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
@@ -30,14 +43,8 @@ export default function ClientContractsCard({ contracts }: { contracts: Contract
                                 <StatusBadge meta={getMeta(CONTRACT_STATUS_META, c.status)} />
                             </div>
                             <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
-                                <div>{c.durationMonths}m · {c.discountPct}% desconto · {
-                                    // L6: derivar por TIPO — AVULSO = 1 (era 24 pelo ramo "≠3m → episodes_6months"),
-                                    // CUSTOM = totalSessions real; demais = episódios do plano por duração.
-                                    c.type === 'AVULSO' ? 1
-                                        : c.type === 'CUSTOM' ? (c.totalSessions ?? (c.durationMonths === 3 ? getRule('episodes_3months') : getRule('episodes_6months')))
-                                            : (c.durationMonths === 3 ? getRule('episodes_3months') : getRule('episodes_6months'))
-                                } gravações</div>
-                                <div>{new Date(c.startDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })} → {new Date(c.endDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</div>
+                                <div>{terms.isAvulso ? terms.duracao : `${terms.duracao} · ${episodes} ${episodes === 1 ? 'gravação' : 'gravações'}`}</div>
+                                <div>{terms.vigencia}</div>
                                 {c.type === 'FLEX' && c.flexCreditsRemaining != null && (
                                     <div style={{ marginTop: '4px', fontWeight: 600, color: 'var(--accent-primary)' }}>
                                         Créditos restantes: {c.flexCreditsRemaining}/{c.flexCreditsTotal}
@@ -57,7 +64,8 @@ export default function ClientContractsCard({ contracts }: { contracts: Contract
                                 )}
                             </div>
                         </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
         </div>

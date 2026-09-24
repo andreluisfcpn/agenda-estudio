@@ -51,6 +51,8 @@ export const adminUpdateBookingSchema = z.object({
     startTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
     status: z.enum(['RESERVED', 'CONFIRMED', 'COMPLETED', 'FALTA', 'NAO_REALIZADO', 'CANCELLED']).optional(),
     statusReason: z.string().max(2000).optional().nullable(), // motivo informado em FALTA / NÃO REALIZADO
+    // D4: FALTA justificada (só avulso) → abre a janela de remarcação sem novo pagamento; false desfaz.
+    noShowJustified: z.boolean().optional(),
     adminNotes: z.string().optional(),
     clientNotes: z.string().optional(),
     platforms: z.string().optional(),
@@ -95,6 +97,9 @@ export const rescheduleSchema = z.object({
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato de data inválido'),
     startTime: z.string().regex(/^\d{2}:\d{2}$/, 'Formato de hora inválido'),
 });
+
+// Remarcação da gravação perdida do avulso (FALTA justificada / NÃO REALIZADO) — mesmo formato.
+export const makeupSchema = rescheduleSchema;
 
 export const addOnPurchaseSchema = z.object({
     addonKey: z.string().min(1, 'ID do serviço é obrigatório').optional(),

@@ -12,11 +12,12 @@ import NotificationBanner from '../NotificationBanner';
 import { DashboardSkeleton } from '../ui/SkeletonLoader';
 import { formatBRL, daysUntil, DAY_NAMES } from '../../utils/format';
 import { computeFlexState } from '../../utils/flexCredits';
-import { isContractCurrent } from '../../utils/contractStatus';
+import { isContractCurrent, isBookingMakeupOpen } from '../../utils/contractStatus';
+import { calendarYmd, ddmmOfYmd, makeupDeadlineDdmm, makeupDaysLeft } from '../../utils/avulsoMakeup';
 import {
     Wallet, CalendarDays, Clapperboard, FileText,
     Package, AlertTriangle, ArrowRight,
-    Clock, Mic,
+    Clock, Mic, CalendarClock,
 } from 'lucide-react';
 
 function formatContractOrigin(booking: Booking): string {
@@ -24,6 +25,17 @@ function formatContractOrigin(booking: Booking): string {
     if (booking.contract.name) return booking.contract.name;
     if (booking.contract.type === 'AVULSO') return `Avulso — ${booking.contract.tier}`;
     return `Plano ${booking.contract.type === 'FIXO' ? 'Fixo' : 'Flex'} — ${booking.contract.tier}`;
+}
+
+/** Aviso de remarcação sem novo pagamento (falta justificada / não realizada no avulso — D4/D5). */
+interface MakeupNudge {
+    bookingId: string;
+    status: 'FALTA' | 'NAO_REALIZADO';
+    missedDdmm: string;
+    lastDdmm: string;
+    daysLeft: number;
+    /** Quantas gravações estão com a remarcação em aberto (mostra a de prazo mais curto). */
+    count: number;
 }
 
 function getAddonName(key: string): string {
@@ -44,6 +56,7 @@ export default function ClientDashboard() {
     const [upcomingBookings, setUpcomingBookings] = useState<Booking[]>([]);
     const [openPayments, setOpenPayments] = useState<(PaymentSummary & { boletoAllowed?: boolean; contractDuration?: number })[]>([]);
     const [myContracts, setMyContracts] = useState<ContractWithStats[]>([]);
+    const [makeupNudge, setMakeupNudge] = useState<MakeupNudge | null>(null);
     const [loading, setLoading] = useState(true);
 
     const [payingInvoice, setPayingInvoice] = useState<(PaymentSummary & { boletoAllowed?: boolean; contractDuration?: number }) | null>(null);
@@ -106,6 +119,20 @@ export default function ClientDashboard() {
             setRecentBookings(completedBookings.slice(0, 10));
             setUpcomingBookings(futureBookings.slice(0, 10));
             setMyContracts(contractsRes.contracts);
+
+            // Remarcação sem novo pagamento em aberto (D4/D5): a de prazo mais curto vira o aviso.
+            const openMakeups = bookingsRes.bookings
+                .filter(b => (b.status === 'FALTA' || b.status === 'NAO_REALIZADO') && isBookingMakeupOpen(b) && !!b.makeupDeadline)
+                .sort((a, b) => new Date(a.makeupDeadline!).getTime() - new Date(b.makeupDeadline!).getTime());
+            const nextMakeup = openMakeups[0];
+            setMakeupNudge(nextMakeup ? {
+                bookingId: nextMakeup.id,
+                status: nextMakeup.status as 'FALTA' | 'NAO_REALIZADO',
+                missedDdmm: ddmmOfYmd(calendarYmd(nextMakeup.missedDate || nextMakeup.date)),
+                lastDdmm: makeupDeadlineDdmm(nextMakeup.makeupDeadline!),
+                daysLeft: makeupDaysLeft(nextMakeup.makeupDeadline!),
+                count: openMakeups.length,
+            } : null);
             const now = new Date();
             const activeBookings = bookingsRes.bookings.filter(b => {
                 const bookingDateTime = new Date(`${b.date.split('T')[0]}T${b.startTime}:00`);
@@ -309,6 +336,30 @@ export default function ClientDashboard() {
                     </div>
                     <button className="btn btn-primary btn-sm flex-nudge__cta" onClick={() => navigate('/calendar')}>
                         <CalendarDays size={16} /> Agendar
+                    </button>
+                </div>
+            )}
+
+            {makeupNudge && (
+                <div
+                    className={`flex-nudge animate-card-enter ${makeupNudge.daysLeft <= 2 ? 'flex-nudge--urgent' : ''}`}
+                    role="status"
+                >
+                    <div className="flex-nudge__body">
+                        <span className="flex-nudge__icon" aria-hidden="true"><CalendarClock size={18} /></span>
+                        <p className="flex-nudge__text">
+                            {makeupNudge.status === 'FALTA'
+                                ? <>Remarque sua gravação de {makeupNudge.missedDdmm} até <strong>{makeupNudge.lastDdmm}</strong> — sem novo pagamento.</>
+                                : <>O estúdio não pôde realizar sua gravação de {makeupNudge.missedDdmm}. Remarque sem custo até <strong>{makeupNudge.lastDdmm}</strong>.</>}
+                            {makeupNudge.daysLeft <= 2 && (
+                                <> {makeupNudge.daysLeft <= 1 ? 'Hoje é o último dia.' : 'Amanhã é o último dia.'}</>
+                            )}
+                            {makeupNudge.count > 1 && <> Você tem {makeupNudge.count} gravações para remarcar.</>}
+                        </p>
+                    </div>
+                    <button className="btn btn-primary btn-sm flex-nudge__cta"
+                        onClick={() => navigate('/minhas-gravacoes', { state: { openBookingId: makeupNudge.bookingId } })}>
+                        <CalendarClock size={16} /> Remarcar
                     </button>
                 </div>
             )}

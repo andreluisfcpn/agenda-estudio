@@ -21,8 +21,11 @@ import { BookingStatus, Prisma } from '../../generated/prisma/client.js';
 import { getConfig } from '../../lib/businessConfig.js';
 import { getErrorMessage } from '../../utils/errors.js';
 import { createBookingSchema, bulkBookingSchema, adminCreateBookingSchema } from './validators.js';
-import { CouponError, validateCoupon, reserveCouponUse, repointCouponRedemption, type CouponQuote } from '../../lib/couponService.js';
-import { hasBlockedConflict } from './booking.service.js';
+import { CouponError, validateCoupon, reserveCouponUse, type CouponQuote } from '../../lib/couponService.js';
+import { hasBlockedConflict, avulsoContractName } from './booking.service.js';
+import { syncContractCompletion } from '../../lib/contractCompletion.js';
+import { resolvePixProvider } from '../../lib/pixGateway.js';
+import { getProviderForMethod } from '../../lib/paymentGateway.js';
 
 export function registerCreationRoutes(router: Router) {
 
@@ -279,58 +282,46 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                         });
                         paymentId = payment.id;
                         retryAmount = payment.amount;
-                    } else if (existingPayment && existingPayment.provider !== 'STRIPE') {
-                        // Previous payment was PIX/CORA → create a new Stripe payment carrying
-                        // over the discounted amount + coupon audit fields, and RE-POINT the
-                        // coupon redemption (paymentId is unique) in the same transaction so
-                        // the use is neither lost nor double-counted.
-                        const payment = await prisma.$transaction(async (tx) => {
-                            const p = await tx.payment.create({
-                                data: {
-                                    userId,
-                                    contractId: existingHold.contractId,
-                                    bookingId: existingHold.id,
-                                    provider: 'STRIPE',
-                                    amount: existingPayment.amount,
-                                    status: 'PENDING',
-                                    dueDate: dateObj,
-                                    installments: data.installments || 1,
-                                    paymentType: data.paymentType || 'CREDIT',
-                                    couponId: existingPayment.couponId,
-                                    couponCode: existingPayment.couponCode,
-                                    discountAmount: existingPayment.discountAmount,
-                                },
-                            });
-                            await repointCouponRedemption(tx, existingPayment.id, p.id);
-                            return p;
-                        });
-                        paymentId = payment.id;
-                        retryAmount = payment.amount;
                     }
 
-                    const customerId = await stripeGetOrCreateCustomer(userId);
-                    const piResult = await stripeCreatePaymentIntent({
-                        amount: retryAmount,
-                        customerId,
-                        description: `Avulso ${data.date} ${data.startTime} (retry)`,
-                        paymentId: paymentId!,
-                        userId,
-                        contractId: existingHold.contractId!,
-                        installmentsEnabled: (data.installments || 1) > 1,
-                    });
-                    clientSecret = piResult.clientSecret;
+                    // pagamentos-10: a cobrança anterior era PIX/CORA → reaproveita o MESMO Payment (nunca um
+                    // 2º Payment com o PIX vivo pendurado). O PaymentIntent do cartão é criado em seguida pelo
+                    // POST /stripe/create-payment (o checkout sempre chama), que antes APOSENTA o PIX —
+                    // concilia (já pago → alreadyPaid) e cancela no provedor (não cancelável → 409).
+                    const reuseForCheckout = !!existingPayment && existingPayment.provider !== 'STRIPE';
+                    if (!reuseForCheckout) {
+                        const customerId = await stripeGetOrCreateCustomer(userId);
+                        const piResult = await stripeCreatePaymentIntent({
+                            amount: retryAmount,
+                            customerId,
+                            description: `Avulso ${data.date} ${data.startTime} (retry)`,
+                            paymentId: paymentId!,
+                            userId,
+                            contractId: existingHold.contractId!,
+                            installmentsEnabled: (data.installments || 1) > 1,
+                        });
+                        clientSecret = piResult.clientSecret;
 
-                    await prisma.payment.update({
-                        where: { id: paymentId! },
-                        data: { providerRef: piResult.paymentIntentId, provider: 'STRIPE' },
-                    });
+                        await prisma.payment.update({
+                            where: { id: paymentId! },
+                            data: { providerRef: piResult.paymentIntentId, provider: 'STRIPE' },
+                        });
+                    }
                 }
 
-                // Refresh hold timer
+                // Refresh hold timer — e o prazo do contrato avulso junto (senão a varredura de contratos
+                // vencidos apagava a reserva pelo prazo antigo — pagamentos-10).
+                const refreshedHold = new Date(Date.now() + 10 * 60 * 1000);
                 await prisma.booking.update({
                     where: { id: existingHold.id },
-                    data: { holdExpiresAt: new Date(Date.now() + 10 * 60 * 1000) },
+                    data: { holdExpiresAt: refreshedHold },
                 });
+                if (existingHold.contractId && existingHold.contract?.type === 'AVULSO') {
+                    await prisma.contract.updateMany({
+                        where: { id: existingHold.contractId, type: 'AVULSO', status: 'AWAITING_PAYMENT' },
+                        data: { paymentDeadline: refreshedHold },
+                    });
+                }
 
                 res.status(200).json({
                     booking: {
@@ -343,7 +334,7 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
                         price: existingHold.price,
                         status: existingHold.status,
                         contractId: existingHold.contractId,
-                        holdExpiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+                        holdExpiresAt: refreshedHold.toISOString(),
                     },
                     paymentId,
                     paymentAmount: retryAmount,
@@ -386,19 +377,19 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
             let isAvulsoCreated = false;
             let finalContractId = contractId;
             if (!finalContractId) {
-                const parts = data.date.split('-');
-                const formattedDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
                 const avulsoStatus = 'AWAITING_PAYMENT';
                 const newContract = await prisma.contract.create({
                     data: {
                         userId,
-                        name: `Avulso ${formattedDate} as ${data.startTime}`,
+                        name: avulsoContractName(data.date, data.startTime),
                         type: 'AVULSO',
                         tier: slotTier,
                         durationMonths: 1,
                         discountPct: 0,
                         startDate: dateObj,
-                        endDate: new Date(dateObj.getTime() + 30 * 24 * 60 * 60 * 1000),
+                        // D6: vigência = o próprio dia da gravação; avulso é pagamento único (FULL).
+                        endDate: dateObj,
+                        paymentPlan: 'FULL',
                         status: avulsoStatus as any,
                         paymentMethod: data.paymentMethod as any || null,
                         flexCreditsTotal: 1,
@@ -815,6 +806,14 @@ router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res
         const dateObj = new Date(data.date + 'T00:00:00');
         const dayOfWeek = dateObj.getUTCDay();
 
+        // D3: cliente EXCLUÍDO (soft delete/anonimizado) não ganha gravação nem cobrança nova — o
+        // seletor do modal já o esconde; a trava real é aqui (lista aberta/antiga, chamada direta).
+        const targetClient = await prisma.user.findUnique({ where: { id: data.userId }, select: { deletedAt: true } });
+        if (targetClient?.deletedAt) {
+            res.status(409).json({ error: 'Este cliente foi excluído.', code: 'CLIENT_DELETED' });
+            return;
+        }
+
         // O admin NÃO pode agendar em data/horário que já passou (fuso do estúdio). O caminho do
         // cliente (POST /) já bloqueia o passado, mas dispensa o admin (linha ~41); o /admin não
         // tinha nenhuma checagem, então dava para criar reservas retroativas. `min` no <input> do
@@ -925,19 +924,22 @@ router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res
         let contract = linkedContract; // reuse the fetch from the pricing block above
 
         if (!finalContractId) {
-            const parts = data.date.split('-');
-            const formattedDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
             const newContract = await prisma.contract.create({
                 data: {
                     userId: data.userId,
-                    name: `Avulso ${formattedDate} as ${data.startTime}`,
+                    name: avulsoContractName(data.date, data.startTime),
                     type: 'AVULSO',
                     tier: slotTier,
                     durationMonths: 1,
                     discountPct: 0,
                     startDate: dateObj,
-                    endDate: new Date(dateObj.getTime() + 30 * 24 * 60 * 60 * 1000),
+                    // D6: vigência = o próprio dia da gravação; avulso é pagamento único (FULL).
+                    endDate: dateObj,
+                    paymentPlan: 'FULL',
                     status: 'ACTIVE',
+                    // Forma de pagamento escolhida pelo admin (default CARTAO do schema) — o detalhe do
+                    // contrato mostrava "Forma de pagamento: —" (a parcela tinha PIX/Cartão).
+                    paymentMethod: data.paymentMethod,
                     flexCreditsTotal: 1,
                     flexCreditsRemaining: 0,
                 }
@@ -963,13 +965,24 @@ router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res
         // Slot já ocupado pela linha do booking — pode liberar o lock (o resto é pagamento/notif).
         await releaseMultiSlotLock(data.date, packageSlots, adminLockOwner);
 
+        // D6: nova sessão num contrato existente reabre um contrato "Concluído" (volta a ACTIVE).
+        if (data.contractId) {
+            await syncContractCompletion(data.contractId, req.user!.userId);
+        }
+
         // Create Payment record for admin bookings (visible in financial reports)
         let createdPaymentId: string | null = null;
         let boletoUrl: string | null = null;
         let barcode: string | null = null;
         let boletoError: string | null = null;
         try {
-            const paymentProvider = data.paymentMethod === 'BOLETO' ? 'CORA' : (data.paymentMethod === 'PIX' ? 'CORA' : 'STRIPE');
+            // PIX é dinâmico (Sicoob ou Cora, conforme o admin habilitou) — não mais 'CORA' fixo: o
+            // provider decide a taxa de gateway versionada e a conciliação. Boleto é sempre Cora.
+            const paymentProvider = data.paymentMethod === 'BOLETO'
+                ? 'CORA'
+                : (data.paymentMethod === 'PIX'
+                    ? ((await resolvePixProvider()) ?? getProviderForMethod('PIX'))
+                    : 'STRIPE');
             const adminChargeAmount = adminCouponQuote ? adminCouponQuote.finalAmount : price;
             const paymentRecord = await prisma.$transaction(async (tx) => {
                 const p = await tx.payment.create({
@@ -1012,8 +1025,22 @@ router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res
             });
             createdPaymentId = paymentRecord.id;
 
+            // Cupom 100% / valor zero: nada a cobrar — liquida como PAID na hora (mesmos efeitos de um
+            // webhook: confirma a reserva e o uso do cupom). Uma cobrança de R$ 0 PENDENTE iria ao gateway
+            // (que recusa) e ao auto-charge (aviso de falha diário).
+            if (adminChargeAmount <= 0 && data.status !== 'CONFIRMED') {
+                const settled = await prisma.payment.updateMany({
+                    where: { id: paymentRecord.id, status: 'PENDING' },
+                    data: { status: 'PAID', paidAt: new Date() },
+                });
+                if (settled.count > 0) {
+                    const { onPaymentConfirmed } = await import('../../lib/paymentEffects.js');
+                    await onPaymentConfirmed(paymentRecord.id);
+                }
+            }
+
             // Admin-only: generate BOLETO via Cora
-            if (data.paymentMethod === 'BOLETO' && data.status !== 'CONFIRMED') {
+            if (data.paymentMethod === 'BOLETO' && data.status !== 'CONFIRMED' && adminChargeAmount > 0) {
                 try {
                     const { createCoraPayment } = await import('../../lib/coraPaymentHelper.js');
                     const coraRes = await createCoraPayment({

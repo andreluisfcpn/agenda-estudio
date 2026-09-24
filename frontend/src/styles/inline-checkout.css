@@ -1,0 +1,82 @@
+/* ═══════════════════════════════════════════════════════════
+   InlineCheckout (components/InlineCheckout.tsx) — complementos
+   de checkout.css (que continua sendo a base visual).
+   ═══════════════════════════════════════════════════════════ */
+
+/* Cartão novo parcelado: o nº de parcelas é confirmado no formulário do Stripe. */
+.checkout-installment-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--info-bg);
+  border: 1px solid color-mix(in srgb, var(--info) 30%, transparent);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.checkout-installment-hint > svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--info);
+}
+
+.checkout-installment-hint strong {
+  color: var(--text-primary);
+}
+
+/* Prazo da contratação aguardando pagamento (PaymentModal): contagem acima do checkout. */
+.checkout-deadline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: var(--success-bg);
+  border: 1px solid color-mix(in srgb, var(--success) 30%, transparent);
+}
+
+.checkout-deadline > svg {
+  flex-shrink: 0;
+  color: var(--success);
+}
+
+.checkout-deadline__text {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+.checkout-deadline__clock {
+  font-size: 1.05rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--success);
+}
+
+.checkout-deadline--warning {
+  background: var(--warning-bg);
+  border-color: color-mix(in srgb, var(--warning) 35%, transparent);
+}
+
+.checkout-deadline--warning > svg,
+.checkout-deadline--warning .checkout-deadline__clock {
+  color: var(--warning);
+}
+
+.checkout-deadline--danger {
+  background: var(--danger-bg);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+}
+
+.checkout-deadline--danger > svg,
+.checkout-deadline--danger .checkout-deadline__clock {
+  color: var(--danger);
+}

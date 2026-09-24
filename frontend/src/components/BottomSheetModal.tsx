@@ -142,7 +142,9 @@ export default function BottomSheetModal({
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.2 }}
                     onMouseDown={(e: React.MouseEvent<HTMLDivElement>) => {
-                        if (e.target === e.currentTarget) {
+                        // e.detail > 1 = 2º mousedown de um clique duplo no botão que ABRIU este sheet:
+                        // ele cai no overlay recém-montado e fecharia o sheet na hora. Ignora (sem trava por tempo).
+                        if (e.target === e.currentTarget && e.detail <= 1) {
                             safeClose();
                         }
                     }}

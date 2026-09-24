@@ -8,6 +8,7 @@ import ImageCropper from '../components/ImageCropper';
 import Avatar from '../components/Avatar';
 import ToggleSwitch from '../components/ui/ToggleSwitch';
 import AddressFields, { type AddressValues } from '../components/admin/clients/AddressFields';
+import { parseSocialLinks, serializeSocialLinks } from '../components/admin/clients/SocialLinksEditor';
 import { ArrowLeft, UserRound, Camera, Save, Loader2, CheckCircle2 } from 'lucide-react';
 
 export default function MyProfilePage() {
@@ -24,15 +25,10 @@ export default function MyProfilePage() {
         complement: user?.complement || '', neighborhood: user?.neighborhood || '', city: user?.city || '', state: user?.state || '',
     });
 
-    let initialInsta = '';
-    let initialLink = '';
-    try {
-        if (user?.socialLinks) {
-            const parsed = typeof user.socialLinks === 'string' ? JSON.parse(user.socialLinks) : user.socialLinks;
-            initialInsta = parsed.instagram || '';
-            initialLink = parsed.linkedin || '';
-        }
-    } catch { /* ignore malformed socialLinks */ }
+    // JSON do perfil (mesmo formato do admin). Texto inválido → {}.
+    const savedLinks = parseSocialLinks(user?.socialLinks);
+    const initialInsta = savedLinks.instagram || '';
+    const initialLink = savedLinks.linkedin || '';
 
     const [instagram, setInstagram] = useState(initialInsta);
     const [linkedin, setLinkedin] = useState(initialLink);
@@ -69,7 +65,10 @@ export default function MyProfilePage() {
                 if (addr[f] !== (user?.[f] || '')) data[f] = addr[f];
             });
             if (instagram !== initialInsta || linkedin !== initialLink) {
-                data.socialLinks = JSON.stringify({ instagram, linkedin });
+                // MERGE com o JSON salvo: só Instagram/LinkedIn mudam aqui; YouTube, Spotify, Site
+                // (e outras chaves) definidos pelo admin são preservados. Vazio remove a chave.
+                const merged = { ...parseSocialLinks(user?.socialLinks), instagram: instagram.trim(), linkedin: linkedin.trim() };
+                data.socialLinks = serializeSocialLinks(merged) ?? '';
             }
             if (essentialOnly !== (user?.essentialNotificationsOnly ?? false)) {
                 data.essentialNotificationsOnly = essentialOnly;

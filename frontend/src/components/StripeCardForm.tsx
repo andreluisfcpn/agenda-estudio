@@ -171,6 +171,8 @@ function CardFormInner({ mode, clientSecret, onSuccess, onError, onCancel, submi
                 <button
                     type="submit"
                     className="stripe-submit-btn"
+                    // 2º clique de um clique duplo não reenvia (Enter/teclado: detail 0 segue funcionando).
+                    onClick={(e) => { if (e.detail > 1) e.preventDefault(); }}
                     disabled={!stripe || !formReady || processing}
                 >
                     {processing ? (

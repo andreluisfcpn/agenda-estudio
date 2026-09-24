@@ -23,10 +23,13 @@ import {
  * in two places (which is exactly how Cupons/Notificações drifted before):
  *   - Sidebar (desktop) renders `label`/`icon`, groups by `section`, and expands
  *     items that carry `subItems`.
- *   - BottomTabBar (PWA/mobile) renders a flat row using `shortLabel ?? label`
- *     and `mobileIcon ?? icon`.
+ *   - BottomTabBar (PWA/mobile) renders at most MOBILE_BAR_SLOTS (5) equal slots
+ *     using `shortLabel ?? label` and `mobileIcon ?? icon`. A list that fits shows
+ *     every item; a longer list shows only the `mobilePrimary` items (max 4) plus a
+ *     "Mais" tab whose sheet lists the rest grouped by `section`.
  *
- * To add a destination to both navs, add ONE entry here.
+ * To add a destination to both navs, add ONE entry here (it lands in the "Mais"
+ * sheet on mobile unless it is marked `mobilePrimary`).
  */
 export interface NavItem {
     to: string;
@@ -42,6 +45,30 @@ export interface NavItem {
     section?: string;
     /** If present, the sidebar renders this item as an expandable parent. */
     subItems?: { sec: string; label: string }[];
+    /**
+     * Fica fixo na barra inferior (mobile) quando a lista não cabe em
+     * MOBILE_BAR_SLOTS; os demais itens vão para o sheet "Mais".
+     */
+    mobilePrimary?: boolean;
+}
+
+/** Máximo de slots da barra inferior (mobile), contando a aba "Mais". */
+export const MOBILE_BAR_SLOTS = 5;
+
+/** Item ativo na rota exata OU em rota aninhada (ex.: /admin/contracts/:id → Contratos). */
+export function isNavItemActive(pathname: string, to: string): boolean {
+    return pathname === to || pathname.startsWith(`${to}/`);
+}
+
+/**
+ * Divide a lista entre a barra inferior e o sheet "Mais": se cabe em
+ * MOBILE_BAR_SLOTS, tudo fica na barra; senão, os `mobilePrimary` (até 4)
+ * ficam na barra e o resto vai para o "Mais".
+ */
+export function splitMobileNav(items: NavItem[]): { primary: NavItem[]; overflow: NavItem[] } {
+    if (items.length <= MOBILE_BAR_SLOTS) return { primary: items, overflow: [] };
+    const primary = items.filter(i => i.mobilePrimary).slice(0, MOBILE_BAR_SLOTS - 1);
+    return { primary, overflow: items.filter(i => !primary.includes(i)) };
 }
 
 /** Sub-sections of the Settings page, mirrored from AdminSettingsPage's SECTIONS. */
@@ -65,11 +92,11 @@ export const CLIENT_NAV: NavItem[] = [
 ];
 
 export const ADMIN_NAV: NavItem[] = [
-    { to: '/dashboard', label: 'Dashboard', shortLabel: 'Início', icon: LayoutDashboard },
-    { to: '/calendar', label: 'Agenda', icon: CalendarDays },
+    { to: '/dashboard', label: 'Dashboard', shortLabel: 'Início', icon: LayoutDashboard, mobilePrimary: true },
+    { to: '/calendar', label: 'Agenda', icon: CalendarDays, mobilePrimary: true },
 
-    { to: '/admin/today', label: 'Hoje', icon: MapPin, section: 'Operação' },
-    { to: '/admin/bookings', label: 'Agendamentos', icon: ClipboardList, mobileIcon: Clapperboard, section: 'Operação' },
+    { to: '/admin/today', label: 'Hoje', icon: MapPin, section: 'Operação', mobilePrimary: true },
+    { to: '/admin/bookings', label: 'Agendamentos', shortLabel: 'Sessões', icon: ClipboardList, mobileIcon: Clapperboard, section: 'Operação', mobilePrimary: true },
     { to: '/admin/clients', label: 'Clientes', icon: Users, section: 'Operação' },
 
     { to: '/admin/contracts', label: 'Contratos', icon: FileSignature, mobileIcon: FileText, section: 'Gestão' },

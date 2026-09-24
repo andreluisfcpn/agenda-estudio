@@ -202,10 +202,46 @@ export function getPaymentEmoji(key: string | null | undefined): string {
   return pm?.emoji ?? '💰';
 }
 
-/** Get emoji + short label together (for badges, table cells) */
+/**
+ * Provedor da cobrança (Payment.provider) → forma de pagamento exibida ao usuário.
+ *  STRIPE → CARTAO · SICOOB → PIX · CORA → PIX (ou BOLETO quando a cobrança é um boleto:
+ *  `boletoUrl` preenchido e sem `pixString`) · BOLETO → BOLETO.
+ * Aceita também a própria chave de método (PIX/CARTAO/BOLETO, qualquer caixa) — idempotente.
+ * Desconhecido/vazio → null.
+ */
+export function providerToMethod(
+  provider: string | null | undefined,
+  hint?: { boletoUrl?: string | null; pixString?: string | null },
+): PaymentMethodKey | null {
+  if (!provider) return null;
+  switch (provider.trim().toUpperCase()) {
+    case 'STRIPE':
+    case 'CARTAO':
+      return 'CARTAO';
+    case 'SICOOB':
+    case 'PIX':
+      return 'PIX';
+    case 'CORA':
+      return hint?.boletoUrl && !hint?.pixString ? 'BOLETO' : 'PIX';
+    case 'BOLETO':
+      return 'BOLETO';
+    default:
+      return null;
+  }
+}
+
+/** Get emoji + short label together (for badges, table cells).
+ *  Aceita chave de método (PIX/CARTAO/BOLETO) ou de provedor (SICOOB/CORA → PIX, STRIPE → Cartão),
+ *  para nunca exibir "SICOOB" cru. */
 export function getPaymentBadge(key: string | null | undefined): { emoji: string; label: string } {
   if (!key) return { emoji: '💰', label: '—' };
-  const pm = _cachedMethods.find(m => m.key === key);
+  const pm = _cachedMethods.find(m => m.key === key)
+    ?? (() => {
+      const method = providerToMethod(key);
+      return method
+        ? (_cachedMethods.find(m => m.key === method) ?? STATIC_DEFAULTS.find(m => m.key === method))
+        : undefined;
+    })();
   return pm
     ? { emoji: pm.emoji, label: pm.shortLabel }
     : { emoji: '💰', label: key };

@@ -1,12 +1,13 @@
 import { getErrorMessage } from '../utils/errors';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import BottomSheetModal from './BottomSheetModal';
-import { bookingsApi, contractsApi, pricingApi, stripeApi, ContractWithStats } from '../api/client';
+import { bookingsApi, contractsApi, pricingApi, ContractWithStats } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import InlineCheckout from './InlineCheckout';
 import PaymentSuccess from './PaymentSuccess';
 import ServiceLineItem from './ui/ServiceLineItem';
 import { formatBRL } from '../utils/format';
+import { ignoreMultiClick } from '../hooks/useWizardStep';
 import { XCircle } from 'lucide-react';
 
 interface BookingModalProps {
@@ -17,7 +18,8 @@ interface BookingModalProps {
     price: number;
     onClose: () => void;
     onBooked: () => void;
-    onNewContract?: (date: string, time: string) => void;
+    /** "Criar Novo Contrato": abre o ContractWizard pré-preenchido com a faixa, a data e a hora do horário (D16). */
+    onNewContract?: (date: string, time: string, tier: string) => void;
 }
 
 const TIER_LABELS: Record<string, string> = {
@@ -104,6 +106,9 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
     const paymentRef = useRef<string | null>(null); // tracks internal Payment ID for method switch
     const [holdExpiresAt, setHoldExpiresAt] = useState<string | null>(null);
     const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
+    // D15: valor AUTORITATIVO da cobrança avulsa (res.paymentAmount do POST /bookings) — é o que o
+    // QR/PaymentIntent cobra. Até a reserva existir, o checkout mostra a prévia local (avulsoTotal).
+    const [avulsoCheckoutAmount, setAvulsoCheckoutAmount] = useState<number | null>(null);
 
     const endHour = parseInt(time.split(':')[0]) + 2;
     const endTime = `${endHour.toString().padStart(2, '0')}:${time.split(':')[1]}`;
@@ -126,6 +131,7 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
             setPlanExtrasAmount(0);
             setHoldExpiresAt(null);
             setPaymentIntentId(null);
+            setAvulsoCheckoutAmount(null);
             bookingRef.current = null;
             paymentRef.current = null;
         }
@@ -225,7 +231,7 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
 
     const handleNewContract = () => {
         onClose();
-        if (onNewContract) onNewContract(date, time);
+        if (onNewContract) onNewContract(date, time, tierUp);
     };
 
     return (
@@ -362,7 +368,8 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
                                 O que deseja fazer?
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                <button className="btn btn-primary" onClick={handleUsePlan}
+                                {/* ignoreMultiClick: o 2º clique de um clique duplo não dispara outra reserva. */}
+                                <button className="btn btn-primary" onClick={ignoreMultiClick(handleUsePlan)}
                                     disabled={!hasCompatible || !selectedContractId}
                                     style={{
                                         width: '100%', padding: '14px 20px', fontSize: '0.9375rem',
@@ -488,65 +495,28 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
                         )}
 
                         <InlineCheckout
-                            amount={avulsoTotal}
+                            amount={avulsoCheckoutAmount ?? avulsoTotal}
                             description={`Avulso ${dateDisplay} às ${time}`}
                             allowedMethods={['CARTAO', 'PIX']}
                             context="avulso"
                             createPaymentFn={async (method) => {
-                                // If booking already exists (e.g. PIX was generated first, now switching to Card),
-                                // reuse it instead of creating a new one
-                                if (paymentRef.current) {
-                                    const pid = paymentRef.current;
-                                    if (method === 'CARTAO') {
-                                        // Return the existing payment id; InlineCheckout creates the
-                                        // PaymentIntent with the chosen installments (1–12x, juros above 1x).
-                                        return { paymentId: pid };
-                                    }
-                                    // PIX for existing booking
-                                    const pixRes = await stripeApi.createPayment({
-                                        paymentId: pid,
-                                        paymentMethod: 'pix',
-                                    });
-                                    return {
-                                        paymentId: pixRes.paymentId || pid,
-                                        pixString: pixRes.pixString,
-                                        qrCodeBase64: pixRes.qrCodeBase64,
-                                    };
-                                }
+                                // D15: aqui só se cria a reserva (hold) na 1ª escolha de método. A cobrança
+                                // em si — PIX (QR + validade, reaproveitando a viva) ou o PaymentIntent do
+                                // cartão com as parcelas — é emitida pelo InlineCheckout via
+                                // POST /stripe/create-payment a partir do paymentId (fonte única). Por isso
+                                // não repassamos pixString/QR. Trocar de método reaproveita o mesmo Payment.
+                                if (paymentRef.current) return { paymentId: paymentRef.current };
 
-                                // First time: create the booking (hold) only. InlineCheckout then
-                                // creates the PaymentIntent with the selected installments.
-                                if (method === 'CARTAO') {
-                                    const res = await bookingsApi.create({
-                                        date, startTime: time, addOns: selectedAddons,
-                                        paymentMethod: 'CARTAO', installments: 1, paymentType: 'CREDIT',
-                                    });
-                                    bookingRef.current = res.booking.id;
-                                    setBookingId(res.booking.id);
-                                    setHoldExpiresAt(res.booking.holdExpiresAt || null);
-                                    const payId = res.paymentId || res.booking.id;
-                                    paymentRef.current = payId;
-                                    return { paymentId: payId };
-                                }
-                                // PIX: create booking first, then create PIX payment
-                                const res = await bookingsApi.create({
-                                    date, startTime: time, addOns: selectedAddons,
-                                    paymentMethod: 'PIX',
-                                });
+                                const res = await bookingsApi.create(method === 'CARTAO'
+                                    ? { date, startTime: time, addOns: selectedAddons, paymentMethod: 'CARTAO', installments: 1, paymentType: 'CREDIT' }
+                                    : { date, startTime: time, addOns: selectedAddons, paymentMethod: 'PIX' });
                                 bookingRef.current = res.booking.id;
                                 setBookingId(res.booking.id);
                                 setHoldExpiresAt(res.booking.holdExpiresAt || null);
+                                if (typeof res.paymentAmount === 'number') setAvulsoCheckoutAmount(res.paymentAmount);
                                 const pid = res.paymentId || res.booking.id;
                                 paymentRef.current = pid;
-                                const pixRes = await stripeApi.createPayment({
-                                    paymentId: pid,
-                                    paymentMethod: 'pix',
-                                });
-                                return {
-                                    paymentId: pixRes.paymentId || pid,
-                                    pixString: pixRes.pixString,
-                                    qrCodeBase64: pixRes.qrCodeBase64,
-                                };
+                                return { paymentId: pid };
                             }}
                             onSuccess={async () => {
                                 if (bookingId) {
@@ -589,16 +559,9 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
                             description={`Serviços extras — ${dateDisplay} às ${time}`}
                             allowedMethods={['CARTAO', 'PIX']}
                             context="avulso"
-                            createPaymentFn={async (method) => {
-                                const pid = planExtrasPaymentId;
-                                // O Payment dos extras já existe (criado na reserva por plano).
-                                if (method === 'CARTAO') {
-                                    // InlineCheckout gera o PaymentIntent a partir do paymentId.
-                                    return { paymentId: pid };
-                                }
-                                const pixRes = await stripeApi.createPayment({ paymentId: pid, paymentMethod: 'pix' });
-                                return { paymentId: pixRes.paymentId || pid, pixString: pixRes.pixString, qrCodeBase64: pixRes.qrCodeBase64 };
-                            }}
+                            // O Payment dos extras já existe (criado na reserva por plano): o InlineCheckout
+                            // emite a cobrança (PIX ou cartão) a partir do paymentId — D15, fonte única.
+                            paymentId={planExtrasPaymentId}
                             onSuccess={() => setStep('done')}
                             onError={(msg) => setError(msg)}
                             onCancel={() => setStep('done')}

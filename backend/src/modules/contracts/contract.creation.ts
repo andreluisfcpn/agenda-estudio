@@ -3,14 +3,193 @@ import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import { authenticate, authorize } from '../../middleware/auth.js';
 import { ContractStatus, BookingStatus } from '../../generated/prisma/client.js';
-import { getBasePriceDynamic, applyDiscount, calculateEndTime, studioDateTime, getPackageSlots, getSlotDuration } from '../../utils/pricing.js';
+import {
+    getBasePriceDynamic, applyDiscount, calculateEndTime, studioDateTime, getPackageSlots, getSlotDuration,
+    getContractSlotGrid, checkSlotInGrid, checkDateSlotInGrid, checkCustomScheduleInGrid, checkResolvedConflictsInGrid,
+    computeCustomVolume, planCustomOccurrences,
+} from '../../utils/pricing.js';
 import { buildOccupiedSet } from '../bookings/availability.service.js';
 import { getConfig } from '../../lib/businessConfig.js';
+import { config } from '../../config/index.js';
+import { saoPauloParts } from '../../lib/spTime.js';
+import { cleanDocument, isValidCpfCnpj } from '../../utils/document.js';
 import { createPayment as gatewayCreatePayment, updatePaymentWithGatewayResult, validatePaymentMethod, getProviderForMethod, PaymentMethodDisabledError } from '../../lib/paymentGateway.js';
+import { pixExpirySecondsFor, pixQrDataUrl, pixDiscountMetaForCharge } from '../../lib/pixGateway.js';
 import { createContractSchema, selfContractSchema, customContractSchema } from './validators.js';
-import { computeAddonsCost } from '../../lib/contractPricing.js';
+import { computeAddonsCost, computeFullContractTotals } from '../../lib/contractPricing.js';
 import { resolvePlanAmounts } from '../../lib/paymentPolicy.js';
 import { CouponError, validateCoupon, reserveCouponUse, computeCouponDiscount, releaseAndPurgeCouponsForPayments, type CouponQuote } from '../../lib/couponService.js';
+import { purgeAwaitingContract } from '../../jobs/cleanExpiredHolds.js';
+import { acquireMultiSlotLock, releaseMultiSlotLock, acquireMutex, releaseMutex } from '../../lib/redis.js';
+
+/** 409 padrão de cliente com soft delete (D3): nada novo é criado para uma conta excluída/anonimizada. */
+export const DELETED_CLIENT_ERROR = 'Este cliente foi excluído.';
+
+// ─── Reserva de horários COM TRAVA (anti-overbooking concorrente) ─────────────
+/** TTL (s) das travas de slot enquanto um contrato gera as sessões. Liberadas no fim do pedido; o TTL só cobre queda do processo. */
+const SLOT_CLAIM_TTL_SECONDS = 120;
+
+/**
+ * Guard anti-overbooking com trava para geração de sessões de contrato (POST /custom, POST / do FIXO,
+ * renovação e retomada). Para cada ocorrência: (1) pacote já planejado NESTE pedido → ocupado;
+ * (2) tranca o pacote no Redis (o MESMO acquireMultiSlotLock do avulso/admin — serializa contra
+ * POST /bookings e contra outro contrato sendo gerado agora); (3) SÓ ENTÃO relê a ocupação da data no
+ * banco (reservas não canceladas + bloqueios). Assim dois pedidos simultâneos nunca gravam o mesmo
+ * horário. O dono da trava é ÚNICO por pedido (acquireLock é reentrante para o mesmo dono).
+ * `releaseAll()` precisa rodar DEPOIS do createMany (finally), inclusive nos caminhos de erro.
+ */
+export function createSlotClaimer(lockOwner: string, ttlSeconds: number = SLOT_CLAIM_TTL_SECONDS) {
+    const held: { date: string; slots: string[] }[] = [];
+    const planned = new Map<string, Set<string>>();
+    return {
+        /** true = horário livre, trancado e marcado como planejado; false = ocupado (pular/recusar). */
+        async claim(dateStr: string, pkg: string[]): Promise<boolean> {
+            const mine = planned.get(dateStr);
+            if (mine && pkg.some(s => mine.has(s))) return false;
+            if (!(await acquireMultiSlotLock(dateStr, pkg, lockOwner, ttlSeconds))) return false;
+            held.push({ date: dateStr, slots: pkg });
+            const occupied = await buildOccupiedSet(new Date(dateStr + 'T00:00:00Z'));
+            if (pkg.some(s => occupied.has(s))) return false;
+            const set = mine ?? new Set<string>();
+            pkg.forEach(s => set.add(s));
+            planned.set(dateStr, set);
+            return true;
+        },
+        /** Só consulta (sem trancar nem marcar): o pacote está livre agora? Para listar conflitos. */
+        async isFree(dateStr: string, pkg: string[]): Promise<boolean> {
+            const mine = planned.get(dateStr);
+            if (mine && pkg.some(s => mine.has(s))) return false;
+            const occupied = await buildOccupiedSet(new Date(dateStr + 'T00:00:00Z'));
+            return !pkg.some(s => occupied.has(s));
+        },
+        async releaseAll(): Promise<void> {
+            for (const h of held.splice(0)) {
+                await releaseMultiSlotLock(h.date, h.slots, lockOwner).catch(() => {});
+            }
+        },
+    };
+}
+
+// ─── Personalizado: uma tentativa por vez por cliente ─────────────────────────
+/** Trava por cliente-alvo do personalizado: descarte da tentativa anterior + criação nunca rodam em paralelo. */
+export const customUserLockKey = (userId: string) => `lock:custom-contract:${userId}`;
+/** Maior que a duração de um POST /custom (inclui a chamada ao provedor PIX); liberada no finally. */
+export const CUSTOM_USER_LOCK_TTL_SECONDS = 120;
+export const CUSTOM_IN_PROGRESS_ERROR = {
+    code: 'CUSTOM_IN_PROGRESS',
+    error: 'Já existe uma contratação de plano personalizado sendo processada. Aguarde alguns segundos e tente novamente.',
+};
+
+export type PreviousCustomAttemptResult = 'ok' | 'paid' | 'inflight';
+
+/** Corpo do 409 quando a tentativa anterior não pôde ser descartada (pagou / pagamento em andamento). */
+export function previousCustomAttemptError(r: Exclude<PreviousCustomAttemptResult, 'ok'>): { code: string; error: string } {
+    return r === 'paid'
+        ? { code: 'CUSTOM_PREVIOUS_PAID', error: 'O pagamento da sua contratação anterior de plano personalizado foi confirmado — o plano já está ativo em Meus Contratos.' }
+        : { code: 'CUSTOM_PREVIOUS_INFLIGHT', error: 'Há um pagamento em processamento para a sua contratação anterior de plano personalizado. Aguarde alguns instantes e confira em Meus Contratos.' };
+}
+
+/**
+ * CLIENTE (D9/D2): uma nova tentativa de personalizado SUBSTITUI a anterior ainda não paga — viva ou
+ * vencida — pela rotina segura da varredura (`purgeAwaitingContract`: concilia no provedor; pagou →
+ * ativa e NÃO apaga; cobrança em andamento → mantém; senão cancela a cobrança, libera o cupom e apaga).
+ * Sem isso, as sessões RESERVED da tentativa viva viravam conflito da nova (e um cliente podia segurar
+ * várias agendas ao mesmo tempo). Renovações (renewedFromId) não entram: têm prazo próprio de 3 dias.
+ * 'paid' / 'inflight' → o chamador recusa com 409 (previousCustomAttemptError).
+ */
+export async function discardClientCustomAttempts(userId: string): Promise<PreviousCustomAttemptResult> {
+    const previous = await prisma.contract.findMany({
+        where: { userId, type: 'CUSTOM', status: ContractStatus.AWAITING_PAYMENT, renewedFromId: null },
+        select: { id: true },
+    });
+    let result: PreviousCustomAttemptResult = 'ok';
+    for (const c of previous) {
+        let r: Awaited<ReturnType<typeof purgeAwaitingContract>>;
+        try {
+            r = await purgeAwaitingContract(c.id);
+        } catch (err) {
+            console.error(`[CUSTOM] Falha ao descartar a tentativa anterior ${c.id} (usuário ${userId}):`, err);
+            r = 'inflight';
+        }
+        if (r !== 'skipped') console.log(`[CUSTOM] Tentativa anterior ${c.id} (usuário ${userId}): ${r}`);
+        if (r === 'paid') return 'paid';
+        if (r === 'inflight') result = 'inflight';
+    }
+    return result;
+}
+
+/** 'YYYY-MM-DD' + n meses-calendário (UTC) — mesmo `end` de planCustomOccurrences. */
+function addMonthsYmd(ds: string, n: number): string {
+    const d = new Date(ds + 'T00:00:00Z');
+    d.setUTCMonth(d.getUTCMonth() + n);
+    return d.toISOString().slice(0, 10);
+}
+const ddmmOf = (ds: string) => `${ds.slice(8, 10)}/${ds.slice(5, 7)}`;
+
+/** 'YYYY-MM-DD' de amanhã no calendário de São Paulo. */
+export function tomorrowInSaoPaulo(): string {
+    const sp = saoPauloParts(new Date());
+    return new Date(Date.UTC(sp.y, sp.m - 1, sp.day + 1)).toISOString().slice(0, 10);
+}
+
+/**
+ * 400 do CLIENTE com início do personalizado diferente de amanhã (D7). `details.startDate` traz o
+ * "amanhã" do servidor para o assistente se atualizar (ex.: aberto antes da meia-noite) e reenviar.
+ */
+export function clientStartDateError(tomorrowSp: string) {
+    return {
+        error: `O plano personalizado começa amanhã (${ddmmOf(tomorrowSp)}). Confira o resumo e envie de novo.`,
+        code: 'START_DATE_TOMORROW',
+        details: { startDate: tomorrowSp },
+    };
+}
+
+/**
+ * Desconto do personalizado por VOLUME de gravações (D7): total ≥ `episodes_6months` →
+ * `discount_6months`; ≥ `episodes_3months` → `discount_3months`; abaixo → 0. Tudo lido da
+ * BusinessConfig (padrão 12/24 gravações → 30%/40%) — a MESMA régua que o assistente
+ * (CustomContractFlow) exibe, então o desconto mostrado é o cobrado.
+ */
+export async function customVolumeDiscountPct(totalSessions: number): Promise<number> {
+    const [ep3, ep6, d3, d6] = await Promise.all([
+        getConfig('episodes_3months'),
+        getConfig('episodes_6months'),
+        getConfig('discount_3months'),
+        getConfig('discount_6months'),
+    ]);
+    if (totalSessions >= ep6) return d6;
+    if (totalSessions >= ep3) return d3;
+    return 0;
+}
+
+/**
+ * Descarta os personalizados AWAITING_PAYMENT já VENCIDOS (paymentDeadline < agora) de um usuário
+ * antes de um novo /custom/check ou POST /custom — pela rotina segura da varredura
+ * (`purgeAwaitingContract`: pago no provedor → ativa em vez de apagar; cobrança em andamento →
+ * mantém; senão cancela a cobrança abandonada, libera o cupom e apaga). Sem isso, até a varredura
+ * (60 s) passar, as sessões RESERVED da tentativa vencida apareciam como conflito do próprio cliente
+ * e o uso do cupom continuava preso. Nunca lança: numa falha a varredura tenta de novo.
+ */
+export async function purgeExpiredCustomAwaiting(userId: string, now: Date = new Date()): Promise<void> {
+    let stale: { id: string }[] = [];
+    try {
+        stale = await prisma.contract.findMany({
+            where: { userId, type: 'CUSTOM', status: ContractStatus.AWAITING_PAYMENT, paymentDeadline: { lt: now } },
+            select: { id: true },
+        });
+    } catch (err) {
+        console.error('[CUSTOM] Falha ao buscar personalizados vencidos:', err);
+        return;
+    }
+    for (const c of stale) {
+        try {
+            const r = await purgeAwaitingContract(c.id);
+            if (r !== 'skipped') console.log(`[CUSTOM] Personalizado vencido ${c.id} (usuário ${userId}): ${r}`);
+        } catch (err) {
+            console.error(`[CUSTOM] Falha ao descartar o personalizado vencido ${c.id}:`, err);
+        }
+    }
+}
 
 /**
  * Apply a coupon quote to a schedule of installment amounts.
@@ -39,6 +218,29 @@ router.post('/', authenticate, authorize('ADMIN'), async (req: Request, res: Res
         if (data.type === 'FIXO' && (!data.fixedDayOfWeek || !data.fixedTime)) {
             res.status(400).json({ error: 'Plano Fixo requer dia da semana e horário.' });
             return;
+        }
+
+        // D3: nada novo para um cliente excluído (soft delete / anonimizado).
+        const target = await prisma.user.findUnique({ where: { id: data.userId }, select: { deletedAt: true } });
+        if (!target) {
+            res.status(404).json({ error: 'Cliente não encontrado.' });
+            return;
+        }
+        if (target.deletedAt) {
+            res.status(409).json({ error: DELETED_CLIENT_ERROR, code: 'CLIENT_DELETED' });
+            return;
+        }
+
+        // D8: dia/horário do FIXO (e o novo horário de cada troca aceita no modal de conflitos)
+        // precisam estar na grade de contrato da faixa → 400 "Horário inválido".
+        if (data.type === 'FIXO') {
+            const grid = await getContractSlotGrid(data.tier);
+            const slotErr = checkSlotInGrid(grid, data.fixedDayOfWeek!, data.fixedTime!)
+                ?? checkResolvedConflictsInGrid(grid, data.resolvedConflicts);
+            if (slotErr) {
+                res.status(400).json({ error: slotErr, code: 'INVALID_SLOT' });
+                return;
+            }
         }
 
         // Calculate discount (dynamic from BusinessConfig)
@@ -103,54 +305,59 @@ router.post('/', authenticate, authorize('ADMIN'), async (req: Request, res: Res
             const discountedPrice = applyDiscount(basePrice, discountPct);
             const slotDuration = await getSlotDuration();
             let skipped = 0;
+            // Trava por slot durante a checagem + gravação (dois pedidos simultâneos nunca gravam o mesmo horário).
+            const claimer = createSlotClaimer(`contract:${contract.id}`);
 
-            for (let week = 0; week < totalWeeks; week++) {
-                const bookingDate = new Date(current);
-                bookingDate.setUTCDate(current.getUTCDate() + week * 7);
+            try {
+                for (let week = 0; week < totalWeeks; week++) {
+                    const bookingDate = new Date(current);
+                    bookingDate.setUTCDate(current.getUTCDate() + week * 7);
 
-                if (bookingDate > endDate) break;
+                    if (bookingDate > endDate) break;
 
-                const bookingDateStr = bookingDate.toISOString().split('T')[0];
-                const fixedTime = data.fixedTime!;
-                let finalDate = bookingDate;
-                let finalTime = fixedTime;
+                    const bookingDateStr = bookingDate.toISOString().split('T')[0];
+                    const fixedTime = data.fixedTime!;
+                    let finalDateStr = bookingDateStr;
+                    let finalTime = fixedTime;
 
-                // Check override resolutions from validation checks
-                const resolution = data.resolvedConflicts?.find(c =>
-                    c.originalDate === bookingDateStr && c.originalTime === fixedTime
-                );
+                    // Check override resolutions from validation checks
+                    const resolution = data.resolvedConflicts?.find(c =>
+                        c.originalDate === bookingDateStr && c.originalTime === fixedTime
+                    );
 
-                if (resolution) {
-                    finalDate = new Date(resolution.newDate + 'T00:00:00');
-                    finalTime = resolution.newTime;
+                    if (resolution) {
+                        finalDateStr = resolution.newDate;
+                        finalTime = resolution.newTime;
+                    }
+
+                    // Guard anti-overbooking: nunca gravar por cima de horário ocupado (pula a ocorrência).
+                    if (!(await claimer.claim(finalDateStr, getPackageSlots(finalTime, slotDuration)))) {
+                        skipped++;
+                        console.warn(`[FIXO-admin] slot ocupado — ocorrência pulada (contrato ${contract.id}): ${finalDateStr} ${finalTime}`);
+                        continue;
+                    }
+
+                    bookings.push({
+                        userId: data.userId,
+                        contractId: contract.id,
+                        date: new Date(finalDateStr + 'T00:00:00Z'),
+                        startTime: finalTime,
+                        endTime: calculateEndTime(finalTime),
+                        status: BookingStatus.CONFIRMED,
+                        tierApplied: data.tier,
+                        price: discountedPrice,
+                        addOns: data.addOns ? data.addOns.filter(a => a !== 'GESTAO_SOCIAL') : [],
+                    });
                 }
 
-                // Guard anti-overbooking: nunca gravar por cima de horário ocupado (pula a ocorrência).
-                const occupied = await buildOccupiedSet(finalDate);
-                if (getPackageSlots(finalTime, slotDuration).some(s => occupied.has(s))) {
-                    skipped++;
-                    console.warn(`[FIXO-admin] slot ocupado — ocorrência pulada (contrato ${contract.id}): ${finalDate.toISOString().split('T')[0]} ${finalTime}`);
-                    continue;
+                if (skipped > 0) {
+                    console.warn(`[FIXO-admin] ${skipped} ocorrência(s) puladas por conflito no contrato ${contract.id}.`);
                 }
-
-                bookings.push({
-                    userId: data.userId,
-                    contractId: contract.id,
-                    date: finalDate,
-                    startTime: finalTime,
-                    endTime: calculateEndTime(finalTime),
-                    status: BookingStatus.CONFIRMED,
-                    tierApplied: data.tier,
-                    price: discountedPrice,
-                    addOns: data.addOns ? data.addOns.filter(a => a !== 'GESTAO_SOCIAL') : [],
-                });
-            }
-
-            if (skipped > 0) {
-                console.warn(`[FIXO-admin] ${skipped} ocorrência(s) puladas por conflito no contrato ${contract.id}.`);
-            }
-            if (bookings.length > 0) {
-                await prisma.booking.createMany({ data: bookings });
+                if (bookings.length > 0) {
+                    await prisma.booking.createMany({ data: bookings });
+                }
+            } finally {
+                await claimer.releaseAll();
             }
         }
 
@@ -189,19 +396,35 @@ router.post('/', authenticate, authorize('ADMIN'), async (req: Request, res: Res
             }
         }
         const schedule = discountSchedule(adminCoupon, adminPlan.scheduleDueDates.map(() => perInstallmentBase));
-        const payments = adminPlan.scheduleDueDates.map((dueDate, i) => ({
-            userId: data.userId,
-            contractId: contract.id,
-            provider: adminProvider,
-            amount: schedule[i]!.amount,
-            status: 'PENDING' as const,
-            dueDate,
-            ...(adminCoupon && schedule[i]!.discountAmount > 0 ? {
-                couponId: adminCoupon.coupon.id,
-                couponCode: adminCoupon.coupon.code,
-                discountAmount: schedule[i]!.discountAmount,
-            } : {}),
-        }));
+        // D1 (pagamentos-3): à vista + PIX grava o amount JÁ com o desconto PIX → a cobrança leva a marca
+        // `pixDiscount` com o VALOR BASE do cartão (sem o desconto PIX, mesmo cupom em R$).
+        const adminFullTotals = adminIsFull
+            ? await computeFullContractTotals(baseMonthly, data.durationMonths, data.paymentMethod)
+            : null;
+        const payments = adminPlan.scheduleDueDates.map((dueDate, i) => {
+            const pixDiscount = adminFullTotals
+                ? pixDiscountMetaForCharge({
+                    amount: schedule[i]!.amount,
+                    cardTotal: adminFullTotals.cardTotal,
+                    couponDiscount: schedule[i]!.discountAmount,
+                    pct: adminFullTotals.pixDiscountPct,
+                })
+                : undefined;
+            return {
+                userId: data.userId,
+                contractId: contract.id,
+                provider: adminProvider,
+                amount: schedule[i]!.amount,
+                status: 'PENDING' as const,
+                dueDate,
+                ...(adminCoupon && schedule[i]!.discountAmount > 0 ? {
+                    couponId: adminCoupon.coupon.id,
+                    couponCode: adminCoupon.coupon.code,
+                    discountAmount: schedule[i]!.discountAmount,
+                } : {}),
+                ...(pixDiscount ? { metadata: { pixDiscount } } : {}),
+            };
+        });
 
         if (payments.length > 0) {
             if (adminCoupon) {
@@ -232,6 +455,24 @@ router.post('/', authenticate, authorize('ADMIN'), async (req: Request, res: Res
             } else {
                 await prisma.payment.createMany({ data: payments });
             }
+        }
+
+        // Cupom que zera parcelas (100% / VALOR ≥ total): cobrança de R$ 0 nunca vai ao gateway nem ao
+        // auto-charge — liquida como PAID na hora, como o /custom faz. A 1ª passa pelos efeitos de
+        // confirmação (mesmo caminho de um webhook); as demais só viram PAID (o uso do cupom já está
+        // reservado na 1ª).
+        const zeroRows = await prisma.payment.findMany({
+            where: { contractId: contract.id, amount: 0, status: 'PENDING' },
+            orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
+            select: { id: true },
+        });
+        if (zeroRows.length > 0) {
+            await prisma.payment.updateMany({
+                where: { id: { in: zeroRows.map(r => r.id) }, status: 'PENDING' },
+                data: { status: 'PAID', paidAt: new Date() },
+            });
+            const { onPaymentConfirmed } = await import('../../lib/paymentEffects.js');
+            await onPaymentConfirmed(zeroRows[0]!.id);
         }
 
         const createdPayments = await prisma.payment.findMany({
@@ -327,6 +568,39 @@ router.post('/self', authenticate, async (req: Request, res: Response) => {
             data.fixedTime = data.firstBookingTime;
         }
 
+        // D8: a 1ª gravação (FIXO e FLEX), o dia/horário fixo (FIXO) e as trocas aceitas no modal de
+        // conflitos precisam estar na grade de contrato da faixa → 400 "Horário inválido".
+        {
+            const grid = await getContractSlotGrid(data.tier);
+            const slotErr = checkDateSlotInGrid(grid, data.firstBookingDate, data.firstBookingTime)
+                ?? (data.type === 'FIXO' ? checkSlotInGrid(grid, data.fixedDayOfWeek!, data.fixedTime!) : null)
+                ?? checkResolvedConflictsInGrid(grid, data.resolvedConflicts);
+            if (slotErr) {
+                res.status(400).json({ error: slotErr, code: 'INVALID_SLOT' });
+                return;
+            }
+        }
+
+        // Trocas aceitas no modal de conflitos (check-fixo): o check só sugere outro horário no mesmo dia
+        // ou o dia livre mais próximo (até ±7 dias, nunca antes do início). Uma troca para o passado, para
+        // hoje ou para longe da ocorrência original só chega por chamada direta à API → 400.
+        if (req.user!.role !== 'ADMIN' && data.resolvedConflicts?.length) {
+            const tomorrowSp = tomorrowInSaoPaulo();
+            const WEEK_MS = 7 * 86_400_000;
+            const bad = data.resolvedConflicts.find(rc => {
+                const o = Date.parse(rc.originalDate + 'T00:00:00Z');
+                const n = Date.parse(rc.newDate + 'T00:00:00Z');
+                return !Number.isFinite(o) || !Number.isFinite(n) || rc.newDate < tomorrowSp || Math.abs(n - o) > WEEK_MS;
+            });
+            if (bad) {
+                res.status(400).json({
+                    error: `Troca inválida para a gravação de ${ddmmOf(bad.originalDate)}: escolha uma das alternativas sugeridas.`,
+                    code: 'INVALID_RESOLUTION',
+                });
+                return;
+            }
+        }
+
         // Calculate first month's amount
         const discountPct = data.durationMonths === 3 ? await getConfig('discount_3months') : await getConfig('discount_6months');
         const basePrice = await getBasePriceDynamic(data.tier);
@@ -355,6 +629,19 @@ router.post('/self', authenticate, async (req: Request, res: Response) => {
             couponQuote = await validateCoupon({ code: data.couponCode, userId, baseAmount: firstAmount });
         }
         const chargeAmount = couponQuote ? couponQuote.finalAmount : firstAmount;
+        // D1 (pagamentos-3): à vista + PIX → marca `pixDiscount` com a base do cartão (sem o desconto PIX,
+        // mesmo cupom em R$). Viaja junto com o contractData no metadata desta cobrança.
+        const selfPixDiscount = data.paymentPlan === 'FULL'
+            ? await (async () => {
+                const totals = await computeFullContractTotals(baseMonthly, data.durationMonths, data.paymentMethod);
+                return pixDiscountMetaForCharge({
+                    amount: chargeAmount,
+                    cardTotal: totals.cardTotal,
+                    couponDiscount: couponQuote?.discountAmount,
+                    pct: totals.pixDiscountPct,
+                });
+            })()
+            : undefined;
 
         // Store contract creation data in payment metadata
         const contractData = {
@@ -395,7 +682,7 @@ router.post('/self', authenticate, async (req: Request, res: Response) => {
                     amount: chargeAmount,
                     status: 'PENDING',
                     dueDate: firstDate,
-                    metadata: { contractData },
+                    metadata: { contractData, ...(selfPixDiscount ? { pixDiscount: selfPixDiscount } : {}) },
                     ...(couponQuote ? {
                         couponId: couponQuote.coupon.id,
                         couponCode: couponQuote.coupon.code,
@@ -505,12 +792,53 @@ router.post('/self', authenticate, async (req: Request, res: Response) => {
 // ─── POST /api/contracts/custom (CLIENT + ADMIN) ────────
 // "Monte Seu Plano" — multi-day custom contract
 // Admin can pass userId to create on behalf of a client
+//
+// D9 — pagamento:
+//  - ADMIN: o contrato nasce ACTIVE (como FIXO/FLEX do admin), sessões CONFIRMED (PROGRESSIVE:
+//    ciclos 2+ RESERVED) e TODAS as parcelas PENDING, SEM chamar o gateway — a cobrança sai pelo
+//    ChargeNowSheet (/stripe/create-payment, com o gate de CPF do cliente) ou fica pendente.
+//  - CLIENTE: contrato AWAITING_PAYMENT com paymentDeadline = agora + lockTtlSeconds (10 min),
+//    sessões RESERVED (ocupam a agenda), parcelas PENDING e SÓ a 1ª cobrada no gateway agora
+//    (PIX/boleto; cartão segue pelo checkout inline). Pagou → paymentEffects ativa o contrato e
+//    promove as sessões; não pagou → cleanExpiredHolds (bloco AWAITING_PAYMENT) apaga contrato,
+//    sessões e parcelas.
+// D7 — o CLIENTE só contrata semanal, com início = amanhã (fuso SP) e 1/3/6/9/12 ciclos; trocas de
+//      conflito só de horário, no mesmo dia.
+// D8 — schedule, customDates e trocas aceitas precisam estar na grade de contrato (400 INVALID_SLOT).
+// Nenhuma ocorrência fica de fora: horário ocupado na gravação → 409 SLOTS_TAKEN (nada é criado).
 
+const CLIENT_CUSTOM_DURATIONS = [1, 3, 6, 9, 12];
+
+// Uma criação de personalizado por cliente-alvo por vez (trava Redis por usuário, sem espera): o descarte
+// da tentativa anterior e a gravação nunca rodam em paralelo para o mesmo cliente (clique duplo, duas abas,
+// admin e cliente ao mesmo tempo). As travas por SLOT (createSlotClaimer) cuidam de clientes diferentes.
 router.post('/custom', authenticate, async (req: Request, res: Response) => {
+    const bodyUserId = req.body && typeof req.body.userId === 'string' ? req.body.userId : undefined;
+    const lockUserId = req.user!.role === 'ADMIN' && bodyUserId ? bodyUserId : req.user!.userId;
+    const lockKey = customUserLockKey(lockUserId);
+    try {
+        if (!(await acquireMutex(lockKey, CUSTOM_USER_LOCK_TTL_SECONDS))) {
+            res.status(409).json(CUSTOM_IN_PROGRESS_ERROR);
+            return;
+        }
+    } catch (err) {
+        console.error('[CUSTOM] Falha ao obter a trava do cliente:', err);
+        res.status(503).json({ error: 'Serviço temporariamente indisponível. Tente novamente em instantes.' });
+        return;
+    }
+    try {
+        await createCustomContract(req, res);
+    } finally {
+        await releaseMutex(lockKey).catch(() => {});
+    }
+});
+
+async function createCustomContract(req: Request, res: Response): Promise<void> {
     try {
         const data = customContractSchema.parse(req.body);
+        const isAdmin = req.user!.role === 'ADMIN';
         // Admin can create on behalf of a client
-        const userId = (req.user!.role === 'ADMIN' && data.userId) ? data.userId : req.user!.userId;
+        const userId = (isAdmin && data.userId) ? data.userId : req.user!.userId;
 
         // Global guard: reject disabled payment methods
         try {
@@ -523,40 +851,96 @@ router.post('/custom', authenticate, async (req: Request, res: Response) => {
             throw err;
         }
 
-        // ─── Volume calculations (mode-aware) ────────────────
         const frequency = data.frequency || 'WEEKLY';
-        let totalSessions: number;
-        let sessionsPerWeek: number;
-        let sessionsPerCycle: number;
 
-        if (frequency === 'CUSTOM' && data.customDates && data.customDates.length > 0) {
-            totalSessions = data.customDates.length;
-            sessionsPerWeek = Math.round(totalSessions / (data.durationMonths * 4));
-            sessionsPerCycle = Math.round(totalSessions / data.durationMonths);
-        } else {
-            sessionsPerWeek = data.schedule.length;
-            if (frequency === 'BIWEEKLY') {
-                sessionsPerCycle = sessionsPerWeek * 2; // 2 out of 4 weeks
-            } else if (frequency === 'MONTHLY') {
-                const weeksActive = (data.weekPattern || [1]).length;
-                sessionsPerCycle = sessionsPerWeek * weeksActive;
-            } else {
-                sessionsPerCycle = sessionsPerWeek * 4;
+        // ─── Restrições do CLIENTE (D7) — o admin mantém todas as opções ──
+        const tomorrowSp = tomorrowInSaoPaulo();
+        if (!isAdmin) {
+            if (frequency !== 'WEEKLY') {
+                res.status(400).json({ error: 'No plano personalizado a frequência disponível é semanal.' });
+                return;
             }
-            totalSessions = sessionsPerCycle * data.durationMonths;
+            if (!CLIENT_CUSTOM_DURATIONS.includes(data.durationMonths)) {
+                res.status(400).json({ error: `Duração inválida: escolha ${CLIENT_CUSTOM_DURATIONS.slice(0, -1).join(', ')} ou ${CLIENT_CUSTOM_DURATIONS[CLIENT_CUSTOM_DURATIONS.length - 1]} ciclos.` });
+                return;
+            }
+            // D7: início FIXO = amanhã (SP). Nem antes, nem depois — datas livres de início são do admin.
+            if (data.startDate && data.startDate !== tomorrowSp) {
+                res.status(400).json(clientStartDateError(tomorrowSp));
+                return;
+            }
+        }
+        const startDateStr = isAdmin ? (data.startDate ?? tomorrowSp) : tomorrowSp;
+
+        // ─── Estrutura + grade de horários (D8) ─────────────
+        if (frequency === 'CUSTOM' ? !(data.customDates && data.customDates.length > 0) : data.schedule.length === 0) {
+            res.status(400).json({ error: frequency === 'CUSTOM' ? 'Selecione pelo menos uma data.' : 'Selecione pelo menos um dia e horário.' });
+            return;
+        }
+        const grid = await getContractSlotGrid(data.tier);
+        const slotErr = checkCustomScheduleInGrid(grid, { frequency, schedule: data.schedule, customDates: data.customDates })
+            ?? checkResolvedConflictsInGrid(grid, data.resolvedConflicts);
+        if (slotErr) {
+            res.status(400).json({ error: slotErr, code: 'INVALID_SLOT' });
+            return;
         }
 
+        // D7: no CLIENTE a troca aceita no modal de conflitos só muda o HORÁRIO, no MESMO dia (é o que o
+        // /custom/check sugere), dentro do período e a partir de amanhã — nunca passado, hoje ou fora da vigência.
+        if (!isAdmin && data.resolvedConflicts?.length) {
+            const endStr = addMonthsYmd(startDateStr, data.durationMonths);
+            const bad = data.resolvedConflicts.find(rc =>
+                rc.newDate !== rc.originalDate || rc.newDate < tomorrowSp || rc.newDate >= endStr);
+            if (bad) {
+                res.status(400).json({
+                    error: `Troca de horário inválida para a gravação de ${ddmmOf(bad.originalDate)}: a sugestão só pode mudar o horário no mesmo dia, dentro do período do plano.`,
+                    code: 'INVALID_RESOLUTION',
+                });
+                return;
+            }
+        }
+
+        // D3: cliente-alvo existe e não foi excluído (soft delete) — antes de descartar/criar qualquer coisa.
+        const userInfo = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true, cpfCnpj: true, deletedAt: true } });
+        if (!userInfo) {
+            res.status(404).json({ error: 'Cliente não encontrado.' });
+            return;
+        }
+        if (userInfo.deletedAt) {
+            res.status(409).json({ error: DELETED_CLIENT_ERROR, code: 'CLIENT_DELETED' });
+            return;
+        }
+
+        // Tentativas anteriores não pagas saem ANTES do cupom (libera um uso preso) e do anti-overbooking
+        // (as sessões RESERVED delas não viram conflito da nova):
+        //  - CLIENTE: a nova tentativa substitui a anterior, viva ou vencida (D2/D9). Se a anterior foi paga
+        //    ou tem pagamento em andamento → 409 (nada é criado).
+        //  - ADMIN: só as VENCIDAS do cliente-alvo — nunca apaga uma tentativa viva do cliente.
+        if (!isAdmin) {
+            const prev = await discardClientCustomAttempts(userId);
+            if (prev !== 'ok') {
+                res.status(409).json(previousCustomAttemptError(prev));
+                return;
+            }
+        } else {
+            await purgeExpiredCustomAwaiting(userId);
+        }
+
+        // ─── Volume calculations (mode-aware) ────────────────
+        const { totalSessions, sessionsPerWeek, sessionsPerCycle } = computeCustomVolume({
+            frequency,
+            durationMonths: data.durationMonths,
+            schedule: data.schedule,
+            weekPattern: data.weekPattern,
+            customDates: data.customDates,
+        });
+
         // ─── Discount logic (volume-based from BusinessConfig) ──────
-        const d6 = await getConfig('discount_6months');
-        const d3 = await getConfig('discount_3months');
-        let discountPct = 0;
-        if (totalSessions >= 24) discountPct = d6;
-        else if (totalSessions >= 12) discountPct = d3;
+        // Régua por nº de gravações lida da config (episodes_3/6months → discount_3/6months).
+        const discountPct = await customVolumeDiscountPct(totalSessions);
 
         // ─── Dates ──────────────────────────────────────────
-        const startDate = data.startDate
-            ? new Date(data.startDate + 'T00:00:00')
-            : (() => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(0, 0, 0, 0); return d; })();
+        const startDate = new Date(startDateStr + 'T00:00:00');
         const endDate = new Date(startDate);
         endDate.setMonth(endDate.getMonth() + data.durationMonths);
 
@@ -564,7 +948,103 @@ router.post('/custom', authenticate, async (req: Request, res: Response) => {
         const pmConfig = await prisma.paymentMethodConfig.findUnique({ where: { key: data.paymentMethod } });
         const accessMode = pmConfig?.accessMode === 'PROGRESSIVE' ? 'PROGRESSIVE' : 'FULL';
 
+        // ─── Pricing (calculado ANTES de gravar qualquer coisa) ──
+        const basePrice = await getBasePriceDynamic(data.tier);
+        const discountedPrice = applyDiscount(basePrice, discountPct);
+
+        // Calculate addons cost per cycle
+        let addonsCostPerCycle = 0;
+        if (data.addOns && data.addOns.length > 0) {
+            const addonConfigs = await prisma.addOnConfig.findMany({
+                where: { key: { in: data.addOns } },
+            });
+
+            for (const addon of addonConfigs) {
+                const addonCfg = data.addonConfig?.[addon.key];
+                if (addonCfg?.mode === 'credits' && addonCfg.perCycle) {
+                    // Credits: charge per-credit price × credits per cycle
+                    addonsCostPerCycle += applyDiscount(addon.price * addonCfg.perCycle, discountPct);
+                } else {
+                    // All: charge per-session price × sessions per cycle
+                    addonsCostPerCycle += applyDiscount(addon.price * sessionsPerCycle, discountPct);
+                }
+            }
+        }
+
+        const cycleBaseAmount = sessionsPerCycle * discountedPrice;
+        const cycleAmount = cycleBaseAmount + addonsCostPerCycle;
+
+        // Centralized: same plan rules as FIXO/FLEX — FULL → single à-vista invoice (PIX
+        // discount); MONTHLY → durationMonths charges of the plain cycle amount (no card
+        // surcharge) on a 28-day cadence.
+        const customIsFull = data.paymentPlan === 'FULL';
+        const customPlan = await resolvePlanAmounts({
+            baseMonthly: cycleAmount,
+            durationMonths: data.durationMonths,
+            plan: (data.paymentPlan || 'MONTHLY') as 'MONTHLY' | 'FULL',
+            paymentMethod: data.paymentMethod,
+            startDate,
+        });
+        const customProvider = getProviderForMethod(data.paymentMethod);
+
+        // B23: "Datas Livres" (frequency CUSTOM) cobra o total EXATO por totalSessions (as N datas
+        // agendadas), distribuído pelas parcelas com o RESTO na última. O modelo por-ciclo
+        // (sessionsPerCycle = round(N/durationMonths)) divergia da contagem real de datas quando N não é
+        // múltiplo de durationMonths (over/undercharge). Demais frequências mantêm o cálculo uniforme.
+        let perInstallmentBases: number[];
+        // D1: à vista → totais nos dois meios (a marca `pixDiscount` guarda a base do cartão).
+        let customFullTotals: Awaited<ReturnType<typeof computeFullContractTotals>> | null = null;
+        if (frequency === 'CUSTOM') {
+            let addonsCostExact = 0;
+            if (data.addOns && data.addOns.length > 0) {
+                const addonCfgs = await prisma.addOnConfig.findMany({ where: { key: { in: data.addOns } } });
+                for (const addon of addonCfgs) {
+                    const cfg = data.addonConfig?.[addon.key];
+                    addonsCostExact += (cfg?.mode === 'credits' && cfg.perCycle)
+                        ? applyDiscount(addon.price * cfg.perCycle * data.durationMonths, discountPct)
+                        : applyDiscount(addon.price * totalSessions, discountPct);
+                }
+            }
+            const exactTotal = (discountedPrice * totalSessions) + addonsCostExact;
+            if (customIsFull) {
+                customFullTotals = await computeFullContractTotals(exactTotal, 1, data.paymentMethod);
+                perInstallmentBases = [customFullTotals.total];
+            } else {
+                const m = customPlan.scheduleDueDates.length;
+                const per = Math.floor(exactTotal / m);
+                perInstallmentBases = Array.from({ length: m }, (_, i) => (i === m - 1 ? exactTotal - per * (m - 1) : per));
+            }
+        } else {
+            if (customIsFull) customFullTotals = await computeFullContractTotals(cycleAmount, data.durationMonths, data.paymentMethod);
+            const uniformBase = customIsFull ? customPlan.fullAmount : customPlan.monthlyAmount;
+            perInstallmentBases = customPlan.scheduleDueDates.map(() => uniformBase);
+        }
+
+        // Coupon (client self-serve or admin on behalf — eligibility is the target user's).
+        // Quote validated BEFORE anything is created; the use is reserved atomically together
+        // with the 1st installment below.
+        const customBase = perInstallmentBases[0]!;
+        let customCoupon: CouponQuote | null = null;
+        if (data.couponCode) {
+            customCoupon = await validateCoupon({ code: data.couponCode, userId, baseAmount: customBase });
+        }
+        const customSchedule2 = discountSchedule(customCoupon, perInstallmentBases);
+
+        // D9: o CLIENTE paga a 1ª parcela agora; por PIX/boleto o gateway exige CPF/CNPJ válido →
+        // 400 claro ANTES de criar contrato/sessões (antes virava 502 com rollback).
+        const awaitingPayment = !isAdmin;
+        const firstChargeAmount = customSchedule2[0]?.amount ?? 0;
+        const chargesGatewayNow = awaitingPayment && data.paymentMethod !== 'CARTAO' && firstChargeAmount > 0;
+        if (chargesGatewayNow && !isValidCpfCnpj(userInfo.cpfCnpj)) {
+            res.status(400).json({
+                error: 'Para pagar via PIX ou boleto, cadastre um CPF/CNPJ válido no seu perfil antes de contratar.',
+                code: 'CPF_CNPJ_REQUIRED',
+            });
+            return;
+        }
+
         // ─── Create contract ────────────────────────────────
+        const paymentDeadline = awaitingPayment ? new Date(Date.now() + config.studio.lockTtlSeconds * 1000) : null;
         const contract = await prisma.contract.create({
             data: {
                 userId,
@@ -575,7 +1055,8 @@ router.post('/custom', authenticate, async (req: Request, res: Response) => {
                 discountPct,
                 startDate,
                 endDate,
-                status: ContractStatus.ACTIVE,
+                status: awaitingPayment ? ContractStatus.AWAITING_PAYMENT : ContractStatus.ACTIVE,
+                paymentDeadline,
                 paymentMethod: data.paymentMethod,
                 addOns: data.addOns || [],
                 customSchedule: JSON.stringify({
@@ -593,202 +1074,134 @@ router.post('/custom', authenticate, async (req: Request, res: Response) => {
             },
         });
 
-        // ─── Generate bookings (mode-aware) ─────────────────
-        const basePrice = await getBasePriceDynamic(data.tier);
-        const discountedPrice = applyDiscount(basePrice, discountPct);
-        const bookings: any[] = [];
+        // Desfaz tudo o que este pedido gravou (cupom → parcelas → sessões → contrato; FK-safe).
+        const rollback = async () => {
+            const doomed = await prisma.payment.findMany({ where: { contractId: contract.id }, select: { id: true } });
+            if (doomed.length > 0) await releaseAndPurgeCouponsForPayments(doomed.map(d => d.id));
+            await prisma.payment.deleteMany({ where: { contractId: contract.id } }).catch(() => {});
+            await prisma.booking.deleteMany({ where: { contractId: contract.id } }).catch(() => {});
+            await prisma.contract.delete({ where: { id: contract.id } }).catch(() => {});
+        };
 
-        if (frequency === 'CUSTOM' && data.customDates && data.customDates.length > 0) {
-            // CUSTOM: use explicit dates
-            for (const cd of data.customDates) {
-                const bDate = new Date(cd.date + 'T00:00:00');
+        // ─── Generate bookings (mode-aware + anti-overbooking) ──
+        // Mesmas ocorrências do /custom/check (planCustomOccurrences). Cada ocorrência é TRANCADA (Redis,
+        // por slot) e só então conferida no banco — dois pedidos simultâneos nunca gravam o mesmo horário.
+        // O preço foi calculado pelo volume planejado, então NENHUMA ocorrência pode ficar de fora: se
+        // alguma cair em horário ocupado (sem troca aceita, ou ocupado entre o check e o envio), nada é
+        // criado → 409 SLOTS_TAKEN com a lista, para o cliente/admin ajustar a agenda. Assim o valor
+        // cobrado sempre corresponde às sessões agendadas.
+        const slotDuration = grid.slotDurationHours;
+        const perEpisodeAddOns = data.addOns ? data.addOns.filter(a => a !== 'GESTAO_SOCIAL') : [];
+        const bookings: any[] = [];
+        const skipped: { date: string; time: string }[] = [];
+        const claimer = createSlotClaimer(`custom:${contract.id}`);
+        try {
+            const occurrences = planCustomOccurrences({
+                frequency,
+                durationMonths: data.durationMonths,
+                schedule: data.schedule,
+                weekPattern: data.weekPattern,
+                customDates: data.customDates,
+                startDate: startDateStr,
+            });
+            for (const occ of occurrences) {
+                let finalDateStr = occ.date;
+                let finalTime = occ.time;
+                const resolution = data.resolvedConflicts?.find(c =>
+                    c.originalDate === occ.date && c.originalTime === occ.time
+                );
+                if (resolution) {
+                    finalDateStr = resolution.newDate;
+                    finalTime = resolution.newTime;
+                }
+
+                const pkg = getPackageSlots(finalTime, slotDuration);
+                // Depois da 1ª ocorrência ocupada o pedido já vai ser recusado (409): as demais só são
+                // CONSULTADAS (sem trancar), para listar os conflitos sem segurar horários. Trancar em ordem
+                // cronológica e parar na 1ª falha garante que, entre dois pedidos simultâneos, um sempre vence.
+                if (skipped.length > 0) {
+                    if (!(await claimer.isFree(finalDateStr, pkg))) skipped.push({ date: finalDateStr, time: finalTime });
+                    continue;
+                }
+                if (!(await claimer.claim(finalDateStr, pkg))) {
+                    skipped.push({ date: finalDateStr, time: finalTime });
+                    continue;
+                }
+
+                // Cliente: tudo RESERVED até pagar (D9). Admin: CONFIRMED; PROGRESSIVE deixa os ciclos
+                // 2+ RESERVED (liberados a cada parcela paga). Datas Livres: sempre CONFIRMED no admin.
+                const status = awaitingPayment
+                    ? BookingStatus.RESERVED
+                    : (frequency !== 'CUSTOM' && accessMode === 'PROGRESSIVE' && Math.floor(occ.weekIndex / 4) > 0)
+                        ? BookingStatus.RESERVED
+                        : BookingStatus.CONFIRMED;
+
                 bookings.push({
                     userId,
                     contractId: contract.id,
-                    date: bDate,
-                    startTime: cd.time,
-                    endTime: calculateEndTime(cd.time),
-                    status: BookingStatus.CONFIRMED,
+                    date: new Date(finalDateStr + 'T00:00:00Z'),
+                    startTime: finalTime,
+                    endTime: calculateEndTime(finalTime, slotDuration),
+                    status,
                     tierApplied: data.tier,
                     price: discountedPrice,
-                    addOns: data.addOns ? data.addOns.filter(a => a !== 'GESTAO_SOCIAL') : [],
+                    addOns: perEpisodeAddOns,
                 });
             }
-        } else {
-            // WEEKLY / BIWEEKLY / MONTHLY: generate from schedule.
-            // C8 cap: `endDate` spans calendar months (~4.33 weeks each), so an uncapped weekly
-            // loop emits ~0.33 session/month/slot MORE than the contract bills (totalSessions =
-            // sessionsPerCycle × durationMonths, i.e. 4/cycle for WEEKLY). Stop at totalSessions
-            // so what is delivered exactly matches what is charged — never over-delivering. The
-            // generation is always ≥ totalSessions here, so the cap only trims the calendar tail
-            // (MONTHLY/CUSTOM already align; those are effectively unaffected).
-            let generated = 0;
-            for (const slot of data.schedule) {
-                if (generated >= totalSessions) break;
-                const current = new Date(startDate);
-                // Align to first occurrence of this day of week
-                while (current.getUTCDay() !== (slot.day % 7)) {
-                    current.setDate(current.getDate() + 1);
-                }
-
-                while (current < endDate) {
-                    let shouldGenerate = true;
-
-                    if (frequency === 'BIWEEKLY') {
-                        // Calculate week index from contract start (1-indexed, cycling 1-4)
-                        const weekIndex = Math.floor((current.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 7));
-                        const weekInCycle = (weekIndex % 4) + 1; // 1-4
-                        const pattern = data.weekPattern || [1, 3];
-                        shouldGenerate = pattern.includes(weekInCycle);
-                    } else if (frequency === 'MONTHLY') {
-                        // Week-of-month: 1st Monday = week 1, 2nd = week 2, etc.
-                        const dayOfMonth = current.getUTCDate();
-                        const weekOfMonth = Math.ceil(dayOfMonth / 7);
-                        const pattern = data.weekPattern || [1];
-                        shouldGenerate = pattern.includes(weekOfMonth);
-                    }
-
-                    if (shouldGenerate) {
-                        const bookingDateStr = current.toISOString().split('T')[0];
-                        let finalDate = new Date(current);
-                        let finalTime = slot.time;
-
-                        const resolution = data.resolvedConflicts?.find(c =>
-                            c.originalDate === bookingDateStr && c.originalTime === slot.time
-                        );
-                        if (resolution) {
-                            finalDate = new Date(resolution.newDate + 'T00:00:00');
-                            finalTime = resolution.newTime;
-                        }
-
-                        const weekIndex = Math.floor((current.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 7));
-                        const cycleIndex = Math.floor(weekIndex / 4);
-                        const status = accessMode === 'PROGRESSIVE' && cycleIndex > 0
-                            ? BookingStatus.RESERVED
-                            : BookingStatus.CONFIRMED;
-
-                        bookings.push({
-                            userId,
-                            contractId: contract.id,
-                            date: finalDate,
-                            startTime: finalTime,
-                            endTime: calculateEndTime(finalTime),
-                            status,
-                            tierApplied: data.tier,
-                            price: discountedPrice,
-                            addOns: data.addOns ? data.addOns.filter(a => a !== 'GESTAO_SOCIAL') : [],
-                        });
-                        // C8: deliver exactly the billed session count, never the calendar surplus.
-                        if (++generated >= totalSessions) break;
-                    }
-
-                    current.setDate(current.getDate() + 7);
-                }
+            if (skipped.length > 0) {
+                console.warn(`[CUSTOM] ${skipped.length} ocorrência(s) em horário ocupado — contrato ${contract.id} desfeito (409).`);
+                await rollback();
+                const all = skipped.length >= occurrences.length;
+                const list = skipped.slice(0, 6).map(s => `${ddmmOf(s.date)} ${s.time}`).join(', ') + (skipped.length > 6 ? '…' : '');
+                res.status(409).json({
+                    error: all
+                        ? 'Todos os horários escolhidos já estão ocupados no período. Escolha outros dias ou horários.'
+                        : `${skipped.length === 1 ? 'Um horário ficou indisponível' : `${skipped.length} horários ficaram indisponíveis`} (${list}). Ajuste a agenda e tente de novo — nenhuma gravação é cobrada sem data.`,
+                    code: all ? 'ALL_SLOTS_TAKEN' : 'SLOTS_TAKEN',
+                    skipped,
+                    details: { skipped },
+                });
+                return;
             }
-        }
-
-        if (bookings.length > 0) {
             await prisma.booking.createMany({ data: bookings });
+        } catch (err) {
+            await rollback();
+            throw err;
+        } finally {
+            await claimer.releaseAll();
         }
 
         // ─── Generate payments per cycle (4 weeks) ──────────
-        // Calculate addons cost per cycle
-        let addonsCostPerCycle = 0;
-        if (data.addOns && data.addOns.length > 0) {
-            const addonConfigs = await prisma.addOnConfig.findMany({
-                where: { key: { in: data.addOns } },
-            });
-
-            for (const addon of addonConfigs) {
-                const config = data.addonConfig?.[addon.key];
-                if (config?.mode === 'credits' && config.perCycle) {
-                    // Credits: charge per-credit price × credits per cycle
-                    addonsCostPerCycle += applyDiscount(addon.price * config.perCycle, discountPct);
-                } else {
-                    // All: charge per-session price × sessions per cycle
-                    addonsCostPerCycle += applyDiscount(addon.price * sessionsPerCycle, discountPct);
-                }
-            }
-        }
-
-        const cycleBaseAmount = sessionsPerCycle * discountedPrice;
-        const cycleAmount = cycleBaseAmount + addonsCostPerCycle;
-
-        // Centralized: same plan rules as FIXO/FLEX — FULL → single à-vista invoice (PIX
-        // discounted); MONTHLY → durationMonths charges of the plain cycle amount (no card
-        // surcharge) on a 28-day cadence.
-        const customIsFull = data.paymentPlan === 'FULL';
-        const customPlan = await resolvePlanAmounts({
-            baseMonthly: cycleAmount,
-            durationMonths: data.durationMonths,
-            plan: (data.paymentPlan || 'MONTHLY') as 'MONTHLY' | 'FULL',
-            paymentMethod: data.paymentMethod,
-            startDate,
+        const payments: any[] = customPlan.scheduleDueDates.map((dueDate, i) => {
+            // D1 (pagamentos-3): à vista + PIX → marca `pixDiscount` com a base do cartão (mesmo cupom em R$).
+            const pixDiscount = customFullTotals
+                ? pixDiscountMetaForCharge({
+                    amount: customSchedule2[i]!.amount,
+                    cardTotal: customFullTotals.cardTotal,
+                    couponDiscount: customSchedule2[i]!.discountAmount,
+                    pct: customFullTotals.pixDiscountPct,
+                })
+                : undefined;
+            return {
+                userId,
+                contractId: contract.id,
+                provider: customProvider,
+                amount: customSchedule2[i]!.amount,
+                status: 'PENDING' as const,
+                dueDate,
+                ...(customCoupon && customSchedule2[i]!.discountAmount > 0 ? {
+                    couponId: customCoupon.coupon.id,
+                    couponCode: customCoupon.coupon.code,
+                    discountAmount: customSchedule2[i]!.discountAmount,
+                } : {}),
+                ...(pixDiscount ? { metadata: { pixDiscount } } : {}),
+            };
         });
-        const customProvider = getProviderForMethod(data.paymentMethod);
-
-        // B23: "Datas Livres" (frequency CUSTOM) cobra o total EXATO por totalSessions (as N datas
-        // agendadas), distribuído pelas parcelas com o RESTO na última. O modelo por-ciclo
-        // (sessionsPerCycle = round(N/durationMonths)) divergia da contagem real de datas quando N não é
-        // múltiplo de durationMonths (over/undercharge). Demais frequências mantêm o cálculo uniforme.
-        let perInstallmentBases: number[];
-        if (frequency === 'CUSTOM') {
-            let addonsCostExact = 0;
-            if (data.addOns && data.addOns.length > 0) {
-                const addonCfgs = await prisma.addOnConfig.findMany({ where: { key: { in: data.addOns } } });
-                for (const addon of addonCfgs) {
-                    const cfg = data.addonConfig?.[addon.key];
-                    addonsCostExact += (cfg?.mode === 'credits' && cfg.perCycle)
-                        ? applyDiscount(addon.price * cfg.perCycle * data.durationMonths, discountPct)
-                        : applyDiscount(addon.price * totalSessions, discountPct);
-                }
-            }
-            const exactTotal = (discountedPrice * totalSessions) + addonsCostExact;
-            if (customIsFull) {
-                const { computeFullContractTotal } = await import('../../lib/contractPricing.js');
-                perInstallmentBases = [await computeFullContractTotal(exactTotal, 1, data.paymentMethod)];
-            } else {
-                const m = customPlan.scheduleDueDates.length;
-                const per = Math.floor(exactTotal / m);
-                perInstallmentBases = Array.from({ length: m }, (_, i) => (i === m - 1 ? exactTotal - per * (m - 1) : per));
-            }
-        } else {
-            const uniformBase = customIsFull ? customPlan.fullAmount : customPlan.monthlyAmount;
-            perInstallmentBases = customPlan.scheduleDueDates.map(() => uniformBase);
-        }
-
-        // Coupon (client self-serve or admin on behalf — eligibility is the target user's).
-        // Contract + bookings already exist above, so any coupon failure rolls them back.
-        const customBase = perInstallmentBases[0]!;
-        let customCoupon: CouponQuote | null = null;
-        if (data.couponCode) {
-            try {
-                customCoupon = await validateCoupon({ code: data.couponCode, userId, baseAmount: customBase });
-            } catch (err) {
-                await prisma.booking.deleteMany({ where: { contractId: contract.id } }).catch(() => {});
-                await prisma.contract.delete({ where: { id: contract.id } }).catch(() => {});
-                throw err;
-            }
-        }
-        const customSchedule2 = discountSchedule(customCoupon, perInstallmentBases);
-        const payments: any[] = customPlan.scheduleDueDates.map((dueDate, i) => ({
-            userId,
-            contractId: contract.id,
-            provider: customProvider,
-            amount: customSchedule2[i]!.amount,
-            status: 'PENDING' as const,
-            dueDate,
-            ...(customCoupon && customSchedule2[i]!.discountAmount > 0 ? {
-                couponId: customCoupon.coupon.id,
-                couponCode: customCoupon.coupon.code,
-                discountAmount: customSchedule2[i]!.discountAmount,
-            } : {}),
-        }));
 
         if (payments.length > 0) {
-            if (customCoupon) {
-                const quote = customCoupon;
-                try {
+            try {
+                if (customCoupon) {
+                    const quote = customCoupon;
                     await prisma.$transaction(async (tx) => {
                         const first = await tx.payment.create({ data: payments[0]! });
                         await reserveCouponUse(tx, {
@@ -803,34 +1216,28 @@ router.post('/custom', authenticate, async (req: Request, res: Response) => {
                             await tx.payment.createMany({ data: payments.slice(1) });
                         }
                     });
-                } catch (err) {
-                    await prisma.booking.deleteMany({ where: { contractId: contract.id } }).catch(() => {});
-                    await prisma.contract.delete({ where: { id: contract.id } }).catch(() => {});
-                    throw err;
+                } else {
+                    await prisma.payment.createMany({ data: payments });
                 }
-            } else {
-                await prisma.payment.createMany({ data: payments });
+            } catch (err) {
+                // Lost the maxUses race (or tx failure) — roll the contract back.
+                await rollback();
+                throw err;
             }
         }
 
-        // Enrich payments with gateway (Cora/Stripe) data
-        const userInfo = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true, cpfCnpj: true } });
-        const userCpf = userInfo?.cpfCnpj?.replace(/\D/g, '') || undefined;
         const allPayments = await prisma.payment.findMany({
             where: { contractId: contract.id },
             orderBy: { dueDate: 'asc' },
         });
 
         let firstClientSecret: string | null = null;
-        let firstPaymentId: string | null = allPayments.length > 0 ? (allPayments[0]?.id ?? null) : null;
+        const firstPaymentId: string | null = allPayments[0]?.id ?? null;
         let firstPixString: string | null = null;
 
-        // CARTÃO: do NOT pre-create PaymentIntents here — the inline checkout creates the first
-        // one with the chosen installments (matching idempotency key + juros policy), and the
-        // remaining installments are charged later (Meus Pagamentos / auto-charge). Pre-creating
-        // would collide with that call. PIX/BOLETO still generate their QR/boleto up-front.
         // 100% coupon → zero first charge: skip the gateway (it can't process R$0) and
-        // confirm immediately with the same effects a webhook would run.
+        // confirm immediately with the same effects a webhook would run (activates an
+        // AWAITING_PAYMENT contract).
         if (allPayments.length > 0 && allPayments[0]!.amount === 0) {
             await prisma.payment.updateMany({
                 where: { id: allPayments[0]!.id, status: 'PENDING' },
@@ -840,8 +1247,7 @@ router.post('/custom', authenticate, async (req: Request, res: Response) => {
             await onPaymentConfirmed(allPayments[0]!.id);
         }
 
-        // Remaining zero-amount installments (100% ALL-scope coupon): the contract is
-        // already active and its bookings already exist, so settle them as PAID directly
+        // Remaining zero-amount installments (100% ALL-scope coupon): settle them as PAID directly
         // (no gateway, no separate redemption — the use was reserved on the first payment)
         // instead of leaving them PENDING forever.
         const otherZeroIds = allPayments.filter((p, i) => i > 0 && p.amount === 0).map(p => p.id);
@@ -852,62 +1258,61 @@ router.post('/custom', authenticate, async (req: Request, res: Response) => {
             });
         }
 
-        let isFirst = true;
-        for (const p of (data.paymentMethod === 'CARTAO' ? [] : allPayments)) {
-            // Zero-amount installments (100% ALL-scope coupon) have no gateway artifact.
-            if (p.amount === 0) { isFirst = false; continue; }
+        // D9: só o CLIENTE gera cobrança agora, e só da 1ª parcela (PIX/boleto). CARTÃO não pré-cria
+        // PaymentIntent (o checkout inline cria com as parcelas escolhidas). Parcelas 2..N ficam
+        // PENDING sem cobrança — geradas sob demanda ao pagar (Meus Pagamentos / auto-charge).
+        // D2/D15: o QR PIX da 1ª parcela expira JUNTO com o paymentDeadline do contrato (10 min) —
+        // nunca fica pagável depois que a varredura apaga a contratação. Mesma regra do
+        // issuePixCharge (pixExpirySecondsFor), então uma reemissão pelo checkout mantém o prazo.
+        const first = allPayments[0];
+        let firstPixExpiresAt: Date | null = null;
+        let firstQrCodeDataUrl: string | null = null;
+        if (chargesGatewayNow && first && first.amount > 0) {
             try {
                 const result = await gatewayCreatePayment({
                     paymentMethod: data.paymentMethod as 'PIX' | 'BOLETO' | 'CARTAO',
-                    amount: p.amount,
-                    description: `${data.name} - Parcela`,
-                    customer: { name: userInfo?.name || 'Cliente', email: userInfo?.email || '', cpf: userCpf },
-                    dueDate: p.dueDate || new Date(),
-                    paymentId: p.id,
+                    amount: first.amount,
+                    description: `${data.name} - 1ª Parcela`,
+                    customer: { name: userInfo.name || 'Cliente', email: userInfo.email || '', cpf: cleanDocument(userInfo.cpfCnpj) || undefined },
+                    dueDate: first.dueDate || new Date(),
+                    paymentId: first.id,
                     contractId: contract.id,
                     userId,
+                    expiresSeconds: pixExpirySecondsFor({ contract: { status: ContractStatus.AWAITING_PAYMENT, paymentDeadline } }),
                 });
-                await updatePaymentWithGatewayResult(p.id, result);
-
-                if (isFirst) {
-                    firstPaymentId = p.id;
-                    if (result.pixString) firstPixString = result.pixString;
+                await updatePaymentWithGatewayResult(first.id, result);
+                if (result.pixString) {
+                    firstPixString = result.pixString;
+                    firstPixExpiresAt = result.expiresAt ?? null;
+                    firstQrCodeDataUrl = await pixQrDataUrl(result.pixString);
                 }
-                if (!firstClientSecret && result.clientSecret) {
-                    firstClientSecret = result.clientSecret;
-                }
+                if (result.clientSecret) firstClientSecret = result.clientSecret;
             } catch (err) {
-                console.error(`[Gateway] Failed to create payment for ${p.id}:`, err);
-                if (isFirst) {
-                    // The first installment is what the client pays NOW. If its gateway
-                    // dispatch fails we must NOT leave a phantom ACTIVE contract with
-                    // reserved slots and an unpayable payment while reporting success.
-                    // Roll back contract + bookings + payments (FK-safe: coupon redemptions
-                    // are purged first, or the payment delete would hit the FK RESTRICT).
-                    const doomed = await prisma.payment.findMany({ where: { contractId: contract.id }, select: { id: true } });
-                    await releaseAndPurgeCouponsForPayments(doomed.map(d => d.id));
-                    await prisma.payment.deleteMany({ where: { contractId: contract.id } }).catch(() => {});
-                    await prisma.booking.deleteMany({ where: { contractId: contract.id } }).catch(() => {});
-                    await prisma.contract.delete({ where: { id: contract.id } }).catch(() => {});
-                    const msg = err instanceof Error ? err.message : 'Erro ao gerar o pagamento. Tente novamente ou use outro método.';
-                    res.status(502).json({ error: msg });
-                    return;
-                }
-                // months 2..N: best-effort — they are regenerated when paid via Meus Pagamentos.
+                // A 1ª parcela é o que o cliente paga AGORA. Falha real do provedor → desfaz tudo
+                // (nada de contrato fantasma segurando horários) e responde 502 com a mensagem.
+                console.error(`[Gateway] Failed to create payment for ${first.id}:`, err);
+                await rollback();
+                const msg = err instanceof Error ? err.message : 'Erro ao gerar o pagamento. Tente novamente ou use outro método.';
+                res.status(502).json({ error: msg });
+                return;
             }
-            isFirst = false;
         }
 
-        const createdPayments = await prisma.payment.findMany({
-            where: { contractId: contract.id },
-            orderBy: { dueDate: 'asc' },
-        });
+        const [createdPayments, freshContract] = await Promise.all([
+            prisma.payment.findMany({ where: { contractId: contract.id }, orderBy: { dueDate: 'asc' } }),
+            prisma.contract.findUnique({ where: { id: contract.id } }),
+        ]);
+        const finalContract = freshContract ?? contract;
+        const stillAwaiting = finalContract.status === ContractStatus.AWAITING_PAYMENT;
+        const deadlineMin = Math.round(config.studio.lockTtlSeconds / 60);
 
         res.status(201).json({
             contract: {
-                ...contract,
+                ...finalContract,
                 customSchedule: data.schedule,
             },
+            status: finalContract.status,
+            paymentDeadline: finalContract.paymentDeadline ? finalContract.paymentDeadline.toISOString() : null,
             payments: createdPayments.map(p => ({
                 id: p.id,
                 amount: p.amount,
@@ -922,11 +1327,19 @@ router.post('/custom', authenticate, async (req: Request, res: Response) => {
                 accessMode,
                 cycleAmount,
                 totalBookingsGenerated: bookings.length,
+                skippedOccurrences: skipped.length,
             },
-            message: `Plano Personalizado criado! ${bookings.length} sessões reservadas com ${discountPct}% de desconto.`,
+            skipped,
+            message: stillAwaiting
+                ? `Plano Personalizado reservado! ${bookings.length} sessões seguras por ${deadlineMin} minutos até o pagamento da 1ª parcela.`
+                : `Plano Personalizado criado! ${bookings.length} sessões reservadas com ${discountPct}% de desconto.`,
+            firstPaymentId,
             ...(firstClientSecret && { clientSecret: firstClientSecret }),
-            ...(firstPaymentId && { firstPaymentId }),
             ...(firstPixString && { firstPixString }),
+            // PIX da 1ª parcela: imagem do QR e fim da validade (= paymentDeadline), no mesmo
+            // formato de /stripe/create-payment.
+            ...(firstPixString && firstQrCodeDataUrl && { qrCodeDataUrl: firstQrCodeDataUrl }),
+            ...(firstPixString && firstPixExpiresAt && { expiresAt: firstPixExpiresAt.toISOString() }),
         });
     } catch (err) {
         if (err instanceof z.ZodError) {
@@ -941,6 +1354,6 @@ router.post('/custom', authenticate, async (req: Request, res: Response) => {
         const errMsg = err instanceof Error ? err.message : 'Erro interno';
         res.status(500).json({ error: errMsg });
     }
-});
+}
 
 } // end registerCreationRoutes

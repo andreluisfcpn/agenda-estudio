@@ -3,7 +3,7 @@ import HeroAmbient from '../components/client/HeroAmbient';
 import { bookingsApi, blockedSlotsApi, pricingApi, contractsApi, Slot, BookingWithUser, MyBookingSlot, PricingConfig, AddOnConfig, ContractWithStats } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import BookingDetailModal from '../components/BookingDetailModal';
 import BookingModal from '../components/BookingModal';
 import ContractWizard from '../components/ContractWizard';
@@ -19,13 +19,23 @@ import { CalendarDays, Mic, Clock, List } from 'lucide-react';
 import CalendarMobileView from '../components/calendar/CalendarMobileView';
 import CalendarDesktopView from '../components/calendar/CalendarDesktopView';
 import { TIER_COLORS, getWeekDates, formatDate, BookingLookup } from '../components/calendar/calendarShared';
+import { peekPendingIntent, clearPendingIntent, type PendingIntent } from '../utils/pendingIntent';
+import type { ContractWizardPrefill } from '../components/ContractWizard';
 
 /**
  * Data/dia iniciais da agenda. No domingo a grade Seg–Sáb da semana corrente
  * já passou INTEIRA — para o cliente, abrir nela é uma parede de "Encerrado";
  * começamos na segunda seguinte. Admin consulta o passado, mantém a corrente.
+ * D16: com um horário escolhido na landing (`focusDate`), a PRIMEIRA carga já é a
+ * semana dele e o mobile abre no dia (sem buscar a semana corrente antes).
  */
-function initialCalendarStart(isAdmin: boolean): { base: Date; dayIndex: number } {
+function initialCalendarStart(isAdmin: boolean, focusDate?: string | null): { base: Date; dayIndex: number } {
+    if (focusDate) {
+        const d = new Date(`${focusDate}T12:00:00`);
+        if (!Number.isNaN(d.getTime())) {
+            return { base: d, dayIndex: d.getDay() === 0 ? 5 : d.getDay() - 1 };
+        }
+    }
     const now = new Date();
     if (!isAdmin && now.getDay() === 0) {
         const d = new Date(now);
@@ -38,16 +48,18 @@ function initialCalendarStart(isAdmin: boolean): { base: Date; dayIndex: number 
 export default function CalendarPage() {
     const { user } = useAuth();
     const navigate = useNavigate();
-    const location = useLocation();
     const isAdmin = user?.role === 'ADMIN';
     const isMobile = useIsMobile();
-    const { get: getConfigNum } = useBusinessConfig();
+    const { get: getConfigNum, loaded: configLoaded } = useBusinessConfig();
     // Minimum advance notice for clients (admin books any time). Slots closer than this
     // are greyed out to match the backend rule.
     // B13: usar o valor real (0 é válido); `|| 12` transformava uma config legítima de 0h em 12h só no front.
     const minAdvanceHoursRaw = getConfigNum('booking_min_advance_hours');
     const minAdvanceHours = Number.isFinite(minAdvanceHoursRaw) ? minAdvanceHoursRaw : 12;
-    const initialStart = useRef(initialCalendarStart(isAdmin)).current;
+    // D16: horário escolhido na landing antes do login — lido UMA vez (só cliente). Fica em estado
+    // desta instância; o sessionStorage é limpo quando a retomada é tratada ou ao sair da página.
+    const [resumeIntent] = useState<PendingIntent | null>(() => (user && user.role === 'CLIENTE' ? peekPendingIntent() : null));
+    const initialStart = useRef(initialCalendarStart(isAdmin, resumeIntent?.date)).current;
     const [currentWeek, setCurrentWeek] = useState(initialStart.base);
     const [weekDates, setWeekDates] = useState<Date[]>(getWeekDates(initialStart.base));
 
@@ -88,6 +100,8 @@ export default function CalendarPage() {
     const [allMyBookings, setAllMyBookings] = useState<any[]>([]);
 
     const [showWizard, setShowWizard] = useState(false);
+    // D16: "Criar Novo Contrato" no BookingModal abre o wizard já com a faixa, a data e a hora do horário.
+    const [wizardPrefill, setWizardPrefill] = useState<ContractWizardPrefill | null>(null);
     const [showCustomWizard, setShowCustomWizard] = useState(false);
     const [pricing, setPricing] = useState<PricingConfig[]>([]);
     const [allAddons, setAllAddons] = useState<AddOnConfig[]>([]);
@@ -174,25 +188,6 @@ export default function CalendarPage() {
         return () => document.removeEventListener('visibilitychange', handleVisibility);
     }, [currentWeek, loadWeekData, isAdmin]);
 
-    const preSelectHandled = useRef(false);
-    useEffect(() => {
-        if (preSelectHandled.current) return;
-        if (location.state?.preSelectedDate && location.state?.preSelectedTime && Object.keys(slotsMap).length > 0) {
-            const preDate = location.state.preSelectedDate;
-            const preTime = location.state.preSelectedTime;
-            const daySlots = slotsMap[preDate];
-            if (daySlots) {
-                const targetSlot = daySlots.find(s => s.time === preTime && s.available);
-                if (targetSlot && targetSlot.tier && targetSlot.price) {
-                    preSelectHandled.current = true;
-                    setSelectedSlot({ date: preDate, time: preTime, tier: targetSlot.tier, price: targetSlot.price });
-                    // Clear React Router state so this effect won't re-fire
-                    navigate(location.pathname, { replace: true, state: {} });
-                }
-            }
-        }
-    }, [location.state, slotsMap, navigate, location.pathname]);
-
     useEffect(() => {
         pricingApi.get().then(res => setPricing(res.pricing)).catch(err => console.error(err));
     }, []);
@@ -277,6 +272,51 @@ export default function CalendarPage() {
         if (!slot.available || !slot.tier || !slot.price) return;
         setSelectedSlot({ date, time, tier: slot.tier, price: slot.price });
     }, [openDetailModal]);
+
+    // ─── D16: retomar o horário escolhido na landing ───
+    // A semana/dia iniciais já são os da intenção (initialCalendarStart). Espera a 1ª carga dessa
+    // semana (sem fetch próprio → sem corrida com o StrictMode) e decide UMA vez (guard em ref):
+    //  - horário já é do cliente → detalhe; livre e com antecedência → BookingModal no passo de
+    //    opções (usar plano / avulso / novo contrato); livre mas em cima da hora → aviso de
+    //    antecedência; ocupado/bloqueado → "Horário indisponível" com a agenda já naquele dia.
+    // Falha de carga: aguarda o "Tentar novamente" (a intenção continua em memória).
+    const resumeHandled = useRef(false);
+    useEffect(() => {
+        if (!resumeIntent) return;
+        // Ao sair da página sem retomar (ou no desmonte), a intenção não pode sobrar para um próximo login.
+        return () => clearPendingIntent();
+    }, [resumeIntent]);
+    useEffect(() => {
+        if (!resumeIntent || resumeHandled.current) return;
+        if (loading || isFetchingWeek || !configLoaded) return;
+        const { date, time } = resumeIntent;
+        const daySlots = slotsMap[date];
+        if (!daySlots) return;
+        resumeHandled.current = true;
+        clearPendingIntent();
+
+        const mine = bookingLookups[date]?.[time];
+        if (mine?.isMine && mine.myBooking) {
+            openDetailModal(mine.myBooking, date);
+            return;
+        }
+        const slot = daySlots.find(s => s.time === time);
+        if (slot && slot.available && slot.tier && slot.price) {
+            const cutoffMs = Date.now() + minAdvanceHours * 60 * 60 * 1000;
+            if (studioSlotDate(date, time).getTime() >= cutoffMs) {
+                setSelectedSlot({ date, time, tier: slot.tier, price: slot.price });
+            } else {
+                setShowPastSlotAlert(true);
+            }
+            return;
+        }
+        const [, mm, dd] = date.split('-');
+        showAlert({
+            type: 'warning',
+            title: 'Horário indisponível',
+            message: `O horário de ${dd}/${mm} às ${time} não está mais disponível. Escolha outro horário — a agenda já está nesse dia.`,
+        });
+    }, [resumeIntent, loading, isFetchingWeek, configLoaded, slotsMap, bookingLookups, minAdvanceHours, openDetailModal, showAlert]);
 
     // Compute weekly summary
     const weekSummary = (() => {
@@ -606,17 +646,22 @@ export default function CalendarPage() {
                     price={(selectedSlot || lastSelectedSlot.current)?.price || 0}
                     onClose={() => { setSelectedSlot(null); loadWeekData(weekDates); }}
                     onBooked={() => { setSelectedSlot(null); loadWeekData(weekDates); }}
-                    onNewContract={() => setShowWizard(true)} 
+                    onNewContract={(date, time, tier) => {
+                        setWizardPrefill({ date, time, tier });
+                        setShowWizard(true);
+                    }}
                 />
             )}
 
             {showWizard && (
                 <ContractWizard
                     pricing={pricing}
-                    onClose={() => setShowWizard(false)}
+                    prefill={wizardPrefill ?? undefined}
+                    onClose={() => { setShowWizard(false); setWizardPrefill(null); }}
                     onComplete={() => navigate('/meus-contratos')}
                     onOpenCustom={() => {
                         setShowWizard(false);
+                        setWizardPrefill(null);
                         setShowCustomWizard(true);
                     }}
                 />

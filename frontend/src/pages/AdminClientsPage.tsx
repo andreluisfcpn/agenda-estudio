@@ -1,10 +1,9 @@
-import { getErrorMessage } from '../utils/errors';
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, CheckCircle2, UserMinus, Inbox, Puzzle, Search, FilterX, X, Pencil, Trash2 } from 'lucide-react';
-import { usersApi, UserSummary } from '../api/client';
-import { useUI } from '../context/UIContext';
+import { Users, CheckCircle2, UserMinus, Inbox, Puzzle, Search, FilterX, X, Pencil, Trash2, Loader2 } from 'lucide-react';
+import { UserSummary } from '../api/client';
 import { useAdminClients } from '../hooks/useAdminClients';
+import { useDeleteClient } from '../hooks/useDeleteClient';
 import AdminPageHeader from '../components/admin/AdminPageHeader';
 import CreateClientModal from '../components/admin/clients/CreateClientModal';
 import EditClientModal from '../components/admin/clients/EditClientModal';
@@ -12,6 +11,7 @@ import { HeroSkeleton, TableSkeleton } from '../components/ui/SkeletonLoader';
 import StatusBadge from '../components/ui/StatusBadge';
 import { USER_TYPE_META, getMeta } from '../constants/adminMeta';
 import { maskPhone } from '../utils/mask';
+import { isPlanInForce } from '../utils/clientHealth';
 
 import { formatBRL } from '../utils/format';
 
@@ -25,35 +25,26 @@ function getUserType(u: UserSummary): string {
 
 export default function AdminClientsPage() {
     const navigate = useNavigate();
-    const { showAlert, showConfirm, showToast } = useUI();
-    const { users, loading, search, setSearch, typeFilter, setTypeFilter, reload } = useAdminClients();
+    const { users, setUsers, loading, search, setSearch, typeFilter, setTypeFilter, reload } = useAdminClients();
+    const { requestDelete, previewingId } = useDeleteClient();
 
     const [showCreate, setShowCreate] = useState(false);
     const [editUser, setEditUser] = useState<UserSummary | null>(null);
 
+    // D3: prévia real do backend → diálogo de perigo (digitar EXCLUIR) → DELETE. Excluído (hard ou
+    // soft) sai da lista na hora — o GET /users já não lista cliente excluído, então não há refetch.
     const confirmDelete = (u: UserSummary) => {
-        showConfirm({
-            title: 'Excluir cliente?',
-            message: `Tem certeza que deseja excluir ${u.name}? Todos os contratos e agendamentos vinculados serão cancelados e os dados removidos permanentemente.`,
-            onConfirm: () => handleDelete(u),
+        void requestDelete({ id: u.id, name: u.name }, () => {
+            setUsers(prev => prev.filter(x => x.id !== u.id));
         });
-    };
-
-    const handleDelete = async (u: UserSummary) => {
-        try {
-            await usersApi.remove(u.id);
-            await reload();
-            showToast('Cliente excluído.');
-        } catch (err: unknown) {
-            showAlert({ message: getErrorMessage(err) || 'Erro ao excluir usuário', type: 'error' });
-        }
     };
 
     // --- Computed ---
     const clientUsers = users.filter(u => u.role !== 'ADMIN');
-    const hasActiveContract = (u: UserSummary) => u.contracts?.some(c => c.status === 'ACTIVE') ?? false;
+    // Plano "Concluído" (D6) recente continua contando como ativo (não vira Ex-cliente) — isPlanInForce.
+    const hasActiveContract = (u: UserSummary) => u.contracts?.some(c => isPlanInForce(c)) ?? false;
     const hadAnyContract = (u: UserSummary) => (u._count?.contracts ?? 0) > 0;
-    const hasActiveAddon = (u: UserSummary) => u.contracts?.some(c => c.status === 'ACTIVE' && c.addOns && c.addOns.length > 0) ?? false;
+    const hasActiveAddon = (u: UserSummary) => u.contracts?.some(c => isPlanInForce(c) && c.addOns && c.addOns.length > 0) ?? false;
 
     const activeCount = clientUsers.filter(hasActiveContract).length;
     const exClientCount = clientUsers.filter(u => hadAnyContract(u) && !hasActiveContract(u)).length;
@@ -71,7 +62,7 @@ export default function AdminClientsPage() {
             const digits = q.replace(/\D/g, '');
             result = result.filter(u =>
                 u.name.toLowerCase().includes(q) ||
-                u.email.toLowerCase().includes(q) ||
+                (u.email ?? '').toLowerCase().includes(q) ||
                 (digits.length > 0 && u.phone && u.phone.includes(digits))
             );
         }
@@ -99,7 +90,7 @@ export default function AdminClientsPage() {
                 {([
                     { key: 'ALL' as const, label: 'Total', count: clientUsers.length, desc: 'clientes cadastrados', icon: Users, color: '#11819B', gradient: 'rgba(17,129,155,0.10)' },
                     { key: 'ACTIVE' as const, label: 'Ativos', count: activeCount, desc: 'com contrato ativo', icon: CheckCircle2, color: '#10b981', gradient: 'rgba(16,185,129,0.08)' },
-                    { key: 'EX_CLIENT' as const, label: 'Ex-clientes', count: exClientCount, desc: 'contrato expirado', icon: UserMinus, color: '#f59e0b', gradient: 'rgba(245,158,11,0.08)' },
+                    { key: 'EX_CLIENT' as const, label: 'Ex-clientes', count: exClientCount, desc: 'sem contrato vigente', icon: UserMinus, color: '#f59e0b', gradient: 'rgba(245,158,11,0.08)' },
                     { key: 'NO_CONTRACT' as const, label: 'Sem Contrato', count: noContractCount, desc: 'nunca contrataram', icon: Inbox, color: '#94a3b8', gradient: 'rgba(148,163,184,0.08)' },
                     { key: 'NO_ADDON' as const, label: 'Sem Add-on', count: noAddonCount, desc: 'sem serviço extra', icon: Puzzle, color: '#2dd4bf', gradient: 'rgba(45,212,191,0.08)' },
                 ] as const).map(card => {
@@ -229,10 +220,10 @@ export default function AdminClientsPage() {
                                                             <StatusBadge meta={getMeta(USER_TYPE_META, getUserType(u))} />
                                                         </div>
                                                         <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                                            <span>{u.email}</span>
+                                                            {u.email && <span>{u.email}</span>}
                                                             {u.phone && (
                                                                 <>
-                                                                    <span style={{ opacity: 0.3 }}>•</span>
+                                                                    {u.email && <span style={{ opacity: 0.3 }}>•</span>}
                                                                     <span>{maskPhone(u.phone)}</span>
                                                                 </>
                                                             )}
@@ -290,9 +281,15 @@ export default function AdminClientsPage() {
                                                         onClick={() => setEditUser(u)}><Pencil size={16} aria-hidden="true" /></button>
 
                                                     {u.role !== 'ADMIN' && (
-                                                        <button className="admin-icon-btn admin-icon-btn--danger"
+                                                        <button type="button" className="admin-icon-btn admin-icon-btn--danger"
                                                             aria-label={`Excluir ${u.name}`}
-                                                            onClick={() => confirmDelete(u)}><Trash2 size={16} aria-hidden="true" /></button>
+                                                            aria-busy={previewingId === u.id || undefined}
+                                                            disabled={previewingId !== null}
+                                                            onClick={() => confirmDelete(u)}>
+                                                            {previewingId === u.id
+                                                                ? <Loader2 size={16} className="danger-dialog__spinner" aria-hidden="true" />
+                                                                : <Trash2 size={16} aria-hidden="true" />}
+                                                        </button>
                                                     )}
                                                 </div>
                                             </td>

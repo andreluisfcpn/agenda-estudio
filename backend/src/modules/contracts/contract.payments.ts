@@ -43,6 +43,9 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
         // SERVICO (standalone monthly service) has NO recordings: its per-month base is the
         // service add-on's price after discount, not sessions×tier (which would over-charge).
         let monthlyAmount: number;
+        // D1: valor da mesma cobrança no CARTÃO quando `monthlyAmount` embute o desconto PIX do à vista.
+        let cardFullAmount: number | null = null;
+        let pixDiscountPct = 0;
         if (contract.type === 'SERVICO') {
             const svcMonthly = await serviceMonthlyBase(contract);
             // FULL-plan service is paid à-vista (all N months at once); MONTHLY charges one month.
@@ -51,6 +54,10 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
             if (contract.paymentPlan === 'FULL') {
                 const { computeFullContractTotal } = await import('../../lib/contractPricing.js');
                 monthlyAmount = await computeFullContractTotal(svcMonthly, contract.durationMonths, contract.paymentMethod || undefined);
+                if (contract.paymentMethod === 'PIX') {
+                    cardFullAmount = await computeFullContractTotal(svcMonthly, contract.durationMonths, 'CARTAO');
+                    pixDiscountPct = Number(await getConfig('pix_extra_discount_pct')) || 0;
+                }
             } else {
                 monthlyAmount = svcMonthly;
             }
@@ -67,10 +74,14 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
             monthlyAmount = (sessionsPerMonth * discountedPrice) + payAddonsCost;
         }
 
-        // PAY-M1 FIX: Reuse existing pending payment for the same contract instead of creating orphans
+        // PAY-M1 FIX: Reuse existing pending payment for the same contract instead of creating orphans.
+        // contratos-2: a parcela reaproveitada é a PRIMEIRA a vencer (menor dueDate; desempate estável) —
+        // o personalizado do cliente nasce com TODAS as parcelas PENDING (createMany, mesmo createdAt;
+        // com cupom a 1ª é criada antes) e "a mais recente por createdAt" cobrava uma parcela futura.
         const existingPending = await prisma.payment.findFirst({
             where: { contractId, userId, status: 'PENDING' },
-            orderBy: { createdAt: 'desc' },
+            orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }, { id: 'asc' }],
+            include: { contract: { select: { type: true, paymentPlan: true, paymentMethod: true } } },
         });
 
         // Coupon: only when a NEW pending payment is being created. ANY existing pending row
@@ -88,6 +99,17 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
             couponCode: payCoupon.coupon.code,
             discountAmount: payCoupon.discountAmount,
         } : {};
+        // D1 (pagamentos-3): linha NOVA com desconto PIX embutido → grava o valor do cartão (sem o
+        // desconto PIX; o mesmo cupom em R$) para o checkout nunca cobrar o desconto PIX no cartão.
+        const { buildPixDiscountMeta } = await import('../../lib/pixGateway.js');
+        const newRowPixDiscount = cardFullAmount !== null
+            ? buildPixDiscountMeta({
+                pixAmount: payChargeAmount,
+                cardAmount: Math.max(0, cardFullAmount - (payCoupon?.discountAmount ?? 0)),
+                pct: pixDiscountPct,
+            })
+            : undefined;
+        const newRowMetadata = newRowPixDiscount ? { metadata: { pixDiscount: newRowPixDiscount } } : {};
 
         // 100% coupon → zero charge: no gateway; confirm immediately (activates the contract).
         if (payCoupon && payChargeAmount === 0) {
@@ -116,27 +138,16 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
             return;
         }
 
-        // ─── PIX: Cora ───────────────────────────────────────
+        // ─── PIX (Sicoob/Cora via issuePixCharge) ────────────
         if (data.paymentMethod === 'PIX') {
-            // If we already have a pending PIX payment with a pixString, return it
-            if (existingPending && existingPending.pixString) {
-                res.json({
-                    provider: existingPending.provider,
-                    paymentId: existingPending.id,
-                    pixString: existingPending.pixString,
-                    amount: existingPending.amount,
-                    message: 'QR Code PIX já gerado. Escaneie para ativar o contrato.',
-                });
-                return;
-            }
-
-            const { createPixPayment } = await import('../../lib/pixGateway.js');
+            const { issuePixCharge } = await import('../../lib/pixGateway.js');
 
             // C9: reuse the single pending row (a pre-created installment 2..N, or a pending
             // started under the other method) instead of minting a duplicate charge. Its amount
             // is the one locked at generation; only a brand-new row prices the coupon. A fresh
             // Payment (+ atomic coupon reservation) is created ONLY when no pending exists.
-            const pixAmount = existingPending ? existingPending.amount : payChargeAmount;
+            // D15: o QR sai do issuePixCharge — reusa só a cobrança viva e com o mesmo valor; senão
+            // concilia/cancela a antiga e emite nova (antes reusava qualquer pixString, até expirado).
             const payment = existingPending ?? await prisma.$transaction(async (tx) => {
                 const p = await tx.payment.create({
                     data: {
@@ -148,6 +159,7 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
                         dueDate: new Date(),
                         installments: 1,
                         ...payCouponFields,
+                        ...newRowMetadata,
                     },
                 });
                 if (payCoupon) {
@@ -161,31 +173,33 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
             });
 
             try {
-                const pixRes = await createPixPayment({
-                    userId,
-                    amount: pixAmount,
+                const pix = await issuePixCharge(payment.id, {
                     description: `PIX - Contrato "${contract.name}" - ${contract.tier}`,
-                    withPixQrCode: true,
-                    idempotencyKey: payment.id,
                 });
-
-                await prisma.payment.update({
-                    where: { id: payment.id },
-                    data: {
-                        providerRef: pixRes.result.id,
-                        provider: pixRes.provider,
-                        pixString: pixRes.pixString,
-                    },
-                });
+                if (pix.alreadyPaid) {
+                    res.json({
+                        provider: pix.provider,
+                        paymentId: payment.id,
+                        amount: pix.amount,
+                        alreadyPaid: true,
+                        message: 'Pagamento já confirmado.',
+                    });
+                    return;
+                }
 
                 res.json({
-                    provider: pixRes.provider,
+                    provider: pix.provider,
                     paymentId: payment.id,
-                    pixString: pixRes.pixString,
-                    qrCodeBase64: pixRes.qrCodeBase64,
-                    amount: pixAmount,
+                    pixString: pix.pixString,
+                    qrCodeDataUrl: pix.qrCodeDataUrl,
+                    qrCodeBase64: pix.qrCodeDataUrl ? pix.qrCodeDataUrl.replace(/^data:image\/png;base64,/, '') : null,
+                    expiresAt: pix.expiresAt,
+                    amount: pix.amount,
+                    reused: pix.reused,
                     ...(payCoupon && { couponDiscount: payCoupon.discountAmount }),
-                    message: 'QR Code PIX gerado. Escaneie para ativar o contrato.',
+                    message: pix.reused
+                        ? 'QR Code PIX já gerado. Escaneie para ativar o contrato.'
+                        : 'QR Code PIX gerado. Escaneie para ativar o contrato.',
                 });
             } catch (e: unknown) {
                 // Provider failed. Only purge a row WE just created — never delete a pre-existing
@@ -216,41 +230,89 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
 
         const customerId = await stripeGetOrCreateCustomer(userId);
 
-        // PAY-M1: Reuse existing pending Stripe payment if it already carries a payable PI.
-        if (existingPending && existingPending.provider === 'STRIPE' && existingPending.providerRef) {
-            const { stripeGetPaymentIntent } = await import('../../lib/stripeService.js');
-            try {
-                const pi = await stripeGetPaymentIntent(existingPending.providerRef);
-                if (pi.status === 'requires_payment_method' || pi.status === 'requires_confirmation' || pi.status === 'requires_action') {
-                    res.json({
-                        provider: 'STRIPE',
-                        clientSecret: pi.client_secret,
-                        paymentId: existingPending.id,
-                        amount: existingPending.amount,
-                        maxInstallments,
-                        message: 'PaymentIntent existente reutilizado.',
-                    });
-                    return;
-                }
-            } catch { /* PI expired or invalid — attach a fresh one to the same row below */ }
-        }
+        const { retirePixCharge, isPixProvider, pixMetadataAfterDiscard, cardChargeBaseAmount, settleExistingCardIntent, cardIntentInFlightMessage } = await import('../../lib/pixGateway.js');
 
         // C9: reuse the single pending row (a pre-created installment 2..N whose PI was never
         // issued, a row whose PI expired, or one started under PIX) instead of minting a
         // duplicate charge. Its recorded amount wins; only a brand-new row prices the coupon.
-        const chargeAmount = existingPending ? existingPending.amount : payChargeAmount;
+        // D1 (pagamentos-3): o desconto PIX do à vista nunca vale no cartão — cobra a base marcada na
+        // criação (metadata.pixDiscount) ou, sem marca, o próprio amount. Calculado ANTES de qualquer
+        // regravação do metadata (o pixMetadataAfterDiscard abaixo preserva a marca).
+        const newRowAmount = payChargeAmount;
+        const chargeAmount = existingPending
+            ? await cardChargeBaseAmount(existingPending)
+            : (newRowPixDiscount?.cardAmount ?? newRowAmount);
+
+        // PAY-M1: PI já emitido para a linha reaproveitada — reaproveita SÓ se ainda pagável e com o valor do
+        // cartão desta cobrança; pagável com OUTRO valor → cancelado e um novo é emitido; aprovado/processando →
+        // nenhum PI novo (409); não deu para conferir → 503 (nunca um 2º PI às cegas).
+        if (existingPending?.providerRef?.startsWith('pi_')) {
+            const previousPi = await settleExistingCardIntent(existingPending.providerRef, chargeAmount);
+            if (previousPi.state === 'reusable' && existingPending.provider === 'STRIPE') {
+                res.json({
+                    provider: 'STRIPE',
+                    clientSecret: previousPi.clientSecret,
+                    paymentId: existingPending.id,
+                    amount: chargeAmount,
+                    maxInstallments,
+                    message: 'PaymentIntent existente reutilizado.',
+                });
+                return;
+            }
+            if (previousPi.state === 'in_flight') {
+                res.status(409).json({ error: cardIntentInFlightMessage(previousPi.status), code: 'CARD_PAYMENT_IN_FLIGHT' });
+                return;
+            }
+            if (previousPi.state === 'unknown') {
+                res.status(503).json({ error: 'Não foi possível conferir a tentativa anterior no cartão agora. Tente novamente em instantes.' });
+                return;
+            }
+        }
+
+        // Troca PIX → cartão numa linha reaproveitada: aposenta a cobrança PIX viva antes de
+        // sobrescrever o providerRef (se já foi paga, não cobra o cartão).
+        const pixDiscardMeta = existingPending ? pixMetadataAfterDiscard(existingPending) : undefined;
+        if (existingPending && isPixProvider(existingPending.provider) && existingPending.providerRef) {
+            const retired = await retirePixCharge(existingPending.id);
+            if (retired === 'paid') {
+                res.json({
+                    provider: existingPending.provider,
+                    paymentId: existingPending.id,
+                    amount: existingPending.amount,
+                    alreadyPaid: true,
+                    message: 'Pagamento já confirmado via PIX.',
+                });
+                return;
+            }
+            if (retired === 'live') {
+                // pagamentos-4: QR anterior ainda pagável e não cancelável agora → não cobra o cartão por cima.
+                res.status(409).json({ error: 'Há um QR PIX desta cobrança que ainda pode ser pago e não pôde ser cancelado agora. Pague pelo PIX ou tente o cartão novamente em instantes.' });
+                return;
+            }
+            // Aposentado: a linha deixa de ser PIX já (se o PaymentIntent falhar abaixo, o QR cancelado
+            // não pode ser reaproveitado como vivo).
+            await prisma.payment.updateMany({
+                where: { id: existingPending.id, status: 'PENDING' },
+                data: {
+                    provider: 'STRIPE', providerRef: null, pixString: null, pixExpiresAt: null,
+                    ...(pixDiscardMeta !== undefined ? { metadata: pixDiscardMeta } : {}),
+                },
+            });
+        }
+
         const payment = existingPending ?? await prisma.$transaction(async (tx) => {
             const p = await tx.payment.create({
                 data: {
                     userId,
                     contractId,
                     provider: 'STRIPE',
-                    amount: chargeAmount,
+                    amount: newRowAmount,
                     status: 'PENDING',
                     dueDate: new Date(),
                     installments,
                     paymentType: data.paymentType || 'CREDIT',
                     ...payCouponFields,
+                    ...newRowMetadata,
                 },
             });
             if (payCoupon) {
@@ -290,7 +352,12 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
         // the new PI ref, and drop any stale PIX QR carried over from an earlier method switch.
         await prisma.payment.update({
             where: { id: payment.id },
-            data: { providerRef: piResult.paymentIntentId, provider: 'STRIPE', pixString: null },
+            data: {
+                providerRef: piResult.paymentIntentId, provider: 'STRIPE', pixString: null, pixExpiresAt: null,
+                // Valor do PI (paridade do webhook/verify: chargedAmount ?? amount).
+                chargedAmount: chargeAmount,
+                ...(pixDiscardMeta !== undefined ? { metadata: pixDiscardMeta } : {}),
+            },
         });
 
         res.json({
@@ -535,10 +602,15 @@ router.post('/:id/client-renew', authenticate, async (req: Request, res: Respons
 
         const original = await prisma.contract.findFirst({ where: { id, userId } });
         if (!original) { res.status(404).json({ error: 'Contrato não encontrado.' }); return; }
-        if (!['ACTIVE', 'EXPIRED'].includes(original.status)) { 
-            res.status(400).json({ error: 'Só é possível renovar contratos ativos ou expirados.' }); 
-            return; 
+        // D6: um plano CONCLUÍDO (todas as gravações feitas antes do fim da vigência) continua
+        // renovável e é tratado como ATIVO (janela de 7 dias e início no fim do atual). Avulso não
+        // se renova — é uma gravação única.
+        const isCompletedPlan = original.status === 'COMPLETED' && original.type !== 'AVULSO';
+        if (!['ACTIVE', 'EXPIRED'].includes(original.status) && !isCompletedPlan) {
+            res.status(400).json({ error: 'Só é possível renovar contratos ativos, concluídos ou expirados.' });
+            return;
         }
+        const treatAsActive = original.status === 'ACTIVE' || isCompletedPlan;
 
         // Regra do dono: a renovação só pode acontecer UMA ÚNICA VEZ por contrato. Bloqueia se já
         // existir uma renovação não-cancelada (pendente OU já concluída) — só uma renovação
@@ -557,7 +629,7 @@ router.post('/:id/client-renew', authenticate, async (req: Request, res: Respons
         }
 
         // Regra do dono: janela de renovação = só nos 7 dias antes de expirar (ou já expirado).
-        if (original.status === 'ACTIVE') {
+        if (treatAsActive) {
             const DAY_MS = 24 * 60 * 60 * 1000;
             const daysToEnd = Math.ceil((new Date(original.endDate).getTime() - Date.now()) / DAY_MS);
             if (daysToEnd > 7) {
@@ -592,7 +664,7 @@ router.post('/:id/client-renew', authenticate, async (req: Request, res: Respons
 
         // Start date: immediately if expired, or end of current contract if active
         let start = new Date();
-        if (original.status === 'ACTIVE' && new Date(original.endDate) > start) {
+        if (treatAsActive && new Date(original.endDate) > start) {
             start = new Date(original.endDate);
         }
         

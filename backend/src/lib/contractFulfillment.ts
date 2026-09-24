@@ -146,6 +146,10 @@ async function fulfillServiceFromPayment(payment: FulfillablePayment, data: Serv
                     await prisma.payment.updateMany({ where: { id: p.id, status: 'PENDING' }, data: { status: 'PAID', paidAt: new Date() } }).catch(() => {});
                     continue;
                 }
+                // D15: PIX das parcelas 2..N NÃO é pré-gerado (um QR de 1h emitido meses antes do
+                // vencimento expirava e virava "Cobrança falhou"). O QR sai sob demanda no "Pagar"
+                // (issuePixCharge via /stripe/create-payment). Boleto continua pré-gerado.
+                if (data.paymentMethod === 'PIX') continue;
                 try {
                     const result = await gatewayCreatePayment({
                         paymentMethod: data.paymentMethod as 'PIX' | 'BOLETO' | 'CARTAO',
@@ -350,7 +354,9 @@ export async function fulfillContractFromPayment(paymentId: string): Promise<voi
         where: { id: paymentId },
         data: {
             contractId: contract.id,
-            metadata: Prisma.JsonNull, // Clear metadata — contract is created
+            // Clear metadata — contract is created. A marca do desconto PIX (D1) fica: registra a base
+            // do cartão desta cobrança (sem contractData, o guard acima nunca reprocessa a linha).
+            metadata: meta.pixDiscount ? ({ pixDiscount: meta.pixDiscount } as Prisma.InputJsonValue) : Prisma.JsonNull,
         },
     });
 
@@ -390,7 +396,7 @@ export async function fulfillContractFromPayment(paymentId: string): Promise<voi
     if (remainingPayments.length > 0) {
         await prisma.payment.createMany({ data: remainingPayments });
 
-        // Enrich remaining payments with gateway data
+        // Enrich remaining payments with gateway data (boleto/cartão; PIX é sob demanda — D15)
         const createdRemaining = await prisma.payment.findMany({
             where: { contractId: contract.id, status: 'PENDING' },
             orderBy: { dueDate: 'asc' },
@@ -403,6 +409,8 @@ export async function fulfillContractFromPayment(paymentId: string): Promise<voi
                 await prisma.payment.updateMany({ where: { id: p.id, status: 'PENDING' }, data: { status: 'PAID', paidAt: new Date() } }).catch(() => {});
                 continue;
             }
+            // D15: PIX das parcelas 2..N é gerado sob demanda no "Pagar" (nunca pré-gerado).
+            if (data.paymentMethod === 'PIX') continue;
             try {
                 const result = await gatewayCreatePayment({
                     paymentMethod: data.paymentMethod as 'PIX' | 'BOLETO' | 'CARTAO',

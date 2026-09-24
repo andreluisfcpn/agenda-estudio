@@ -1,7 +1,7 @@
 import { getErrorMessage } from '../utils/errors';
 import HeroAmbient from '../components/client/HeroAmbient';
 import { useState, useEffect, useCallback } from 'react';
-import { stripeApi, contractsApi, SavedCard, ContractWithStats, PaymentSummary } from '../api/client';
+import { stripeApi, contractsApi, paymentsApi, SavedCard, ContractWithStats, PaymentSummary } from '../api/client';
 import StripeCardForm from '../components/StripeCardForm';
 import { useUI } from '../context/UIContext';
 import { useAuth } from '../context/AuthContext';
@@ -17,6 +17,7 @@ import ToggleSwitch from '../components/ui/ToggleSwitch';
 import StatCard from '../components/ui/StatCard';
 import StatusBadge from '../components/ui/StatusBadge';
 import { formatBRL, formatDate } from '../utils/format';
+import { paidChargedAmount } from '../utils/clientHealth';
 import { useCountdown } from '../hooks/useCountdown';
 import { PaymentsSkeleton } from '../components/ui/SkeletonLoader';
 import '../styles/my-payments.css';
@@ -33,7 +34,11 @@ type AggregatedPayment = PaymentSummary & {
     contractType?: string;
     contractDuration: number;
     paymentDeadline?: string | null;
+    /** Status do contrato — o prazo só vale enquanto AWAITING_PAYMENT. */
+    contractStatus?: ContractWithStats['status'];
     boletoAllowed?: boolean;
+    /** Forma de pagamento do contrato — o checkout abre nessa aba (um PIX abre no PIX). */
+    contractPaymentMethod?: ContractWithStats['paymentMethod'];
     installmentOrdinal?: number;
     installmentTotal?: number;
 };
@@ -85,8 +90,12 @@ function PendingPaymentCard({ payment: p, index: i, isOverdue, isFailed, onPay, 
         );
     }
 
-    const mins = Math.floor(remaining / 60);
+    // Prazo de pagamento da contratação: 10 min (avulso/serviço/personalizado) ou 3 dias (renovação)
+    // → hh:mm:ss acima de 1h (antes virava "4318:49").
+    const hours = Math.floor(remaining / 3600);
+    const mins = Math.floor((remaining % 3600) / 60);
     const secs = remaining % 60;
+    const clock = `${hours > 0 ? `${String(hours).padStart(2, '0')}:` : ''}${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
     const timerColor = remaining <= 60 ? 'var(--danger)' : remaining <= 180 ? 'var(--warning)' : 'var(--success)';
 
     return (
@@ -118,9 +127,9 @@ function PendingPaymentCard({ payment: p, index: i, isOverdue, isFailed, onPay, 
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
                     <StatusBadge status={isOverdue ? 'FAILED' : p.status} label={isOverdue ? 'Atrasada' : undefined} />
                     {hasTimer && remaining > 0 && (
-                        <div className="pending-card__timer" style={{ color: timerColor }}>
-                            <Clock size={12} />
-                            <span>{String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}</span>
+                        <div className="pending-card__timer" style={{ color: timerColor }} role="timer" aria-label={`Prazo para pagar: ${clock}`}>
+                            <Clock size={12} aria-hidden="true" />
+                            <span>{clock}</span>
                         </div>
                     )}
                 </div>
@@ -209,6 +218,12 @@ export default function MyPaymentsPage() {
                     contractType: targetContract.type,
                     contractDuration: targetContract.durationMonths || 1,
                     boletoAllowed: targetContract.boletoAllowed,
+                    // Contratação aguardando pagamento (ex.: "Pagar Agora" do serviço/avulso): o modal
+                    // mostra o prazo e fecha quando ele acaba. Só enquanto o contrato AINDA aguarda
+                    // pagamento — um prazo que ficou gravado num contrato já ativo não vale (regressoes-4).
+                    paymentDeadline: targetContract.status === 'AWAITING_PAYMENT' ? targetContract.paymentDeadline : null,
+                    contractStatus: targetContract.status,
+                    contractPaymentMethod: targetContract.paymentMethod,
                 });
                 navigate('.', { replace: true, state: {} });
             }
@@ -231,8 +246,11 @@ export default function MyPaymentsPage() {
                 contractName: c.name,
                 contractType: c.type,
                 contractDuration: c.durationMonths,
-                paymentDeadline: c.paymentDeadline,
+                // regressoes-4: prazo só de contratação AINDA aguardando pagamento.
+                paymentDeadline: c.status === 'AWAITING_PAYMENT' ? c.paymentDeadline : null,
+                contractStatus: c.status,
                 boletoAllowed: c.boletoAllowed,
+                contractPaymentMethod: c.paymentMethod,
                 installmentOrdinal: idx + 1,
                 installmentTotal: total,
             });
@@ -251,12 +269,15 @@ export default function MyPaymentsPage() {
     );
 
     const totalPending = pendingPayments.reduce((acc, p) => acc + p.amount, 0);
-    const totalPaid = paidPayments.reduce((acc, p) => acc + p.amount, 0);
+    // Pago = valor EFETIVAMENTE cobrado (no cartão, o do PaymentIntent: sem o desconto PIX do à vista e com
+    // os juros quando parcelado) — mesmo critério do fechamento financeiro. Pendente = o valor da cobrança.
+    const totalPaid = paidPayments.reduce((acc, p) => acc + paidChargedAmount(p), 0);
     const overdueCount = pendingPayments.filter(p => p.dueDate && new Date(p.dueDate) < now).length;
 
     // ─── Payment Plan (per active contract) ───────────────
+    // COMPLETED (D6: gravações acabaram) continua aqui: parcelas pendentes seguem sendo cobradas.
     const planContracts = contracts.filter(c =>
-        (c.status === 'ACTIVE' || c.status === 'PENDING_CANCELLATION' || c.status === 'PAUSED')
+        (c.status === 'ACTIVE' || c.status === 'COMPLETED' || c.status === 'PENDING_CANCELLATION' || c.status === 'PAUSED')
         && (c.payments?.length || 0) > 0
     );
 
@@ -279,21 +300,39 @@ export default function MyPaymentsPage() {
         loadData();
     };
 
-    const handleRemoveCard = async (card: SavedCard) => {
+    // D3: remover cartão é irreversível (danger). O backend desvincula o cartão no Stripe e apaga o
+    // registro; a cobrança automática usa o cartão padrão ou, sem ele, o salvo mais recente.
+    // Sem try/catch no onConfirm: com tone, o erro aparece dentro do diálogo.
+    const handleRemoveCard = (card: SavedCard) => {
+        const label = `${BRAND_LABELS[card.brand] || card.brand} •••• ${card.last4}`;
+        const others = cards.filter(c => c.id !== card.id).length;
+        const autoChargeImpact = !autoCharge
+            ? []
+            : others === 0
+                ? ['A cobrança automática fica sem cartão: as próximas parcelas terão de ser pagas por você (PIX ou cartão na hora).']
+                : card.isDefault
+                    ? ['A cobrança automática passa a usar outro cartão salvo (o mais recente) até você escolher um novo padrão.']
+                    : [];
         showConfirm({
-            title: 'Remover Cartão',
-            message: `Deseja remover o cartão ${BRAND_LABELS[card.brand] || card.brand} terminado em ${card.last4}?`,
+            tone: 'danger',
+            icon: Trash2,
+            title: 'Remover este cartão?',
+            message: `${label}${card.isDefault ? ' — cartão padrão' : ''}`,
+            consequences: [
+                'O cartão é apagado da sua carteira e não poderá mais ser usado nos pagamentos.',
+                ...autoChargeImpact,
+                'Pagamentos já feitos com ele não mudam. Para usá-lo de novo, será preciso cadastrá-lo outra vez.',
+            ],
+            confirmLabel: 'Remover cartão',
             onConfirm: async () => {
                 setRemovingId(card.id);
                 try {
                     await stripeApi.removePaymentMethod(card.id);
-                    showToast('Cartão removido.');
-                    loadData();
-                } catch (err: unknown) {
-                    showToast({ message: getErrorMessage(err) || 'Erro ao remover cartão.', type: 'error' });
                 } finally {
                     setRemovingId(null);
                 }
+                showToast('Cartão removido.');
+                loadData();
             },
         });
     };
@@ -478,7 +517,7 @@ export default function MyPaymentsPage() {
                                         <div className="history-item__date">Pago em {formatDate(p.dueDate)}</div>
                                     </div>
                                     <div className="history-item__right">
-                                        <span className="history-item__amount">{formatBRL(p.amount)}</span>
+                                        <span className="history-item__amount">{formatBRL(paidChargedAmount(p))}</span>
                                         <StatusBadge status="PAID" label={p.provider === 'STRIPE' ? 'Automático' : 'Pago'} />
                                     </div>
                                 </div>
@@ -505,6 +544,12 @@ export default function MyPaymentsPage() {
                         {planContracts.map((c, ci) => {
                             const isFull = c.paymentPlan === 'FULL';
                             const isServico = c.type === 'SERVICO';
+                            // D1: serviço mensal parcelado no cartão = FULL + CARTÃO (total cobrado de uma vez,
+                            // em até N× sem juros) — não é "quitado à vista".
+                            const cardInstallments = Math.max(0, ...(c.payments || []).map(p => p.installments ?? 0));
+                            const fullTag = isServico && c.paymentMethod === 'CARTAO'
+                                ? (cardInstallments > 1 ? `Parcelado no cartão (${cardInstallments}x)` : 'Total no cartão')
+                                : 'Quitado à vista';
                             const installments = [...(c.payments || [])].sort((a, b) =>
                                 (a.dueDate ? new Date(a.dueDate).getTime() : 0) - (b.dueDate ? new Date(b.dueDate).getTime() : 0)
                             );
@@ -517,7 +562,7 @@ export default function MyPaymentsPage() {
                                     <div className="payment-plan-card__head">
                                         <div className="payment-plan-card__name">{c.name || c.type}</div>
                                         <span className={`payment-plan-card__tag ${isFull ? 'payment-plan-card__tag--full' : isServico ? 'payment-plan-card__tag--servico' : ''}`}>
-                                            {isFull ? 'Quitado à vista' : isServico ? 'Serviço mensal' : 'Mensal'}
+                                            {isFull ? fullTag : isServico ? 'Serviço mensal' : 'Mensal'}
                                         </span>
                                     </div>
                                     {!isFull && (
@@ -620,7 +665,7 @@ export default function MyPaymentsPage() {
                                 <button
                                     onClick={() => handleRemoveCard(card)}
                                     disabled={removingId === card.id}
-                                    aria-label="Remover Cartão"
+                                    aria-label={`Remover cartão ${BRAND_LABELS[card.brand] || card.brand} final ${card.last4}`}
                                     className="wallet-card__action-btn wallet-card__action-btn--remove"
                                 >
                                     {removingId === card.id ? <div className="spinner" style={{ width: 14, height: 14 }} /> : <Trash2 size={16} />}
@@ -657,7 +702,29 @@ export default function MyPaymentsPage() {
                     description={describePayment(payingPayment)}
                     contractDuration={payingPayment.contractDuration}
                     allowedMethods={payingPayment.boletoAllowed ? ['CARTAO', 'PIX', 'BOLETO'] : ['CARTAO', 'PIX']}
+                    initialMethod={payingPayment.contractPaymentMethod}
                     allowBoleto={!!payingPayment.boletoAllowed}
+                    paymentDeadline={payingPayment.paymentDeadline}
+                    contractStatus={payingPayment.contractStatus}
+                    onDeadline={async () => {
+                        // Prazo da contratação acabou com o modal aberto: a varredura desfaz a contratação
+                        // (conciliando antes um PIX pago no limite). Confere uma vez antes de avisar.
+                        const target = payingPayment;
+                        let paid = false;
+                        try { paid = (await paymentsApi.getStatus(target.id)).status === 'PAID'; } catch { /* sem rede */ }
+                        setPayingPayment(null);
+                        if (paid) {
+                            showToast('Pagamento confirmado!');
+                        } else {
+                            showToast({
+                                type: 'error',
+                                message: target.contractType === 'AVULSO'
+                                    ? 'Tempo esgotado. O horário foi liberado.'
+                                    : `Tempo esgotado. A contratação de ${target.contractName} não foi concluída.`,
+                            });
+                        }
+                        loadData();
+                    }}
                     onSuccess={() => {
                         setPayingPayment(null);
                         showToast('Pagamento confirmado!');

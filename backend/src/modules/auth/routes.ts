@@ -6,7 +6,7 @@ import multer from 'multer';
 import sharp from 'sharp';
 import { prisma } from '../../lib/prisma.js';
 import { config } from '../../config/index.js';
-import { authenticate } from '../../middleware/auth.js';
+import { authenticate, isTokenRevoked, isUserDeletionInProgress } from '../../middleware/auth.js';
 import { OAuth2Client } from 'google-auth-library';
 import { otpService } from '../../lib/otp.js';
 import { Prisma } from '../../generated/prisma/client.js';
@@ -59,15 +59,32 @@ const loginVerifyCodeSchema = z.object({
 
 
 // ─── Helper: bloqueio de conta ──────────────────────────
-// Impede emissão de tokens para contas BLOCKED (bloquear no admin passa a ter efeito real).
-// Aplicado em todos os pontos que emitem sessão (login senha/OTP/Google + refresh); tokens já
-// emitidos morrem no máximo no próximo refresh (≤ validade do access token).
-function assertNotBlocked(res: Response, user: { clientStatus?: string | null } | null): boolean {
+// Impede emissão de tokens para contas BLOCKED (bloquear no admin passa a ter efeito real) e para
+// contas EXCLUÍDAS (D3: soft delete — deletedAt preenchido).
+// Aplicado em todos os pontos que emitem sessão (login senha/OTP/Google + refresh). Os tokens já
+// emitidos são revogados na hora pela exclusão/bloqueio (revokeUserSessions → authenticate 401 e
+// refresh 401 para refresh token anterior à revogação).
+function assertNotBlocked(res: Response, user: { clientStatus?: string | null; deletedAt?: Date | null } | null): boolean {
+    if (user && user.deletedAt) {
+        res.status(401).json({ error: 'Conta não encontrada.' });
+        return true;
+    }
     if (user && user.clientStatus === 'BLOCKED') {
         res.status(403).json({ error: 'Sua conta está bloqueada. Entre em contato com o estúdio.' });
         return true;
     }
     return false;
+}
+
+/**
+ * D3: exclusão do cliente EM ANDAMENTO (deletedAt só é gravado no fim) → o login não emite sessão.
+ * Um token emitido nesse intervalo deixaria criar reserva/cobrança depois do passo que as cancela
+ * (a revogação final da exclusão o derruba só depois do commit). O refresh já recusa pela revogação.
+ */
+async function refuseDuringDeletion(res: Response, userId: string): Promise<boolean> {
+    if (!(await isUserDeletionInProgress(userId))) return false;
+    res.status(409).json({ error: 'Não foi possível entrar agora: sua conta está sendo atualizada pelo estúdio. Tente de novo em instantes.' });
+    return true;
 }
 
 // ─── Helper: Generate Tokens ────────────────────────────
@@ -259,6 +276,7 @@ router.post('/login', async (req: Request, res: Response) => {
         }
 
         if (assertNotBlocked(res, user)) return;
+        if (await refuseDuringDeletion(res, user.id)) return;
 
         const tokens = generateTokens({
             userId: user.id,
@@ -348,6 +366,7 @@ router.post('/login/verify-code', async (req: Request, res: Response) => {
         }
 
         if (assertNotBlocked(res, user)) return;
+        if (await refuseDuringDeletion(res, user.id)) return;
 
         const tokens = generateTokens({ userId: user.id, email: user.email || '', role: user.role });
         setTokenCookies(res, tokens.accessToken, tokens.refreshToken);
@@ -462,6 +481,7 @@ router.post('/google', async (req: Request, res: Response) => {
         }
 
         if (assertNotBlocked(res, user)) return;
+        if (await refuseDuringDeletion(res, user.id)) return;
 
         const tokens = generateTokens({ userId: user.id, email: user.email || '', role: user.role });
         setTokenCookies(res, tokens.accessToken, tokens.refreshToken);
@@ -488,6 +508,7 @@ router.post('/refresh', async (req: Request, res: Response) => {
             userId: string;
             email: string;
             role: string;
+            iat?: number;
         };
 
         const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
@@ -497,6 +518,17 @@ router.post('/refresh', async (req: Request, res: Response) => {
         }
 
         if (assertNotBlocked(res, user)) return;
+
+        // D3: sessão revogada (exclusão EM ANDAMENTO — deletedAt só é gravado no fim — ou bloqueio
+        // recente): o refresh token emitido até a revogação não renova. Sem isto, um refresh no meio
+        // da exclusão emitia um access token com iat posterior à revogação, que sobrevivia a ela.
+        // Checado DEPOIS da leitura do usuário e logo antes de assinar: se a revogação ainda não
+        // existia aqui, o token sai (na prática) com iat ≤ revogação e o authenticate o recusa; a
+        // revogação final da exclusão (com folga — userDeletion) cobre o que sobrar dessa corrida.
+        if (await isTokenRevoked(user.id, decoded.iat)) {
+            res.status(401).json({ error: 'Sessão encerrada. Faça login novamente.' });
+            return;
+        }
 
         const tokens = generateTokens({
             userId: user.id,
@@ -523,18 +555,28 @@ router.post('/logout', (_req: Request, res: Response) => {
 // ─── GET /api/auth/me ───────────────────────────────────
 
 router.get('/me', authenticate, async (req: Request, res: Response) => {
-    const user = await prisma.user.findUnique({
+    const found = await prisma.user.findUnique({
         where: { id: req.user!.userId },
-        select: { id: true, email: true, name: true, phone: true, photoUrl: true, role: true, cpfCnpj: true, address: true, addressNumber: true, complement: true, neighborhood: true, zipCode: true, city: true, state: true, socialLinks: true, essentialNotificationsOnly: true },
+        select: { id: true, email: true, name: true, phone: true, photoUrl: true, role: true, cpfCnpj: true, address: true, addressNumber: true, complement: true, neighborhood: true, zipCode: true, city: true, state: true, socialLinks: true, essentialNotificationsOnly: true, deletedAt: true },
     });
 
-    if (!user) {
+    // D3: conta excluída (soft delete) se comporta como inexistente para a sessão residual.
+    if (!found || found.deletedAt) {
         res.status(404).json({ error: 'Usuário não encontrado.' });
         return;
     }
 
+    const { deletedAt: _deletedAt, ...user } = found;
     res.json({ user });
 });
+
+// D3: a exclusão revoga o access token na hora (authenticate → 401). Rede de segurança caso a
+// revogação falhe (Redis indisponível, fail-open): as rotas que GRAVAM dados pessoais recusam a conta
+// excluída para não repovoar o registro anonimizado (e prender de novo o CPF/e-mail liberados).
+async function isDeletedAccount(userId: string): Promise<boolean> {
+    const u = await prisma.user.findUnique({ where: { id: userId }, select: { deletedAt: true } });
+    return !u || !!u.deletedAt;
+}
 
 // ─── PATCH /api/auth/profile ────────────────────────────
 
@@ -566,6 +608,10 @@ const profileUpdateSchema = z.object({
 router.patch('/profile', authenticate, async (req: Request, res: Response) => {
     try {
         const data = profileUpdateSchema.parse(req.body);
+        if (await isDeletedAccount(req.user!.userId)) {
+            res.status(404).json({ error: 'Conta não encontrada.' });
+            return;
+        }
         const updateData: Prisma.UserUncheckedUpdateInput = {};
         if (data.name) updateData.name = data.name;
         if (data.phone !== undefined) updateData.phone = data.phone;
@@ -635,6 +681,10 @@ router.post('/profile/photo', authenticate, photoUploadMw, async (req: Request, 
         const file = req.file;
         if (!file) {
             res.status(400).json({ error: 'Nenhuma foto enviada.' });
+            return;
+        }
+        if (await isDeletedAccount(req.user!.userId)) {
+            res.status(404).json({ error: 'Conta não encontrada.' });
             return;
         }
 

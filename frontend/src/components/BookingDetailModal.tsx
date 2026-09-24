@@ -1,7 +1,7 @@
 import { getErrorMessage } from '../utils/errors';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { bookingsApi, AddOnConfig, Booking } from '../api/client';
+import { bookingsApi, AddOnConfig, Booking, type MakeupStatus } from '../api/client';
 import { useUI } from '../context/UIContext';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import BottomSheetModal from './BottomSheetModal';
@@ -10,12 +10,15 @@ import { PLATFORMS, PLATFORM_BY_KEY, METRIC_FIELDS, parsePlatforms, parsePlatfor
 import {
     CalendarDays, Clock, Tag, FileText, Sparkles, Plus, Check, ChevronLeft, RefreshCw,
     ImageIcon, Upload, Youtube, Instagram, Facebook, Music2, FolderOpen, Radio, ExternalLink,
-    CreditCard,
+    CreditCard, CalendarClock,
     type LucideIcon,
 } from 'lucide-react';
 import { formatBRL } from '../utils/format';
 import { useCountdown } from '../hooks/useCountdown';
 import { GRID_ROWS } from './calendar/calendarShared';
+import MakeupRescheduleModal from './admin/bookings/MakeupRescheduleModal';
+import { isBookingMakeupOpen } from '../utils/contractStatus';
+import { calendarYmd, ddmmOfYmd, isMissedStatus, makeupDeadlineDdmm } from '../utils/avulsoMakeup';
 
 // Horários de início da grade do estúdio — o reagendamento só faz sentido neles.
 const SLOT_TIMES = GRID_ROWS.filter(r => r.type === 'SLOT').map(r => r.time);
@@ -43,6 +46,10 @@ export interface BookingDetailData {
     chatMessages?: number | null;
     audienceOrigin?: string | null;
     holdExpiresAt?: string | null;
+    // Remarcação do avulso (D4/D5) — a hidratação por GET /bookings/:id sempre traz estes campos.
+    makeupStatus?: MakeupStatus | null;
+    makeupDeadline?: string | null;
+    missedDate?: string | null;
     contract?: { id: string; name: string; type: string; tier?: string; discountPct?: number; addOns?: string[] } | null;
 }
 
@@ -70,20 +77,24 @@ const CONTRACT_TYPE_LABEL: Record<string, string> = {
     FIXO: 'Plano Fixo', FLEX: 'Plano Flex', AVULSO: 'Avulso', SERVICO: 'Serviço', CUSTOM: 'Personalizado',
 };
 
-function statusLabel(s: string) {
+function statusLabel(s: string, makeupStatus?: string | null) {
     switch (s) {
         case 'COMPLETED': return 'Concluída';
         case 'CONFIRMED': return 'Confirmada';
         case 'RESERVED': return 'Reservada';
-        case 'FALTA': return 'Falta';
+        case 'HELD': return 'Em espera';
+        // Falta que o estúdio justificou (janela aberta ou já encerrada — D4).
+        case 'FALTA': return makeupStatus === 'OPEN' || makeupStatus === 'EXPIRED' ? 'Falta justificada' : 'Falta';
         case 'NAO_REALIZADO': return 'Não realizada';
-        default: return 'Cancelada';
+        case 'CANCELLED': return 'Cancelada';
+        default: return '—';
     }
 }
-function statusColor(s: string) {
+function statusColor(s: string, makeupOpen = false) {
     if (s === 'COMPLETED') return 'var(--success)';
     if (s === 'CONFIRMED') return 'var(--client-accent-teal)';
     if (s === 'RESERVED') return 'var(--warning)';
+    if (makeupOpen) return 'var(--warning)';
     return 'var(--text-muted)';
 }
 
@@ -127,6 +138,9 @@ export default function BookingDetailModal({
     const [rescheduleError, setRescheduleError] = useState('');
     const [rescheduling, setRescheduling] = useState(false);
 
+    // Remarcação sem novo pagamento (falta justificada / não realizada no avulso — D4/D5)
+    const [showMakeup, setShowMakeup] = useState(false);
+
     // Services sheet + payment
     const [showServicesSheet, setShowServicesSheet] = useState(false);
     const [servicesStep, setServicesStep] = useState<1 | 2>(1);
@@ -152,6 +166,11 @@ export default function BookingDetailModal({
     const contract = full?.contract || booking.contract || null;
     const discountPct = contract?.discountPct ?? contractDiscountPct ?? 0;
     const ctrAddOns = contract?.addOns ?? contractAddOns ?? [];
+
+    // Janela de remarcação do avulso: aberta e dentro do prazo (o backend confere dono, faixa e antecedência).
+    const makeupOpen = isMissedStatus(src.status) && isBookingMakeupOpen(src);
+    const makeupDdmm = src.makeupDeadline ? makeupDeadlineDdmm(src.makeupDeadline) : null;
+    const missedDdmm = src.missedDate ? ddmmOfYmd(calendarYmd(src.missedDate)) : null;
 
     const canReschedule = useCallback((): boolean => {
         if (src.status !== 'RESERVED' && src.status !== 'CONFIRMED') return false;
@@ -293,7 +312,7 @@ export default function BookingDetailModal({
 
     return (
         <>
-            <BottomSheetModal isOpen={isOpen} onClose={handleClose} title="Detalhes da Gravação" maxWidth="560px" preventClose={saving || rescheduling || uploadingCover}>
+            <BottomSheetModal isOpen={isOpen} onClose={handleClose} title="Detalhes da Gravação" maxWidth="560px" preventClose={saving || rescheduling || uploadingCover || (showMakeup && makeupOpen)}>
                 <div className="bdm">
                     {/* Hold banner */}
                     {src.holdExpiresAt && new Date(src.holdExpiresAt).getTime() > Date.now() && (
@@ -309,10 +328,42 @@ export default function BookingDetailModal({
                                 <div className="bdm-contract__type">{CONTRACT_TYPE_LABEL[contract?.type || 'AVULSO'] || contract?.type}</div>
                             </div>
                         </div>
-                        <span className="bdm-status" style={{ color: statusColor(src.status), background: `${statusColor(src.status)}1f` }}>
-                            {statusLabel(src.status)}
+                        <span className="bdm-status" style={{ color: statusColor(src.status, makeupOpen), background: `color-mix(in srgb, ${statusColor(src.status, makeupOpen)} 12%, transparent)` }}>
+                            {statusLabel(src.status, src.makeupStatus)}
                         </span>
                     </div>
+
+                    {/* Remarcação do avulso (D4/D5): prazo aberto, encerrado ou já usado. */}
+                    {makeupOpen && makeupDdmm && (
+                        <div className="info-box info-box--warning mkp-client-banner" style={{ marginBottom: 0 }}>
+                            <span role="status">
+                                {src.status === 'FALTA'
+                                    ? <>Falta justificada: você pode remarcar esta gravação <strong>sem pagar de novo</strong> até <strong>{makeupDdmm} às 23h59</strong>. Se não remarcar, o valor pago é perdido.</>
+                                    : <>O estúdio não pôde realizar sua gravação. Remarque <strong>sem custo</strong> até <strong>{makeupDdmm} às 23h59</strong>.</>}
+                            </span>
+                            {/* Atalho no topo (o rodapé também tem "Remarcar"): o prazo é o assunto principal aqui. */}
+                            <button key="makeup-cta" type="button" className="btn btn-primary btn-sm" onClick={() => setShowMakeup(true)}>
+                                <CalendarClock size={15} aria-hidden="true" /> Escolher nova data
+                            </button>
+                        </div>
+                    )}
+                    {!makeupOpen && isMissedStatus(src.status) && (src.makeupStatus === 'OPEN' || src.makeupStatus === 'EXPIRED') && (
+                        <div className={`info-box ${src.status === 'FALTA' ? 'info-box--error' : 'info-box--warning'}`} role="status" style={{ marginBottom: 0 }}>
+                            {src.status === 'FALTA'
+                                ? `O prazo para remarcar terminou${makeupDdmm ? ` em ${makeupDdmm}` : ''}. O valor pago desta gravação foi perdido.`
+                                : `O prazo para remarcar terminou${makeupDdmm ? ` em ${makeupDdmm}` : ''}, mas você não perde o valor: o estúdio vai entrar em contato para combinar a nova data.`}
+                        </div>
+                    )}
+                    {src.status === 'FALTA' && src.makeupStatus === 'USED' && (
+                        <div className="info-box info-box--error" role="status" style={{ marginBottom: 0 }}>
+                            Esta gravação já tinha sido remarcada uma vez (a remarcação é única), então esta falta não dá direito a outra.
+                        </div>
+                    )}
+                    {!isMissedStatus(src.status) && src.makeupStatus === 'USED' && missedDdmm && (
+                        <div className="info-box info-box--success" role="status" style={{ marginBottom: 0 }}>
+                            Gravação remarcada sem novo pagamento — a data original era {missedDdmm}.
+                        </div>
+                    )}
 
                     {/* Date / time / tier */}
                     <div className="bdm-meta">
@@ -479,6 +530,9 @@ export default function BookingDetailModal({
                             </>
                         ) : (
                             <>
+                                {makeupOpen && (
+                                    <button key="makeup" type="button" className="btn btn-secondary" onClick={() => setShowMakeup(true)}><CalendarClock size={15} /> Remarcar</button>
+                                )}
                                 {canReschedule() && (
                                     <button className="btn btn-secondary" onClick={() => setShowReschedule(v => !v)}><RefreshCw size={15} /> Reagendar</button>
                                 )}
@@ -488,6 +542,16 @@ export default function BookingDetailModal({
                     </div>
                 </div>
             </BottomSheetModal>
+
+            {/* Remarcação sem novo pagamento (sheet de etapa única, acima deste modal) */}
+            <MakeupRescheduleModal
+                isOpen={showMakeup && makeupOpen}
+                booking={src}
+                variant="client"
+                zIndex={1100}
+                onClose={() => setShowMakeup(false)}
+                onDone={(res) => { setShowMakeup(false); showToast(res.message); onSaved(); }}
+            />
 
             {/* Services bottom sheet */}
             <BottomSheetModal isOpen={showServicesSheet} onClose={() => { setShowServicesSheet(false); setServicesStep(1); setSelectedNewAddons([]); }}

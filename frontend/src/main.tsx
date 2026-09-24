@@ -21,6 +21,11 @@ import './styles/booking-fullscreen.css';
 import './styles/booking-detail-modal.css';
 import './styles/my-results.css';
 import './styles/notifications.css';
+import './styles/tooltip.css';
+import './styles/danger-dialog.css';
+import './styles/pix-qrcode.css';
+import './styles/contract-slot-picker.css';
+import './styles/custom-contract-flow.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>

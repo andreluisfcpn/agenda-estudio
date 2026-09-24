@@ -17,6 +17,9 @@ const DEFAULTS: Record<string, number> = {
     reschedule_max_days: 7,
     reschedule_min_hours: 24,
     booking_min_advance_hours: 12,
+    // D4/D5: prazo (dias após a gravação perdida, fim do dia em SP) para remarcar a falta
+    // justificada / "Não Realizado" do avulso. Chave criada pelo backend (businessConfigCatalog).
+    avulso_makeup_days: 7,
 };
 
 // Module-level cache so the request is only made once across all components
@@ -65,8 +68,15 @@ export function useBusinessConfig() {
         if (raw === undefined || raw === null) return defaultVal;
         return raw === true || raw === 'true';
     };
+    // Valores textuais (ex.: CSV 'time_slots' = '10:00,13:00') — o mapa numérico acima os zera.
+    // Absent key → defaultVal. Para a grade de CONTRATO prefira contractsApi.slotOptions(tier).
+    const getString = (key: string, defaultVal = ''): string => {
+        const raw = cachedRawConfig?.[key];
+        if (raw === undefined || raw === null || typeof raw === 'object') return defaultVal;
+        return String(raw);
+    };
 
-    return { config, get, getJson, getBool, loaded };
+    return { config, get, getJson, getBool, getString, loaded };
 }
 
 /** Call this after admin saves business config to invalidate the module-level cache */
