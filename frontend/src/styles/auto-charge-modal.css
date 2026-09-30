@@ -1,0 +1,210 @@
+/* ─── Modal "Cobrança automática" (E9) ─────────────────────────────────────────
+   Conteúdo do BottomSheetModal aberto pelo card do contrato (components/SubscribeModal.tsx).
+   A lista de cartões reaproveita as classes .checkout-saved-card* (checkout.css) — o mesmo visual
+   do checkout; aqui ficam só os blocos próprios do modal. Tokens de index.css; sem hex novo. */
+
+.autocharge-modal__intro {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin: 0 0 var(--space-4);
+}
+
+.autocharge-modal__intro strong {
+  color: var(--text-primary);
+}
+
+.autocharge-modal__hint {
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+  margin: 0 0 var(--space-4);
+}
+
+/* Lista de cartões (radiogroup): tira a margem de baixo da lista do checkout entre os dois blocos. */
+.autocharge-modal__cards .checkout-saved-cards {
+  margin-bottom: var(--space-1-5);
+}
+
+.autocharge-modal__cards .checkout-saved-card {
+  width: 100%;
+  text-align: left;
+  color: inherit;
+}
+
+.autocharge-modal__cards .checkout-saved-card:focus-visible,
+.autocharge-modal__link:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+
+.autocharge-modal__tag {
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 6px;
+  color: var(--success);
+  background: var(--success-bg);
+  white-space: nowrap;
+}
+
+/* Alerta inline (erro/aviso) — sempre com role="alert" no TSX. */
+.autocharge-modal__alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.45;
+  margin: 0 0 var(--space-4);
+}
+
+.autocharge-modal__alert svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.autocharge-modal__alert--danger {
+  background: var(--danger-bg);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: var(--danger);
+}
+
+.autocharge-modal__alert--warning {
+  background: var(--warning-bg);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  color: var(--warning);
+}
+
+/* Estado "ativa": cartão em uso. */
+.autocharge-modal__status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3-5) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--success-bg);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  margin-bottom: var(--space-4);
+}
+
+.autocharge-modal__status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.16);
+  color: var(--success);
+  flex-shrink: 0;
+}
+
+.autocharge-modal__status-title {
+  font-size: 0.9375rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.autocharge-modal__status-card {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+/* Estados centrais: carregando, concluindo, sucesso, desligada. */
+.autocharge-modal__center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-3);
+  padding: var(--space-4) 0 var(--space-2);
+}
+
+.autocharge-modal__center-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.autocharge-modal__center-icon--muted {
+  background: var(--neutral-bg);
+  color: var(--text-muted);
+}
+
+.autocharge-modal__center-title {
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1.4;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.autocharge-modal__center-text {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+/* Rodapé: botões lado a lado; empilhados (primário em cima) no celular. */
+.autocharge-modal__actions {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
+.autocharge-modal__actions .btn {
+  flex: 1;
+  min-height: 44px;
+}
+
+.autocharge-modal__actions--stacked {
+  flex-direction: column;
+}
+
+@media (max-width: 479px) {
+  .autocharge-modal__actions {
+    flex-direction: column-reverse;
+  }
+
+  .autocharge-modal__actions--stacked {
+    flex-direction: column;
+  }
+}
+
+/* Ação secundária em texto (ex.: "Desligar cobrança automática"). */
+.autocharge-modal__link {
+  background: none;
+  border: none;
+  padding: var(--space-2) var(--space-1);
+  min-height: 44px;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.autocharge-modal__link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (hover: hover) {
+  .autocharge-modal__link:hover:not(:disabled) {
+    color: var(--danger);
+  }
+}

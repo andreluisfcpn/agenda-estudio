@@ -3,6 +3,7 @@ import { usersApi, UserSummary } from '../../../api/client';
 import { useUI } from '../../../context/UIContext';
 import BottomSheetModal from '../../BottomSheetModal';
 import DangerConfirmDialog from '../../ui/DangerConfirmDialog';
+import BrandLoader from '../../ui/BrandLoader';
 import WizardSteps from '../WizardSteps';
 import { useWizardStep, ignoreMultiClick, wizardStepBodyStyle, wizardStepContentStyle } from '../../../hooks/useWizardStep';
 import { Ban, Pencil, Save } from 'lucide-react';
@@ -187,9 +188,9 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
 
                 {editFetching ? (
                     // Mesma altura mínima das etapas: o sheet não "pula" quando os dados chegam.
-                    <div style={{ ...wizardStepBodyStyle, justifyContent: 'center', textAlign: 'center', color: 'var(--text-muted)' }} role="status">
-                        <div className="spinner" style={{ margin: '0 auto 12px' }} />
-                        <div style={{ fontSize: '0.8125rem' }}>Carregando dados...</div>
+                    // (role="status"/aria-live ficam no próprio BrandLoader.)
+                    <div style={{ ...wizardStepBodyStyle, justifyContent: 'center', alignItems: 'center' }}>
+                        <BrandLoader size="inline" label="Carregando dados do cliente…" />
                     </div>
                 ) : loadFailed ? (
                     <>

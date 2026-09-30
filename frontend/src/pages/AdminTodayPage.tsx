@@ -1,20 +1,22 @@
 import { getErrorMessage } from '../utils/errors';
-import React, { useState, useEffect, useCallback, useMemo, useId } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useId, useRef } from 'react';
 import {
     Clapperboard, CheckCircle2, ChevronRight, CalendarDays, Flag, XCircle,
     AlertCircle, Ban, UserRound, Save, Radio, Timer, Eye, MessageCircle, Globe,
-    Moon,
+    Moon, Undo2,
 } from 'lucide-react';
 import { bookingsApi, BookingWithUser } from '../api/client';
 import { useUI } from '../context/UIContext';
 import { useNavigate } from 'react-router-dom';
 import { HeroSkeleton } from '../components/ui/SkeletonLoader';
-import LoadingSpinner from '../components/ui/LoadingSpinner';
+import BrandLoader from '../components/ui/BrandLoader';
+import Tooltip from '../components/ui/Tooltip';
 import StatusBadge from '../components/ui/StatusBadge';
 import FinalizeRecordingModal from '../components/admin/bookings/FinalizeRecordingModal';
 import StatusReasonModal, { type ReasonKind, type ReasonConfirmOptions } from '../components/admin/bookings/StatusReasonModal';
 import { MakeupStatusPanel } from '../components/admin/bookings/MakeupRescheduleModal';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { buildReasonUpdate, reasonToastMessage } from '../utils/avulsoMakeup';
 import { bookingSummary, cancelBookingConsequences, cancelBookingRequest } from '../components/admin/bookings/bookingDanger';
 import { TIER_META, BOOKING_STATUS_META, getMeta } from '../constants/adminMeta';
@@ -32,8 +34,14 @@ export default function AdminTodayPage() {
     const navigate = useNavigate();
     const { showToast, showConfirm } = useUI();
     const { get: getRule } = useBusinessConfig();
+    // Tela estreita (celular): o cabeçalho do horário não cabe numa linha só — horário + status em
+    // cima, cliente embaixo; as ações rápidas (ícones) ficam só no painel aberto, com rótulo.
+    const compact = useIsMobile(640);
     const [bookings, setBookings] = useState<BookingWithUser[]>([]);
     const [loading, setLoading] = useState(true);
+    // Recarga DEPOIS da 1ª carga (após uma ação): a agenda continua na tela, com "Atualizando…" no topo.
+    const [refreshing, setRefreshing] = useState(false);
+    const loadedOnceRef = useRef(false);
     const [loadError, setLoadError] = useState(false);
     const [expandedSlot, setExpandedSlot] = useState<string | null>(null);
     const [finalizeBooking, setFinalizeBooking] = useState<BookingWithUser | null>(null);
@@ -52,13 +60,16 @@ export default function AdminTodayPage() {
     const isSunday = new Date().getDay() === 0;
 
     const loadData = useCallback(async () => {
-        setLoading(true);
+        // Só a 1ª carga troca a tela pelo loading; as seguintes não desmontam a agenda (o painel
+        // aberto e o que o operador digitou continuam lá).
+        if (loadedOnceRef.current) setRefreshing(true); else setLoading(true);
         setLoadError(false);
         try {
             const res = await bookingsApi.getAll(today);
             setBookings(res.bookings.filter(b => b.status !== 'CANCELLED'));
+            loadedOnceRef.current = true;
         } catch (err) { console.error(err); setLoadError(true); }
-        finally { setLoading(false); }
+        finally { setLoading(false); setRefreshing(false); }
     }, [today]);
 
     useEffect(() => { loadData(); }, [loadData]);
@@ -81,6 +92,39 @@ export default function AdminTodayPage() {
             showToast('🔴 Gravação iniciada!');
             await loadData();
         } catch (err: unknown) { showToast({ message: getErrorMessage(err) || 'Erro ao iniciar a gravação.', type: 'error' }); }
+    };
+
+    // "Iniciar gravação" clicado por engano: desfaz o início (o cliente deixa de ver "AO VIVO" e a
+    // sessão volta a pedir "Iniciar gravação" antes de finalizar). Reversível → confirmação em tom
+    // warning. Sem try/catch no onConfirm: o erro da API (ex.: 409 já finalizada) aparece no diálogo.
+    const handleUndoStartRecording = (booking: BookingWithUser) => {
+        showConfirm({
+            tone: 'warning',
+            icon: Undo2,
+            title: 'Desfazer o início da gravação?',
+            message: bookingSummary(booking),
+            consequences: [
+                'O registro de quem iniciou e do horário de início é apagado.',
+                'O cliente deixa de ver o selo "AO VIVO" nesta gravação.',
+                'Para finalizar, será preciso clicar em "Iniciar gravação" de novo.',
+                'O agendamento continua confirmado — nada é cancelado nem cobrado.',
+            ],
+            confirmLabel: 'Desfazer início',
+            loadingLabel: 'Desfazendo…',
+            onConfirm: async () => {
+                // Recusado (ex.: outra aba já finalizou): a lista daqui está velha — recarrega por trás do diálogo.
+                const res = await bookingsApi.undoStartRecording(booking.id).catch((err: unknown) => { void loadData(); throw err; });
+                // A rota devolve a reserva SEM `user`: mescla só os campos do início no item da lista.
+                const u = res.booking;
+                setBookings(prev => prev.map(b => b.id === booking.id ? {
+                    ...b,
+                    status: u?.status ?? b.status,
+                    recordingStartedAt: u?.recordingStartedAt ?? null,
+                    recordingStartedByName: u?.recordingStartedByName ?? null,
+                } : b));
+                showToast(res.message || 'Início da gravação desfeito.');
+            },
+        });
     };
 
     // Falta / Não Realizado passam por um modal que exige o MOTIVO antes de aplicar o status.
@@ -170,7 +214,7 @@ export default function AdminTodayPage() {
         return { recordings, completed, nowSession, next };
     }, [bookings, nowTime]);
 
-    if (loading) return <div><HeroSkeleton /><LoadingSpinner /></div>;
+    if (loading) return <div><HeroSkeleton /><BrandLoader size="section" label="Carregando a agenda de hoje…" /></div>;
 
     // U4: a failed load must not render as an empty day (0 gravações) — show a clear retry.
     if (loadError && bookings.length === 0) {
@@ -190,6 +234,11 @@ export default function AdminTodayPage() {
                 <div className="today-live-badge">
                     <span className="today-live-dot" /> Ao vivo · Visão do dia
                 </div>
+                {refreshing && (
+                    <div style={{ position: 'absolute', top: 14, right: 16 }}>
+                        <BrandLoader size="inline" label="Atualizando…" labelHidden={compact} />
+                    </div>
+                )}
                 <div className="today-clock" aria-label={`Agora são ${hh}:${mm}:${ss}`}>
                     <span className="today-clock-time">{hh}<span className="today-clock-colon">:</span>{mm}</span>
                     <span className="today-clock-secs">{ss}</span>
@@ -303,6 +352,7 @@ export default function AdminTodayPage() {
                                         role={booking ? 'button' : undefined}
                                         tabIndex={booking ? 0 : undefined}
                                         aria-expanded={booking ? !!isExpanded : undefined}
+                                        style={compact && booking ? { flexWrap: 'wrap', rowGap: 10, padding: '14px' } : undefined}
                                         onClick={() => booking && openSlotDetails(booking)}
                                         onKeyDown={(e) => {
                                             if (booking && (e.key === 'Enter' || e.key === ' ')) {
@@ -312,12 +362,13 @@ export default function AdminTodayPage() {
                                         }}
                                     >
                                         {/* Time badge */}
-                                        <div className={`today-time-badge${isNow ? ' today-time-badge--now' : ''}`}>
+                                        <div className={`today-time-badge${isNow ? ' today-time-badge--now' : ''}`}
+                                            style={compact && booking ? { minWidth: 0 } : undefined}>
                                             {item.label}
                                         </div>
 
                                         {/* Content */}
-                                        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                                        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, ...(compact && booking ? { order: 3, flex: '1 1 100%' } : null) }}>
                                             {booking && tierInfo ? (
                                                 <>
                                                     {/* Avatar — gradient dinâmico do tier (inline permitido) */}
@@ -329,16 +380,16 @@ export default function AdminTodayPage() {
                                                     </div>
 
                                                     <div style={{ minWidth: 0 }}>
-                                                        <div style={{
-                                                            fontWeight: 600, fontSize: '0.875rem',
-                                                            color: 'var(--accent-text)',
-                                                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                                            cursor: 'pointer',
-                                                        }}
-                                                            title={`Abrir perfil de ${booking.user.name}`}
-                                                            onClick={(e) => { e.stopPropagation(); navigate(`/admin/clients/${booking.user.id}`); }}>
-                                                            {booking.user.name}
-                                                        </div>
+                                                        {/* Botão de verdade (teclado) dentro da linha clicável: o Enter/Espaço não sobe
+                                                            para a linha (que abriria os detalhes e cancelaria o clique do botão). */}
+                                                        <Tooltip content={`Abrir perfil de ${booking.user.name}`}>
+                                                            <button type="button" className="dash-name-btn dash-name-btn--ellipsis"
+                                                                style={{ display: 'block', color: 'var(--accent-text)', lineHeight: 'inherit' }}
+                                                                onKeyDown={(e) => e.stopPropagation()}
+                                                                onClick={(e) => { e.stopPropagation(); navigate(`/admin/clients/${booking.user.id}`); }}>
+                                                                {booking.user.name}
+                                                            </button>
+                                                        </Tooltip>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
                                                             <span style={{
                                                                 fontSize: '0.625rem', color: tierInfo.color, fontWeight: 700,
@@ -359,12 +410,14 @@ export default function AdminTodayPage() {
                                         </div>
 
                                         {/* Right side: Status + Quick Actions */}
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, ...(compact && booking ? { marginLeft: 'auto' } : null) }}>
                                             {booking && (
-                                                <StatusBadge meta={getMeta(BOOKING_STATUS_META, booking.status)} size="md" />
+                                                <StatusBadge meta={getMeta(BOOKING_STATUS_META, booking.status)} size={compact ? 'sm' : 'md'} />
                                             )}
 
-                                            {booking && !isExpanded && (booking.status === 'CONFIRMED' || booking.status === 'RESERVED') && !isPast && (
+                                            {/* Sessão já INICIADA mantém Desfazer/Finalizar depois do fim do horário (é quando se finaliza). */}
+                                            {booking && !isExpanded && !compact && (booking.status === 'CONFIRMED' || booking.status === 'RESERVED')
+                                                && (!isPast || (booking.status === 'CONFIRMED' && !!booking.recordingStartedAt)) && (
                                                 <div style={{ display: 'flex', gap: '3px' }}>
                                                     {booking.status === 'RESERVED' && (
                                                         <button className="today-action-btn today-action-btn--info"
@@ -375,27 +428,45 @@ export default function AdminTodayPage() {
                                                         </button>
                                                     )}
                                                     {booking.status === 'CONFIRMED' && !booking.recordingStartedAt && (
-                                                        <button className="today-action-btn today-action-btn--danger"
-                                                            aria-label="Iniciar gravação"
-                                                            style={{ padding: '4px 10px', fontSize: '0.75rem' }}
-                                                            onClick={(e) => { e.stopPropagation(); handleStartRecording(booking.id); }}>
-                                                            <Radio size={15} aria-hidden="true" />
-                                                        </button>
+                                                        <Tooltip content="Iniciar gravação" describe={false}>
+                                                            <button type="button" className="today-action-btn today-action-btn--danger"
+                                                                aria-label="Iniciar gravação"
+                                                                style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                                                                onClick={(e) => { e.stopPropagation(); handleStartRecording(booking.id); }}>
+                                                                <Radio size={15} aria-hidden="true" />
+                                                            </button>
+                                                        </Tooltip>
                                                     )}
                                                     {booking.status === 'CONFIRMED' && booking.recordingStartedAt && (
-                                                        <button className="today-action-btn today-action-btn--success"
-                                                            aria-label="Finalizar gravação"
-                                                            style={{ padding: '4px 10px', fontSize: '0.75rem' }}
-                                                            onClick={(e) => { e.stopPropagation(); setFinalizeBooking(booking); }}>
-                                                            <Flag size={15} aria-hidden="true" />
-                                                        </button>
+                                                        <>
+                                                            <Tooltip content="Desfazer início da gravação" describe={false}>
+                                                                <button type="button" className="today-action-btn today-action-btn--neutral"
+                                                                    aria-label="Desfazer início da gravação"
+                                                                    style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                                                                    onClick={(e) => { e.stopPropagation(); handleUndoStartRecording(booking); }}>
+                                                                    <Undo2 size={15} aria-hidden="true" />
+                                                                </button>
+                                                            </Tooltip>
+                                                            <Tooltip content="Finalizar gravação" describe={false}>
+                                                                <button type="button" className="today-action-btn today-action-btn--success"
+                                                                    aria-label="Finalizar gravação"
+                                                                    style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                                                                    onClick={(e) => { e.stopPropagation(); setFinalizeBooking(booking); }}>
+                                                                    <Flag size={15} aria-hidden="true" />
+                                                                </button>
+                                                            </Tooltip>
+                                                        </>
                                                     )}
-                                                    <button className="today-action-btn today-action-btn--danger"
-                                                        aria-label="Registrar falta"
-                                                        style={{ padding: '4px 10px', fontSize: '0.75rem' }}
-                                                        onClick={(e) => { e.stopPropagation(); setReasonModal({ booking, kind: 'FALTA' }); }}>
-                                                        <XCircle size={15} aria-hidden="true" />
-                                                    </button>
+                                                    {!isPast && (
+                                                        <Tooltip content="Registrar falta" describe={false}>
+                                                            <button type="button" className="today-action-btn today-action-btn--danger"
+                                                                aria-label="Registrar falta"
+                                                                style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                                                                onClick={(e) => { e.stopPropagation(); setReasonModal({ booking, kind: 'FALTA' }); }}>
+                                                                <XCircle size={15} aria-hidden="true" />
+                                                            </button>
+                                                        </Tooltip>
+                                                    )}
                                                 </div>
                                             )}
 
@@ -449,8 +520,25 @@ export default function AdminTodayPage() {
 
                                             {/* Em gravação — quem iniciou e quando. */}
                                             {booking.status === 'CONFIRMED' && booking.recordingStartedAt && (
-                                                <div style={{ margin: '10px 0 0', padding: '8px 12px', borderRadius: 10, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                    <Radio size={13} aria-hidden="true" /> Em gravação — iniciada por {booking.recordingStartedByName || 'operador'} às {new Date(booking.recordingStartedAt).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })}
+                                                <div style={{ margin: '10px 0 14px', padding: '8px 12px', borderRadius: 10, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px 10px', flexWrap: 'wrap' }}>
+                                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flex: '1 1 220px', minWidth: 0 }}>
+                                                        <Radio size={13} aria-hidden="true" style={{ flexShrink: 0 }} /> Em gravação — iniciada por {booking.recordingStartedByName || 'operador'} às {new Date(booking.recordingStartedAt).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })}
+                                                    </span>
+                                                    {/* Fica aqui (e não só na barra de ações) para continuar ao alcance depois que o horário passou. */}
+                                                    <Tooltip content="Clicou em “Iniciar gravação” por engano? Desfaz o início: o cliente deixa de ver “AO VIVO”.">
+                                                        <button type="button" className="today-action-btn today-action-btn--neutral"
+                                                            onClick={() => handleUndoStartRecording(booking)}>
+                                                            <Undo2 size={14} aria-hidden="true" /> Desfazer início
+                                                        </button>
+                                                    </Tooltip>
+                                                    {/* Depois do fim do horário a barra de ações some: o Finalizar continua aqui
+                                                        (antes disso ele já está na barra — sem duplicar). */}
+                                                    {isPast && (
+                                                        <button type="button" className="today-action-btn today-action-btn--success"
+                                                            onClick={() => setFinalizeBooking(booking)}>
+                                                            <Flag size={14} aria-hidden="true" /> Finalizar gravação
+                                                        </button>
+                                                    )}
                                                 </div>
                                             )}
 
@@ -555,6 +643,7 @@ export default function AdminTodayPage() {
                 booking={finalizeBooking}
                 onClose={() => setFinalizeBooking(null)}
                 onSaved={() => { setFinalizeBooking(null); loadData(); }}
+                onStale={loadData}
             />
 
             <StatusReasonModal

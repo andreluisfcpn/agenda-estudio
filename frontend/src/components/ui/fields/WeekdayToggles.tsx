@@ -1,4 +1,5 @@
 import React from 'react';
+import Tooltip from '../Tooltip';
 
 interface WeekdayTogglesProps {
     /** CSV with ISO weekday numbers (1=Mon..7=Sun). Example: "1,2,3,4,5,6". */
@@ -41,17 +42,17 @@ export default function WeekdayToggles({ value, onChange }: WeekdayTogglesProps)
             {DAYS.map(d => {
                 const active = set.has(d.iso);
                 return (
-                    <button
-                        key={d.iso}
-                        type="button"
-                        className={`sf-weekday ${active ? 'is-active' : ''}`}
-                        aria-pressed={active}
-                        aria-label={d.full}
-                        title={d.full}
-                        onClick={() => toggle(d.iso)}
-                    >
-                        {d.label}
-                    </button>
+                    <Tooltip key={d.iso} content={d.full} describe={false}>
+                        <button
+                            type="button"
+                            className={`sf-weekday ${active ? 'is-active' : ''}`}
+                            aria-pressed={active}
+                            aria-label={d.full}
+                            onClick={() => toggle(d.iso)}
+                        >
+                            {d.label}
+                        </button>
+                    </Tooltip>
                 );
             })}
         </div>

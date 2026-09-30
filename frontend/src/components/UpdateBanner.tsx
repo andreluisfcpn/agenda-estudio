@@ -1,5 +1,6 @@
 import { RefreshCw, X } from 'lucide-react';
 import { useServiceWorker } from '../hooks/useServiceWorker';
+import Tooltip from './ui/Tooltip';
 import '../styles/pwa.css';
 
 export default function UpdateBanner() {
@@ -22,9 +23,11 @@ export default function UpdateBanner() {
                 <button className="update-banner-btn" onClick={updateServiceWorker}>
                     ATUALIZAR
                 </button>
-                <button className="update-banner-dismiss" onClick={dismissUpdate} aria-label="Fechar">
-                    <X size={14} />
-                </button>
+                <Tooltip content="Dispensar" describe={false}>
+                    <button className="update-banner-dismiss" onClick={dismissUpdate} aria-label="Dispensar aviso de atualização">
+                        <X size={14} />
+                    </button>
+                </Tooltip>
             </div>
         </div>
     );

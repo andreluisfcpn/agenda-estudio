@@ -1,5 +1,6 @@
 import React, { cloneElement, isValidElement, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { isProgrammaticFocus } from '../../utils/focus';
 
 export type TooltipPlacement = 'top' | 'bottom' | 'left' | 'right';
 
@@ -39,6 +40,20 @@ const ARROW_MIN = 10; // a seta nunca encosta na quina da bolha
 const WARM_MS = 300; // janela de "aquecimento": passar de um gatilho a outro abre sem atraso
 
 let lastClosedAt = 0;
+
+// A última interação foi uma tecla de NAVEGAÇÃO? Só então o foco abre a dica. Foco programático — o
+// foco inicial de um sheet caindo no "Fechar", a devolução do foco ao fechar um modal — também casa
+// :focus-visible quando o modal foi aberto pelo teclado (Enter): a dica abriria sozinha, medida com o
+// sheet ainda animando (bolha no lugar errado), e o 1º Esc fecharia só a dica em vez do modal.
+// Esta flag sozinha NÃO basta: ela fica ligada até a próxima tecla/clique, então um modal aberto por
+// blur ou de forma assíncrona DEPOIS de um Tab/seta ainda abriria a dica. Por isso o focus trap marca
+// os focos dele com focusProgrammatically (utils/focus) e o handleFocus consulta isProgrammaticFocus().
+const NAV_KEYS = new Set(['Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown']);
+let lastInputWasNavKey = false;
+if (typeof window !== 'undefined') {
+    window.addEventListener('keydown', (e) => { lastInputWasNavKey = NAV_KEYS.has(e.key); }, true);
+    window.addEventListener('pointerdown', () => { lastInputWasNavKey = false; }, true);
+}
 
 const OPPOSITE: Record<TooltipPlacement, TooltipPlacement> = { top: 'bottom', bottom: 'top', left: 'right', right: 'left' };
 
@@ -89,8 +104,9 @@ function matchesFocusVisible(el: Element): boolean {
  *
  * - Renderiza a bolha num portal em document.body com position:fixed — escapa
  *   de qualquer overflow:hidden/auto (tabelas, sidebar, sheets).
- * - Abre no hover de MOUSE/CANETA (com atraso) e no foco por teclado
- *   (:focus-visible). NUNCA abre no toque.
+ * - Abre no hover de MOUSE/CANETA (com atraso) e no foco por NAVEGAÇÃO de teclado
+ *   (Tab/setas + :focus-visible). NUNCA abre no toque nem em foco programático
+ *   (foco inicial de um modal, foco devolvido ao fechar).
  * - Fecha em pointerleave, pointerdown, blur, Escape (sem fechar o modal por
  *   trás), scroll (qualquer contêiner) e resize.
  * - Inverte o lado se faltar espaço e limita às bordas da janela.
@@ -203,7 +219,8 @@ export default function Tooltip({
     const handleFocus = (e: React.FocusEvent<HTMLElement>) => {
         if (inactive) return;
         // e.target: o elemento que de fato recebeu foco (o evento borbulha de filhos).
-        if (matchesFocusVisible(e.target)) openAt(e.currentTarget);
+        // Foco de script (focus trap: foco inicial / devolução ao fechar) nunca abre a dica.
+        if (!isProgrammaticFocus() && lastInputWasNavKey && matchesFocusVisible(e.target)) openAt(e.currentTarget);
     };
 
     const child = !isValidElement<TriggerProps>(children) || inactive

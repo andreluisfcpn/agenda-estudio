@@ -7,6 +7,7 @@ import EventTemplateModal from '../components/admin/notifications/EventTemplateM
 import BroadcastComposer from '../components/admin/notifications/BroadcastComposer';
 import { resolveNotifMeta } from '../utils/notificationMeta';
 import { Bell, Pencil, Megaphone, SlidersHorizontal } from 'lucide-react';
+import BrandLoader from '../components/ui/BrandLoader';
 
 const GROUP_LABELS: Record<string, string> = {
     pagamentos: 'Pagamentos',
@@ -63,7 +64,7 @@ export default function AdminNotificationsPage() {
             {tab === 'broadcast' ? (
                 <BroadcastComposer />
             ) : loading ? (
-                <div className="loading-spinner"><div className="spinner" /></div>
+                <BrandLoader size="section" label="Carregando eventos…" />
             ) : (
                 grouped.map(([group, list]) => (
                     <div key={group} className="notif-event-group">

@@ -1,10 +1,12 @@
 import { getErrorMessage } from '../utils/errors';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Clock, Loader2, Ban } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Ban } from 'lucide-react';
 import { publicApi, pricingApi, PublicDayAvailability, PublicSlot } from '../api/client';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import { studioSlotDate } from '../utils/time';
+import Tooltip from './ui/Tooltip';
+import BrandLoader from './ui/BrandLoader';
 
 const COLORS = {
     primary: '#006C89',
@@ -141,12 +143,16 @@ export default function PublicCalendarGrid({ onSlotSelect }: { onSlotSelect?: (d
                     {days.length > 0 ? getMonthLabel(days[0].date) : '...'}
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={() => shiftWeek(-1)} aria-label="Semana anterior" style={navBtnStyle}>
-                        <ChevronLeft size={18} />
-                    </button>
-                    <button onClick={() => shiftWeek(1)} aria-label="Próxima semana" style={navBtnStyle}>
-                        <ChevronRight size={18} />
-                    </button>
+                    <Tooltip content="Semana anterior" describe={false}>
+                        <button type="button" onClick={() => shiftWeek(-1)} aria-label="Semana anterior" style={navBtnStyle}>
+                            <ChevronLeft size={18} aria-hidden="true" />
+                        </button>
+                    </Tooltip>
+                    <Tooltip content="Próxima semana" describe={false}>
+                        <button type="button" onClick={() => shiftWeek(1)} aria-label="Próxima semana" style={navBtnStyle}>
+                            <ChevronRight size={18} aria-hidden="true" />
+                        </button>
+                    </Tooltip>
                 </div>
             </div>
 
@@ -180,10 +186,7 @@ export default function PublicCalendarGrid({ onSlotSelect }: { onSlotSelect?: (d
 
             {/* Loading */}
             {loading && (
-                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '200px' }}>
-                    <Loader2 size={28} color={COLORS.primary} style={{ animation: 'spin 1s linear infinite' }} />
-                    <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-                </div>
+                <BrandLoader size="section" label="Carregando horários…" />
             )}
 
             {/* Error */}

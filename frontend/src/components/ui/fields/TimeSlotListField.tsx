@@ -1,5 +1,6 @@
 import { Plus, X } from 'lucide-react';
 import TimeField from './TimeField';
+import Tooltip from '../Tooltip';
 
 interface TimeSlotListFieldProps {
     /** CSV of HH:MM start times. Example: "10:00,13:00,15:30,18:00". */
@@ -39,14 +40,16 @@ export default function TimeSlotListField({ value, onChange, 'aria-label': ariaL
             {slots.map((s, i) => (
                 <div key={`${i}-${s}`} className="sf-timeslot-row">
                     <TimeField value={s} onChange={v => update(i, v)} aria-label={`Horário ${i + 1}`} />
-                    <button
-                        type="button"
-                        className="sf-timeslot-remove"
-                        onClick={() => remove(i)}
-                        aria-label={`Remover horário ${s}`}
-                    >
-                        <X size={14} />
-                    </button>
+                    <Tooltip content="Remover horário" describe={false}>
+                        <button
+                            type="button"
+                            className="sf-timeslot-remove"
+                            onClick={() => remove(i)}
+                            aria-label={`Remover horário ${s}`}
+                        >
+                            <X size={14} />
+                        </button>
+                    </Tooltip>
                 </div>
             ))}
             <button type="button" className="sf-timeslot-add" onClick={add}>

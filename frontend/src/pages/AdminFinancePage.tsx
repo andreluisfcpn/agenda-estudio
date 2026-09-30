@@ -6,6 +6,7 @@ import { useUI } from '../context/UIContext';
 import AdminPageHeader from '../components/admin/AdminPageHeader';
 import { HeroSkeleton, TableSkeleton } from '../components/ui/SkeletonLoader';
 import StatusBadge from '../components/ui/StatusBadge';
+import Tooltip from '../components/ui/Tooltip';
 import StatCard from '../components/ui/StatCard';
 import { PAYMENT_STATUS_META, TIER_META, getMeta } from '../constants/adminMeta';
 
@@ -111,13 +112,15 @@ export default function AdminFinancePage() {
                         background: 'var(--bg-secondary)', borderRadius: '12px',
                         border: '1px solid var(--border-color)', overflow: 'hidden'
                     }}>
-                        <button onClick={() => goMonth(-1)} aria-label="Mês anterior" className="admin-hover-bg" style={{
-                            background: 'none', border: 'none', color: 'var(--text-secondary)',
-                            padding: '10px 14px', minWidth: 44, minHeight: 44, cursor: 'pointer',
-                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                        }}>
-                            <ChevronLeft size={18} aria-hidden="true" />
-                        </button>
+                        <Tooltip content="Mês anterior" describe={false}>
+                            <button type="button" onClick={() => goMonth(-1)} aria-label="Mês anterior" className="admin-hover-bg" style={{
+                                background: 'none', border: 'none', color: 'var(--text-secondary)',
+                                padding: '10px 14px', minWidth: 44, minHeight: 44, cursor: 'pointer',
+                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            }}>
+                                <ChevronLeft size={18} aria-hidden="true" />
+                            </button>
+                        </Tooltip>
                         <div style={{
                             padding: '10px 20px', fontWeight: 700, fontSize: '0.9375rem',
                             color: 'var(--text-primary)', borderLeft: '1px solid var(--border-color)',
@@ -127,13 +130,15 @@ export default function AdminFinancePage() {
                             {MONTHS[selectedMonth - 1]} {selectedYear}
                             {isCurrentMonth && <span style={{ fontSize: '0.6875rem', color: 'var(--success)', display: 'block', fontWeight: 500 }}>Mês Atual</span>}
                         </div>
-                        <button onClick={() => goMonth(1)} aria-label="Próximo mês" className="admin-hover-bg" style={{
-                            background: 'none', border: 'none', color: 'var(--text-secondary)',
-                            padding: '10px 14px', minWidth: 44, minHeight: 44, cursor: 'pointer',
-                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                        }}>
-                            <ChevronRight size={18} aria-hidden="true" />
-                        </button>
+                        <Tooltip content="Próximo mês" describe={false}>
+                            <button type="button" onClick={() => goMonth(1)} aria-label="Próximo mês" className="admin-hover-bg" style={{
+                                background: 'none', border: 'none', color: 'var(--text-secondary)',
+                                padding: '10px 14px', minWidth: 44, minHeight: 44, cursor: 'pointer',
+                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            }}>
+                                <ChevronRight size={18} aria-hidden="true" />
+                            </button>
+                        </Tooltip>
                     </div>
                 }
             />
@@ -336,10 +341,12 @@ export default function AdminFinancePage() {
                                                                     <span style={{
                                                                         display: 'inline-block', marginTop: '3px',
                                                                         padding: '1px 6px', borderRadius: '4px', fontSize: '0.625rem', fontWeight: 700,
+                                                                        textTransform: 'uppercase',
                                                                         background: getMeta(TIER_META, p.contract.tier).bg,
                                                                         color: getMeta(TIER_META, p.contract.tier).color
                                                                     }}>
-                                                                        {p.contract.tier}
+                                                                        {/* Rótulo legível da faixa (“Audiência”, “Sábado”), nunca a chave técnica. */}
+                                                                        {getMeta(TIER_META, p.contract.tier).label}
                                                                     </span>
                                                                 </div>
                                                             ) : (

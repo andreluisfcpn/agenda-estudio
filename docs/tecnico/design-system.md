@@ -80,6 +80,9 @@ Prop `size` (desktop; mobile é sempre sheet full-width):
 - Estrutura interna admin: `hideHeader` + `.admin-modal-head` → `.admin-modal-body`
   → ações em `.admin-actions-row`; título `.admin-modal-title` com `__icon`.
 - Piloto de referência: `components/admin/bookings/EditBookingModal.tsx`.
+- `preventClose` (requisição em andamento) trava fundo, arrastar, X e **Esc** — o Esc lê o valor
+  ATUAL na hora da tecla (ref), então vale desde o clique em "Salvar". O X do cabeçalho embutido
+  é `type="button"` e já vem com `aria-label="Fechar"` + `<Tooltip>`.
 
 ### 3a. Confirmação de ação destrutiva — `DangerConfirmDialog`
 
@@ -168,13 +171,66 @@ adminMeta, width %). Estrutura repetida = classe.
 - **`Tooltip`** (`ui/Tooltip.tsx`, CSS `tooltip.css`): `<Tooltip content placement?
   ('top'|'bottom'|'left'|'right') disabled? delay?=250 describe?=true>{um elemento focável}</Tooltip>`.
   Bolha em portal no `<body>` com `position: fixed` (não é cortada por `overflow`),
-  inverte/limita às bordas, z-index `--z-tooltip` (1100, acima de `--z-modal`). Abre no
-  hover de mouse/caneta e no foco por teclado (`:focus-visible`); **nunca no toque**.
+  inverte/limita às bordas, z-index `--z-tooltip` (10100: acima de TUDO, inclusive dos modais
+  empilhados com `zIndex` 1100/10000 e do `VideoModal`). Abre no hover de mouse/caneta e no foco
+  por **navegação de teclado** (Tab/setas + `:focus-visible`); **nunca no toque** nem em foco
+  programático (o foco inicial de um modal caindo no "Fechar", o foco devolvido ao fechar).
+  O `useFocusTrap` marca esses dois focos com `focusProgrammatically(el)` (`utils/focus.ts`) e o
+  Tooltip consulta `isProgrammaticFocus()` — vale mesmo quando a última tecla foi Tab/seta (modal
+  aberto por blur ou de forma assíncrona). O wrap do Tab/Shift+Tab dentro do trap é navegação do
+  usuário e continua abrindo a dica. Foco por script em gatilho com Tooltip fora do trap: use
+  `focusProgrammatically`.
   Fecha em pointerdown, Escape (só a dica — o modal por trás não fecha), scroll e resize.
   Compõe os handlers do filho (o filho precisa repassar `onPointer*`/`onFocus`/`onBlur`
   ao DOM). `describe={false}` quando o `aria-label` do gatilho já diz o mesmo.
   Substitui `title=` nativo e tooltips feitos só com CSS.
+  **Regra E7**: todo botão/link de ação cujo conteúdo visível é só ícone (ou só um símbolo como
+  × − +) leva `aria-label` específico em português + `<Tooltip>` com texto curto ("Editar cupom",
+  "Mês anterior"); `title=` nativo não é usado em ação (nem em botão com texto — a dica extra também
+  vai em `<Tooltip>`; ex.: os links "Abrir perfil de X" do admin, com o nome no conteúdo porque a
+  dica também revela o nome cortado por reticências). O que ainda usa `title=`: elementos só
+  informativos (células da grade da agenda, selos, o código PIX) e dois gatilhos conhecidos — o
+  segmento de ambiente bloqueado de `IntegrationHelpers` (botão `disabled`; precisaria do `<span>` em
+  volta) e o Avatar clicável de `MyProfilePage` (o `Avatar` não repassa `onPointer*`/`onFocus`).
+  Botão que pode ficar `disabled` não dispara eventos de ponteiro: o Tooltip vai
+  num `<span style={{ display: 'inline-flex' }}>` em volta (ex.: `fields/StepperField`), e o botão
+  `:disabled` leva `pointer-events: none` no CSS para o `<span>` receber o ponteiro em todo navegador
+  (ex.: `.ccf-cal__navbtn`, `.ccf-stepper__btn`, `.ccf-accept-btn` em `custom-contract-flow.css`). Não se
+  aplica a controles só de toque (hambúrguer da landing, `BottomTabBar`) nem a switches.
+  Anti-regressão: `npm run check:tooltips` (em `frontend/`; `scripts/check-icon-buttons.cjs` varre
+  os `.tsx` e sai com código 1 se houver gatilho só-ícone fora de `<Tooltip>`; exceções comentadas
+  no próprio script). Gatilho = `<button>`, `<a>`, `<Link>`, `<NavLink>`, `<motion.button>`,
+  `<motion.a>` e qualquer elemento com `role="button"`; "só-ícone" inclui emoji/símbolo curto e
+  expressão com nome de ícone (`{icon}`, `{cfg.icon}`); `<Tooltip>` sem `content` (ou com
+  `null`/`''` literal) não conta. Não verifica `div`/`span` com `onClick` sem `role="button"` nem
+  `title=` em botão com texto. Não roda no build (é manual). Autoteste do verificador:
+  `node scripts/check-icon-buttons.cjs scripts/__fixtures__` tem de sair com código 1 listando os
+  7 casos da fixture.
+- **`BrandLoader`** (`ui/BrandLoader.tsx`, CSS `brand-loader.css`): o **loading de marca** — o microfone
+  com os círculos girando (o mesmo visual da troca de página; o `PageTransitionLoader` é só o overlay
+  fixo + barra de progresso em volta dele). `<BrandLoader size? ('page'|'section'|'compact'|'inline') label?
+  labelHidden? className? />`:
+  - `page` (marca 80px, bloco alto) — a tela inteira esperando: o boot do app e a checagem de
+    sessão em `App.tsx` (`FullScreenLoader`, centralizado na janela, ainda sem Topbar/Sidebar) e o
+    overlay de troca de página;
+  - `section` (64px, padrão) — um bloco/seção (seções de Configurações, agenda de Hoje, eventos de notificação);
+  - `compact` (40px, **sem** `min-height` nem padding próprios; o `label` fica logo abaixo da marca e faz
+    as vezes de título) — telas de "processando" dentro de modal/wizard, onde o container já tem o seu
+    espaçamento: "Criando o contrato…" (`CustomContractFlow`), "Gerando pagamento…" (`ContractWizard`),
+    "Processando seu agendamento…" (`BookingModal`), "Salvando o cartão e ativando…" (`SubscribeModal`).
+    Um texto de apoio ("Aguarde um instante.") vai num `<p>` logo depois, fora do loader;
+  - `inline` (22px, sem brilho/anéis) — ao lado de um texto: "Atualizando…" em recarga silenciosa, bloco
+    pequeno que chega depois da página (histórico de taxas, pagamento no perfil do cliente).
+  `role="status"` + `aria-live="polite"`; sem `label`, "Carregando…" vai só para o leitor de tela
+  (`labelHidden` esconde um rótulo próprio). Em `prefers-reduced-motion` a marca fica parada. Dois
+  `section` vizinhos mostram uma marca só. `LoadingSpinner` virou atalho de `<BrandLoader size="section">`.
+  **Quando usar (E5)**: só onde não há esqueleto com a forma do conteúdo — no lugar do anel genérico
+  `.spinner`/`.loading-spinner` ou de um carregamento sem aviso. **Esqueletos (`SkeletonLoader`) ficam**
+  e botões em andamento ("Salvando…") continuam com o spinner pequeno. Nunca dentro do
+  `DangerConfirmDialog` (tem spinner próprio) nem como overlay dentro de modal.
 - **`DangerConfirmDialog`**: ver §3a.
+- **`StatusBadge`** (`.status-badge`, `index.css`): o selo tem a largura do conteúdo
+  (`width: fit-content`) — não estica quando é item de flex em coluna ou de grid.
 - **`fields/CurrencyInput`**: ver §2.
 - **`PixQrCode`** (`components/PixQrCode.tsx`, CSS `pix-qrcode.css` + classes
   `.checkout-*` de `checkout.css`): bloco PIX presentacional — valor, QR (usa
@@ -245,7 +301,8 @@ API/config (paymentMethods `emoji`, ícones de serviço/`EmojiField`).
 - Todo clicável é `<button>`/`<a>` (ou `role="button"` + `tabIndex` + Enter/Espaço).
 - Botão ícone-só → `aria-label`. Touch target ≥44px no mobile.
 - Botão ícone-só → `aria-label` **+ `<Tooltip>`** (dica visível no desktop/teclado; no
-  toque ela não aparece, então o ícone precisa ser reconhecível no contexto).
+  toque ela não aparece, então o ícone precisa ser reconhecível no contexto). Regra completa (E7)
+  e o verificador `npm run check:tooltips` em §4b.
 - Ação destrutiva → `DangerConfirmDialog` com o tom certo (§3a).
 - `:focus-visible` visível (as utilities novas já trazem outline `--accent-text`).
 - Erro de form → `role="alert"` (`.admin-alert--danger`).
@@ -258,14 +315,34 @@ API/config (paymentMethods `emoji`, ícones de serviço/`EmojiField`).
 4. Animações só transform/opacity, 150–300ms, reduced-motion ok
 5. Hover/focus 100% CSS (nada de onMouseEnter para estilo)
 6. Clicáveis semânticos + teclado
-7. `aria-label` em ícone-só; dialog com título anunciado
+7. `aria-label` + `<Tooltip>` em ícone-só (`npm run check:tooltips` limpo); dialog com título anunciado
 8. Touch ≥44px no mobile
 9. 375px sem scroll horizontal (tabelas `admin-table--cards`)
-10. Skeleton no loading inicial
+10. Loading inicial: skeleton quando a tela tem forma conhecida (herói/tabela); sem skeleton → `BrandLoader` (§4b), nunca o anel genérico nem tela vazia
 11. Empty state em lista filtrável
 12. Modais com `size` correto, sem `maxWidth` mágico
 13. Console limpo em 375/768/1440
 14. Diff só de apresentação (zero mudança em hooks/API/payloads)
+
+## 7b. Relatórios exportados (CSV)
+
+Hoje só existe **CSV** (decisão E6: sem PDF/XLSX e sem biblioteca nova). O texto do arquivo sai de uma
+função **pura** em `frontend/src/utils/reportCsv.ts` (`buildReportCsv(input)` + `reportCsvFileName(from, to)`);
+a tela só busca os dados e entrega o Blob. Padrão de todo CSV do sistema (Excel pt-BR):
+
+- **BOM UTF-8** + separador **`;`** + quebra **CRLF**. Não usar a linha `sep=;` (faz o Excel ignorar o BOM).
+- Campo com `;`, aspas, quebra de linha ou espaço nas pontas vai entre aspas, com as aspas internas
+  duplicadas (`csvCell`). Texto livre do usuário (nome de cliente) passa por `csvText`: se começar com
+  `= + - @` TAB ou CR, ganha um apóstrofo (o Excel não executa como fórmula).
+- **Cabeçalho informativo**, uma informação por linha: estúdio · título · `Período;dd/mm/aaaa a dd/mm/aaaa;<filtro>` ·
+  `Gerado em;dd/mm/aaaa hh:mm (horário de Brasília)`.
+- **Uma seção por bloco**: linha em branco, título em linha própria (MAIÚSCULAS), cabeçalho de colunas,
+  linhas e uma linha `TOTAL`. Nunca chave crua (faixa = "Audiência", não `AUDIENCIA`).
+- Moeda `R$ 1.234,56` (espaço comum — `csvMoney`, centavos na entrada), percentual `85%`, contagem sem
+  separador de milhar, datas `dd/mm/aaaa` (`csvDate`), "sem valor" = `—`.
+- Nome do arquivo com o período real: `relatorio-estudio_AAAA-MM-DD_a_AAAA-MM-DD.csv`.
+- Verificação por script (a função é pura): `npx tsx` num arquivo que importa `reportCsv.ts`, reabre o
+  texto com um parser RFC 4180 e confere BOM/CRLF, escape, totais e o ranking inteiro.
 
 ## 8. Área do Cliente (rodada 4)
 
@@ -280,6 +357,25 @@ A área do cliente mantém **identidade colorida própria** (decisão de produto
 ### Hooks compartilhados
 - `hooks/useIsMobile(768)` — detecção de viewport; o `BottomSheetModal` usa 640 DE PROPÓSITO (sheet vs dialog), não migrar.
 - `hooks/useCountdown(deadline, onExpire)` — contagem regressiva 1s com `onExpire` em ref (o interval NÃO recicla quando o caller passa arrow function nova). Usado por HoldCountdownCell, PendingPaymentCard, AwaitingPaymentBanner e HoldBanner. Cores canônicas dos timers: `--danger` (≤60s), `--warning` (≤180s), `--warning-strong`/`--success` (calmo).
+
+- `hooks/useDragScroll()` — arraste com o mouse em trilhas horizontais (galeria de pôsteres, trilho de
+  Configurações) + visibilidade das setas. A classe `is-dragging` (que deixa os cards inertes) só entra
+  em arraste REAL (> 4px), nunca no mousedown — senão o clique simples não abre o card.
+
+### Utilitários compartilhados (lote 2)
+- **Boleto (E3)** — `constants/paymentMethods.ts`: `isBoletoAvailable()` é a fonte única de "o boleto pode
+  ser oferecido" (chave-mestra das Configurações + Cora ativa) e `usePaymentMethodsVersion()` re-renderiza a
+  tela quando esse cache muda. No `InlineCheckout`, a aba só existe com `offerBoleto` (cobrança do admin ou
+  fatura/parcela de contrato já ativo; padrão `false` = fluxos com reserva de 10 minutos) **e**
+  `isBoletoAvailable()`. `allowBoleto` é ignorado.
+- **Gravação (E11/E12)** — `utils/recording.ts`: `isRecordingLive(b)` (= `isRecordingNow` do backend) é o
+  ÚNICO critério do selo "AO VIVO"; `wasLivestreamed` vira só o selo discreto "Transmitida ao vivo";
+  `useRecordingWatch` recarrega enquanto há sessão de hoje em aberto; `summarizeRecording` monta as métricas.
+- **Cobranças do contrato (E13)** — `utils/paymentLabels.ts`: `chargeLabel`/`installmentPositions`
+  ("Parcela N/Total" sem contar multa, extras e anuladas), `fineLabel`, `isCancellationFine`,
+  `isBlockedByPendingCancellation`, `isFineOverdue`. Meus Contratos e Meus Pagamentos usam os mesmos.
+- **Datas com fuso** — `utils/format.ts`: `formatDate(date, timeZone = 'UTC')`. O padrão `'UTC'` é para datas-calendário (gravadas como 00:00Z); um INSTANTE real pede `'America/Sao_Paulo'`. O vencimento da multa de cancelamento é um instante (a decisão do estúdio): use `formatDate(p.dueDate, dueDateTimeZone(p))` (`utils/paymentLabels.ts` → São Paulo na multa, UTC nas demais), o mesmo calendário de `isFineOverdue` — assim Meus Pagamentos, o Início (`dueDateTimeZone`) e Meus Contratos (`formatInstantDate`, também São Paulo) mostram a mesma data.
+- **Abrir uma gravação em `/minhas-gravacoes`** — `navigate('/minhas-gravacoes', { state: { openBookingId: id } })` (cards e aviso "Remarcar" do Início): `MyBookingsPage` espera a lista carregar, abre o `BookingDetailModal` dessa gravação **uma vez** e limpa o `state` (`navigate(pathname, { replace: true, state: null })`), para não reabrir ao voltar/recarregar. Id que não está na lista do cliente → só limpa o state, sem erro.
 
 ### Agenda (compartilhada admin+cliente)
 `CalendarPage` é orquestrador (estado/fetch/modais); o DOM vive em `components/calendar/CalendarMobileView` e `CalendarDesktopView`; constantes em `calendarShared.ts` (DAYS/TIER_COLORS/GRID_ROWS). Slots passados = "Encerrado"; bloqueados pelo estúdio = "Bloqueado"; ocupados = "Ocupado". Estilos novos da grade vão ADITIVOS em `index.css` (nunca em admin-area.css).

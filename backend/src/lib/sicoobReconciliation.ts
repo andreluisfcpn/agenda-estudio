@@ -8,7 +8,7 @@ import { sicoobGetCob, getSicoobEnvironment } from './sicoobService.js';
 
 /** providerRef é um txid Sicoob de verdade? (o mock de dev grava "mock-xxxx", que nunca concilia). */
 const isSicoobTxid = (ref: string | null | undefined): ref is string => !!ref && /^[a-zA-Z0-9]{26,35}$/.test(ref);
-import { onPaymentConfirmed, notifyPaymentExpired } from './paymentEffects.js';
+import { onPaymentConfirmed, notifyPaymentExpired, alertPaymentOnCancelledCharge } from './paymentEffects.js';
 import { releaseCouponForPayment } from './couponService.js';
 
 /** Soma dos valores efetivamente pagos (array pix[]) em centavos. */
@@ -71,6 +71,85 @@ export function paymentIdFromTxid(txid: string): string | null {
     return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`.toLowerCase();
 }
 
+/** Cobranças canceladas já resolvidas no provedor (removidas ou já alertadas) — evita GETs repetidos na varredura. */
+const settledCancelledCharges = new Set<string>();
+/** Um QR só pode ser pago enquanto vale; a varredura acompanha a cobrança cancelada até este tempo após a expiração. */
+const CANCELLED_CHARGE_WATCH_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * E13 — uma cobrança CANCELADA (parcela anulada de contrato cancelado) cujo QR continuou pagável no
+ * Sicoob foi PAGA? A linha não volta a PAID sozinha (o contrato foi encerrado), mas o dinheiro entrou:
+ * em vez de só logar, avisa o admin (alertPaymentOnCancelledCharge — 1 aviso por cobrança).
+ * Nunca confia no corpo do webhook: relê GET /cob/{txid}. `opts.txid` = cobrança ANTERIOR do mesmo
+ * Payment (QR reemitido). Fora de produção o GET é um mock aleatório (sandbox) → nunca alerta.
+ * Devolve true se avisou agora.
+ */
+export async function alertIfCancelledSicoobChargePaid(paymentId: string, opts: { txid?: string } = {}): Promise<boolean> {
+    const payment = await prisma.payment.findUnique({
+        where: { id: paymentId },
+        select: { id: true, status: true, providerRef: true },
+    });
+    if (!payment || payment.status !== 'CANCELLED') return false;
+    const txid = opts.txid && opts.txid !== payment.providerRef ? opts.txid : payment.providerRef;
+    if (!isSicoobTxid(txid)) return false;
+    if (txid !== payment.providerRef && !isTxidOfPayment(txid, payment.id)) return false;
+    if ((await getSicoobEnvironment()) !== 'production') return false;
+
+    let cob: any;
+    try {
+        cob = await sicoobGetCob(txid);
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // 404 = a cobrança não existe no provedor → nunca será paga: sai da varredura.
+        if (/\b404\b/.test(msg)) settledCancelledCharges.add(payment.id);
+        else console.error(`[Sicoob-Reconcile] getCob(${txid}) falhou (cobrança cancelada ${payment.id}):`, msg);
+        return false;
+    }
+    if (!isSicoobCobPaid(cob)) {
+        // Removida → nunca mais será paga: a varredura não precisa consultá-la de novo.
+        if (isSicoobCobCancelled(cob)) settledCancelledCharges.add(payment.id);
+        return false;
+    }
+    settledCancelledCharges.add(payment.id);
+    const paidCents = paidCentsFromCob(cob);
+    const originalCents = Math.round(Number(cob?.valor?.original) * 100);
+    return alertPaymentOnCancelledCharge(payment.id, {
+        provider: 'Sicoob (PIX)',
+        providerRef: txid,
+        amountCents: paidCents > 0 ? paidCents : (Number.isFinite(originalCents) ? originalCents : null),
+    });
+}
+
+/**
+ * Varredura (junto da conciliação dos pendentes): cobranças Sicoob CANCELADAS cujo QR ainda valia há
+ * pouco — cobre o caso em que a anulação não conseguiu remover a cob no banco e o webhook do pagamento
+ * não chegou. Só produção; no máximo 50 por rodada; cada cobrança sai da varredura quando a cob aparece
+ * removida ou o aviso é emitido.
+ */
+export async function sweepCancelledSicoobCharges(now: Date = new Date()): Promise<number> {
+    if ((await getSicoobEnvironment()) !== 'production') return 0;
+    if (settledCancelledCharges.size > 5000) settledCancelledCharges.clear();
+    const rows = await prisma.payment.findMany({
+        where: {
+            provider: 'SICOOB',
+            status: 'CANCELLED',
+            providerRef: { not: null },
+            pixExpiresAt: { gte: new Date(now.getTime() - CANCELLED_CHARGE_WATCH_MS) },
+        },
+        select: { id: true },
+        orderBy: { updatedAt: 'desc' },
+        take: 50,
+    });
+    let alerted = 0;
+    for (const p of rows) {
+        if (settledCancelledCharges.has(p.id)) continue;
+        try {
+            if (await alertIfCancelledSicoobChargePaid(p.id)) alerted++;
+        } catch { /* segue para a próxima */ }
+    }
+    return alerted;
+}
+
 /**
  * Verifica um pagamento Sicoob contra a API e marca PAID (rodando os efeitos de
  * confirmação) se o Sicoob confirmar. Idempotente e seguro para repetir.
@@ -82,6 +161,12 @@ export function paymentIdFromTxid(txid: string): string | null {
  */
 export async function reconcileSicoobPayment(paymentId: string, opts: { txid?: string } = {}): Promise<boolean> {
     const payment = await prisma.payment.findUnique({ where: { id: paymentId } });
+    // E13: linha CANCELADA (parcela anulada) — nunca vira PAID aqui, mas um pagamento confirmado no
+    // banco não pode ficar só no log: avisa o admin.
+    if (payment && payment.status === 'CANCELLED') {
+        await alertIfCancelledSicoobChargePaid(payment.id, { txid: opts.txid });
+        return false;
+    }
     if (!payment || payment.status !== 'PENDING' || payment.provider !== 'SICOOB' || !isSicoobTxid(payment.providerRef)) {
         return false;
     }
@@ -222,6 +307,13 @@ export async function reconcilePendingSicoobPayments(): Promise<number> {
     }
     if (confirmed > 0 || cancelled > 0) {
         console.log(`[Sicoob-Reconcile] Sweep: ${confirmed} confirmado(s), ${cancelled} expirado(s)/cancelado(s) de ${pending.length} pendente(s).`);
+    }
+    // E13: cobranças já CANCELADAS cujo QR continuou pagável → alerta ao admin se foram pagas.
+    try {
+        const alerted = await sweepCancelledSicoobCharges();
+        if (alerted > 0) console.log(`[Sicoob-Reconcile] Sweep: ${alerted} pagamento(s) em cobrança cancelada — admin avisado.`);
+    } catch (err) {
+        console.error('[Sicoob-Reconcile] Varredura das cobranças canceladas falhou:', err instanceof Error ? err.message : err);
     }
     return confirmed;
 }

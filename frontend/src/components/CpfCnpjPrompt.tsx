@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { ShieldCheck, Check, CreditCard } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { authApi, usersApi } from '../api/client';
@@ -35,6 +35,8 @@ export default function CpfCnpjPrompt({ onSaved, onCancel, title, subtitle, save
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [touched, setTouched] = useState(false);
+    // Trava por requisição em voo (nunca por tempo): um 2º clique antes do re-render não salva duas vezes.
+    const savingRef = useRef(false);
 
     const digits = value.replace(/\D/g, '');
     const valid = isValidCpfCnpj(value);
@@ -42,12 +44,13 @@ export default function CpfCnpjPrompt({ onSaved, onCancel, title, subtitle, save
     const showError = touched && digits.length >= 11 && !valid;
 
     const handleSave = async () => {
-        if (!valid || saving) return;
+        if (!valid || saving || savingRef.current) return;
+        savingRef.current = true;
         setSaving(true);
         setError('');
         try {
             if (client) {
-                // Admin salvando o CPF do CLIENTE selecionado (PATCH /users/:id) — não toca no perfil do admin.
+                // Admin salvando o CPF do CLIENTE cobrado (PATCH /users/:id) — NUNCA toca no perfil do admin.
                 await usersApi.update(client.id, { cpfCnpj: digits });
             } else {
                 const res = await authApi.updateProfile({ cpfCnpj: digits });
@@ -57,6 +60,8 @@ export default function CpfCnpjPrompt({ onSaved, onCancel, title, subtitle, save
         } catch (err: unknown) {
             setError(getErrorMessage(err) || 'Não foi possível salvar. Tente novamente.');
             setSaving(false);
+        } finally {
+            savingRef.current = false;
         }
     };
 
@@ -115,7 +120,10 @@ export default function CpfCnpjPrompt({ onSaved, onCancel, title, subtitle, save
             {error && <div className="checkout-error" style={{ width: '100%', marginBottom: 12 }}>{error}</div>}
 
             <button
-                onClick={handleSave}
+                key="cpf-save"
+                type="button"
+                // 2º clique de um clique duplo ignorado (teclado: detail 0 segue funcionando).
+                onClick={(e) => { if (e.detail > 1) return; handleSave(); }}
                 disabled={!valid || saving}
                 className="checkout-pay-btn checkout-pay-btn--pix"
                 style={{ width: '100%', opacity: !valid || saving ? 0.55 : 1, cursor: !valid || saving ? 'default' : 'pointer' }}
@@ -126,7 +134,7 @@ export default function CpfCnpjPrompt({ onSaved, onCancel, title, subtitle, save
             </button>
 
             {onCancel && (
-                <button onClick={onCancel} className="checkout-cancel-btn" style={{ marginTop: 4 }}>
+                <button key="cpf-cancel" type="button" onClick={(e) => { if (e.detail > 1) return; onCancel(); }} disabled={saving} className="checkout-cancel-btn" style={{ marginTop: 4 }}>
                     Cancelar
                 </button>
             )}

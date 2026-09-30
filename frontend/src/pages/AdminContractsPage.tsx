@@ -1,19 +1,22 @@
 import { getErrorMessage } from '../utils/errors';
-import { useState, useId } from 'react';
+import { useState, useId, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { contractsApi, Contract, ContractStatus } from '../api/client';
+import { contractsApi, stripeApi, ApiError, Contract, ContractStatus } from '../api/client';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import { useUI } from '../context/UIContext';
-import { FileText, Search, X, Inbox, Link2, FolderOpen, Pencil, CircleDollarSign, HandCoins, Ban, RefreshCw, Pause, Play, CreditCard, Sparkles, Loader2, Clock, UserX } from 'lucide-react';
+import { FileText, Search, X, Inbox, Link2, FolderOpen, FolderSymlink, Pencil, CircleDollarSign, HandCoins, Banknote, Ban, RefreshCw, Pause, Play, CreditCard, Sparkles, Loader2, Clock, UserX } from 'lucide-react';
 import BottomSheetModal from '../components/BottomSheetModal';
 import AdminPageHeader from '../components/admin/AdminPageHeader';
+import ChargeNowSheet from '../components/admin/ChargeNowSheet';
+import BrandLoader from '../components/ui/BrandLoader';
 import { HeroSkeleton, TableSkeleton } from '../components/ui/SkeletonLoader';
 import StatusBadge from '../components/ui/StatusBadge';
 import Tooltip from '../components/ui/Tooltip';
 import { CONTRACT_STATUS_META, CONTRACT_TYPE_META, TIER_META, getMeta } from '../constants/adminMeta';
-import { getPaymentMethods, getPaymentBadge } from '../constants/paymentMethods';
+import { getPaymentMethods, getBoletoMethodConfig, getPaymentBadge, getBoletoStatus, isBoletoAvailable, loadPaymentMethods, usePaymentMethodsVersion } from '../constants/paymentMethods';
 import { useAdminContracts } from '../hooks/useAdminContracts';
 import { describeContractTerms, isAvulsoContract } from '../utils/contractStatus';
+import { formatBRL } from '../utils/format';
 import CreateContractModal from '../components/admin/contracts/CreateContractModal';
 import CustomContractModal from '../components/admin/contracts/CustomContractModal';
 
@@ -29,10 +32,26 @@ const DELETED_CLIENT_META = { label: 'Cliente excluído', color: 'var(--danger)'
  */
 const isClientDeleted = (c: Contract) => !!(c.user as { deletedAt?: string | null } | undefined)?.deletedAt;
 
+/** Instante (ISO) → data no fuso do estúdio. Para carimbos de data/hora (cancelledAt), não para datas @db.Date. */
+const fmtDateSP = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+
+/** E13: a multa de cancelamento gerada ainda está em aberto (o admin pode "Cobrar agora"). */
+const isFineOpen = (c: Contract) => c.cancellationFine?.status === 'PENDING' || c.cancellationFine?.status === 'FAILED';
+
+/** Cobrança da multa aberta no ChargeNowSheet (E13 — "Cobrar agora"). */
+interface FineCharge {
+    paymentId: string;
+    amount: number;
+    contractName: string;
+    /** Forma de pagamento do contrato: a aba que abre primeiro no checkout. */
+    initialMethod: Contract['paymentMethod'];
+    client: { id: string; name?: string | null; cpfCnpj?: string | null };
+}
+
 export default function AdminContractsPage() {
     const uid = useId();
     const navigate = useNavigate();
-    const { showConfirm, showToast } = useUI();
+    const { showConfirm, showToast, showAlert } = useUI();
     const {
         contracts,
         users,
@@ -48,8 +67,20 @@ export default function AdminContractsPage() {
 
 
     const [editContract, setEditContract] = useState<Contract | null>(null);
-    const [editForm, setEditForm] = useState({ status: '', endDate: '', flexCreditsRemaining: '', contractUrl: '', paymentMethod: '', boletoAllowed: false });
+    const [editForm, setEditForm] = useState({ status: '', endDate: '', flexCreditsRemaining: '', contractUrl: '', paymentMethod: '' });
     const [editError, setEditError] = useState('');
+    // E3: o Boleto só é oferecido como forma com a chave-mestra ligada E a Cora ativa — fonte ÚNICA:
+    // isBoletoAvailable() (constants/paymentMethods). Enquanto a API não respondeu, o Boleto fica de fora.
+    // A página revalida o estado ao montar e ao abrir o "Editar" (se falhar, mantém o último estado conhecido)
+    // e re-renderiza quando ele muda.
+    usePaymentMethodsVersion();
+    const refreshBoleto = useCallback(() => { void loadPaymentMethods(); }, []);
+    useEffect(() => { refreshBoleto(); }, [refreshBoleto]);
+
+    // E13: "Cobrar agora" da multa de cancelamento (PIX/cartão com o cliente presente).
+    const [fineCharge, setFineCharge] = useState<FineCharge | null>(null);
+    const [fineChargeError, setFineChargeError] = useState('');
+    const [fineChargeLoadingId, setFineChargeLoadingId] = useState<string | null>(null);
     // D3: "Editar" → status Cancelado passa pela confirmação de perigo; enquanto ela está aberta o
     // modal de edição não fecha pelo Esc (o Esc fecha só a confirmação).
     const [confirmingEditCancel, setConfirmingEditCancel] = useState(false);
@@ -63,9 +94,10 @@ export default function AdminContractsPage() {
     const cancFine = getRule('cancellation_fine_pct');
 
     const submitEdit = async (contract: Contract, data: Record<string, unknown>) => {
-        await contractsApi.update(contract.id, data);
+        const res = await contractsApi.update(contract.id, data);
         setEditContract(null);
         await reload();
+        return res;
     };
 
     const handleEdit = async () => {
@@ -80,7 +112,6 @@ export default function AdminContractsPage() {
             if (editForm.flexCreditsRemaining !== '') data.flexCreditsRemaining = Number(editForm.flexCreditsRemaining);
             if (editForm.contractUrl !== (editContract.contractUrl || '')) data.contractUrl = editForm.contractUrl;
             if (editForm.paymentMethod && editForm.paymentMethod !== (editContract.paymentMethod || '')) data.paymentMethod = editForm.paymentMethod;
-            if (editForm.boletoAllowed !== (editContract.boletoAllowed ?? false)) data.boletoAllowed = editForm.boletoAllowed;
             // Mudar para Cancelado pelo "Editar" faz o MESMO que "Cancelar contrato" no backend (anula
             // parcelas, encerra a recorrência, cancela as gravações de hoje em diante) → confirmação danger.
             if (data.status === 'CANCELLED') {
@@ -101,15 +132,33 @@ export default function AdminContractsPage() {
                     cancelLabel: 'Voltar à edição',
                     // Sem try/catch: o erro do PATCH aparece dentro do diálogo.
                     onConfirm: async () => {
-                        await submitEdit(c, data);
+                        const res = await submitEdit(c, data);
                         setConfirmingEditCancel(false);
+                        // Mesmo aviso do botão “Cancelar contrato”: cobrança já paga / não cancelável no banco fica NA TELA.
+                        announceCancellation(res);
                     },
                     onCancel: () => setConfirmingEditCancel(false),
                 });
                 return;
             }
             await submitEdit(editContract, data);
-        } catch (err: unknown) { setEditError(getErrorMessage(err)); }
+        } catch (err: unknown) {
+            // E3: o boleto foi desligado (ou a Cora desativada) entre abrir o modal e salvar — nada foi gravado.
+            if (err instanceof ApiError && err.code === 'BOLETO_UNAVAILABLE') {
+                setEditError(`${err.message || 'O pagamento por boleto não está disponível.'} Escolha PIX ou Cartão.`);
+                setEditForm(f => ({ ...f, paymentMethod: editContract.paymentMethod || '' }));
+                refreshBoleto();
+                return;
+            }
+            setEditError(getErrorMessage(err));
+        }
+    };
+
+    const openEdit = (c: Contract) => {
+        setEditContract(c);
+        setEditForm({ status: c.status, endDate: c.endDate.split('T')[0], flexCreditsRemaining: c.flexCreditsRemaining?.toString() || '', contractUrl: c.contractUrl || '', paymentMethod: c.paymentMethod || '' });
+        setEditError('');
+        refreshBoleto();
     };
 
     // D3 — confirmações com o que o backend faz DE FATO (contract.lifecycle.ts). Com `tone`, o
@@ -120,10 +169,25 @@ export default function AdminContractsPage() {
     function cancelContractConsequences(c: Contract): string[] {
         return [
             'O contrato passa a Cancelado.',
-            ...(c.type === 'SERVICO' ? [] : ['As gravações de hoje em diante são canceladas e os horários ficam livres para outros clientes.']),
-            'As parcelas pendentes são anuladas (deixam de ser cobradas) e a recorrência no cartão, se houver, é encerrada.',
+            ...(c.type === 'SERVICO' ? [] : ['As gravações que ainda não aconteceram são canceladas e os horários ficam livres para outros clientes (as já feitas ou em andamento ficam como estão).']),
+            'As parcelas pendentes são anuladas: a cobrança já emitida (QR PIX, boleto ou cartão em aberto) é cancelada no banco antes.',
+            'O cliente é avisado do cancelamento.',
             'Nenhuma multa é gerada e nada do que já foi pago é estornado.',
         ];
+    }
+
+    /**
+     * Resultado de um cancelamento (DELETE, resolve-cancellation ou PATCH status CANCELLED). Quando o banco confirmou uma cobrança como
+     * paga, ou não deixou cancelar uma cobrança já emitida, o aviso fica NA TELA (o toast some em 4 s) — a
+     * `message` do backend já traz o texto desses casos.
+     */
+    function announceCancellation(res: { message?: string; paidAtProvider?: number; liveAtProvider?: number }) {
+        const message = res.message || 'Contrato cancelado.';
+        if ((res.paidAtProvider ?? 0) > 0 || (res.liveAtProvider ?? 0) > 0) {
+            showAlert({ type: 'warning', title: 'Contrato cancelado — confira as cobranças', message });
+        } else {
+            showToast(message);
+        }
     }
 
     const handleCancel = (c: Contract) => {
@@ -136,35 +200,87 @@ export default function AdminContractsPage() {
             confirmLabel: 'Cancelar contrato',
             cancelLabel: 'Manter contrato',
             onConfirm: async () => {
-                const res = await contractsApi.cancel(c.id);
-                showToast(res.message || 'Contrato cancelado.');
-                await reload();
+                try {
+                    const res = await contractsApi.cancel(c.id);
+                    await reload();
+                    announceCancellation(res);
+                } catch (err: unknown) {
+                    // 400 = a lista estava defasada (ex.: “Contrato já está cancelado.”): recarrega ANTES de o
+                    // erro aparecer no diálogo, para a linha não continuar oferecendo a ação.
+                    if (err instanceof ApiError && err.status === 400) await reload();
+                    throw err;
+                }
             },
         });
     };
 
+    // E13 — decide o pedido de cancelamento. 409 = o pedido já foi resolvido (lista defasada, outra aba/admin ou
+    // duplo clique — code CANCELLATION_NOT_PENDING): não há o que corrigir, então avisa, recarrega e fecha o
+    // diálogo. 400 = a lista também pode estar defasada: recarrega e o erro aparece DENTRO do diálogo, como os demais.
+    const runResolveCancel = async (c: Contract, action: 'CHARGE_FEE' | 'WAIVE_FEE') => {
+        try {
+            const res = await contractsApi.resolveCancellation(c.id, action);
+            await reload();
+            announceCancellation(res);
+        } catch (err: unknown) {
+            if (err instanceof ApiError && err.status === 409) {
+                await reload();
+                showToast({ message: err.message || 'Este pedido de cancelamento já foi resolvido.', type: 'error' });
+                return;
+            }
+            if (err instanceof ApiError && err.status === 400) await reload();
+            throw err;
+        }
+    };
+
     const handleResolveCancel = (c: Contract, action: 'CHARGE_FEE' | 'WAIVE_FEE') => {
         const common = [
-            'O contrato passa a Cancelado (as gravações futuras já foram liberadas quando o cliente pediu o cancelamento).',
-            'As parcelas pendentes são anuladas e a recorrência no cartão, se houver, é encerrada.',
+            'O contrato passa a Cancelado (as gravações que ainda não tinham acontecido já foram liberadas quando o cliente pediu o cancelamento).',
+            'As parcelas pendentes são anuladas: a cobrança já emitida (QR PIX, boleto ou cartão em aberto) é cancelada no banco antes.',
         ];
+        // Multa do pedido (vem em GET /contracts): o % congelado no pedido sobre a base EFETIVA — as parcelas da
+        // base ainda não pagas (parcela paga durante a análise sai; a multa nunca aumenta).
+        const pct = c.finePct ?? cancFine;
+        const fineKnown = typeof c.fineAmountPreview === 'number';
+        const fineAmount = c.fineAmountPreview ?? 0;
         if (action === 'CHARGE_FEE') {
+            if (fineKnown && fineAmount <= 0) {
+                // Sem saldo a pagar do plano (ex.: à vista quitado) → o backend cancela sem gerar cobrança.
+                showConfirm({
+                    tone: 'danger',
+                    icon: CircleDollarSign,
+                    title: 'Não haverá multa neste cancelamento',
+                    message: `Não falta nada a pagar do plano em “${c.name}”${clientLabel(c)}, e a multa é ${pct}% do que falta pagar.\nConfirmar encerra o contrato sem gerar cobrança.`,
+                    consequences: [
+                        'Nenhuma cobrança de multa é gerada (multa: R$ 0,00).',
+                        ...common,
+                        'Nada do que já foi pago é devolvido automaticamente.',
+                    ],
+                    confirmLabel: 'Cancelar sem multa',
+                    onConfirm: () => runResolveCancel(c, action),
+                });
+                return;
+            }
             showConfirm({
                 tone: 'danger',
                 icon: CircleDollarSign,
                 title: 'Cobrar a multa de cancelamento?',
-                message: `Encerra “${c.name}”${clientLabel(c)} com a multa de ${cancFine}% prevista nas políticas.`,
+                message: fineKnown
+                    ? (
+                        <>
+                            <strong style={{ color: 'var(--text-primary)' }}>Multa: {formatBRL(fineAmount)}</strong>
+                            {` — ${pct}% de ${formatBRL(c.fineBaseAmount ?? 0)} que faltavam pagar.\n`}
+                            {`Encerra “${c.name}”${clientLabel(c)}.`}
+                        </>
+                    )
+                    : `Encerra “${c.name}”${clientLabel(c)} com a multa de ${pct}% sobre o que faltava pagar do plano.`,
                 consequences: [
-                    `É gerada uma cobrança de multa de ${cancFine}% sobre o total que o cliente já pagou neste contrato (sem nada pago, não há multa).`,
-                    'A multa fica pendente para o cliente pagar: ela não é cobrada automaticamente no cartão.',
+                    `É gerada a cobrança “Multa de cancelamento”${fineKnown ? ` de ${formatBRL(fineAmount)}` : ''}, que fica pendente: o cliente é avisado e paga em Meus Pagamentos (PIX ou cartão).`,
+                    'Com o cliente presente, use “Cobrar multa agora” (na lista ou dentro do contrato). Ela não é cobrada sozinha no cartão salvo, mesmo com a cobrança automática ligada.',
                     ...common,
                 ],
                 confirmLabel: 'Cobrar multa e cancelar',
-                onConfirm: async () => {
-                    const res = await contractsApi.resolveCancellation(c.id, action);
-                    showToast(res.message);
-                    await reload();
-                },
+                onConfirm: () => runResolveCancel(c, action),
             });
             return;
         }
@@ -172,16 +288,57 @@ export default function AdminContractsPage() {
             tone: 'warning',
             icon: HandCoins,
             title: 'Isentar a multa de cancelamento?',
-            message: `Aceita o cancelamento de “${c.name}”${clientLabel(c)} sem cobrar multa.`,
+            message: fineKnown && fineAmount > 0
+                ? `Aceita o cancelamento de “${c.name}”${clientLabel(c)} sem cobrar a multa de ${formatBRL(fineAmount)}.`
+                : `Aceita o cancelamento de “${c.name}”${clientLabel(c)} sem cobrar multa.`,
             consequences: [
-                'Nenhuma multa é gerada para o cliente.',
+                'Nenhuma multa é gerada; o cliente é avisado de que o contrato foi cancelado sem multa.',
                 ...common,
             ],
             confirmLabel: 'Isentar multa e cancelar',
-            onConfirm: async () => {
-                const res = await contractsApi.resolveCancellation(c.id, action);
-                showToast(res.message);
+            onConfirm: () => runResolveCancel(c, action),
+        });
+    };
+
+    // E13 — "Cobrar agora" da multa em aberto. A lista não traz o CPF do cliente: busca o PAGADOR da cobrança
+    // (E1: o PIX usa o CPF do CLIENTE, nunca o do admin). Se essa busca falhar, o sheet abre do mesmo jeito e o
+    // próprio checkout resolve o CPF.
+    const openFineCharge = async (c: Contract) => {
+        const fine = c.cancellationFine;
+        if (!fine || !c.user || fineChargeLoadingId) return;
+        setFineChargeError('');
+        setFineChargeLoadingId(c.id);
+        let client: FineCharge['client'] = { id: c.user.id, name: c.user.name };
+        try {
+            const { payer } = await stripeApi.paymentMethodsForPayment(fine.id);
+            client = { id: payer.id, name: payer.name, cpfCnpj: payer.cpfCnpj };
+        } catch (err: unknown) {
+            // 404 = a cobrança não existe mais (lista desatualizada): recarrega em vez de abrir um sheet sem saída.
+            if (err instanceof ApiError && err.status === 404) {
+                setFineChargeLoadingId(null);
+                showToast({ message: 'Esta multa não está mais disponível para cobrança.', type: 'error' });
                 await reload();
+                return;
+            }
+        }
+        setFineChargeLoadingId(null);
+        setFineCharge({ paymentId: fine.id, amount: fine.amount, contractName: c.name, initialMethod: c.paymentMethod ?? null, client });
+    };
+
+    // E4 — confirmação neutra (legado). O botão só aparece com c.canRenew; se mesmo assim o backend recusar
+    // (lista desatualizada: já renovado por outro admin), mostra o motivo e recarrega.
+    const handleRenew = (c: Contract) => {
+        showConfirm({
+            title: 'Renovar Contrato',
+            message: `Renovar "${c.name}" por mais 3 meses?`,
+            onConfirm: async () => {
+                try {
+                    const r = await contractsApi.renew(c.id, { durationMonths: 3 });
+                    showToast(r.message);
+                } catch (e: unknown) {
+                    showToast({ message: getErrorMessage(e) || 'Erro ao renovar o contrato.', type: 'error' });
+                }
+                reload();
             },
         });
     };
@@ -227,10 +384,12 @@ export default function AdminContractsPage() {
     const contractEpisodes = (c: { type: string; durationMonths: number; totalSessions?: number | null }) =>
         isAvulsoContract(c) ? 1 : c.type === 'CUSTOM' ? (c.totalSessions ?? episodeCount(c.durationMonths)) : episodeCount(c.durationMonths);
 
-    const getDaysToExpiry = (endDate: string) => {
-        const now = new Date();
-        const end = new Date(endDate);
-        return Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    // E4: `daysToEnd` vem do backend (dias de calendário em SP; negativo = vigência encerrada) — a mesma conta
+    // que decide `canRenew`, para o selo "Vence em Nd" e o botão Renovar nunca discordarem. A conta local
+    // fica só como reserva (resposta sem o campo).
+    const getDaysToExpiry = (c: Contract) => {
+        if (typeof c.daysToEnd === 'number') return c.daysToEnd;
+        return Math.ceil((new Date(c.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
     };
 
     // Vencimento só vale para PLANOS ativos ou concluídos (o concluído continua renovável — D6).
@@ -239,8 +398,9 @@ export default function AdminContractsPage() {
 
     const getVencimentoBadge = (c: Contract) => {
         if (!tracksExpiry(c)) return null;
-        const days = getDaysToExpiry(c.endDate);
-        if (days <= 0) return { label: 'Vigência encerrada', color: '#6b7280', bg: 'rgba(107,114,128,0.15)' };
+        const days = getDaysToExpiry(c);
+        if (days < 0) return { label: 'Vigência encerrada', color: '#6b7280', bg: 'rgba(107,114,128,0.15)' };
+        if (days === 0) return { label: 'Vence hoje', color: '#dc2626', bg: 'rgba(220,38,38,0.15)' };
         if (days <= 7) return { label: `Vence em ${days}d`, color: '#dc2626', bg: 'rgba(220,38,38,0.15)' };
         if (days <= 30) return { label: `Vence em ${days}d`, color: '#d97706', bg: 'rgba(217,119,6,0.15)' };
         return null;
@@ -249,8 +409,17 @@ export default function AdminContractsPage() {
     // KPI computations
     const activeContracts = contracts.filter(c => c.status === 'ACTIVE');
     const totalFlexCredits = activeContracts.reduce((sum, c) => sum + (c.flexCreditsRemaining || 0), 0);
-    const expiringIn30 = contracts.filter(c => tracksExpiry(c) && getDaysToExpiry(c.endDate) <= 30 && getDaysToExpiry(c.endDate) > 0).length;
+    const expiringIn30 = contracts.filter(c => tracksExpiry(c) && getDaysToExpiry(c) <= 30 && getDaysToExpiry(c) >= 0).length;
     const pendingCancellation = contracts.filter(c => c.status === 'PENDING_CANCELLATION').length;
+
+    // E3 — formas oferecidas no "Editar": Boleto só com isBoletoAvailable() (chave-mestra + Cora). A liberação
+    // por contrato ("Permitir boleto neste contrato") deixou de existir.
+    const boletoAvailable = isBoletoAvailable();
+    const boleto = getBoletoStatus();
+    const editMethodOptions = (() => {
+        const base = getPaymentMethods().filter(pm => pm.key !== 'BOLETO');
+        return boletoAvailable ? [...base, getBoletoMethodConfig()] : base;
+    })();
 
     if (loading) return <div><HeroSkeleton /><TableSkeleton rows={6} cols={7} /></div>;
 
@@ -362,9 +531,8 @@ export default function AdminContractsPage() {
 
                 {/* Recarregamento silencioso (após criar/editar/renovar): a lista continua visível. */}
                 {refreshing && (
-                    <span role="status"
-                        style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                        <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} aria-hidden="true" /> Atualizando…
+                    <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center' }}>
+                        <BrandLoader size="inline" label="Atualizando…" />
                     </span>
                 )}
             </div>
@@ -397,6 +565,17 @@ export default function AdminContractsPage() {
                                     const clientDeleted = isClientDeleted(c);
                                     // A lista não traz reservas/pagamentos: o avulso mostra a data do contrato (= da gravação).
                                     const terms = describeContractTerms(c, null, null, { dateFormat: 'short' });
+                                    // E13 — multa: prevista (pedido em análise, já congelada) ou gerada (pendente/paga).
+                                    const fine = c.cancellationFine;
+                                    const fineNote = c.status === 'PENDING_CANCELLATION' && typeof c.fineAmountPreview === 'number'
+                                        ? (c.fineAmountPreview > 0
+                                            ? { text: `Multa prevista: ${formatBRL(c.fineAmountPreview)}`, color: 'var(--warning)' }
+                                            : { text: 'Sem multa a cobrar', color: 'var(--text-muted)' })
+                                        : fine && isFineOpen(c)
+                                            ? { text: `Multa pendente: ${formatBRL(fine.amount)}`, color: 'var(--warning)' }
+                                            : fine && fine.status === 'PAID'
+                                                ? { text: `Multa paga: ${formatBRL(fine.amount)}`, color: 'var(--success)' }
+                                                : null;
                                     return (
                                         <tr key={c.id} className="admin-zebra-row">
                                             {/* Cliente + Projeto merged */}
@@ -438,17 +617,23 @@ export default function AdminContractsPage() {
                                             </td>
 
                                             {/* Type + Tier */}
+                                            {/* Cada selo fica numa linha própria como conteúdo INLINE: ocupa só a largura do
+                                                texto (não estica como item de flex/grid) e acompanha o text-align da célula —
+                                                à esquerda na tabela, à direita no card do mobile (admin-table--cards). */}
                                             <td data-label="Tipo">
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                    <StatusBadge meta={getMeta(CONTRACT_TYPE_META, c.type)} />
-                                                    <span style={{
-                                                        padding: '2px 8px', borderRadius: '6px', fontSize: '0.625rem', fontWeight: 700,
-                                                        background: getMeta(TIER_META, c.tier).bg,
-                                                        color: getMeta(TIER_META, c.tier).color,
-                                                        width: 'fit-content'
-                                                    }}>
-                                                        {c.tier}
-                                                    </span>
+                                                <div style={{ lineHeight: 0 }}>
+                                                    <div><StatusBadge meta={getMeta(CONTRACT_TYPE_META, c.type)} /></div>
+                                                    <div style={{ marginTop: 4 }}>
+                                                        <span style={{
+                                                            display: 'inline-block', lineHeight: 1.5,
+                                                            padding: '2px 8px', borderRadius: '6px', fontSize: '0.625rem', fontWeight: 700,
+                                                            textTransform: 'uppercase', whiteSpace: 'nowrap',
+                                                            background: getMeta(TIER_META, c.tier).bg,
+                                                            color: getMeta(TIER_META, c.tier).color,
+                                                        }}>
+                                                            {getMeta(TIER_META, c.tier).label}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             </td>
 
@@ -497,6 +682,13 @@ export default function AdminContractsPage() {
                                             <td data-label="Vigência">
                                                 <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                                                     {terms.vigencia}
+                                                    {/* E13: o contrato cancelado mostra QUANDO foi cancelado (dentro do mesmo bloco:
+                                                        no card do mobile a célula é flex e cada filho viraria uma coluna). */}
+                                                    {c.status === 'CANCELLED' && c.cancelledAt && (
+                                                        <div style={{ marginTop: '2px', fontSize: '0.6875rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                                                            Cancelado em {fmtDateSP(c.cancelledAt)}
+                                                        </div>
+                                                    )}
                                                 </div>
                                                 {venc && (
                                                     <span style={{
@@ -510,9 +702,17 @@ export default function AdminContractsPage() {
                                                 )}
                                             </td>
 
-                                            {/* Status */}
+                                            {/* Status (+ situação da multa de cancelamento — E13). Um único filho na célula:
+                                                no card do mobile o <td> é flex (rótulo × valor). */}
                                             <td data-label="Status" style={{ textAlign: 'center' }}>
-                                                <StatusBadge meta={getMeta(CONTRACT_STATUS_META, c.status)} size="md" />
+                                                <div>
+                                                    <StatusBadge meta={getMeta(CONTRACT_STATUS_META, c.status)} size="md" />
+                                                    {fineNote && (
+                                                        <div style={{ marginTop: '4px', fontSize: '0.6875rem', fontWeight: 600, color: fineNote.color, whiteSpace: 'nowrap' }}>
+                                                            {fineNote.text}
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </td>
 
                                             {/* Actions */}
@@ -524,12 +724,23 @@ export default function AdminContractsPage() {
                                                     </Tooltip>
                                                     <Tooltip content="Editar contrato" describe={false}>
                                                         <button className="admin-icon-btn admin-icon-btn--success" aria-label={`Editar contrato ${c.name}`}
-                                                            onClick={() => {
-                                                                setEditContract(c);
-                                                                setEditForm({ status: c.status, endDate: c.endDate.split('T')[0], flexCreditsRemaining: c.flexCreditsRemaining?.toString() || '', contractUrl: c.contractUrl || '', paymentMethod: c.paymentMethod || '', boletoAllowed: c.boletoAllowed ?? false });
-                                                                setEditError('');
-                                                            }}><Pencil size={16} aria-hidden="true" /></button>
+                                                            onClick={() => openEdit(c)}><Pencil size={16} aria-hidden="true" /></button>
                                                     </Tooltip>
+
+                                                    {/* E13: multa gerada e ainda em aberto → cobrar com o cliente presente (PIX/cartão).
+                                                        Nunca para cliente excluído (D3). */}
+                                                    {!clientDeleted && fine && isFineOpen(c) && (
+                                                        <Tooltip content={`Cobrar multa agora (${formatBRL(fine.amount)})`} describe={false}>
+                                                            <button type="button" className="admin-icon-btn admin-icon-btn--success"
+                                                                aria-label={`Cobrar agora a multa de cancelamento de ${c.name} (${formatBRL(fine.amount)})`}
+                                                                aria-busy={fineChargeLoadingId === c.id}
+                                                                onClick={() => openFineCharge(c)}>
+                                                                {fineChargeLoadingId === c.id
+                                                                    ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} aria-hidden="true" />
+                                                                    : <Banknote size={16} aria-hidden="true" />}
+                                                            </button>
+                                                        </Tooltip>
+                                                    )}
 
                                                     {c.status === 'PENDING_CANCELLATION' && (
                                                         <>
@@ -554,14 +765,20 @@ export default function AdminContractsPage() {
                                                         </Tooltip>
                                                     )}
 
-                                                    {/* D6: plano Concluído continua renovável; avulso (sessão única) nunca renova.
-                                                        D3: cliente excluído não renova, não pausa nem retoma (criariam obrigação). */}
-                                                    {!clientDeleted && (c.status === 'ACTIVE' || c.status === 'EXPIRED' || c.status === 'COMPLETED') && !isAvulsoContract(c) && (
+                                                    {/* E4: o backend decide (`canRenew`) — plano Ativo/Concluído a ≤ 30 dias do fim, ou
+                                                        Expirado; ainda não renovado; nunca avulso/serviço nem cliente excluído (D3).
+                                                        O `!clientDeleted` é só cinto e suspensório. */}
+                                                    {!clientDeleted && c.canRenew === true && (
                                                         <Tooltip content="Renovar contrato (+3 meses)" describe={false}>
-                                                            <button className="admin-icon-btn" aria-label={`Renovar contrato ${c.name}`}
-                                                                onClick={() => {
-                                                                    showConfirm({ title: 'Renovar Contrato', message: `Renovar "${c.name}" por mais 3 meses?`, onConfirm: async () => { try { const r = await contractsApi.renew(c.id, { durationMonths: 3 }); showToast(r.message); reload(); } catch (e: unknown) { showToast(getErrorMessage(e) || 'Erro'); } } });
-                                                                }}><RefreshCw size={16} aria-hidden="true" /></button>
+                                                            <button type="button" className="admin-icon-btn" aria-label={`Renovar contrato ${c.name}`}
+                                                                onClick={() => handleRenew(c)}><RefreshCw size={16} aria-hidden="true" /></button>
+                                                        </Tooltip>
+                                                    )}
+                                                    {/* Já renovado (só 1 renovação por contrato): atalho para o contrato novo. */}
+                                                    {c.alreadyRenewed && c.renewedToId && (
+                                                        <Tooltip content="Já renovado — abrir contrato novo" describe={false}>
+                                                            <button type="button" className="admin-icon-btn" aria-label={`Abrir o contrato novo (renovação de ${c.name})`}
+                                                                onClick={() => navigate(`/admin/contracts/${c.renewedToId}`)}><FolderSymlink size={16} aria-hidden="true" /></button>
                                                         </Tooltip>
                                                     )}
                                                     {!clientDeleted && c.status === 'ACTIVE' && (
@@ -649,24 +866,19 @@ export default function AdminContractsPage() {
                             <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 5 }} htmlFor={`${uid}-payment-method`}><CreditCard size={13} aria-hidden="true" /> Forma de Pagamento</label>
                             <select id={`${uid}-payment-method`} className="form-select" value={editForm.paymentMethod} onChange={e => setEditForm({ ...editForm, paymentMethod: e.target.value })}>
                                 <option value="">-- Não definido --</option>
-                                {getPaymentMethods().map(pm => (
+                                {editMethodOptions.map(pm => (
                                     <option key={pm.key} value={pm.key}>{pm.emoji} {pm.label}</option>
                                 ))}
+                                {/* Contrato legado em boleto com o boleto desligado: aparece só como "atual" (não é escolha). */}
+                                {editContract.paymentMethod === 'BOLETO' && !boletoAvailable && (
+                                    <option value="BOLETO" disabled>{getBoletoMethodConfig().emoji} {getBoletoMethodConfig().label} (atual — indisponível)</option>
+                                )}
                             </select>
-                        </div>
-                        <div className="form-group">
-                            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: '0.875rem' }}>
-                                <input
-                                    type="checkbox"
-                                    checked={editForm.boletoAllowed}
-                                    onChange={e => setEditForm({ ...editForm, boletoAllowed: e.target.checked })}
-                                    style={{ width: 18, height: 18, accentColor: '#f59e0b', cursor: 'pointer' }}
-                                />
-                                <span><FileText size={13} style={{ verticalAlign: '-2px', marginRight: 4 }} aria-hidden="true" />Permitir <strong>boleto</strong> neste contrato</span>
-                            </label>
-                            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '6px 0 0 28px' }}>
-                                O cliente poderá pagar as parcelas deste contrato via boleto. Desligado por padrão.
-                            </p>
+                            {editContract.paymentMethod === 'BOLETO' && !boletoAvailable && (
+                                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '6px 0 0' }}>
+                                    {boleto.message || 'O pagamento por boleto está desligado.'} As cobranças deste contrato saem por PIX ou cartão.
+                                </p>
+                            )}
                         </div>
                         <div className="admin-actions-row">
                             <button className="btn btn-secondary" onClick={() => setEditContract(null)}>Cancelar</button>
@@ -676,7 +888,25 @@ export default function AdminContractsPage() {
                 </BottomSheetModal>
             )}
 
-            {/* Cancel (Force) Modal */}
+            {/* E13 — "Cobrar agora" da multa de cancelamento (PIX/cartão do CLIENTE, presente). */}
+            {fineCharge && (
+                <ChargeNowSheet
+                    paymentId={fineCharge.paymentId}
+                    amount={fineCharge.amount}
+                    description={`${fineCharge.contractName} - Multa de cancelamento`}
+                    title="Cobrar multa de cancelamento"
+                    subtitle={`${fineCharge.contractName}${fineCharge.client.name ? ` · ${fineCharge.client.name}` : ''}. Gere o PIX ou cobre o cartão do cliente (presente) — a cobrança é feita em nome do cliente.`}
+                    context="contract"
+                    initialMethod={fineCharge.initialMethod}
+                    client={fineCharge.client}
+                    error={fineChargeError || undefined}
+                    onError={setFineChargeError}
+                    onSuccess={() => { setFineCharge(null); showToast('Multa de cancelamento paga!'); reload(); }}
+                    onDismiss={() => { setFineCharge(null); reload(); }}
+                    dismissLabel="Fechar (a multa continua pendente)"
+                />
+            )}
+
             {/* -------------------------------------------------------
                CUSTOM CONTRACT WIZARD
             ------------------------------------------------------- */}

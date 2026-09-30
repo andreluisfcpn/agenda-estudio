@@ -8,7 +8,8 @@ import ClientHealthCards from '../components/admin/clients/ClientHealthCards';
 import PaymentOverviewCard from '../components/admin/clients/PaymentOverviewCard';
 import ClientContractsCard from '../components/admin/clients/ClientContractsCard';
 import BookingHistorySection, { BookingNotesPatch } from '../components/admin/clients/BookingHistorySection';
-import { ArrowLeft, NotebookPen, Check, UserX, AlertTriangle, Trash2, Loader2 } from 'lucide-react';
+import { ArrowLeft, NotebookPen, Check, UserX, AlertTriangle, Trash2, Loader2, CreditCard } from 'lucide-react';
+import BrandLoader from '../components/ui/BrandLoader';
 import { useUI } from '../context/UIContext';
 import { useDeleteClient } from '../hooks/useDeleteClient';
 import { getErrorMessage } from '../utils/errors';
@@ -35,6 +36,9 @@ export default function ClientProfilePage() {
     // Admin payment overview: auto-charge, saved cards, upcoming installments.
     const [payOverview, setPayOverview] = useState<Awaited<ReturnType<typeof usersApi.paymentOverview>> | null>(null);
     const [autoSaving, setAutoSaving] = useState(false);
+    // A visão de pagamento chega DEPOIS do perfil: enquanto a 1ª busca não volta, o card mostra o loading de marca
+    // (antes o bloco simplesmente "aparecia" sem aviso). Em refetch silencioso o card já exibido continua na tela.
+    const [payLoading, setPayLoading] = useState(false);
     useEffect(() => { if (id) loadUser(); }, [id]);
 
     /**
@@ -75,7 +79,10 @@ export default function ClientProfilePage() {
             setNotes(res.user.notes || '');
             // Cliente excluído (D3): sem cartões nem cobrança automática — não há visão de pagamento a buscar.
             if (res.user.deletedAt) setPayOverview(null);
-            else usersApi.paymentOverview(id!).then(setPayOverview).catch(() => setPayOverview(null));
+            else {
+                setPayLoading(true);
+                usersApi.paymentOverview(id!).then(setPayOverview).catch(() => setPayOverview(null)).finally(() => setPayLoading(false));
+            }
         } catch (err) { console.error(err); setLoadError(true); }
         finally { if (!silent) setLoading(false); }
     };
@@ -156,6 +163,12 @@ export default function ClientProfilePage() {
 
             {!isDeleted && payOverview && (
                 <PaymentOverviewCard overview={payOverview} autoSaving={autoSaving} onToggleAutoCharge={handleAutoCharge} />
+            )}
+            {!isDeleted && !payOverview && payLoading && (
+                <div className="card" style={{ padding: '20px', marginBottom: '16px' }}>
+                    <h2 style={{ fontSize: '1.0625rem', fontWeight: 700, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: 8 }}><CreditCard size={17} aria-hidden="true" /> Pagamento</h2>
+                    <BrandLoader size="inline" label="Carregando cartões e parcelas…" />
+                </div>
             )}
 
             {/* bookings: o avulso mostra a data/horário REAIS da gravação (a remarcação move a reserva, não o contrato). */}

@@ -1,7 +1,7 @@
 import { getErrorMessage } from '../utils/errors';
 import HeroAmbient from '../components/client/HeroAmbient';
 import { useState, useEffect } from 'react';
-import { contractsApi, bookingsApi, ContractWithStats, ContractBooking, pricingApi, PricingConfig, stripeApi, SavedCard, PaymentSummary, AddOnConfig } from '../api/client';
+import { contractsApi, ContractWithStats, ContractBooking, pricingApi, PricingConfig, stripeApi, AutoChargeState, PaymentSummary, AddOnConfig } from '../api/client';
 import ContractWizard from '../components/ContractWizard';
 import CustomContractWizard from '../components/CustomContractWizard';
 import BulkBookingModal from '../components/BulkBookingModal';
@@ -9,7 +9,7 @@ import BookingDetailModal from '../components/BookingDetailModal';
 import PaymentModal from '../components/PaymentModal';
 import CancelContractModal from '../components/CancelContractModal';
 import ServiceContractWizard from '../components/ServiceContractWizard';
-import SubscribeModal from '../components/SubscribeModal';
+import AutoChargeModal from '../components/SubscribeModal';
 import RenewContractModal from '../components/RenewContractModal';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useUI } from '../context/UIContext';
@@ -17,18 +17,12 @@ import { FileText, Sparkles, Plus, Pencil } from 'lucide-react';
 import ContractCard from '../components/client/ContractCard';
 import { renderServiceIcon } from '../utils/serviceIcons';
 import { formatBRL } from '../utils/format';
-import { isContractCurrent } from '../utils/contractStatus';
+import { isAvulsoContract, isContractCurrent } from '../utils/contractStatus';
+import { chargeLabel, installmentPositions, isBlockedByPendingCancellation, isCancellationFine } from '../utils/paymentLabels';
 import { getStatusLabel } from '../constants/adminMeta';
 import { ContractsSkeleton } from '../components/ui/SkeletonLoader';
+import Tooltip from '../components/ui/Tooltip';
 import '../styles/my-contracts.css';
-
-const PLATFORMS = [
-    { key: 'YOUTUBE', label: 'YouTube', color: '#FF0000' },
-    { key: 'TIKTOK', label: 'TikTok', color: '#00F2EA' },
-    { key: 'INSTAGRAM', label: 'Instagram', color: '#E1306C' },
-    { key: 'FACEBOOK', label: 'Facebook', color: '#1877F2' },
-];
-
 
 export default function MyContractsPage() {
     const location = useLocation();
@@ -40,7 +34,7 @@ export default function MyContractsPage() {
     const [tab, setTab] = useState<'active' | 'archived' | 'cancelled'>('active');
     const [expandedId, setExpandedId] = useState<string | null>(location.state?.expandContractId || null);
     
-    const { showAlert, showToast } = useUI();
+    const { showToast } = useUI();
 
     // Service Addons (two families via `monthly`: per-episode add-ons + monthly services)
     const [allAddons, setAllAddons] = useState<AddOnConfig[]>([]);
@@ -48,21 +42,8 @@ export default function MyContractsPage() {
     const [wizardAddon, setWizardAddon] = useState<AddOnConfig | null>(null);
     const [wizardMode, setWizardMode] = useState<'hire' | 'renew'>('hire');
 
-    // Booking detail modal state
+    // Booking detail modal (o BookingDetailModal cuida do próprio estado de edição/remarcação)
     const [detailBooking, setDetailBooking] = useState<ContractBooking | null>(null);
-    const [detailTab, setDetailTab] = useState<'preparativos' | 'metricas' | 'servicos'>('preparativos');
-    const [clientNotes, setClientNotes] = useState('');
-    const [platforms, setPlatforms] = useState<string[]>([]);
-    const [platformLinks, setPlatformLinks] = useState<Record<string, string>>({});
-    const [saving, setSaving] = useState(false);
-
-
-    // Reschedule
-    const [showReschedule, setShowReschedule] = useState(false);
-    const [rescheduleDate, setRescheduleDate] = useState('');
-    const [rescheduleTime, setRescheduleTime] = useState('');
-    const [rescheduleError, setRescheduleError] = useState('');
-    const [rescheduling, setRescheduling] = useState(false);
 
     // Contract Wizard
     const [showWizard, setShowWizard] = useState(false);
@@ -77,9 +58,9 @@ export default function MyContractsPage() {
     // Renew Modal
     const [showRenewModalFor, setShowRenewModalFor] = useState<ContractWithStats | null>(null);
 
-    // Subscribe (Recurring) Modal
-    const [showSubscribeModalFor, setShowSubscribeModalFor] = useState<ContractWithStats | null>(null);
-    const [savedCards, setSavedCards] = useState<SavedCard[]>([]);
+    // Cobrança automática (E9): por CLIENTE — o mesmo estado vale para todos os cards.
+    const [showAutoChargeFor, setShowAutoChargeFor] = useState<ContractWithStats | null>(null);
+    const [autoCharge, setAutoCharge] = useState<AutoChargeState | null>(null);
 
     // Pay a pending contract installment inline (no navigation to /meus-pagamentos)
     const [payingInstallment, setPayingInstallment] = useState<{ payment: PaymentSummary; contract: ContractWithStats } | null>(null);
@@ -88,22 +69,31 @@ export default function MyContractsPage() {
 
     useEffect(() => { loadData(); }, []);
 
-    const loadData = async () => {
-        setLoading(true);
-        setLoadError(false);
+    // `silent`: recarrega sem o esqueleto — o esqueleto desmonta a página inteira, inclusive um modal que
+    // ainda está aberto (detalhe da gravação avisando `onChanged`, checkout fechado no cancelar).
+    const loadData = async (silent = false) => {
+        if (!silent) {
+            setLoading(true);
+            setLoadError(false);
+        }
         try {
-            const [contractsRes, pricingRes, addonsRes, cardsRes] = await Promise.all([
+            const [contractsRes, pricingRes, addonsRes, autoChargeRes] = await Promise.all([
                 contractsApi.getMy(),
                 pricingApi.get(),
                 pricingApi.getAddons(),
-                stripeApi.listPaymentMethods().catch(() => ({ paymentMethods: [], autoChargeEnabled: false }))
+                // Estado desconhecido (falha) → o card mostra "Ativar…" e o modal consulta de novo ao abrir.
+                stripeApi.getAutoCharge().catch(() => null),
             ]);
             setContracts(contractsRes.contracts);
             setPricing(pricingRes.pricing);
             setAllAddons(addonsRes.addons);
-            setSavedCards(cardsRes.paymentMethods);
-        } catch (err) { console.error('Failed to load contracts:', err); setLoadError(true); }
-        finally { setLoading(false); }
+            setAutoCharge(autoChargeRes);
+        } catch (err) {
+            console.error('Failed to load contracts:', err);
+            // Recarga silenciosa que falha: a lista que já está na tela continua valendo.
+            if (!silent) setLoadError(true);
+        }
+        finally { if (!silent) setLoading(false); }
     };
 
     const handleRenew = async (durationMonths: 3 | 6 | 12, paymentMethod: 'PIX' | 'CARTAO') => {
@@ -118,16 +108,10 @@ export default function MyContractsPage() {
         }
     };
 
-    const handleSubscribe = async (paymentMethodId: string) => {
-        if (!showSubscribeModalFor) return;
-        try {
-            await contractsApi.subscribe(showSubscribeModalFor.id, { paymentMethodId });
-            showToast({ message: 'Cobrança automática ativada com sucesso.', type: 'success' });
-            setShowSubscribeModalFor(null);
-            loadData();
-        } catch (err: unknown) {
-            showToast({ message: getErrorMessage(err) || 'Erro ao ativar cobrança automática.', type: 'error' });
-        }
+    // O modal de cobrança automática avisa que algo mudou: atualiza SÓ o estado dela, sem o esqueleto de
+    // carregamento (que desmontaria a página e o modal, ainda aberto mostrando o resultado).
+    const refreshAutoCharge = async () => {
+        try { setAutoCharge(await stripeApi.getAutoCharge()); } catch { /* fica o último estado conhecido */ }
     };
 
     // Regra compartilhada com o KPI do dashboard (utils/contractStatus.ts).
@@ -170,39 +154,13 @@ export default function MyContractsPage() {
 
     const getPlanConfig = (tier: string) => pricing.find(p => p.tier === tier);
 
-    const openBookingDetail = (b: ContractBooking) => {
-        setDetailBooking(b);
-        setDetailTab('preparativos');
-        setClientNotes(b.clientNotes || '');
-        try { setPlatforms(b.platforms ? JSON.parse(b.platforms) : []); } catch { setPlatforms([]); }
-        try { setPlatformLinks(b.platformLinks ? JSON.parse(b.platformLinks) : {}); } catch { setPlatformLinks({}); }
-        setShowReschedule(false);
-        setRescheduleError('');
-    };
-
-    const togglePlatform = (key: string) => {
-        setPlatforms(prev => prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key]);
-    };
+    const openBookingDetail = (b: ContractBooking) => setDetailBooking(b);
 
     const canModifyBooking = (b: ContractBooking): boolean => {
         if (b.status !== 'RESERVED' && b.status !== 'CONFIRMED') return false;
         const dateStr = b.date.split('T')[0];
         const bookingDateTime = new Date(`${dateStr}T${b.startTime}:00`);
         return (bookingDateTime.getTime() - Date.now()) / (1000 * 60 * 60) >= 24;
-    };
-
-    const handleSaveDetail = async () => {
-        if (!detailBooking) return;
-        setSaving(true);
-        try {
-            await bookingsApi.clientUpdate(detailBooking.id, {
-                clientNotes, platforms: JSON.stringify(platforms),
-            });
-            showToast('Gravação atualizada!');
-            setDetailBooking(null);
-            loadData();
-        } catch (err: unknown) { showAlert({ message: getErrorMessage(err), type: 'error' }); }
-        finally { setSaving(false); }
     };
 
     const handleRequestCancel = (id: string) => {
@@ -218,35 +176,16 @@ export default function MyContractsPage() {
         loadData();
     };
 
-    const handlePurchaseAddon = async (bookingId: string, addonKey: string) => {
-        setSaving(true);
-        try {
-            const res = await bookingsApi.purchaseAddon(bookingId, addonKey);
-            showToast(res.message);
-            // Re-fetch contracts data to sync updated booking
-            await loadData();
-            // Optimistically update detailBooking state
-            setDetailBooking(prev => prev && prev.id === bookingId ? { ...prev, addOns: [...(prev.addOns || []), addonKey] } : prev);
-        } catch (err: unknown) { showAlert({ message: getErrorMessage(err), type: 'error' }); }
-        finally { setSaving(false); }
-    };
-
-    const handleReschedule = async () => {
-        if (!detailBooking) return;
-        setRescheduling(true); setRescheduleError('');
-        try {
-            await bookingsApi.reschedule(detailBooking.id, { date: rescheduleDate, startTime: rescheduleTime });
-            showToast('Reagendado com sucesso!');
-            setDetailBooking(null);
-            loadData();
-        } catch (err: unknown) { setRescheduleError(getErrorMessage(err)); }
-        finally { setRescheduling(false); }
-    };
-
     // Monthly subscription services (family `monthly`) the client can self-hire inline.
     const monthlyServices = allAddons.filter(a => a.monthly && a.active !== false);
     const hasActiveService = (key: string) =>
         contracts.some(c => c.type === 'SERVICO' && c.status === 'ACTIVE' && c.addOns?.includes(key));
+    // "Renovar Serviço" é uma contratação NOVA do mesmo serviço (o backend não liga uma à outra): o serviço
+    // já foi renovado quando existe outra contratação dele em vigor que termina DEPOIS desta.
+    const serviceAlreadyRenewed = (c: ContractWithStats) => c.type === 'SERVICO' && contracts.some(o =>
+        o.id !== c.id && o.type === 'SERVICO' && (o.status === 'ACTIVE' || o.status === 'PAUSED')
+        && (o.addOns || [])[0] === (c.addOns || [])[0]
+        && new Date(o.endDate).getTime() > new Date(c.endDate).getTime());
 
     const statusLabel = (s: string) => {
         switch (s) {
@@ -259,6 +198,28 @@ export default function MyContractsPage() {
             // Demais (HELD "Em espera", CANCELLED…) pelo mapa único; desconhecido → '—' (nunca "Cancelado").
             default: return getStatusLabel(s);
         }
+    };
+
+    // O que está sendo pago no modal "Pagar parcela": "Parcela 2/3", "Multa de cancelamento (20%)", "Extra de gravação".
+    const describeInstallment = (payment: PaymentSummary, contract: ContractWithStats) => {
+        const what = chargeLabel(payment, {
+            isAvulso: isAvulsoContract(contract),
+            finePct: (contract.cancellationFine?.id === payment.id ? contract.cancellationFine.finePct : null) ?? contract.finePct,
+            position: installmentPositions(contract.payments || []).get(payment.id),
+        });
+        return {
+            title: isCancellationFine(payment) ? 'Pagar multa' : 'Pagar parcela',
+            description: `${contract.name} — ${what ?? 'parcela'}`,
+        };
+    };
+
+    const openInstallmentPayment = (payment: PaymentSummary, contract: ContractWithStats) => {
+        // E13: com o cancelamento em análise, as parcelas do plano ficam suspensas (o backend devolve 409).
+        if (isBlockedByPendingCancellation(contract.status, payment)) {
+            showToast({ type: 'error', message: 'Este contrato está com o cancelamento em análise. Aguarde a decisão do estúdio.' });
+            return;
+        }
+        setPayingInstallment({ payment, contract });
     };
 
     // "Pagar Agora" do banner de contrato AGUARDANDO PAGAMENTO.
@@ -372,17 +333,18 @@ export default function MyContractsPage() {
                         {monthlyServices.map(svc => {
                             const active = hasActiveService(svc.key);
                             return (
-                                <button key={svc.key} type="button" className="contracts-offer" onClick={() => { setWizardMode('hire'); setWizardAddon(svc); }}
-                                    title={active ? `Renovar ou adicionar ${svc.name}` : `Contratar ${svc.name}`}>
-                                    <span className="contracts-offer__icon">{renderServiceIcon(svc.icon, 18)}</span>
-                                    <span className="contracts-offer__body">
-                                        <span className="contracts-offer__name">{svc.name}</span>
-                                        <span className="contracts-offer__meta">
-                                            {active ? 'Renovar · ' : 'A partir de '}{formatBRL(svc.price)}<span>/mês</span>
+                                <Tooltip key={svc.key} content={active ? `Renovar ou adicionar ${svc.name}` : `Contratar ${svc.name}`}>
+                                    <button type="button" className="contracts-offer" onClick={() => { setWizardMode('hire'); setWizardAddon(svc); }}>
+                                        <span className="contracts-offer__icon">{renderServiceIcon(svc.icon, 18)}</span>
+                                        <span className="contracts-offer__body">
+                                            <span className="contracts-offer__name">{svc.name}</span>
+                                            <span className="contracts-offer__meta">
+                                                {active ? 'Renovar · ' : 'A partir de '}{formatBRL(svc.price)}<span>/mês</span>
+                                            </span>
                                         </span>
-                                    </span>
-                                    <span className="contracts-offer__cta">{active ? 'Contratar+' : 'Contratar'}</span>
-                                </button>
+                                        <span className="contracts-offer__cta">{active ? 'Contratar+' : 'Contratar'}</span>
+                                    </button>
+                                </Tooltip>
                             );
                         })}
                     </div>
@@ -412,7 +374,7 @@ export default function MyContractsPage() {
                 <div className="contracts-empty animate-card-enter" style={{ '--i': 0 } as React.CSSProperties}>
                     <FileText size={32} className="contracts-empty__icon" />
                     <div className="contracts-empty__text">Não foi possível carregar seus contratos.</div>
-                    <button className="btn btn-primary btn-sm" style={{ marginTop: 10 }} onClick={loadData}>Tentar novamente</button>
+                    <button className="btn btn-primary btn-sm" style={{ marginTop: 10 }} onClick={() => loadData()}>Tentar novamente</button>
                 </div>
             ) : contractsToDisplay.length === 0 ? (
                 <div className="contracts-empty animate-card-enter" style={{ '--i': 0 } as React.CSSProperties}>
@@ -432,7 +394,7 @@ export default function MyContractsPage() {
                                 onBulkBooking={c.status === 'ACTIVE' && !isContractArchived(c) ? () => setShowBulkModalFor(c) : undefined}
                                 isArchived={isContractArchived(c)}
                                 isCancelled={c.status === 'CANCELLED'}
-                                onRenewContract={() => {
+                                onRenewContract={serviceAlreadyRenewed(c) ? undefined : () => {
                                     // Services renew through the same self-serve wizard (service pricing,
                                     // plan, cadence) — not the recordings-oriented RenewContractModal.
                                     if (c.type === 'SERVICO') {
@@ -441,8 +403,11 @@ export default function MyContractsPage() {
                                     }
                                     setShowRenewModalFor(c);
                                 }}
-                                onSubscribeContract={() => setShowSubscribeModalFor(c)}
-                                onPayInstallment={(payment) => setPayingInstallment({ payment, contract: c })}
+                                onAutoCharge={() => setShowAutoChargeFor(c)}
+                                autoCharge={autoCharge
+                                    ? { enabled: autoCharge.autoChargeEnabled && !!autoCharge.defaultCard, last4: autoCharge.defaultCard?.last4 }
+                                    : null}
+                                onPayInstallment={(payment) => openInstallmentPayment(payment, c)}
                                 onPayContract={c.status === 'AWAITING_PAYMENT' ? () => { void payAwaitingContract(c); } : undefined}
                                 onExpireContract={c.status === 'AWAITING_PAYMENT' ? () => expireAwaitingContract(c) : undefined} />
                         </div>
@@ -450,7 +415,8 @@ export default function MyContractsPage() {
                 </div>
             )}
 
-            {/* Booking Detail Modal */}
+            {/* Booking Detail Modal — só o cabeçalho (data, horário, faixa, status); o modal re-hidrata o resto
+                por GET /bookings/:id (recado do estúdio, episódio, redes, métricas). */}
             {detailBooking && (
                 <BookingDetailModal
                     booking={{
@@ -461,18 +427,11 @@ export default function MyContractsPage() {
                         tierApplied: detailBooking.tierApplied,
                         status: detailBooking.status,
                         price: detailBooking.price,
-                        clientNotes: detailBooking.clientNotes,
-                        adminNotes: detailBooking.adminNotes,
-                        platforms: detailBooking.platforms,
-                        platformLinks: detailBooking.platformLinks,
-                        addOns: detailBooking.addOns,
-                        durationMinutes: detailBooking.durationMinutes,
-                        peakViewers: detailBooking.peakViewers,
-                        chatMessages: detailBooking.chatMessages,
-                        audienceOrigin: detailBooking.audienceOrigin,
                     }}
                     onClose={() => setDetailBooking(null)}
                     onSaved={() => { setDetailBooking(null); loadData(); }}
+                    // Mudou no servidor com o modal aberto (capa enviada, gravação finalizada): recarga silenciosa.
+                    onChanged={() => { void loadData(true); }}
                     allAddons={allAddons}
                     contractDiscountPct={(() => {
                         const parent = contracts.find(c => c.bookings?.some(b => b.id === detailBooking.id));
@@ -532,7 +491,7 @@ export default function MyContractsPage() {
                     onClose={() => setWizardAddon(null)}
                     onSuccess={() => { showToast('Serviço contratado! Ativando assim que o pagamento for confirmado.'); loadData(); }}
                     // Saiu sem pagar (fica "Aguardando pagamento" por 10 min) ou 409: recarrega a lista.
-                    onPending={loadData}
+                    onPending={() => loadData()}
                 />
             )}
 
@@ -541,18 +500,16 @@ export default function MyContractsPage() {
                 <CustomContractWizard
                     pricing={pricing}
                     onClose={() => setShowCustomWizard(false)}
-                    onComplete={loadData}
+                    onComplete={() => loadData()}
                 />
             )}
 
-            {/* Subscribe (Recurring) Modal */}
-            <SubscribeModal
-                isOpen={!!showSubscribeModalFor}
-                contractName={showSubscribeModalFor?.name || ''}
-                contractTier={showSubscribeModalFor?.tier || ''}
-                savedCards={savedCards}
-                onClose={() => setShowSubscribeModalFor(null)}
-                onConfirm={handleSubscribe}
+            {/* Cobrança automática (E9): ativar com cartão salvo ou novo, trocar o cartão, desligar */}
+            <AutoChargeModal
+                isOpen={!!showAutoChargeFor}
+                contract={showAutoChargeFor}
+                onClose={() => setShowAutoChargeFor(null)}
+                onChanged={refreshAutoCharge}
             />
 
             {/* Renew Modal */}
@@ -566,16 +523,17 @@ export default function MyContractsPage() {
             {/* Pay a pending installment inline (PIX/cartão), without leaving the contract. */}
             {payingInstallment && (
                 <PaymentModal
-                    title="Pagar parcela"
+                    {...describeInstallment(payingInstallment.payment, payingInstallment.contract)}
                     amount={payingInstallment.payment.amount}
                     paymentId={payingInstallment.payment.id}
-                    description={`${payingInstallment.contract.name} — parcela`}
                     contractDuration={1}
                     allowedMethods={['CARTAO', 'PIX']}
-                    allowBoleto={!!payingInstallment.contract.boletoAllowed}
+                    // E3: o boleto é decidido pelo PaymentModal (chave-mestra + Cora; nunca com o contrato aguardando pagamento).
+                    contractStatus={payingInstallment.contract.status}
                     onSuccess={() => { setPayingInstallment(null); showToast('Pagamento confirmado!'); loadData(); }}
                     onError={(msg) => showToast({ type: 'error', message: msg })}
-                    onClose={() => setPayingInstallment(null)}
+                    // E2: emitir o PIX pode mudar o valor da cobrança — recarrega (sem esqueleto) também ao cancelar.
+                    onClose={() => { setPayingInstallment(null); void loadData(true); }}
                 />
             )}
 

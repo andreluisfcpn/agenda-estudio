@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 import BottomSheetModal from './BottomSheetModal';
 import { getClientPaymentMethods } from '../constants/paymentMethods';
+import { TIER_META, getMeta } from '../constants/adminMeta';
 
 interface RenewContractModalProps {
     isOpen: boolean;
@@ -24,7 +25,7 @@ export default function RenewContractModal({ isOpen, tier, onClose, onConfirm }:
     return (
         <BottomSheetModal isOpen={isOpen} onClose={onClose} title="Renovar Contrato" preventClose={loading} maxWidth="400px">
             <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-                Renove seu plano <strong>{tier}</strong> agora para garantir seu horário e preço.
+                Renove seu plano <strong>{getMeta(TIER_META, tier).label}</strong> agora para garantir seu horário e preço.
             </p>
 
             <div className="form-group">

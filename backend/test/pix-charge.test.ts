@@ -18,7 +18,7 @@ import {
     isPixChargeReusable, pixExpirySecondsFor, pixMetadataAfterDiscard, readPixChargeMeta,
     mergePaymentMetadata, PIX_DEFAULT_EXPIRES_SECONDS, PIX_MIN_EXPIRES_SECONDS,
     readPixDiscountMeta, buildPixDiscountMeta, cardChargeBaseAmount, paidChargedAmount,
-    pixDiscountMetaForCharge,
+    pixDiscountMetaForCharge, pixDiscountMetaForFullCharge, pixPriceFromMark, pixChargeAmount,
 } from '../src/lib/pixGateway';
 import * as pixGateway from '../src/lib/pixGateway';
 import { buildStaticBrCode } from '../src/lib/brcode';
@@ -208,5 +208,86 @@ describe('paidChargedAmount — receita pelo valor efetivamente cobrado', () => 
         expect(paidChargedAmount({ amount: 84000, chargedAmount: 99999, provider: 'SICOOB', providerRef: 'a'.repeat(32) })).toBe(84000);
         expect(paidChargedAmount({ amount: 84000, chargedAmount: null, provider: 'STRIPE', providerRef: 'pi_2' })).toBe(84000);
         expect(paidChargedAmount({ amount: 84000, provider: 'CORA', providerRef: 'inv_1' })).toBe(84000);
+    });
+});
+
+// E2 (30/09/2026): desconto PIX do à vista BIDIRECIONAL — a marca guarda os dois preços.
+describe('E2 — marca bidirecional do à vista (pixDiscountMetaForFullCharge / pixPriceFromMark)', () => {
+    const mark = { pct: 10, cardAmount: 315000, pixAmount: 283500 };
+
+    it('a marca da criação traz os dois preços com o MESMO cupom em R$', () => {
+        expect(pixDiscountMetaForFullCharge({ cardTotal: 315000, pixTotal: 283500, pct: 10 })).toEqual(mark);
+        expect(pixDiscountMetaForFullCharge({ cardTotal: 315000, pixTotal: 283500, couponDiscount: 10000, pct: 10 }))
+            .toEqual({ pct: 10, cardAmount: 305000, pixAmount: 273500 });
+        expect(pixDiscountMetaForFullCharge({ cardTotal: 315000, pixTotal: 283500, couponDiscount: null, pct: 10 })).toEqual(mark);
+    });
+
+    it('sem diferença de preço (pct 0) ou com o preço PIX zerado pelo cupom → sem marca', () => {
+        expect(pixDiscountMetaForFullCharge({ cardTotal: 315000, pixTotal: 315000, pct: 0 })).toBeUndefined();
+        expect(pixDiscountMetaForFullCharge({ cardTotal: 315000, pixTotal: 283500, couponDiscount: 283500, pct: 10 })).toBeUndefined();
+        expect(pixDiscountMetaForFullCharge({ cardTotal: 315000, pixTotal: 283500, couponDiscount: 300000, pct: 10 })).toBeUndefined();
+        expect(pixDiscountMetaForFullCharge({ cardTotal: 315000, pixTotal: 283500, couponDiscount: 315000, pct: 10 })).toBeUndefined();
+    });
+
+    it('criada no CARTÃO (amount = cardAmount): o PIX cobra pixAmount e o cartão o próprio amount', async () => {
+        const row = { amount: 315000, metadata: { pixDiscount: mark } };
+        expect(pixPriceFromMark(row)).toBe(283500);
+        expect(pixChargeAmount(row)).toBe(283500);
+        expect(await cardChargeBaseAmount(row)).toBe(315000);
+    });
+
+    it('criada (ou já baixada) no PIX (amount = pixAmount): o PIX cobra o amount e o cartão cardAmount', async () => {
+        const row = { amount: 283500, metadata: { pixDiscount: mark, pixCharge: { attempt: 1, amount: 283500 } } };
+        expect(pixPriceFromMark(row)).toBeNull();
+        expect(pixChargeAmount(row)).toBe(283500);
+        expect(await cardChargeBaseAmount(row)).toBe(315000);
+    });
+
+    it('sem marca, marca antiga sem pixAmount, marca inválida ou caduca → o PIX nunca baixa o valor', () => {
+        const cases: { amount: number; metadata: unknown }[] = [
+            { amount: 315000, metadata: null },
+            { amount: 315000, metadata: { contractData: { paymentPlan: 'FULL' } } },
+            { amount: 315000, metadata: { pixDiscount: { pct: 10, cardAmount: 315000 } } },
+            { amount: 315000, metadata: { pixDiscount: { pct: 10, cardAmount: 315000, pixAmount: 0 } } },
+            { amount: 315000, metadata: { pixDiscount: { pct: 10, cardAmount: 315000, pixAmount: -5 } } },
+            { amount: 315000, metadata: { pixDiscount: { pct: 10, cardAmount: 315000, pixAmount: 315000 } } },
+            { amount: 315000, metadata: { pixDiscount: { pct: 10, cardAmount: 315000, pixAmount: 400000 } } },
+            { amount: 300000, metadata: { pixDiscount: mark } },
+            { amount: 0, metadata: { pixDiscount: { pct: 10, cardAmount: 31500, pixAmount: 0 } } },
+        ];
+        for (const c of cases) {
+            expect(pixPriceFromMark(c), JSON.stringify(c)).toBeNull();
+            expect(pixChargeAmount(c)).toBe(c.amount);
+        }
+        expect(dbCalls).toEqual([]);
+    });
+
+    it('invariantes: o cartão nunca cobra mais que o preço de cartão marcado; o PIX nunca cobra mais que o cartão; zero nunca sai', async () => {
+        for (const pct of [5, 10, 15, 33]) {
+            for (const cardTotal of [100, 9999, 84000, 315000, 1234567]) {
+                const pixTotal = Math.round(cardTotal * (1 - pct / 100));
+                for (const coupon of [0, 1, 50, Math.floor(pixTotal / 2), pixTotal - 1, pixTotal, cardTotal - 1, cardTotal]) {
+                    const meta = pixDiscountMetaForFullCharge({ cardTotal, pixTotal, couponDiscount: coupon, pct });
+                    for (const createdOn of ['card', 'pix'] as const) {
+                        const amount = Math.max(0, (createdOn === 'card' ? cardTotal : pixTotal) - coupon);
+                        const row = { amount, metadata: meta ? { pixDiscount: meta } : null };
+                        const card = await cardChargeBaseAmount(row);
+                        const pix = pixChargeAmount(row);
+                        if (meta) {
+                            expect(meta.pixAmount).toBeGreaterThan(0);
+                            expect(meta.cardAmount).toBeGreaterThan(meta.pixAmount!);
+                            expect(card).toBe(meta.cardAmount);
+                            expect(pix).toBe(meta.pixAmount);
+                        } else {
+                            expect(card).toBe(amount);
+                            expect(pix).toBe(amount);
+                        }
+                        expect(card).toBeLessThanOrEqual(Math.max(0, cardTotal - coupon));
+                        expect(pix).toBeLessThanOrEqual(card);
+                        if (amount === 0) { expect(card).toBe(0); expect(pix).toBe(0); }
+                    }
+                }
+            }
+        }
     });
 });

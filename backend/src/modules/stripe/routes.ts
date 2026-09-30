@@ -1,15 +1,16 @@
 // ─── Stripe Payment Routes ──────────────────────────────
-// Client-facing routes for card management, payment intents, and subscriptions
+// Client-facing routes for card management, payment intents and automatic charging
 // All routes require authentication
 
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
-import { authenticate } from '../../middleware/auth.js';
+import { authenticate, authorize } from '../../middleware/auth.js';
 import {
     stripeGetPublishableKey,
     stripeGetOrCreateCustomer,
     stripeCreateSetupIntent,
+    stripeGetSetupIntent,
     stripeListPaymentMethods,
     stripeDetachPaymentMethod,
     stripeSetDefaultPaymentMethod,
@@ -18,12 +19,20 @@ import {
     stripeGetPaymentIntent,
     stripeCardInstallmentsSupported,
     cardInstallmentsBlockReason,
+    isStripeEnabled,
 } from '../../lib/stripeService.js';
 import { onPaymentConfirmed } from '../../lib/paymentEffects.js';
 import { getInstallmentPolicy, policyInputsFromPayment } from '../../lib/paymentPolicy.js';
-import { issuePixCharge, retirePixCharge, isPixProvider, pixMetadataAfterDiscard, cardChargeBaseAmount, cancelStalePixCharge, PIX_LIVE_CHARGE_MESSAGE, settleExistingCardIntent, cardIntentInFlightMessage } from '../../lib/pixGateway.js';
+import { issuePixCharge, retirePixCharge, isPixProvider, pixMetadataAfterDiscard, cardChargeBaseAmount, pixChargeAmount, cancelStalePixCharge, PIX_LIVE_CHARGE_MESSAGE, settleExistingCardIntent, cardIntentInFlightMessage } from '../../lib/pixGateway.js';
+import { resolveUserCard, autoChargeCardFor, setDefaultSavedCard, isNonCreditFunding, checkAutoChargeCard, pinAutoChargeCard, DEFAULT_CARD_NOT_CREDIT_MESSAGE } from '../../lib/savedCards.js';
+import { logAudit } from '../../lib/audit.js';
+import { isValidCpfCnpj } from '../../utils/document.js';
+import { planPaymentBlockedByPendingCancellation, cancellationPendingBody } from '../../lib/cancellationPending.js';
 
 const router = Router();
+
+/** PaymentIntent cujo dinheiro já entrou / está a caminho (o mesmo conjunto 'in_flight' de settleExistingCardIntent). */
+const CARD_INTENT_MONEY_IN_FLIGHT = new Set(['succeeded', 'processing', 'requires_capture']);
 
 // ─── GET /api/stripe/publishable-key ────────────────────
 // Returns the Stripe publishable key for frontend initialization
@@ -107,6 +116,167 @@ router.get('/payment-methods', authenticate, async (req: Request, res: Response)
     }
 });
 
+// ─── POST /api/stripe/setup-intent/confirm ──────────────
+// E9: persiste o cartão logo depois de o SetupIntent ser confirmado no navegador (Stripe Elements), sem
+// depender do webhook setup_intent.succeeded — o cartão já pode ser usado em seguida (pagar, virar o
+// padrão, ativar a cobrança automática). Idempotente. `makeDefault: true` também o torna o padrão.
+const confirmSetupSchema = z.object({
+    setupIntentId: z.string().min(1).max(255),
+    makeDefault: z.boolean().optional(),
+});
+
+router.post('/setup-intent/confirm', authenticate, async (req: Request, res: Response) => {
+    try {
+        const data = confirmSetupSchema.parse(req.body);
+        const userId = req.user!.userId;
+        const user = await prisma.user.findUnique({ where: { id: userId }, select: { stripeCustomerId: true, autoChargeEnabled: true } });
+        if (!user?.stripeCustomerId) {
+            res.status(400).json({ error: 'Nenhum cadastro de cartão em andamento.', code: 'SETUP_INTENT_NOT_FOUND' });
+            return;
+        }
+
+        let si: Awaited<ReturnType<typeof stripeGetSetupIntent>>;
+        try {
+            si = await stripeGetSetupIntent(data.setupIntentId);
+        } catch (err) {
+            console.warn('[Stripe] setup-intent/confirm: SetupIntent não pôde ser lido:', err instanceof Error ? err.message : err);
+            res.status(400).json({ error: 'Cadastro de cartão não encontrado.', code: 'SETUP_INTENT_NOT_FOUND' });
+            return;
+        }
+        // Posse: o SetupIntent é do Customer DESTE usuário (nunca salva o cartão de outro cliente).
+        if (si.customerId !== user.stripeCustomerId) {
+            res.status(404).json({ error: 'Cadastro de cartão não encontrado.', code: 'SETUP_INTENT_NOT_FOUND' });
+            return;
+        }
+        if (si.status !== 'succeeded' || !si.paymentMethodId) {
+            res.status(409).json({
+                error: 'O cartão ainda não foi confirmado. Conclua o cadastro e tente novamente.',
+                code: 'SETUP_INTENT_NOT_CONFIRMED',
+                status: si.status,
+            });
+            return;
+        }
+
+        const card = await resolveUserCard(userId, si.paymentMethodId, { verify: true, sync: true });
+        if (!card || !card.id) {
+            res.status(404).json({ error: 'Cartão não encontrado.', code: 'CARD_NOT_FOUND' });
+            return;
+        }
+
+        let isDefault = card.isDefault;
+        // E9 "só crédito": com a cobrança automática LIGADA, um cartão de débito/pré-pago é salvo mas NÃO
+        // vira o padrão (o padrão é o cartão que o autoChargeJob cobra) — mesma regra do PUT …/default.
+        const defaultRefused = !!data.makeDefault && !isDefault && !!user.autoChargeEnabled && isNonCreditFunding(card.funding);
+        if (data.makeDefault && !isDefault && !defaultRefused) {
+            await stripeSetDefaultPaymentMethod(user.stripeCustomerId, card.stripePaymentMethodId);
+            await setDefaultSavedCard(userId, card.id);
+            isDefault = true;
+        }
+
+        res.json({
+            ...(defaultRefused ? { defaultNotApplied: { code: 'CARD_NOT_CREDIT', error: DEFAULT_CARD_NOT_CREDIT_MESSAGE } } : {}),
+            card: {
+                id: card.id,
+                stripePaymentMethodId: card.stripePaymentMethodId,
+                brand: card.brand,
+                last4: card.last4,
+                expMonth: card.expMonth,
+                expYear: card.expYear,
+                funding: card.funding ?? 'unknown',
+                isDefault,
+            },
+            message: 'Cartão salvo com sucesso.',
+        });
+    } catch (err: any) {
+        if (err instanceof z.ZodError) {
+            res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
+            return;
+        }
+        console.error('[Stripe] Error confirming SetupIntent:', err);
+        res.status(502).json({ error: 'Não foi possível salvar o cartão agora. Tente novamente em instantes.' });
+    }
+});
+
+// ─── GET /api/stripe/payment-methods/for-payment/:paymentId (ADMIN) ──
+// E1: cartões salvos do CLIENTE dono do pagamento — o admin cobra o cartão do cliente, nunca o próprio.
+// Traz também o pagador (nome e CPF/CNPJ): o CPF exigido no PIX é o do dono do pagamento.
+router.get('/payment-methods/for-payment/:paymentId', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
+    try {
+        const paymentId = req.params.paymentId as string;
+        if (!z.string().uuid().safeParse(paymentId).success) {
+            res.status(400).json({ error: 'Pagamento inválido.' });
+            return;
+        }
+        const payment = await prisma.payment.findUnique({
+            where: { id: paymentId },
+            select: {
+                id: true,
+                user: { select: { id: true, name: true, cpfCnpj: true, stripeCustomerId: true, autoChargeEnabled: true, deletedAt: true } },
+            },
+        });
+        if (!payment) {
+            res.status(404).json({ error: 'Pagamento não encontrado.' });
+            return;
+        }
+        const owner = payment.user;
+        const saved = await prisma.savedPaymentMethod.findMany({
+            where: { userId: owner.id },
+            orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
+        });
+
+        // Fonte = o Stripe (traz `funding` e os cartões ainda não sincronizados); sem Stripe ou numa
+        // falha de consulta, cai para os cartões do banco (funding desconhecido). NUNCA cria Customer aqui.
+        let stripeCards: Awaited<ReturnType<typeof stripeListPaymentMethods>> | null = null;
+        if (owner.stripeCustomerId && (await isStripeEnabled().catch(() => false))) {
+            try {
+                stripeCards = await stripeListPaymentMethods(owner.stripeCustomerId);
+            } catch (err) {
+                console.warn(`[Stripe] cartões do cliente ${owner.id} não puderam ser listados no Stripe:`, err instanceof Error ? err.message : err);
+            }
+        }
+
+        const paymentMethods = stripeCards
+            ? stripeCards.map(card => {
+                const row = saved.find(sv => sv.stripePaymentMethodId === card.paymentMethodId);
+                return {
+                    id: row?.id || card.paymentMethodId,
+                    stripePaymentMethodId: card.paymentMethodId,
+                    brand: card.brand,
+                    last4: card.last4,
+                    expMonth: card.expMonth,
+                    expYear: card.expYear,
+                    funding: card.funding,
+                    isDefault: row?.isDefault || false,
+                };
+            })
+            : saved.map(row => ({
+                id: row.id,
+                stripePaymentMethodId: row.stripePaymentMethodId,
+                brand: row.brand,
+                last4: row.last4,
+                expMonth: row.expMonth,
+                expYear: row.expYear,
+                funding: 'unknown',
+                isDefault: row.isDefault,
+            }));
+
+        res.json({
+            paymentMethods,
+            autoChargeEnabled: owner.autoChargeEnabled,
+            payer: {
+                id: owner.id,
+                name: owner.name,
+                cpfCnpj: owner.cpfCnpj,
+                hasValidCpfCnpj: isValidCpfCnpj(owner.cpfCnpj),
+                deleted: !!owner.deletedAt,
+            },
+        });
+    } catch (err: any) {
+        console.error('[Stripe] Error listing client payment methods:', err);
+        res.status(500).json({ error: 'Erro ao listar os cartões do cliente.' });
+    }
+});
+
 // ─── DELETE /api/stripe/payment-methods/:pmId ───────────
 // Detaches a card from the customer
 router.delete('/payment-methods/:pmId', authenticate, async (req: Request, res: Response) => {
@@ -127,12 +297,43 @@ router.delete('/payment-methods/:pmId', authenticate, async (req: Request, res: 
 
         const stripePmId = saved.stripePaymentMethodId;
 
+        // E9 "só crédito": este é o cartão que a cobrança automática cobra hoje (o padrão ou, sem padrão,
+        // o mais recente)? Lido ANTES de remover.
+        const owner = await prisma.user.findUnique({ where: { id: userId }, select: { autoChargeEnabled: true } });
+        const wasAutoChargeCard = !!owner?.autoChargeEnabled && (await autoChargeCardFor(userId))?.id === saved.id;
+
         // Detach from Stripe
         await stripeDetachPaymentMethod(stripePmId);
 
         // Remove from our DB
         if (saved) {
             await prisma.savedPaymentMethod.delete({ where: { id: saved.id } });
+        }
+
+        // Removido o cartão da cobrança automática: o SUBSTITUTO (o salvo mais recente) passa pela mesma
+        // conferência de quem liga (existe, é do cliente, é de crédito). Aprovado → vira o PADRÃO (Z1-a: o
+        // cartão cobrado é o conferido; um cartão salvo depois não assume a cobrança sem conferência). Sem
+        // substituto ou reprovado (débito/pré-pago, não conferido) → a cobrança automática é DESLIGADA e a
+        // resposta avisa; o cliente religa quando tiver um cartão de crédito.
+        if (wasAutoChargeCard) {
+            const check = await checkAutoChargeCard(userId, { logTag: '[AUTO-CHARGE-CARD-REMOVED]' });
+            if (!check.ok) {
+                await prisma.user.update({ where: { id: userId }, data: { autoChargeEnabled: false } });
+                const reason = check.body.code ?? (check.status === 400 ? 'NO_CARD' : 'CARD_NOT_VERIFIED');
+                await logAudit('USER', userId, 'AUTO_CHARGE_DISABLED', userId, { reason, removedCardLast4: saved.last4 });
+                res.json({
+                    message: reason === 'NO_CARD'
+                        ? 'Cartão removido. A cobrança automática foi desligada porque não há outro cartão salvo.'
+                        : reason === 'CARD_NOT_CREDIT'
+                            ? 'Cartão removido. A cobrança automática foi desligada porque o outro cartão salvo não é de crédito.'
+                            : 'Cartão removido. A cobrança automática foi desligada porque o outro cartão salvo não pôde ser conferido. Ative-a novamente quando quiser.',
+                    autoChargeEnabled: false,
+                    autoChargeDisabled: true,
+                    autoChargeDisabledReason: reason,
+                });
+                return;
+            }
+            await pinAutoChargeCard(userId, check.card);
         }
 
         res.json({ message: 'Cartão removido com sucesso.' });
@@ -156,6 +357,20 @@ router.put('/payment-methods/:pmId/default', authenticate, async (req: Request, 
             where: { userId, OR: [{ id: pmId }, { stripePaymentMethodId: pmId }] },
         });
         const stripePmId = saved?.stripePaymentMethodId || pmId;
+
+        // E9 "só crédito": com a cobrança automática LIGADA, o padrão é o cartão que o autoChargeJob cobra —
+        // trocar o padrão para débito/pré-pago furava a conferência feita ao ligar. Mesma conferência
+        // (checkAutoChargeCard), ANTES de qualquer efeito. Desligada: a troca segue livre, como antes.
+        const owner = await prisma.user.findUnique({ where: { id: userId }, select: { autoChargeEnabled: true } });
+        if (owner?.autoChargeEnabled) {
+            const check = await checkAutoChargeCard(userId, { cardRef: stripePmId, logTag: '[AUTO-CHARGE-DEFAULT-CARD]' });
+            if (!check.ok) {
+                res.status(check.status).json(check.body.code === 'CARD_NOT_CREDIT'
+                    ? { ...check.body, error: DEFAULT_CARD_NOT_CREDIT_MESSAGE }
+                    : check.body);
+                return;
+            }
+        }
 
         // Set as default in Stripe
         await stripeSetDefaultPaymentMethod(customerId, stripePmId);
@@ -239,10 +454,22 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
         const isAdmin = req.user!.role === 'ADMIN';
 
         // Global guard: reject if the payment method is disabled by admin.
-        // Boleto is exempt here — it is released per-contract (boletoAllowed),
-        // not globally, so it is authorized below after we load the payment.
-        if (data.paymentMethod !== 'boleto') {
-            const { validatePaymentMethod, PaymentMethodDisabledError } = await import('../../lib/paymentGateway.js');
+        // E3: o boleto segue a MESMA fonte única (chave-mestra "Aceitar pagamento por boleto" + Cora
+        // habilitada) — `Contract.boletoAllowed` não é mais autoridade.
+        const { validatePaymentMethod, PaymentMethodDisabledError, getBoletoStatus, boletoBlockedForPayment } = await import('../../lib/paymentGateway.js');
+        if (data.paymentMethod === 'boleto') {
+            const boleto = await getBoletoStatus();
+            if (!boleto.available) {
+                res.status(400).json({
+                    error: boleto.reason === 'PROVIDER_DISABLED'
+                        ? 'Boleto indisponível no momento. Use PIX ou cartão.'
+                        : 'O pagamento por boleto não está disponível. Use PIX ou cartão.',
+                    code: 'BOLETO_UNAVAILABLE',
+                    reason: boleto.reason,
+                });
+                return;
+            }
+        } else {
             try {
                 await validatePaymentMethod(data.paymentMethod);
             } catch (err) {
@@ -258,7 +485,7 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
         // client, e.g. card-present); clients only on their own.
         const payment = await prisma.payment.findFirst({
             where: { id: data.paymentId, ...(isAdmin ? {} : { userId }) },
-            include: { contract: true },
+            include: { contract: true, booking: { select: { status: true, holdExpiresAt: true } } },
         });
 
         if (!payment) {
@@ -280,6 +507,52 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
             return;
         }
 
+        // CLI-2: cobrança de uma GRAVAÇÃO (extra/serviço/reserva) cuja gravação foi CANCELADA — não há o que
+        // cobrar (pagar só "ativaria" o extra numa sessão que não vai acontecer). Vale para cliente e admin,
+        // ANTES de qualquer efeito (reabrir FAILED, emitir QR/PI).
+        if (payment.bookingId && payment.booking?.status === 'CANCELLED') {
+            res.status(400).json({ error: 'A gravação desta cobrança foi cancelada. Esta cobrança não pode mais ser paga.', code: 'BOOKING_CANCELLED' });
+            return;
+        }
+
+        // E13: cancelamento em análise (PENDING_CANCELLATION) → o CLIENTE não paga parcelas do plano até o
+        // estúdio decidir (a base da multa está congelada). O admin continua podendo cobrar; extras de uma
+        // gravação e a multa seguem pagáveis. Recusa ANTES de qualquer efeito (reabrir FAILED, emitir QR/PI).
+        if (planPaymentBlockedByPendingCancellation(payment, isAdmin)) {
+            res.status(409).json(cancellationPendingBody());
+            return;
+        }
+
+        // E3: disponibilidade do boleto (chave + Cora) já conferida acima. O boleto compensa em dias → nunca
+        // numa contratação com prazo de pagamento (reserva de 10 min do avulso, /self, serviço,
+        // personalizado do cliente, renovação aguardando pagamento): só cobranças do admin e
+        // parcelas/faturas de contrato já ativado. Recusa ANTES de qualquer efeito (reabrir FAILED etc.).
+        if (data.paymentMethod === 'boleto') {
+            const blocked = boletoBlockedForPayment(payment);
+            if (blocked) {
+                res.status(400).json({ error: blocked, code: 'BOLETO_NOT_ALLOWED_HERE' });
+                return;
+            }
+        }
+
+        // E1: o cartão salvo informado tem de ser do DONO do pagamento (o cliente) — aceita o id do
+        // SavedPaymentMethod ou o pm_… do Stripe. O admin cobra o cartão salvo do CLIENTE; um cartão de
+        // outra pessoa (inclusive o do próprio admin) é recusado ANTES de qualquer efeito.
+        let savedCardPmId: string | undefined;
+        if (data.paymentMethod === 'cartao' && data.savedPaymentMethodId) {
+            const card = await resolveUserCard(payerUserId, data.savedPaymentMethodId);
+            if (!card) {
+                res.status(400).json({
+                    error: isAdmin && payerUserId !== userId
+                        ? 'Este cartão não pertence ao cliente desta cobrança. Escolha um cartão salvo do cliente ou cadastre um novo.'
+                        : 'Cartão salvo não encontrado. Escolha outro cartão ou cadastre um novo.',
+                    code: 'CARD_NOT_FOUND',
+                });
+                return;
+            }
+            savedCardPmId = card.stripePaymentMethodId;
+        }
+
         // pagamentos-1 / cobertura-1 (D1): cartão em N× (N > 1) só quando o SERVIDOR fixa o plano (cartão salvo,
         // conta com parcelamento). Recusa ANTES de qualquer efeito (reabrir FAILED, aposentar PIX, criar PI):
         // numa conta sem parcelamento (Stripe BR) o total sairia em 1× com os juros do app; com cartão novo, o
@@ -289,7 +562,7 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
             if (requested > 1) {
                 const blocked = cardInstallmentsBlockReason({
                     installments: requested,
-                    savedCard: !!data.savedPaymentMethodId,
+                    savedCard: !!savedCardPmId,
                     gatewaySupported: await stripeCardInstallmentsSupported(),
                 });
                 if (blocked) {
@@ -309,6 +582,32 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
         const previousCardIntent = payment.providerRef?.startsWith('pi_') ? payment.providerRef : null;
 
         if (payment.status === 'FAILED') {
+            // Z1-e (PAY-6, passo 3): ANTES de reabrir, confere o PaymentIntent desta linha. Uma recusa
+            // atrasada pode ter marcado FAILED uma cobrança cujo PI foi APROVADO (ou está processando) logo
+            // depois; reabrir zerava o providerRef — a linha ficava PENDING sem referência ao PI aprovado e um
+            // PIX/boleto/novo PI emitido nesse intervalo cobrava em dobro. Nesse caso NÃO reabre (a linha segue
+            // FAILED apontando para o PI: o webhook/verify a baixam — PAY-6) e responde como o cartão em
+            // andamento, seja qual for a forma pedida. Só leitura (nada é cancelado aqui). Stripe desligado,
+            // PI inexistente ou consulta que falhou → reabre como antes (o ramo cartão confere de novo abaixo).
+            if (previousCardIntent && !previousCardIntent.startsWith('pi_mock')) {
+                let inFlightStatus: string | null = null;
+                try {
+                    if (await isStripeEnabled()) {
+                        const pi = await stripeGetPaymentIntent(previousCardIntent);
+                        if (pi && CARD_INTENT_MONEY_IN_FLIGHT.has(pi.status)) inFlightStatus = pi.status;
+                    }
+                } catch (err) {
+                    console.warn(`[Stripe] create-payment: PI ${previousCardIntent} da cobrança FAILED ${payment.id} não pôde ser consultado antes de reabrir:`, err instanceof Error ? err.message : err);
+                }
+                if (inFlightStatus) {
+                    if (inFlightStatus === 'succeeded') {
+                        console.error(`[Stripe] create-payment: PI ${previousCardIntent} já aprovado para o payment FAILED ${payment.id} — não reaberto (aguardando webhook/verify).`);
+                    }
+                    res.status(409).json({ error: cardIntentInFlightMessage(inFlightStatus), code: 'CARD_PAYMENT_IN_FLIGHT' });
+                    return;
+                }
+            }
+
             // pagamentos-6: uma linha FAILED com cobrança PIX pode ter o QR ainda VIVO (ex.: falhada por um
             // evento de cartão atrasado). Zerar o providerRef aqui descartava o txid sem cancelar a cob —
             // um pagamento nela nunca casaria. Por isso a linha PIX é reaberta COM a cobrança: a emissão
@@ -374,15 +673,29 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
                 });
             } catch (e: unknown) {
                 const msg = e instanceof Error ? e.message : 'Erro ao gerar PIX.';
+                // E1: o CPF/CNPJ exigido no PIX é o do DONO do pagamento (o cliente), nunca o do admin.
+                if (/^CPF\/CNPJ/.test(msg)) {
+                    res.status(400).json({
+                        error: isAdmin && payerUserId !== userId
+                            ? 'O cliente não tem CPF/CNPJ válido no cadastro. Informe o CPF/CNPJ do cliente para gerar o PIX.'
+                            : msg,
+                        code: 'CPF_CNPJ_REQUIRED',
+                        payerUserId,
+                    });
+                    return;
+                }
                 res.status(400).json({ error: msg });
             }
             return;
         }
 
         if (data.paymentMethod === 'boleto') {
-            // Boleto is released per contract only — never globally available to clients.
-            if (!payment.contract?.boletoAllowed) {
-                res.status(400).json({ error: 'Boleto não está liberado para este contrato.' });
+            // E3: disponibilidade (chave + Cora) e o tipo de cobrança já foram conferidos acima.
+            // E2: boleto cobra o preço de CARTÃO (o desconto à vista é só do PIX). Uma cobrança que está
+            // no preço PIX da marca volta ao preço de cartão antes de emitir (update condicional atômico).
+            const boletoAmount = await cardChargeBaseAmount(payment);
+            if (!Number.isInteger(boletoAmount) || boletoAmount <= 0) {
+                res.status(400).json({ error: 'Valor do pagamento inválido.' });
                 return;
             }
             // Troca PIX → boleto: a cobrança PIX viva é aposentada ANTES de sobrescrever o providerRef
@@ -403,11 +716,22 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
                     data: { pixString: null, pixExpiresAt: null, ...(boletoDiscardMeta !== undefined ? { metadata: boletoDiscardMeta } : {}) },
                 });
             }
+            if (boletoAmount !== payment.amount) {
+                const repriced = await prisma.payment.updateMany({
+                    where: { id: payment.id, status: 'PENDING', amount: payment.amount },
+                    data: { amount: boletoAmount },
+                });
+                if (repriced.count === 0) {
+                    res.status(409).json({ error: 'Esta cobrança mudou de situação. Atualize a página e tente novamente.' });
+                    return;
+                }
+                payment.amount = boletoAmount;
+            }
             const { createCoraPayment } = await import('../../lib/coraPaymentHelper.js');
             try {
                 const coraRes = await createCoraPayment({
                     userId: payerUserId,
-                    amount: payment.amount,
+                    amount: boletoAmount,
                     description: `Boleto - ${payment.contract?.name || 'Contrato'}`,
                     withPixQrCode: false,
                     idempotencyKey: payment.id,
@@ -427,10 +751,21 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
                     provider: 'CORA',
                     boletoUrl: coraRes.boletoUrl,
                     barcode: coraRes.barcode,
+                    amount: boletoAmount,
                     paymentId: payment.id,
                 });
             } catch (e: unknown) {
                 const msg = e instanceof Error ? e.message : 'Erro ao gerar boleto.';
+                if (/^CPF\/CNPJ/.test(msg)) {
+                    res.status(400).json({
+                        error: isAdmin && payerUserId !== userId
+                            ? 'O cliente não tem CPF/CNPJ válido no cadastro. Informe o CPF/CNPJ do cliente para gerar o boleto.'
+                            : msg,
+                        code: 'CPF_CNPJ_REQUIRED',
+                        payerUserId,
+                    });
+                    return;
+                }
                 res.status(400).json({ error: msg });
             }
             return;
@@ -519,8 +854,8 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
             userId: payerUserId,
             contractId: payment.contractId || undefined,
             installmentsEnabled: installments > 1,
-            installmentPlanCount: data.savedPaymentMethodId ? installments : undefined,
-            savedPaymentMethodId: data.savedPaymentMethodId,
+            installmentPlanCount: savedCardPmId ? installments : undefined,
+            savedPaymentMethodId: savedCardPmId,
             savePaymentMethod: data.savePaymentMethod,
         });
 
@@ -542,6 +877,15 @@ router.post('/create-payment', authenticate, async (req: Request, res: Response)
                 ...(pixDiscardMeta !== undefined ? { metadata: pixDiscardMeta } : {}),
             },
         });
+
+        // SEC-4: trilha de QUEM cobrou — o admin cobrando o cartão do cliente (salvo: debitado na hora, sem
+        // o cliente presente; novo: PaymentIntent aberto no Customer do cliente). Marca o INÍCIO da cobrança
+        // (a aprovação segue vindo do webhook/verify). logAudit engole erros: nunca quebra a cobrança.
+        if (isAdmin && payerUserId !== userId) {
+            await logAudit('PAYMENT', payment.id, savedCardPmId ? 'ADMIN_CHARGED_SAVED_CARD' : 'ADMIN_CHARGE_STARTED', userId, {
+                payerUserId, paymentIntentId: result.paymentIntentId, amount, installments, method: 'cartao',
+            });
+        }
 
         res.json({
             provider: 'STRIPE',
@@ -572,10 +916,14 @@ const installmentSchema = z.object({
     installmentCap: z.number().int().min(1).max(12).optional(),
 });
 
+// E2: devolve também `cardAmount` (o que o CARTÃO cobra em 1x, antes de juros) e `pixAmount` (o que o PIX
+// cobra — com o desconto do à vista quando a cobrança tem a marca), para o checkout mostrar o preço certo
+// em cada aba ANTES de gerar. Na prévia sem paymentId os dois são o `amount` informado.
 router.post('/installment-plans', authenticate, async (req: Request, res: Response) => {
     try {
         const data = installmentSchema.parse(req.body);
         let amount = data.amount || 0;
+        let pixAmount = amount;
         let policy: { maxInstallments: number; freeUpTo: number };
 
         // Derive the installment policy: from the payment's contract (plan/type/duration)
@@ -592,6 +940,8 @@ router.post('/installment-plans', authenticate, async (req: Request, res: Respon
             }
             // Parcelas do CARTÃO: sobre o valor cobrado no cartão (sem o desconto PIX do à vista — D1).
             amount = await cardChargeBaseAmount(payment);
+            // PIX: o preço PIX da marca quando a cobrança está no preço de cartão (E2); senão o amount.
+            pixAmount = pixChargeAmount(payment);
             policy = getInstallmentPolicy(policyInputsFromPayment(payment));
         } else if (data.installmentCap) {
             policy = getInstallmentPolicy({ plan: 'FULL', contractType: 'SERVICO', durationMonths: data.contractDurationMonths || 1, installmentCap: data.installmentCap });
@@ -609,7 +959,7 @@ router.post('/installment-plans', authenticate, async (req: Request, res: Respon
         const maxCount = (await stripeCardInstallmentsSupported()) ? policy.maxInstallments : 1;
         const plans = (await stripeGetInstallmentPlans(amount, policy.freeUpTo))
             .filter(p => p.count <= maxCount);
-        res.json({ plans });
+        res.json({ plans, cardAmount: amount, pixAmount });
     } catch (err: any) {
         if (err instanceof z.ZodError) {
             res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
@@ -619,8 +969,48 @@ router.post('/installment-plans', authenticate, async (req: Request, res: Respon
     }
 });
 
+// ─── GET /api/stripe/auto-charge ────────────────────────
+// E9: estado da cobrança automática do cliente (por USUÁRIO — vale para todos os contratos dele) e o
+// cartão que será cobrado: o padrão ou, sem padrão, o mais recente (a mesma escolha do autoChargeJob).
+router.get('/auto-charge', authenticate, async (req: Request, res: Response) => {
+    try {
+        const userId = req.user!.userId;
+        const user = await prisma.user.findUnique({ where: { id: userId }, select: { autoChargeEnabled: true } });
+        if (!user) {
+            res.status(404).json({ error: 'Usuário não encontrado.' });
+            return;
+        }
+        const [card, savedCards] = await Promise.all([
+            autoChargeCardFor(userId),
+            prisma.savedPaymentMethod.count({ where: { userId } }),
+        ]);
+        res.json({
+            autoChargeEnabled: user.autoChargeEnabled,
+            scope: 'USER',
+            hasSavedCard: savedCards > 0,
+            savedCards,
+            defaultCard: card ? {
+                id: card.id,
+                stripePaymentMethodId: card.stripePaymentMethodId,
+                brand: card.brand,
+                last4: card.last4,
+                expMonth: card.expMonth,
+                expYear: card.expYear,
+                isDefault: card.isDefault,
+            } : null,
+        });
+    } catch (err: any) {
+        console.error('[Stripe] Error reading auto-charge state:', err);
+        res.status(500).json({ error: 'Erro ao consultar a cobrança automática.' });
+    }
+});
+
 // ─── PUT /api/stripe/auto-charge ────────────────────────
-// Toggle automatic off-session charging (opt-in by client)
+// Toggle automatic off-session charging (opt-in by client).
+// E9 "só crédito": LIGAR exige que o cartão que o autoChargeJob vai cobrar (o padrão ou, sem padrão, o
+// mais recente) seja de CRÉDITO — a mesma conferência no Stripe (resolveUserCard + isNonCreditFunding),
+// com os mesmos códigos/mensagens, do POST /contracts/:id/subscribe. Antes, este caminho ligava a cobrança
+// automática com um cartão de débito. DESLIGAR é sempre permitido e nunca consulta o Stripe.
 const autoChargeSchema = z.object({
     enabled: z.boolean(),
 });
@@ -630,15 +1020,17 @@ router.put('/auto-charge', authenticate, async (req: Request, res: Response) => 
         const { enabled } = autoChargeSchema.parse(req.body);
         const userId = req.user!.userId;
 
-        // Verify user has at least one saved card if enabling
         if (enabled) {
-            const savedCards = await prisma.savedPaymentMethod.count({
-                where: { userId },
-            });
-            if (savedCards === 0) {
-                res.status(400).json({ error: 'Adicione pelo menos um cartão antes de ativar a cobrança automática.' });
+            // Conferência única (lib/savedCards.checkAutoChargeCard): sem cartão → 400 (sem código); Stripe
+            // desligado → 503; não conferido → 502; 404 CARD_NOT_FOUND; débito/pré-pago → 400 CARD_NOT_CREDIT.
+            const check = await checkAutoChargeCard(userId, { logTag: '[AUTO-CHARGE-TOGGLE]' });
+            if (!check.ok) {
+                res.status(check.status).json(check.body);
                 return;
             }
+            // Z1-a: o cartão conferido passa a ser o PADRÃO (sem padrão, o job cobraria "o mais recente" — que
+            // muda no próximo cartão salvo, sem conferência). Mesmo mecanismo do /subscribe.
+            await pinAutoChargeCard(userId, check.card);
         }
 
         await prisma.user.update({
@@ -716,9 +1108,15 @@ router.post('/verify-payment', authenticate, async (req: Request, res: Response)
                 return;
             }
 
-            // Atomic update: only update if still PENDING to prevent race with webhooks
+            // Atomic update: only update if still PENDING to prevent race with webhooks.
+            // PAY-6: também a linha que uma recusa ATRASADA marcou FAILED, quando ESTE PaymentIntent é
+            // exatamente a cobrança dela (mesmo providerRef) — o cliente trocou o cartão no mesmo PI e ele
+            // foi aprovado. FAILED de outro PI / de PIX e CANCELLED continuam de fora.
             const updated = await prisma.payment.updateMany({
-                where: { id: payment.id, status: 'PENDING' },
+                where: {
+                    id: payment.id,
+                    OR: [{ status: 'PENDING' }, { status: 'FAILED', provider: 'STRIPE', providerRef: pi.id }],
+                },
                 data: {
                     status: 'PAID',
                     paidAt: new Date(),
@@ -738,10 +1136,25 @@ router.post('/verify-payment', authenticate, async (req: Request, res: Response)
                     await cancelStalePixCharge(payment.provider, payment.providerRef, payment.pixString);
                 }
                 await onPaymentConfirmed(payment.id);
+                console.log(`[Stripe:Verify] Manually verified payment ${payment.id} as PAID`);
+                res.json({ status: 'PAID', message: 'Pagamento sincronizado.' });
+                return;
             }
 
-            console.log(`[Stripe:Verify] Manually verified payment ${payment.id} as PAID`);
-            res.json({ status: 'PAID', message: 'Pagamento sincronizado.' });
+            // PAY-6: nada foi atualizado — NUNCA responder PAID sem a linha estar PAID. Relê o estado real:
+            // PAID (o webhook chegou antes) → PAID; qualquer outro → 409 (cartão aprovado sem baixa: o
+            // estúdio precisa conferir — nunca mostrar "sucesso" com a cobrança ainda em aberto/falhada).
+            const fresh = await prisma.payment.findUnique({ where: { id: payment.id }, select: { status: true } });
+            if (fresh?.status === 'PAID') {
+                res.json({ status: 'PAID', message: 'Já pago.' });
+                return;
+            }
+            console.error(`[Stripe:Verify][ALERTA] PI ${pi.id} aprovado (valor ${pi.amount}) mas o payment ${payment.id} está ${fresh?.status ?? 'ausente'} (providerRef=${payment.providerRef}) — sem baixa automática, conferir manualmente.`);
+            res.status(409).json({
+                error: 'O pagamento foi aprovado no cartão, mas esta cobrança mudou de situação e não pôde ser baixada automaticamente. Fale com o estúdio para confirmar o pagamento.',
+                code: 'PAYMENT_NOT_SETTLED',
+                paymentStatus: fresh?.status ?? payment.status,
+            });
             return;
         }
         

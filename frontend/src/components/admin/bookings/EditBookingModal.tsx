@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { bookingsApi, BookingWithUser } from '../../../api/client';
 import BottomSheetModal from '../../BottomSheetModal';
 import { formatBRL } from '../../../utils/format';
-import { TIER_META, BOOKING_STATUS_META } from '../../../constants/adminMeta';
+import { TIER_META, BOOKING_STATUS_META, getMeta } from '../../../constants/adminMeta';
 import { Pencil, CalendarDays, Clock, Wallet, Ban } from 'lucide-react';
 import StatusReasonModal, { type ReasonConfirmOptions } from './StatusReasonModal';
 import { useBusinessConfig } from '../../../hooks/useBusinessConfig';
@@ -203,7 +203,7 @@ export default function EditBookingModal({ booking, onClose, onSaved }: EditBook
                         display: 'flex', justifyContent: 'space-between',
                     }}>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Wallet size={12} aria-hidden="true" /> Valor: <strong style={{ color: 'var(--success)' }}>{formatBRL(booking.price)}</strong></span>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>{(() => { const TI = TIER_META[booking.tierApplied]?.icon; return TI ? <TI size={12} aria-hidden="true" /> : null; })()} {booking.tierApplied}</span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>{(() => { const TI = TIER_META[booking.tierApplied]?.icon; return TI ? <TI size={12} aria-hidden="true" /> : null; })()} {getMeta(TIER_META, booking.tierApplied).label}</span>
                     </div>
 
                     {/* Actions */}

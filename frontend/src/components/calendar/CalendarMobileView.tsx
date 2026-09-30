@@ -3,6 +3,7 @@ import { ChevronRight } from 'lucide-react';
 import { Slot, MyBookingSlot } from '../../api/client';
 import { studioSlotDate } from '../../utils/time';
 import { DAYS, GRID_ROWS, TIER_COLORS, formatDate, BookingLookup } from './calendarShared';
+import BrandLoader from '../ui/BrandLoader';
 
 /**
  * Visão MOBILE da agenda (pills de dia com carrossel de semanas + lista de slots).
@@ -209,7 +210,7 @@ export default function CalendarMobileView({
 
             {/* Slot Cards — crossfade on date change */}
             {loading ? (
-                <div className="loading-spinner"><div className="spinner" /></div>
+                <BrandLoader size="section" label="Carregando horários…" />
             ) : (
             <div className={`calendar-slots-crossfade slots-phase-${slotsPhase}`}>
                 <div

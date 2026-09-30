@@ -11,12 +11,16 @@ export function formatBRL(cents: number): string {
     }).format(cents / 100);
 }
 
-export function formatDate(dateStr: string | null | undefined): string {
+/**
+ * `timeZone`: 'UTC' (padrão) para datas-calendário gravadas como 00:00Z; 'America/Sao_Paulo' para um
+ * INSTANTE real (ex.: o vencimento da multa de cancelamento, que é a hora da decisão do estúdio).
+ */
+export function formatDate(dateStr: string | null | undefined, timeZone: string = 'UTC'): string {
     if (!dateStr) return '—';
     const d = new Date(dateStr);
     if (isNaN(d.getTime()) || d.getFullYear() < 2000) return '—';
     return new Intl.DateTimeFormat('pt-BR', {
-        timeZone: 'UTC', // B8: datas @db.Date são 00:00Z — sem isto, em fuso a oeste renderiza o dia anterior
+        timeZone, // B8: datas @db.Date são 00:00Z — sem o padrão UTC, em fuso a oeste renderiza o dia anterior
         day: '2-digit',
         month: 'short',
         year: 'numeric',

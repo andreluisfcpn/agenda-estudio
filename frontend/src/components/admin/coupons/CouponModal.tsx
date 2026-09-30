@@ -5,6 +5,8 @@ import { useUI } from '../../../context/UIContext';
 import BottomSheetModal from '../../BottomSheetModal';
 import WizardSteps from '../WizardSteps';
 import CurrencyInput from '../../ui/fields/CurrencyInput';
+import Tooltip from '../../ui/Tooltip';
+import BrandLoader from '../../ui/BrandLoader';
 import { useWizardStep, ignoreMultiClick, wizardStepBodyStyle, wizardStepContentStyle } from '../../../hooks/useWizardStep';
 import { formatBRL } from '../../../utils/format';
 import { TicketPercent, NotebookPen, CircleDollarSign, Percent, Coins, RefreshCw, Users, Target, Sparkles, Search, X, Save, type LucideIcon } from 'lucide-react';
@@ -592,13 +594,15 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
                                                     background: 'var(--success-bg)', border: '1px solid var(--success)', color: 'var(--success)',
                                                 }}>
                                                     {u.name}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => { setSelectedUsers(prev => prev.filter(s => s.id !== u.id)); touch('eligibility'); }}
-                                                        aria-label={`Remover ${u.name}`}
-                                                        style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 4, display: 'inline-flex', alignItems: 'center', borderRadius: '50%' }}>
-                                                        <X size={12} aria-hidden="true" />
-                                                    </button>
+                                                    <Tooltip content="Remover cliente" describe={false}>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => { setSelectedUsers(prev => prev.filter(s => s.id !== u.id)); touch('eligibility'); }}
+                                                            aria-label={`Remover ${u.name}`}
+                                                            style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 4, display: 'inline-flex', alignItems: 'center', borderRadius: '50%' }}>
+                                                            <X size={12} aria-hidden="true" />
+                                                        </button>
+                                                    </Tooltip>
                                                 </span>
                                             ))}
                                         </div>
@@ -628,7 +632,7 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
                                             </div>
                                         ) : filteredClients.length === 0 ? (
                                             <div style={{ padding: '16px', textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                                {clientsState !== 'ok' ? 'Carregando clientes...' : 'Nenhum cliente encontrado'}
+                                                {clientsState !== 'ok' ? <BrandLoader size="inline" label="Carregando clientes…" /> : 'Nenhum cliente encontrado'}
                                             </div>
                                         ) : filteredClients.map(u => {
                                             const checked = selectedUsers.some(s => s.id === u.id);

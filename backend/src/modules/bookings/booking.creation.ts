@@ -814,6 +814,21 @@ router.post('/admin', authenticate, authorize('ADMIN'), async (req: Request, res
             return;
         }
 
+        // E3: boleto só com a chave-mestra "Aceitar pagamento por boleto" ligada E a Cora habilitada
+        // (fonte única getBoletoStatus) — recusa ANTES de criar o agendamento.
+        if (data.paymentMethod === 'BOLETO') {
+            const { getBoletoStatus } = await import('../../lib/paymentGateway.js');
+            const boleto = await getBoletoStatus();
+            if (!boleto.available) {
+                res.status(400).json({
+                    error: boleto.message ?? 'O pagamento por boleto não está disponível.',
+                    code: 'BOLETO_UNAVAILABLE',
+                    reason: boleto.reason,
+                });
+                return;
+            }
+        }
+
         // O admin NÃO pode agendar em data/horário que já passou (fuso do estúdio). O caminho do
         // cliente (POST /) já bloqueia o passado, mas dispensa o admin (linha ~41); o /admin não
         // tinha nenhuma checagem, então dava para criar reservas retroativas. `min` no <input> do

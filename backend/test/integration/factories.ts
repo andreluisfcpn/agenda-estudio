@@ -6,6 +6,20 @@ import type { Prisma } from '../../src/generated/prisma/client';
 let seq = 0;
 const uniq = () => `${Date.now().toString(36)}-${++seq}`;
 
+/** CPF VÁLIDO e único por chamada (users.cpf_cnpj é UNIQUE — vários clientes com CPF no mesmo teste). */
+let cpfSeq = 0;
+export function mkCpf(): string {
+    const base = String(100000000 + (++cpfSeq)).slice(0, 9).split('').map(Number);
+    const dv = (digits: number[]) => {
+        const sum = digits.reduce((s, d, i) => s + d * (digits.length + 1 - i), 0);
+        const r = 11 - (sum % 11);
+        return r >= 10 ? 0 : r;
+    };
+    const d1 = dv(base);
+    const d2 = dv([...base, d1]);
+    return [...base, d1, d2].join('');
+}
+
 export async function mkUser(overrides: Partial<Prisma.UserUncheckedCreateInput> = {}) {
     const n = uniq();
     return prisma.user.create({

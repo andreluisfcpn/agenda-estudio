@@ -1,7 +1,7 @@
 // ─── Contract Pricing (single source of truth) ─────────
 // Shared helpers used by EVERY contract-creation/renewal path (admin, self,
 // custom, fulfillment) so pricing can never diverge between endpoints again:
-//  - computeFullContractTotal(s): FULL upfront total (+ PIX à-vista discount; `s` also gives the card base)
+//  - computeFullContractTotal(s): FULL upfront total (+ PIX à-vista discount; `s` gives BOTH prices — card and PIX)
 //  - getCardInstallmentSurchargePct / applyCardInstallmentSurcharge: MONTHLY card fee
 //  - computeAddonsCost: add-ons cost (after loyalty discount)
 
@@ -25,20 +25,24 @@ export async function computeFullContractTotal(
 }
 
 /**
- * FULL upfront total nos dois meios (D1 — marca `pixDiscount`): `total` = o que a cobrança grava (com o
- * desconto PIX quando o meio é PIX), `cardTotal` = o mesmo total SEM o desconto PIX (o VALOR BASE que o
- * cartão cobra) e `pixDiscountPct` = o % aplicado (0 fora do PIX). Quem cria a cobrança grava a marca com
- * pixDiscountMetaForCharge({ amount, cardTotal, couponDiscount, pct }).
+ * FULL upfront total nos dois meios (D1/E2 — marca `pixDiscount` bidirecional):
+ *  • `total` = o que a cobrança grava (preço PIX quando o meio é PIX; senão o preço de cartão);
+ *  • `cardTotal` = o total SEM o desconto PIX (preço de Cartão/Boleto);
+ *  • `pixTotal` = o total COM o desconto PIX (o que o PIX cobra, seja qual for o meio escolhido);
+ *  • `pixPct` = o % de desconto PIX configurado hoje (sempre);
+ *  • `pixDiscountPct` = o % efetivamente embutido em `total` (0 fora do PIX — compatibilidade).
+ * Quem cria a cobrança grava a marca com pixDiscountMetaForFullCharge({ cardTotal, pixTotal, couponDiscount, pct: pixPct }).
  */
 export async function computeFullContractTotals(
     basePerPeriod: number,
     periodCount: number,
     paymentMethod?: string | null,
-): Promise<{ total: number; cardTotal: number; pixDiscountPct: number }> {
+): Promise<{ total: number; cardTotal: number; pixTotal: number; pixPct: number; pixDiscountPct: number }> {
     const cardTotal = basePerPeriod * periodCount;
-    if (paymentMethod !== 'PIX') return { total: cardTotal, cardTotal, pixDiscountPct: 0 };
-    const pixDisc = Number(await getConfig('pix_extra_discount_pct')) || 0;
-    return { total: Math.round(cardTotal * (1 - pixDisc / 100)), cardTotal, pixDiscountPct: pixDisc };
+    const pixPct = Number(await getConfig('pix_extra_discount_pct')) || 0;
+    const pixTotal = Math.round(cardTotal * (1 - pixPct / 100));
+    if (paymentMethod !== 'PIX') return { total: cardTotal, cardTotal, pixTotal, pixPct, pixDiscountPct: 0 };
+    return { total: pixTotal, cardTotal, pixTotal, pixPct, pixDiscountPct: pixPct };
 }
 
 /**

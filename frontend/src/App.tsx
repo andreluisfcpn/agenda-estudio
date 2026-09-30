@@ -10,6 +10,7 @@ import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
 import BottomTabBar from './components/BottomTabBar';
 import { PageTransitionLoader } from './components/PageTransitionLoader';
+import BrandLoader from './components/ui/BrandLoader';
 import OfflineIndicator from './components/OfflineIndicator';
 import UpdateBanner from './components/UpdateBanner';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -124,11 +125,24 @@ function Layout({ children }: { children: React.ReactNode }) {
 
 // ─── Route Guards ───────────────────────────────────────
 
+/**
+ * Loading de tela inteira (boot do app e checagem de sessão): a marca do sistema centralizada na
+ * janela. Aqui ainda NÃO existe Topbar/Sidebar — por isso não é o `PageTransitionLoader`, cujo overlay
+ * desconta a casca; a marca é a mesma (`BrandLoader size="page"`).
+ */
+function FullScreenLoader() {
+    return (
+        <div style={{ minHeight: '100svh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <BrandLoader size="page" label="Carregando" labelHidden />
+        </div>
+    );
+}
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
     const { user, loading } = useAuth();
 
     if (loading) {
-        return <div className="loading-spinner"><div className="spinner" /></div>;
+        return <FullScreenLoader />;
     }
 
     if (!user) {
@@ -161,11 +175,7 @@ function AppRoutes() {
     }, [user]);
 
     if (loading) {
-        return (
-            <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div className="spinner" />
-            </div>
-        );
+        return <FullScreenLoader />;
     }
 
     return (

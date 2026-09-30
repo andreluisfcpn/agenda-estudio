@@ -365,8 +365,10 @@ async function cancelUserPendencies(userId: string, now: Date): Promise<Cancelle
         where: { userId, status: { in: CANCELLABLE_CONTRACT_STATUSES } },
         select: { id: true },
     });
+    // `includeFines`: a multa de cancelamento de um cliente excluído também é anulada (a anulação comum
+    // de um contrato a preserva — ver voidContractPendingPaymentsDetailed).
     for (const c of running) {
-        payments += await voidContractPendingPayments(c.id);
+        payments += await voidContractPendingPayments(c.id, { includeFines: true });
         const upd = await prisma.contract.updateMany({
             where: { id: c.id, status: { in: CANCELLABLE_CONTRACT_STATUSES } },
             data: { status: 'CANCELLED' },
@@ -382,7 +384,7 @@ async function cancelUserPendencies(userId: string, now: Date): Promise<Cancelle
         distinct: ['contractId'],
     });
     for (const p of leftover) {
-        if (p.contractId) payments += await voidContractPendingPayments(p.contractId);
+        if (p.contractId) payments += await voidContractPendingPayments(p.contractId, { includeFines: true });
     }
 
     // 3) Cobranças PENDING sem contrato.

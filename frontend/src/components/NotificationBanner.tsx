@@ -1,5 +1,6 @@
 import { Bell, X, Check } from 'lucide-react';
 import { usePushNotifications } from '../hooks/usePushNotifications';
+import Tooltip from './ui/Tooltip';
 import '../styles/pwa.css';
 
 export default function NotificationBanner() {
@@ -25,9 +26,11 @@ export default function NotificationBanner() {
                 >
                     {isLoading ? '...' : 'ATIVAR'}
                 </button>
-                <button className="notification-banner-close" onClick={dismiss} aria-label="Fechar">
-                    <X size={14} />
-                </button>
+                <Tooltip content="Dispensar" describe={false}>
+                    <button className="notification-banner-close" onClick={dismiss} aria-label="Dispensar aviso de notificações">
+                        <X size={14} />
+                    </button>
+                </Tooltip>
             </div>
         </div>
     );

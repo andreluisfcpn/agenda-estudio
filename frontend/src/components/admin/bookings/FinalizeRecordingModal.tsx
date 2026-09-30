@@ -1,5 +1,5 @@
 import { useState, useEffect, useId } from 'react';
-import { bookingsApi } from '../../../api/client';
+import { bookingsApi, ApiError } from '../../../api/client';
 import { useUI } from '../../../context/UIContext';
 import { useBusinessConfig } from '../../../hooks/useBusinessConfig';
 import { getErrorMessage } from '../../../utils/errors';
@@ -33,17 +33,48 @@ interface Props {
     booking: FinalizeBooking | null;
     onClose: () => void;
     onSaved: () => void;
+    /**
+     * 409 RECORDING_STATE_CHANGED no salvar (o início foi desfeito ou o status mudou em outra tela): a lista
+     * do pai está velha — recarregue-a. O modal continua aberto, com a mensagem do servidor.
+     */
+    onStale?: () => void;
 }
+
+/**
+ * Teto da duração AUTOMÁTICA — o mesmo AUTO_DURATION_MAX_MINUTES do backend (booking.status.ts): início há
+ * mais de 12 h (esquecido de outro dia) não é derivado; a gravação ficaria finalizada SEM duração.
+ */
+const AUTO_DURATION_MAX_MINUTES = 12 * 60;
+
+/**
+ * Normaliza um link digitado antes de salvar. O modal do cliente só mostra links http(s): um "youtu.be/abc"
+ * salvo como veio SUMIA de lá sem avisar o estúdio.
+ *  - vazio → '' (sem link);
+ *  - começa com http:// ou https:// → mantido;
+ *  - outro esquema (javascript:, ftp:, mailto:, "localhost:3000"…) → null = inválido (não salva);
+ *  - sem esquema → prefixa https://.
+ */
+function normalizeUrl(raw: string): string | null {
+    const v = raw.trim();
+    if (!v) return '';
+    if (/^https?:\/\//i.test(v)) return v;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(v)) return null;
+    return `https://${v.replace(/^\/+/, '')}`;
+}
+const invalidLinkMessage = (where: string) =>
+    `Link inválido em “${where}”: use um endereço da web, começando com https:// (ou http://).`;
 
 const labelCss: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 };
 const inputCss: React.CSSProperties = { width: '100%', padding: '8px 12px', borderRadius: 10, fontSize: '0.8125rem', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-primary)', outline: 'none', fontFamily: 'inherit' };
 
-export default function FinalizeRecordingModal({ isOpen, booking, onClose, onSaved }: Props) {
+export default function FinalizeRecordingModal({ isOpen, booking, onClose, onSaved, onStale }: Props) {
     const uid = useId();
     const { showToast } = useUI();
     const [duration, setDuration] = useState('');
     // Duração automática: minutos entre "Iniciar Gravação" e a finalização (só na 1ª finalização).
     const [autoEstimate, setAutoEstimate] = useState<number | null>(null);
+    // Início há mais de 12 h: sem duração automática (o backend não deriva) — só a entrada manual, com aviso.
+    const [startTooOld, setStartTooOld] = useState(false);
     const [manualDuration, setManualDuration] = useState(false);
     const [isLive, setIsLive] = useState(false);
     const [selected, setSelected] = useState<string[]>([]);
@@ -62,11 +93,15 @@ export default function FinalizeRecordingModal({ isOpen, booking, onClose, onSav
         if (!isOpen || !booking) return;
         // 1ª finalização com gravação iniciada → duração automática (minutos desde o "Iniciar").
         const startedMs = booking.recordingStartedAt ? new Date(booking.recordingStartedAt).getTime() : null;
-        const est = (startedMs && booking.status !== 'COMPLETED')
+        const elapsed = (startedMs && booking.status !== 'COMPLETED')
             ? Math.max(1, Math.round((Date.now() - startedMs) / 60000))
             : null;
+        // Acima do teto o backend descarta a derivação: a prévia é tratada como indisponível.
+        const tooOld = elapsed != null && elapsed > AUTO_DURATION_MAX_MINUTES;
+        const est = tooOld ? null : elapsed;
+        setStartTooOld(tooOld);
         setAutoEstimate(est);
-        setManualDuration(est == null); // sem cálculo disponível (COMPLETED/sem início) → entrada manual
+        setManualDuration(est == null); // sem cálculo disponível (COMPLETED/sem início/início antigo) → entrada manual
         setDuration(booking.durationMinutes != null ? String(booking.durationMinutes) : '');
         const sm = parseStreamMetrics(booking.streamMetrics);
         const plats = parsePlatforms(booking.platforms);
@@ -95,20 +130,30 @@ export default function FinalizeRecordingModal({ isOpen, booking, onClose, onSav
     };
 
     const save = async () => {
-        setSaving(true); setError('');
+        setError('');
+        const usePlatforms = isLive ? selected : [];
+        // Links normalizados ANTES de salvar (sem esquema → https://; esquema que não é http(s) → erro claro, nada é salvo).
+        const linksObj: Record<string, string> = {};
+        for (const k of usePlatforms) {
+            const url = normalizeUrl(links[k] || '');
+            if (url === null) { setError(invalidLinkMessage(`Link da transmissão — ${PLATFORMS.find(p => p.key === k)?.label ?? k}`)); return; }
+            if (url) linksObj[k] = url;
+        }
+        // Gravado (não ao vivo): só duração + 1 link de acesso à gravação.
+        if (!isLive) {
+            const url = normalizeUrl(recordingUrl);
+            if (url === null) { setError(invalidLinkMessage('Link de acesso à gravação')); return; }
+            if (url) linksObj.GRAVACAO = url;
+        }
+        setSaving(true);
         try {
-            const usePlatforms = isLive ? selected : [];
             const streamMetricsObj: Record<string, PlatformMetric> = {};
-            const linksObj: Record<string, string> = {};
             for (const k of usePlatforms) {
                 const mk = metrics[k] || {};
                 const m: PlatformMetric = {};
                 for (const f of METRIC_FIELDS) m[f.key] = Number(mk[f.key]) || 0;
                 streamMetricsObj[k] = m;
-                if (links[k]?.trim()) linksObj[k] = links[k].trim();
             }
-            // Gravado (não ao vivo): só duração + 1 link de acesso à gravação.
-            if (!isLive && recordingUrl.trim()) linksObj.GRAVACAO = recordingUrl.trim();
             await bookingsApi.complete(booking.id, {
                 // Automático: manda null e o backend deriva o intervalo início→finalização no instante do
                 // request (mesmo caminho do Dashboard). Manual: o valor digitado. autoEstimate é só a prévia.
@@ -124,7 +169,11 @@ export default function FinalizeRecordingModal({ isOpen, booking, onClose, onSav
             showToast('Gravação finalizada com sucesso!');
             onSaved();
             onClose();
-        } catch (e) { setError(getErrorMessage(e) || 'Erro ao finalizar.'); }
+        } catch (e) {
+            setError(getErrorMessage(e) || 'Erro ao finalizar.');
+            // Outra tela desfez o início ou mudou o status: a lista por trás está velha — recarrega.
+            if (e instanceof ApiError && e.code === 'RECORDING_STATE_CHANGED') onStale?.();
+        }
         finally { setSaving(false); }
     };
 
@@ -150,6 +199,11 @@ export default function FinalizeRecordingModal({ isOpen, booking, onClose, onSav
                                     style={{ background: 'none', border: 'none', padding: '6px 0 0', cursor: 'pointer', color: 'var(--accent-primary)', fontSize: '0.6875rem', fontWeight: 600 }}>
                                     Usar duração automática (~{autoEstimate} min)
                                 </button>
+                            )}
+                            {startTooOld && (
+                                <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', marginTop: 6 }}>
+                                    A gravação foi iniciada há mais de 12 horas: a duração não é registrada automaticamente. Informe os minutos, ou ela fica sem duração.
+                                </div>
                             )}
                         </>
                     ) : (

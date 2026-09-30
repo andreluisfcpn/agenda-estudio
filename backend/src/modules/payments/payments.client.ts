@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import { authenticate } from '../../middleware/auth.js';
+import { resolvePixProvider, isPixProvider, type PixProvider } from '../../lib/pixGateway.js';
+import { sicoobAllowedEnvironment } from '../../lib/sicoobService.js';
 
 // ─── GET /api/payments/:id/status (CLIENT) ──────────────
 // Lightweight polling endpoint for PIX/Boleto status checks.
@@ -10,24 +12,50 @@ import { authenticate } from '../../middleware/auth.js';
 const _coraCheckTimes = new Map<string, number>();
 const CORA_CHECK_THROTTLE_MS = 8000;
 
+// ─── Sandbox EFETIVO (SEC-1) ────────────────────────────
+// Fonte ÚNICA de GET /sandbox-mode (o botão "Simular" do checkout) e POST /:id/simulate: um provedor só
+// conta como sandbox quando a integração está HABILITADA e no ambiente 'sandbox' — e, no Sicoob, quando
+// esse é o ambiente que ESTE deploy pode operar (sicoobAllowedEnvironment: num deploy de produção o
+// Sicoob em sandbox não é selecionável). Uma linha de integração desligada (ex.: a Cora que sobrou em
+// 'sandbox' depois da migração para o Sicoob) NUNCA habilita a simulação.
+
+type SimulableProvider = 'STRIPE' | PixProvider;
+
+async function isProviderSandbox(provider: SimulableProvider): Promise<boolean> {
+    const integration = await prisma.integrationConfig.findUnique({
+        where: { provider },
+        select: { enabled: true, environment: true },
+    });
+    if (!integration || !integration.enabled || integration.environment !== 'sandbox') return false;
+    if (provider === 'SICOOB' && sicoobAllowedEnvironment() !== 'sandbox') return false;
+    return true;
+}
+
+/**
+ * Provedor EFETIVO de uma cobrança: cartão → Stripe; PIX/boleto → quem EMITIU a cobrança (linha com
+ * providerRef) ou, se a linha ainda é só um placeholder (nada emitido — ex.: 'CORA' gravado na criação do
+ * avulso), o provedor de PIX ATIVO (resolvePixProvider, que já aplica a trava de deploy do Sicoob).
+ */
+async function effectiveProviderFor(payment: { provider: string; providerRef: string | null }): Promise<SimulableProvider | null> {
+    if (payment.provider === 'STRIPE') return 'STRIPE';
+    if (isPixProvider(payment.provider) && payment.providerRef) return payment.provider;
+    return resolvePixProvider();
+}
+
 export function registerPaymentClientRoutes(router: Router) {
-    // ─── GET /api/payments/sandbox-mode (PUBLIC) ────────────
+    // ─── GET /api/payments/sandbox-mode (autenticado) ───────
     // Tells the checkout UI whether PIX/card are running in sandbox, so it can show
     // a "simulate payment" affordance for testing (never shown in production).
+    // SEC-1: MESMO critério do POST /:id/simulate (isProviderSandbox) — PIX = o provedor de PIX ATIVO
+    // (resolvePixProvider: Sicoob preferido, respeitando a trava de deploy; senão Cora) em sandbox.
     router.get('/sandbox-mode', authenticate, async (_req: Request, res: Response) => {
         try {
-            const [cora, sicoob, stripe] = await Promise.all([
-                prisma.integrationConfig.findUnique({ where: { provider: 'CORA' } }),
-                prisma.integrationConfig.findUnique({ where: { provider: 'SICOOB' } }),
-                prisma.integrationConfig.findUnique({ where: { provider: 'STRIPE' } }),
+            const pixProvider = await resolvePixProvider();
+            const [pix, card] = await Promise.all([
+                pixProvider ? isProviderSandbox(pixProvider) : false,
+                isProviderSandbox('STRIPE'),
             ]);
-            // PIX em sandbox se o provedor de PIX ATIVO (Sicoob preferido, senão Cora) estiver em sandbox.
-            const pixSandbox = (!!sicoob?.enabled && sicoob.environment === 'sandbox')
-                || (!sicoob?.enabled && !!cora?.enabled && cora.environment === 'sandbox');
-            res.json({
-                pix: pixSandbox,
-                card: !!stripe?.enabled && stripe.environment === 'sandbox',
-            });
+            res.json({ pix, card });
         } catch {
             res.json({ pix: false, card: false });
         }
@@ -93,8 +121,10 @@ export function registerPaymentClientRoutes(router: Router) {
 
     // ─── POST /api/payments/:id/simulate (SANDBOX ONLY) ─────
     // Simulates a confirmed payment for end-to-end testing. STRICTLY refuses unless
-    // the payment's provider integration is in 'sandbox' — it can never confirm a
+    // the payment's EFFECTIVE provider is ENABLED and in 'sandbox' (SEC-1) — it can never confirm a
     // real production payment. Runs the exact same effects as a real confirmation.
+    // O `provider` gravado na linha pode ser só um placeholder (ex.: 'CORA' na criação do avulso, com a
+    // Cora desligada): quem decide é o provedor efetivo (effectiveProviderFor) + isProviderSandbox.
     router.post('/:id/simulate', authenticate, async (req: Request, res: Response) => {
         try {
             const id = req.params.id as string;
@@ -109,9 +139,9 @@ export function registerPaymentClientRoutes(router: Router) {
                 return;
             }
 
-            // Hard gate: only ever allowed when the provider is in sandbox.
-            const integration = await prisma.integrationConfig.findUnique({ where: { provider: payment.provider } });
-            if (!integration || integration.environment !== 'sandbox') {
+            // Hard gate: only ever allowed when the EFFECTIVE provider is enabled AND in sandbox.
+            const effective = await effectiveProviderFor(payment);
+            if (!effective || !(await isProviderSandbox(effective))) {
                 res.status(403).json({ error: 'Simulação disponível apenas em ambiente de teste (sandbox).' });
                 return;
             }

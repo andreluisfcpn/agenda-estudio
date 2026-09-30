@@ -11,6 +11,7 @@ import { getClientPaymentMethods, type PaymentMethodKey } from '../constants/pay
 import InlineCheckout from './InlineCheckout';
 import StripeCardForm from './StripeCardForm';
 import CpfCnpjPrompt from './CpfCnpjPrompt';
+import BrandLoader from './ui/BrandLoader';
 import { useAuth } from '../context/AuthContext';
 import { isValidCpfCnpj } from '../utils/mask';
 import { formatBRL } from '../utils/format';
@@ -456,8 +457,10 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                 {/* ══════════ STEP 5: LOADING ══════════ */}
                 {step === 5 && (
                     <div className="wizard-state-screen">
-                        <div className="spinner" style={{ margin: '0 auto 20px', width: 40, height: 40 }} />
-                        <h3 className="wizard-state-screen__title">Gerando pagamento...</h3>
+                        {/* Loading de marca compacto (E5): a marca + o rótulo fazem as vezes do título. */}
+                        <div style={{ marginBottom: 10 }}>
+                            <BrandLoader size="compact" label="Gerando pagamento…" />
+                        </div>
                         <p className="wizard-state-screen__desc">Preparando a 1ª parcela. Aguarde um instante.</p>
                     </div>
                 )}
@@ -764,8 +767,7 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                                             </div>
                                         ) : loadingSlots || slotGrid.loading || slotsDate !== firstDate ? (
                                             <div className="wizard-time-loading">
-                                                <div className="wizard-time-loading__spinner" />
-                                                <span>Verificando disponibilidade...</span>
+                                                <BrandLoader size="inline" label="Verificando disponibilidade…" />
                                             </div>
                                         ) : availableSlots.length === 0 ? (
                                             <div className="wizard-time-empty">
@@ -1132,15 +1134,13 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
                                         displayPrice = `${duration}x ${formatBRL(monthlyTotal)}`;
                                         subPrice = `Total: ${formatBRL(monthlyTotal * duration)}`;
                                         desc = 'Parcelas mensais via PIX';
-                                    } else if (pm.key === 'CARTAO') {
+                                    } else {
+                                        // Só PIX e Cartão chegam aqui: getClientPaymentMethods() nunca traz boleto (a
+                                        // contratação nova tem reserva de 10 minutos e o boleto compensa em dias — E3).
                                         // Monthly card has NO surcharge — each month is a single 1x charge (same as PIX).
                                         displayPrice = `${duration}x ${formatBRL(monthlyTotal)}`;
                                         subPrice = `Total: ${formatBRL(monthlyTotal * duration)}`;
                                         desc = 'Parcelas mensais no cartão';
-                                    } else {
-                                        displayPrice = `${duration}x ${formatBRL(monthlyTotal)}`;
-                                        subPrice = `Total: ${formatBRL(monthlyTotal * duration)}`;
-                                        desc = 'Boleto bancário mensal';
                                     }
 
                                     return (

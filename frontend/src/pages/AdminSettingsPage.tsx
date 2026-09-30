@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useDragScroll } from '../hooks/useDragScroll';
 import AdminPageHeader from '../components/admin/AdminPageHeader';
+import Tooltip from '../components/ui/Tooltip';
 import SettingsBusinessConfigSection from '../components/admin/settings/SettingsBusinessConfigSection';
 import SettingsTiersSection from '../components/admin/settings/SettingsTiersSection';
 import SettingsPaymentMethodsSection from '../components/admin/settings/SettingsPaymentMethodsSection';
@@ -187,15 +188,17 @@ export default function AdminSettingsPage() {
                        Wrapper hosts the side arrows + drag-to-scroll affordances. ── */}
                 <div className="admin-settings-rail-wrap scrollrow-wrap">
                     {showLeft && (
-                        <button
-                            type="button"
-                            className="scrollrow-arrow scrollrow-arrow--left"
-                            aria-label="Rolar seções para a esquerda"
-                            onClick={() => scrollByPage(-1)}
-                            tabIndex={-1}
-                        >
-                            <ChevronLeft size={16} />
-                        </button>
+                        <Tooltip content="Ver seções anteriores" describe={false}>
+                            <button
+                                type="button"
+                                className="scrollrow-arrow scrollrow-arrow--left"
+                                aria-label="Ver seções anteriores"
+                                onClick={() => scrollByPage(-1)}
+                                tabIndex={-1}
+                            >
+                                <ChevronLeft size={16} aria-hidden="true" />
+                            </button>
+                        </Tooltip>
                     )}
                     <nav
                         ref={railRef}
@@ -222,15 +225,17 @@ export default function AdminSettingsPage() {
                         })}
                     </nav>
                     {showRight && (
-                        <button
-                            type="button"
-                            className="scrollrow-arrow scrollrow-arrow--right scrollrow-arrow--pulse"
-                            aria-label="Rolar seções para a direita"
-                            onClick={() => scrollByPage(1)}
-                            tabIndex={-1}
-                        >
-                            <ChevronRight size={16} />
-                        </button>
+                        <Tooltip content="Ver mais seções" describe={false}>
+                            <button
+                                type="button"
+                                className="scrollrow-arrow scrollrow-arrow--right scrollrow-arrow--pulse"
+                                aria-label="Ver mais seções"
+                                onClick={() => scrollByPage(1)}
+                                tabIndex={-1}
+                            >
+                                <ChevronRight size={16} aria-hidden="true" />
+                            </button>
+                        </Tooltip>
                     )}
                 </div>
 

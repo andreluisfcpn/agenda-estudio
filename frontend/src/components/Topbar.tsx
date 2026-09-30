@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Avatar from './Avatar';
 import NotificationBell from './NotificationBell';
+import Tooltip from './ui/Tooltip';
 import {
     Menu,
     User,
@@ -46,14 +47,16 @@ export default function Topbar({ onToggleSidebar }: TopbarProps) {
         <header className="topbar">
             {/* Left: Hamburger + Logo */}
             <div className="topbar-left">
-                <button
-                    className="topbar-hamburger"
-                    onClick={onToggleSidebar}
-                    aria-label="Menu"
-                    title="Menu (Ctrl+B)"
-                >
-                    <Menu size={22} strokeWidth={2} />
-                </button>
+                <Tooltip content="Recolher/expandir menu (Ctrl+B)" placement="bottom" describe={false}>
+                    <button
+                        className="topbar-hamburger"
+                        onClick={onToggleSidebar}
+                        aria-label="Recolher ou expandir o menu lateral"
+                        aria-keyshortcuts="Control+B"
+                    >
+                        <Menu size={22} strokeWidth={2} />
+                    </button>
+                </Tooltip>
 
                 <a href="/dashboard" className="topbar-brand">
                     {/* Logo servido localmente (public/icons) — não depende de URL externa (buzios.digital
@@ -81,20 +84,23 @@ export default function Topbar({ onToggleSidebar }: TopbarProps) {
 
                 {/* ─── Profile Avatar + Dropdown ─── */}
                 <div className="topbar-profile" ref={menuRef}>
-                    <button
-                        className={`topbar-profile-trigger ${menuOpen ? 'topbar-profile-trigger--active' : ''}`}
-                        onClick={() => setMenuOpen(prev => !prev)}
-                        aria-label="Menu do perfil"
-                        aria-haspopup="menu"
-                        aria-expanded={menuOpen}
-                    >
-                        <Avatar className="topbar-avatar" photoUrl={user?.photoUrl} name={user?.name} />
-                        <ChevronDown
-                            size={14}
-                            className={`topbar-profile-chevron ${menuOpen ? 'topbar-profile-chevron--open' : ''}`}
-                            strokeWidth={2.5}
-                        />
-                    </button>
+                    {/* Dica desligada com o menu aberto: a bolha cairia em cima do dropdown. */}
+                    <Tooltip content="Menu do perfil" placement="bottom" describe={false} disabled={menuOpen}>
+                        <button
+                            className={`topbar-profile-trigger ${menuOpen ? 'topbar-profile-trigger--active' : ''}`}
+                            onClick={() => setMenuOpen(prev => !prev)}
+                            aria-label="Menu do perfil"
+                            aria-haspopup="menu"
+                            aria-expanded={menuOpen}
+                        >
+                            <Avatar className="topbar-avatar" photoUrl={user?.photoUrl} name={user?.name} />
+                            <ChevronDown
+                                size={14}
+                                className={`topbar-profile-chevron ${menuOpen ? 'topbar-profile-chevron--open' : ''}`}
+                                strokeWidth={2.5}
+                            />
+                        </button>
+                    </Tooltip>
 
                     {/* Dropdown */}
                     {menuOpen && (

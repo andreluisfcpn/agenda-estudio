@@ -10,8 +10,8 @@ Geradas a cada requisição de `GET /api/notifications`, sem persistir. Filtram 
 | Origem | Tipo | Severidade |
 | --- | --- | --- |
 | Contratos expirando (≤7d admin / ≤15d cliente) — `ACTIVE` ou `COMPLETED` (lembrete de renovação), **nunca AVULSO** | `CONTRACT_EXPIRING` | warning / critical (≤2d) |
-| Pagamentos vencidos (`PENDING` com `dueDate` no passado) | `PAYMENT_OVERDUE` | warning / critical (>7d) |
-| Pagamentos recusados (`FAILED`) | `PAYMENT_OVERDUE` | critical |
+| Pagamentos vencidos (`PENDING` com `dueDate` no passado) — para o cliente, sem as parcelas bloqueadas por cancelamento em análise (abaixo) | `PAYMENT_OVERDUE` | warning / critical (>7d) |
+| Pagamentos com cartão recusados (`FAILED`, provider Stripe) — mesma exceção | `PAYMENT_OVERDUE` | critical |
 | Sessões não confirmadas **de hoje** (`RESERVED`) | `BOOKING_UNCONFIRMED` | critical |
 | Contratos em cancelamento pendente | `CANCELLATION_PENDING` | warning |
 | Contratos aguardando pagamento | `CONTRACT_AWAITING_PAYMENT` | warning / critical (prazo curto) |
@@ -36,7 +36,7 @@ Para reduzir ruído com o sistema já maduro:
 
 - **Removidos** os blocos computados `FLEX_CREDITS_LOW` (variante *info*, ≤2 créditos) e `CLIENT_INACTIVE`. Os sinais Flex relevantes (crédito perdido = critical; "grave esta semana" = warning) continuam vindo dos jobs como linhas persistidas.
 - `BOOKING_UNCONFIRMED` passou a considerar **apenas o dia de hoje** — a véspera já é coberta pelo lembrete de 24h (`BOOKING_REMINDER`), evitando notificação dupla. Ressalva: sessões marcadas com menos de 24h de antecedência não recebem o lembrete de véspera (ver abaixo).
-- Os valores de enum `CONTRACT_RENEWED`, `CLIENT_INACTIVE` e `SYSTEM` **não são mais produzidos**, mas permanecem no enum do Postgres (remover exigiria migração com `--accept-data-loss`). Ver [modelo-de-dados.md](modelo-de-dados.md).
+- Os valores de enum `CONTRACT_RENEWED` e `CLIENT_INACTIVE` **não são mais produzidos**, mas permanecem no enum do Postgres (remover exigiria migração com `--accept-data-loss`). Ver [modelo-de-dados.md](modelo-de-dados.md). `SYSTEM` voltou a ser usado em set/2026 pelos alertas `admin_payment_on_cancelled_charge` e `admin_card_double_charge` (abaixo).
 
 ## Lembretes de sessão (24h / 2h)
 
@@ -64,6 +64,36 @@ Eventos persistidos da janela de remarcação sem novo pagamento (FALTA justific
 | `admin_makeup_rescheduled` | admin | `BOOKING_CONFIRMED` | info | A gravação perdida foi remarcada (pelo cliente ou por um admin) |
 
 Lembrete e expirações são `critical` para chegar também a quem escolheu "só essenciais". A dedup usa `dedupKey` com o id do booking (e o do admin nos eventos de admin); o lembrete diário tem ainda uma marca Redis própria (`makeup:reminded:<booking>:<dia SP>`, TTL 36h), porque a dedup de 6h dos `critical` sozinha deixaria sair até 4 lembretes no mesmo dia com o job de hora em hora.
+
+## Cancelamento de contrato e multa (set/2026)
+
+Eventos persistidos do cancelamento (E13 — `contract.lifecycle.ts`, `lib/cancellationFine.ts`, `lib/paymentEffects.ts`). Sem migration: os três primeiros reusam o tipo `CANCELLATION_PENDING`; o quarto usa `SYSTEM`. Todos saem com push por padrão e são editáveis em Admin → Notificações. Variáveis novas: `{percentual}` (% da multa) e `{base}` (o que faltava pagar do plano).
+
+| eventKey | Público | Tipo | Severidade | Link | Quando |
+| --- | --- | --- | --- | --- | --- |
+| `contract_cancellation_fine` | cliente | `CANCELLATION_PENDING` | critical | `/meus-pagamentos` | O admin conclui o pedido com "Cobrar multa": informa `{valor}`, `{percentual}` e `{base}` da cobrança criada (`metadata.kind = 'CANCELLATION_FINE'`) |
+| `contract_cancelled_no_fine` | cliente | `CANCELLATION_PENDING` | critical | `/meus-contratos` | Contrato cancelado sem multa: isenção, pedido sem saldo a pagar, ou cancelamento feito pelo estúdio (DELETE / PATCH `CANCELLED`) |
+| `admin_cancellation_requested` | admin | `CANCELLATION_PENDING` | warning | `/admin/contracts` | O cliente pede o cancelamento: aviso imediato com a multa prevista, um por admin |
+| `admin_payment_on_cancelled_charge` | admin | `SYSTEM` | critical | `/admin/finance` | O provedor confirma o pagamento de uma cobrança já `CANCELLED` (parcela anulada): o dinheiro entrou e precisa de estorno ou baixa manual |
+
+- **Cliente**: os dois avisos são `critical` para chegar também a quem escolheu "só essenciais" (é cobrança nova ou fim do contrato). O da multa aponta para a cobrança (`entityType PAYMENT`); o sem multa, para o contrato e usa a dedup padrão (usuário + tipo + contrato, 6 h) — cancelar, reabrir e cancelar de novo nesse intervalo não reenvia.
+- **`admin_cancellation_requested`** tem o mesmo tipo e entidade do alerta computado "Cancelamento pendente": no sino aparece uma linha só enquanto o pedido está em análise (a computada sombreia a persistida); a persistida existe para o push imediato. `dedupKey` = `cancel-request:<contrato>:<momento do pedido>:<admin>` (um aviso por pedido). As linhas são removidas quando o pedido é resolvido ou o contrato é reaberto.
+- **`admin_payment_on_cancelled_charge`** sai uma vez por cobrança: marca `PAID_AFTER_CANCELLED` em `audit_logs` (entidade `PAYMENT`) + `dedupKey` `paid-on-cancelled:<pagamento>:<admin>`. Origens: webhook e conciliação do Sicoob, varredura do cron de 2 min (só produção), webhooks do Stripe e da Cora, e a anulação de parcelas quando o provedor já tinha recebido.
+- Enquanto o pedido está em análise, o cliente não consegue pagar parcelas do plano (409 `CANCELLATION_PENDING` — ver [pagamentos.md](pagamentos.md) e [api.md](api.md)); não há notificação para esse bloqueio.
+- **Sem lembrete de parcela que não dá para pagar**: em `GET /api/notifications`, os alertas computados do **cliente** "Você tem faturas vencidas" e "Pagamento com cartão falhou" ignoram as parcelas do plano de um contrato em `PENDING_CANCELLATION` — a mesma regra das rotas de pagamento (`planPaymentBlockedByPendingCancellation`, em `lib/cancellationPending.ts`). Extras de gravação (`bookingId`) e a multa de cancelamento continuam avisando, e parcelas de outros contratos do mesmo cliente também. O alerta do **admin** não muda (ele pode cobrar). Se o admin reabrir o contrato, o aviso volta. O **push** de faturas vencidas (`pushNotificationJob.computeUserEvents`) aplica o mesmo filtro. Os extras das gravações que o próprio pedido cancelou são anulados no pedido (ver [pagamentos.md](pagamentos.md)) e, portanto, também não avisam.
+- **"Cobrança expirada"** (`payment_expired`): o texto padrão ao cliente não cita a forma de pagamento ("Sua cobrança foi cancelada ou expirou. Gere uma nova em Meus Pagamentos.") — com o boleto desligado (E3) ele não aparece em lugar nenhum. Um modelo já personalizado no painel continua valendo até "restaurar padrão".
+
+## Cobrança em dobro no cartão (set/2026)
+
+Rede de segurança da cobrança automática (Z1-c — `alertDoubleCardCharge` em `jobs/autoChargeJob.ts`). Tipo `SYSTEM`, sem migration; push por padrão; editável em Admin → Notificações. Variáveis novas: `{piPago}` (PaymentIntent que deu a baixa) e `{piExtra}` (o PaymentIntent a estornar).
+
+| eventKey | Público | Tipo | Severidade | Link | Quando |
+| --- | --- | --- | --- | --- | --- |
+| `admin_card_double_charge` | admin | `SYSTEM` | critical | `/admin/finance` | Um segundo PaymentIntent foi aprovado para uma cobrança que já estava `PAID` por outro (ex.: a cobrança automática quitou a parcela e o cliente confirmou depois um checkout de cartão que tinha ficado aberto): o cliente foi debitado duas vezes; a mensagem traz cliente, valor, contrato e os dois PIs e manda estornar `{piExtra}` no painel do Stripe |
+
+- Sai **uma vez por PaymentIntent excedente**: marca `DOUBLE_CARD_CHARGE` em `audit_logs` (entidade `PAYMENT`, `changes` com os dois PIs e o valor) + `dedupKey` `double-card-charge:<PI excedente>:<admin>`. Webhook reentregue, ou o job e o webhook do mesmo PI, não repetem o aviso; um terceiro PI aprovado é outro débito e avisa de novo.
+- Origens: webhook `payment_intent.succeeded` de uma cobrança já `PAID` cujo `providerRef` é **outro** PaymentIntent (o mesmo PI da baixa não avisa), e o `autoChargeJob` quando, ao cancelar o PaymentIntent anterior da parcela recém-quitada, o Stripe responde que ele já tinha aprovado. Todos os admins não excluídos recebem; o cliente não é avisado.
+- A cobrança continua `PAID` pelo PI da baixa: o estorno é manual no Stripe. Cobrança paga por outro meio (PIX/boleto) com um cartão aprovado depois não gera este aviso — só log `[Webhook:Stripe][SECURITY]`.
 
 ## UI
 

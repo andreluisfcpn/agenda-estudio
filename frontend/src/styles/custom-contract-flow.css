@@ -369,6 +369,9 @@
 .ccf-cal__navbtn:disabled {
     opacity: 0.35;
     cursor: not-allowed;
+    /* Dentro de <Tooltip> via <span>: o botão desabilitado não recebe eventos de ponteiro de forma
+       consistente entre navegadores — quem recebe (e mostra/esconde a dica) é o span. */
+    pointer-events: none;
 }
 
 .ccf-cal__grid {
@@ -735,6 +738,12 @@
 .ccf-stepper__btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+    pointer-events: none; /* idem .ccf-cal__navbtn: a dica fica no <span> do <Tooltip> */
+}
+
+/* "Aceitar sugestões" (conflitos): desabilitado, a dica "Ajuste a agenda…" vem do <span> do <Tooltip>. */
+.ccf-accept-btn:disabled {
+    pointer-events: none;
 }
 
 .ccf-stepper__value {

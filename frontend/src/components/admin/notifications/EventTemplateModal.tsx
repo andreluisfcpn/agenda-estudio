@@ -5,6 +5,7 @@ import { getErrorMessage } from '../../../utils/errors';
 import BottomSheetModal from '../../BottomSheetModal';
 import ToggleSwitch from '../../ui/ToggleSwitch';
 import DangerConfirmDialog from '../../ui/DangerConfirmDialog';
+import Tooltip from '../../ui/Tooltip';
 import { Bell, Save, Send, RotateCcw, X } from 'lucide-react';
 
 interface Props {
@@ -130,7 +131,11 @@ export default function EventTemplateModal({ event, onClose, onSaved }: Props) {
                     <span className="notif-template-head__icon"><Bell size={18} aria-hidden="true" /></span>
                     {event.label}
                 </h2>
-                <button type="button" className="notif-template-head__close" onClick={onClose} disabled={confirmReset || saving} aria-label="Fechar"><X size={18} /></button>
+                {/* Tooltip direto no botão (posição absoluta: um <span> em volta ancoraria a dica no lugar errado).
+                    Só fica disabled com a confirmação por cima ou durante o salvar — aí a dica não faz falta. */}
+                <Tooltip content="Fechar" describe={false}>
+                    <button type="button" className="notif-template-head__close" onClick={onClose} disabled={confirmReset || saving} aria-label="Fechar"><X size={18} aria-hidden="true" /></button>
+                </Tooltip>
                 <p className="notif-template-head__desc">{event.description}</p>
             </div>
 
@@ -176,9 +181,11 @@ export default function EventTemplateModal({ event, onClose, onSaved }: Props) {
                     <div className="notif-var-chips">
                         <span className="notif-var-chips__label">Variáveis:</span>
                         {event.variables.map(v => (
-                            <button key={v.name} type="button" className="notif-var-chip" onClick={() => insertVar(v.name)} title={`${v.label} — ex.: ${v.example}`}>
-                                {'{'}{v.name}{'}'}
-                            </button>
+                            <Tooltip key={v.name} content={`${v.label} — ex.: ${v.example}`}>
+                                <button type="button" className="notif-var-chip" onClick={() => insertVar(v.name)}>
+                                    {'{'}{v.name}{'}'}
+                                </button>
+                            </Tooltip>
                         ))}
                     </div>
                 )}
@@ -218,9 +225,14 @@ export default function EventTemplateModal({ event, onClose, onSaved }: Props) {
                 </div>
 
                 <div className="notif-template-actions">
-                    <button type="button" className="btn-admin-ghost" onClick={() => setConfirmReset(true)} disabled={saving || testing} title="Restaurar o texto padrão">
-                        <RotateCcw size={15} aria-hidden="true" /> Padrão
-                    </button>
+                    {/* <span> em volta: <button disabled> não dispara eventos de ponteiro — a dica continua aparecendo. */}
+                    <Tooltip content="Restaurar o texto padrão" describe={false}>
+                        <span style={{ display: 'inline-flex' }}>
+                            <button type="button" className="btn-admin-ghost" onClick={() => setConfirmReset(true)} disabled={saving || testing} aria-label="Restaurar o texto padrão">
+                                <RotateCcw size={15} aria-hidden="true" /> Padrão
+                            </button>
+                        </span>
+                    </Tooltip>
                     <button className="btn-admin-ghost" onClick={handleTest} disabled={saving || testing || !canSave}>
                         <Send size={15} /> {testing ? 'Enviando…' : 'Enviar teste'}
                     </button>

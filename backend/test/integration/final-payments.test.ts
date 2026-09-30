@@ -202,7 +202,7 @@ describe('cardChargeBaseAmount — extras e multa de contrato FULL+PIX cobram o 
         expect(paid?.chargedAmount).toBe(283500);
     });
 
-    it('autoCharge: extras e multa de contrato FULL+PIX são cobrados pelo valor cheio (sem inflar)', async () => {
+    it('autoCharge: a multa (linha antiga, sem bookingId) de contrato FULL+PIX é cobrada pelo valor cheio (sem inflar); o extra de gravação não é cobrado (AC-1)', async () => {
         const { u, extras, fine } = await fullPixContract();
         await prisma.user.update({ where: { id: u.id }, data: { autoChargeEnabled: true, stripeCustomerId: 'cus_test' } });
         await prisma.savedPaymentMethod.create({ data: { userId: u.id, stripePaymentMethodId: 'pm_final_1', brand: 'visa', last4: '4242', expMonth: 12, expYear: 2030, isDefault: true } });
@@ -212,9 +212,10 @@ describe('cardChargeBaseAmount — extras e multa de contrato FULL+PIX cobram o 
         await runAutoChargeJob();
 
         const byPayment = new Map(m(stripe.stripeChargeOffSession).mock.calls.map(cl => [cl[3].paymentId, cl[2]]));
-        expect(byPayment.get(extras.id)).toBe(5000);
+        // AC-1: a cobrança automática só debita parcelas do PLANO — o extra de gravação (bookingId) parte do cliente.
+        expect(byPayment.has(extras.id)).toBe(false);
         expect(byPayment.get(fine.id)).toBe(31500);
-        expect((await prisma.payment.findUnique({ where: { id: extras.id } }))?.chargedAmount).toBe(5000);
+        expect(await prisma.payment.findUnique({ where: { id: extras.id } })).toMatchObject({ status: 'PENDING', chargedAmount: null });
         expect((await prisma.payment.findUnique({ where: { id: fine.id } }))?.chargedAmount).toBe(31500);
     });
 

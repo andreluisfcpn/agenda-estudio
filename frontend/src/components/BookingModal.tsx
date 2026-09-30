@@ -8,6 +8,8 @@ import PaymentSuccess from './PaymentSuccess';
 import ServiceLineItem from './ui/ServiceLineItem';
 import { formatBRL } from '../utils/format';
 import { ignoreMultiClick } from '../hooks/useWizardStep';
+import { TIER_META, getMeta } from '../constants/adminMeta';
+import BrandLoader from './ui/BrandLoader';
 import { XCircle } from 'lucide-react';
 
 interface BookingModalProps {
@@ -175,6 +177,11 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
 
     const dynamicTierConfig = pricingConfigs.find((p: any) => p.tier === tierUp);
     const dynamicTierLabel = dynamicTierConfig?.label || TIER_LABELS[tierUp] || tier;
+    /** Nome legível da faixa de um contrato (o configurado pelo admin ou "Audiência"/"Sábado") — nunca a chave crua. */
+    const contractTierLabel = (t: string) => {
+        const key = (t || '').toUpperCase();
+        return pricingConfigs.find((p: any) => p.tier === key)?.label || getMeta(TIER_META, key).label;
+    };
     // We already get 'price' from props, but just in case, fall back to dynamicTierConfig?.price
     const avulsoPrice = price || dynamicTierConfig?.price || 0;
 
@@ -280,7 +287,7 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                             <div>
                                                 <div style={{ fontWeight: 700, fontSize: '0.875rem', color: '#22c55e' }}>
-                                                    ✅ {c.type === 'CUSTOM' ? '🎨 Personalizado' : c.type === 'FIXO' ? '📌 Fixo' : c.type === 'AVULSO' ? '🛒 Avulso' : '🔄 Flex'} — {c.tier} ({c.durationMonths}m)
+                                                    ✅ {c.type === 'CUSTOM' ? '🎨 Personalizado' : c.type === 'FIXO' ? '📌 Fixo' : c.type === 'AVULSO' ? '🛒 Avulso' : '🔄 Flex'} — {contractTierLabel(c.tier)} ({c.durationMonths}m)
                                                 </div>
                                                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
                                                     {c.type === 'CUSTOM'
@@ -310,7 +317,7 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                             <div>
                                                 <div style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-                                                    {c.type === 'CUSTOM' ? '🎨 Personalizado' : c.type === 'FIXO' ? '📌 Fixo' : c.type === 'AVULSO' ? '🛒 Avulso' : '🔄 Flex'} — {c.tier} ({c.durationMonths}m)
+                                                    {c.type === 'CUSTOM' ? '🎨 Personalizado' : c.type === 'FIXO' ? '📌 Fixo' : c.type === 'AVULSO' ? '🛒 Avulso' : '🔄 Flex'} — {contractTierLabel(c.tier)} ({c.durationMonths}m)
                                                 </div>
                                                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
                                                     {!hasCredits(c)
@@ -369,7 +376,7 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                 {/* ignoreMultiClick: o 2º clique de um clique duplo não dispara outra reserva. */}
-                                <button className="btn btn-primary" onClick={ignoreMultiClick(handleUsePlan)}
+                                <button key="choose-plan" type="button" className="btn btn-primary" onClick={ignoreMultiClick(handleUsePlan)}
                                     disabled={!hasCompatible || !selectedContractId}
                                     style={{
                                         width: '100%', padding: '14px 20px', fontSize: '0.9375rem',
@@ -381,12 +388,12 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
                                         : '🔒 Usar Plano Ativo (sem contrato compatível)'}
                                 </button>
 
-                                <button className="btn btn-secondary" onClick={() => setStep('avulso_addons')}
+                                <button key="choose-avulso" type="button" className="btn btn-secondary" onClick={ignoreMultiClick(() => setTimeout(() => setStep('avulso_addons'), 0))}
                                     style={{ width: '100%', padding: '12px 20px', fontSize: '0.875rem' }}>
                                     💳 Contratar Avulso — {formatBRL(avulsoPrice)}
                                 </button>
 
-                                <button className="btn btn-ghost" onClick={handleNewContract}
+                                <button key="choose-new-contract" type="button" className="btn btn-ghost" onClick={ignoreMultiClick(handleNewContract)}
                                     style={{
                                         width: '100%', padding: '12px 20px', fontSize: '0.875rem',
                                         border: '1px dashed var(--accent-primary)', color: 'var(--accent-primary)',
@@ -462,8 +469,8 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
                         )}
 
                         <div className="modal-actions" style={{ marginTop: '24px', display: 'flex', gap: '10px' }}>
-                            <button className="btn btn-secondary" onClick={() => setStep('choose')} style={{ flex: 1 }}>Voltar</button>
-                            <button className="btn btn-primary" onClick={() => setStep('avulso_checkout')} style={{ flex: 2 }}>
+                            <button key="addons-back" type="button" className="btn btn-secondary" onClick={ignoreMultiClick(() => setStep('choose'))} style={{ flex: 1 }}>Voltar</button>
+                            <button key="addons-next" type="button" className="btn btn-primary" onClick={ignoreMultiClick(() => setTimeout(() => setStep('avulso_checkout'), 0))} style={{ flex: 2 }}>
                                 Continuar — {formatBRL(avulsoTotal)}
                             </button>
                         </div>
@@ -592,11 +599,11 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
                         </div>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                            <button className="btn btn-primary" onClick={() => setStep('avulso_checkout')}
+                            <button key="held-retry" type="button" className="btn btn-primary" onClick={ignoreMultiClick(() => setTimeout(() => setStep('avulso_checkout'), 0))}
                                 style={{ width: '100%' }}>
                                 💳 Tentar Outro Cartão
                             </button>
-                            <button className="btn btn-ghost btn-sm" onClick={onClose}
+                            <button key="held-cancel" type="button" className="btn btn-ghost btn-sm" onClick={ignoreMultiClick(onClose)}
                                 style={{ width: '100%', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                                 Cancelar Reserva
                             </button>
@@ -607,8 +614,7 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
                 {/* Processing */}
                 {step === 'processing' && (
                     <div style={{ textAlign: 'center', padding: '40px 0' }}>
-                        <div className="spinner" style={{ margin: '0 auto 16px' }}></div>
-                        <p style={{ color: 'var(--text-secondary)' }}>Processando seu agendamento...</p>
+                        <BrandLoader size="compact" label="Processando seu agendamento…" />
                     </div>
                 )}
 
@@ -620,7 +626,7 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
                             subtitle={<>{dateDisplay} das {time} às {endTime}</>}
                         />
                         <div className="modal-actions" style={{ justifyContent: 'center', marginTop: 20 }}>
-                            <button className="btn btn-primary" onClick={onBooked}>Concluir</button>
+                            <button key="done" type="button" className="btn btn-primary" onClick={ignoreMultiClick(onBooked)}>Concluir</button>
                         </div>
                     </>
                 )}
@@ -640,7 +646,7 @@ export default function BookingModal({ isOpen = true, date, time, tier, price, o
                             <div className="error-message">{error}</div>
                         </div>
                         <div className="modal-actions" style={{ justifyContent: 'center' }}>
-                            <button className="btn btn-secondary" onClick={() => setStep('choose')}>Tentar Novamente</button>
+                            <button key="error-retry" type="button" className="btn btn-secondary" onClick={ignoreMultiClick(() => setStep('choose'))}>Tentar Novamente</button>
                         </div>
                     </>
                 )}

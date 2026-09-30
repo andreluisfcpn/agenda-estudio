@@ -34,13 +34,44 @@ export function useDragScroll<T extends HTMLElement>() {
     }, [el]);
 
     // Mouse drag-to-scroll. Touch is native; this is for desktops/tablets w/
-    // a mouse. The "is-dragging" class disables scroll-snap during the drag.
+    // a mouse. The "is-dragging" class disables scroll-snap during the drag (and,
+    // in the poster gallery, makes the cards inert via pointer-events:none).
+    //
+    // A classe só entra quando o arraste COMEÇA de fato (> 4px), nunca no
+    // mousedown: aplicada no mousedown, o pointer-events:none fazia o mouseup cair
+    // na trilha e o navegador disparava o click no ancestral comum (a trilha), não
+    // no card — um clique simples do mouse não abria nada (E12).
     useEffect(() => {
         if (!el) return;
         let isDown = false;
         let didDrag = false;
         let startX = 0;
         let startScrollLeft = 0;
+        // Verdadeiro só entre o mouseup de um arraste e o fim do MESMO ciclo de
+        // eventos: engole o click que o navegador dispara logo após o mouseup.
+        let suppressClick = false;
+        let suppressTimer: ReturnType<typeof setTimeout> | null = null;
+        let draggingTimer: ReturnType<typeof setTimeout> | null = null;
+
+        const endDrag = () => {
+            isDown = false;
+            el.classList.remove('is-dragging');
+            if (didDrag) {
+                // O click pós-arraste (quando existe) é despachado em seguida ao
+                // mouseup, antes de qualquer timer. Se o arraste terminou FORA da
+                // trilha não há click nenhum: a flag cai no próximo tick e o clique
+                // legítimo seguinte passa (antes um listener `once` ficava pendurado
+                // e engolia esse clique).
+                suppressClick = true;
+                if (suppressTimer) clearTimeout(suppressTimer);
+                suppressTimer = setTimeout(() => { suppressClick = false; suppressTimer = null; }, 0);
+                if (draggingTimer) clearTimeout(draggingTimer);
+                draggingTimer = setTimeout(() => { setDragging(false); draggingTimer = null; }, 0);
+            } else {
+                setDragging(false);
+            }
+            didDrag = false;
+        };
 
         const onDown = (e: MouseEvent) => {
             if (e.button !== 0) return;
@@ -51,13 +82,15 @@ export function useDragScroll<T extends HTMLElement>() {
             didDrag = false;
             startX = e.pageX;
             startScrollLeft = el.scrollLeft;
-            el.classList.add('is-dragging');
         };
         const onMove = (e: MouseEvent) => {
             if (!isDown) return;
+            // Botão solto fora da janela (o mouseup não chegou): encerra o arraste.
+            if (e.buttons === 0) { endDrag(); return; }
             const dx = e.pageX - startX;
             if (!didDrag && Math.abs(dx) > 4) {
                 didDrag = true;
+                el.classList.add('is-dragging');
                 setDragging(true);
             }
             if (didDrag) {
@@ -67,25 +100,28 @@ export function useDragScroll<T extends HTMLElement>() {
         };
         const onUp = () => {
             if (!isDown) return;
-            isDown = false;
-            el.classList.remove('is-dragging');
-            // Cancel the click that would follow a drag.
-            if (didDrag) {
-                const cancel = (ev: Event) => { ev.preventDefault(); ev.stopPropagation(); };
-                el.addEventListener('click', cancel, { capture: true, once: true });
-                setTimeout(() => setDragging(false), 0);
-            } else {
-                setDragging(false);
-            }
+            endDrag();
+        };
+        // Cancel the click that would follow a drag (capture: antes do onClick do item).
+        const onClickCapture = (ev: MouseEvent) => {
+            if (!suppressClick) return;
+            suppressClick = false;
+            ev.preventDefault();
+            ev.stopPropagation();
         };
 
         el.addEventListener('mousedown', onDown);
+        el.addEventListener('click', onClickCapture, true);
         window.addEventListener('mousemove', onMove);
         window.addEventListener('mouseup', onUp);
         return () => {
             el.removeEventListener('mousedown', onDown);
+            el.removeEventListener('click', onClickCapture, true);
             window.removeEventListener('mousemove', onMove);
             window.removeEventListener('mouseup', onUp);
+            el.classList.remove('is-dragging');
+            if (suppressTimer) clearTimeout(suppressTimer);
+            if (draggingTimer) clearTimeout(draggingTimer);
         };
     }, [el]);
 

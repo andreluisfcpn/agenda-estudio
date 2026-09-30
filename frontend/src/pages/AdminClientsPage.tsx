@@ -9,6 +9,7 @@ import CreateClientModal from '../components/admin/clients/CreateClientModal';
 import EditClientModal from '../components/admin/clients/EditClientModal';
 import { HeroSkeleton, TableSkeleton } from '../components/ui/SkeletonLoader';
 import StatusBadge from '../components/ui/StatusBadge';
+import Tooltip from '../components/ui/Tooltip';
 import { USER_TYPE_META, getMeta } from '../constants/adminMeta';
 import { maskPhone } from '../utils/mask';
 import { isPlanInForce } from '../utils/clientHealth';
@@ -148,10 +149,12 @@ export default function AdminClientsPage() {
                     <Search size={14} className="admin-search__icon" aria-hidden="true" />
                 </div>
                 {search && (
-                    <button onClick={() => setSearch('')} aria-label="Limpar busca"
-                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 36, minHeight: 36 }}>
-                        <X size={16} aria-hidden="true" />
-                    </button>
+                    <Tooltip content="Limpar busca" describe={false}>
+                        <button type="button" onClick={() => setSearch('')} aria-label="Limpar busca"
+                            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 36, minHeight: 36 }}>
+                            <X size={16} aria-hidden="true" />
+                        </button>
+                    </Tooltip>
                 )}
 
                 {typeFilter !== 'ALL' && (
@@ -211,12 +214,13 @@ export default function AdminClientsPage() {
                                                     </div>
                                                     <div>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                                            <button
-                                                                style={{ fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', color: 'var(--accent-text)', background: 'none', border: 'none', padding: 0, fontFamily: 'inherit', textAlign: 'left' }}
-                                                                title={`Abrir perfil de ${u.name}`}
-                                                                onClick={() => navigate(`/admin/clients/${u.id}`)}>
-                                                                {u.name}
-                                                            </button>
+                                                            <Tooltip content={`Abrir perfil de ${u.name}`}>
+                                                                <button type="button"
+                                                                    style={{ fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', color: 'var(--accent-text)', background: 'none', border: 'none', padding: 0, fontFamily: 'inherit', textAlign: 'left' }}
+                                                                    onClick={() => navigate(`/admin/clients/${u.id}`)}>
+                                                                    {u.name}
+                                                                </button>
+                                                            </Tooltip>
                                                             <StatusBadge meta={getMeta(USER_TYPE_META, getUserType(u))} />
                                                         </div>
                                                         <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -276,20 +280,28 @@ export default function AdminClientsPage() {
                                             {/* Actions */}
                                             <td data-label="" style={{ textAlign: 'center' }}>
                                                 <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                                                    <button className="admin-icon-btn admin-icon-btn--success"
-                                                        aria-label={`Editar ${u.name}`}
-                                                        onClick={() => setEditUser(u)}><Pencil size={16} aria-hidden="true" /></button>
+                                                    <Tooltip content={u.role === 'ADMIN' ? 'Editar administrador' : 'Editar cliente'} describe={false}>
+                                                        <button type="button" className="admin-icon-btn admin-icon-btn--success"
+                                                            aria-label={`Editar ${u.name}`}
+                                                            onClick={() => setEditUser(u)}><Pencil size={16} aria-hidden="true" /></button>
+                                                    </Tooltip>
 
                                                     {u.role !== 'ADMIN' && (
-                                                        <button type="button" className="admin-icon-btn admin-icon-btn--danger"
-                                                            aria-label={`Excluir ${u.name}`}
-                                                            aria-busy={previewingId === u.id || undefined}
-                                                            disabled={previewingId !== null}
-                                                            onClick={() => confirmDelete(u)}>
-                                                            {previewingId === u.id
-                                                                ? <Loader2 size={16} className="danger-dialog__spinner" aria-hidden="true" />
-                                                                : <Trash2 size={16} aria-hidden="true" />}
-                                                        </button>
+                                                        // O botão fica disabled durante a prévia da exclusão (e botão disabled não
+                                                        // dispara eventos de ponteiro): a dica vai no span para continuar aparecendo.
+                                                        <Tooltip content="Excluir cliente" describe={false}>
+                                                            <span style={{ display: 'inline-flex' }}>
+                                                                <button type="button" className="admin-icon-btn admin-icon-btn--danger"
+                                                                    aria-label={`Excluir ${u.name}`}
+                                                                    aria-busy={previewingId === u.id || undefined}
+                                                                    disabled={previewingId !== null}
+                                                                    onClick={() => confirmDelete(u)}>
+                                                                    {previewingId === u.id
+                                                                        ? <Loader2 size={16} className="danger-dialog__spinner" aria-hidden="true" />
+                                                                        : <Trash2 size={16} aria-hidden="true" />}
+                                                                </button>
+                                                            </span>
+                                                        </Tooltip>
                                                     )}
                                                 </div>
                                             </td>

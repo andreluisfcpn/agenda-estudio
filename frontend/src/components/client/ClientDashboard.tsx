@@ -12,19 +12,56 @@ import NotificationBanner from '../NotificationBanner';
 import { DashboardSkeleton } from '../ui/SkeletonLoader';
 import { formatBRL, daysUntil, DAY_NAMES } from '../../utils/format';
 import { computeFlexState } from '../../utils/flexCredits';
-import { isContractCurrent, isBookingMakeupOpen } from '../../utils/contractStatus';
+import { isContractCurrent, isBookingMakeupOpen, isAvulsoContract } from '../../utils/contractStatus';
+import {
+    chargeLabel, dueDateTimeZone, installmentPositions, isBlockedByPendingCancellation, isCancellationFine, isFineOverdue,
+} from '../../utils/paymentLabels';
+import { TIER_META, getMeta } from '../../constants/adminMeta';
 import { calendarYmd, ddmmOfYmd, makeupDeadlineDdmm, makeupDaysLeft } from '../../utils/avulsoMakeup';
+import { LIVE_BADGE_LABEL, LIVE_STATUS_LABEL, hasOpenSessionToday, isRecordingLive, useRecordingWatch } from '../../utils/recording';
 import {
     Wallet, CalendarDays, Clapperboard, FileText,
     Package, AlertTriangle, ArrowRight,
-    Clock, Mic, CalendarClock,
+    Clock, Mic, CalendarClock, Radio, Hourglass,
 } from 'lucide-react';
+
+/**
+ * Fatura em aberto com o contexto do contrato — mesmos rótulos e regras de Meus Pagamentos
+ * (utils/paymentLabels): "Parcela N/Total", "Multa de cancelamento (N%)", "Extra de gravação".
+ */
+type OpenInvoice = PaymentSummary & {
+    contractName: string;
+    contractType?: string;
+    contractDuration: number;
+    contractStatus?: ContractWithStats['status'];
+    /** O que é a cobrança — null quando não há o que dizer (cobrança única, reserva avulsa). */
+    chargeLabel: string | null;
+    /** Cancelamento em análise (E13): parcela do plano suspensa — o cliente não paga até o estúdio decidir. */
+    blockedByCancellation: boolean;
+};
+
+const CONTRACT_TYPE_LABEL: Record<string, string> = {
+    FIXO: 'Plano Fixo', FLEX: 'Plano Flex', CUSTOM: 'Personalizado',
+    SERVICO: 'Serviço mensal', AVULSO: 'Avulso',
+};
+
+/** "Nome · Tipo — Parcela N/Total" (sem valor: ele pode mudar ao emitir o PIX do à vista — E2). */
+function describeInvoice(p: OpenInvoice): string {
+    const typeLabel = (p.contractType && CONTRACT_TYPE_LABEL[p.contractType]) || 'Contrato';
+    return `${p.contractName} · ${typeLabel}${p.chargeLabel ? ` — ${p.chargeLabel}` : ''}`;
+}
+
+/** Em atraso? A multa vence no instante da decisão do estúdio: só atrasa a partir do dia seguinte. */
+const isInvoiceOverdue = (p: PaymentSummary, now: Date = new Date()) =>
+    isCancellationFine(p) ? isFineOverdue(p.dueDate, now) : !!p.dueDate && new Date(p.dueDate) < now;
 
 function formatContractOrigin(booking: Booking): string {
     if (!booking.contract) return 'Avulso';
     if (booking.contract.name) return booking.contract.name;
-    if (booking.contract.type === 'AVULSO') return `Avulso — ${booking.contract.tier}`;
-    return `Plano ${booking.contract.type === 'FIXO' ? 'Fixo' : 'Flex'} — ${booking.contract.tier}`;
+    // Rótulo legível da faixa ("Audiência", "Sábado") — nunca a chave crua (AUDIENCIA/SABADO).
+    const tierLabel = getMeta(TIER_META, booking.contract.tier).label;
+    if (booking.contract.type === 'AVULSO') return `Avulso — ${tierLabel}`;
+    return `Plano ${booking.contract.type === 'FIXO' ? 'Fixo' : 'Flex'} — ${tierLabel}`;
 }
 
 /** Aviso de remarcação sem novo pagamento (falta justificada / não realizada no avulso — D4/D5). */
@@ -54,12 +91,14 @@ export default function ClientDashboard() {
     const [stats, setStats] = useState({ bookings: 0, completedBookings: 0, contracts: 0, pausedContracts: 0, openPaymentsValue: 0, overdueCount: 0 });
     const [recentBookings, setRecentBookings] = useState<Booking[]>([]);
     const [upcomingBookings, setUpcomingBookings] = useState<Booking[]>([]);
-    const [openPayments, setOpenPayments] = useState<(PaymentSummary & { boletoAllowed?: boolean; contractDuration?: number })[]>([]);
+    const [openPayments, setOpenPayments] = useState<OpenInvoice[]>([]);
     const [myContracts, setMyContracts] = useState<ContractWithStats[]>([]);
     const [makeupNudge, setMakeupNudge] = useState<MakeupNudge | null>(null);
     const [loading, setLoading] = useState(true);
+    // Há sessão de hoje em aberto (reservada, confirmada ou já em gravação)? Liga o recarregamento periódico.
+    const [watchToday, setWatchToday] = useState(false);
 
-    const [payingInvoice, setPayingInvoice] = useState<(PaymentSummary & { boletoAllowed?: boolean; contractDuration?: number }) | null>(null);
+    const [payingInvoice, setPayingInvoice] = useState<OpenInvoice | null>(null);
 
     // Pull-to-refresh state
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -77,6 +116,8 @@ export default function ClientDashboard() {
     const velocity = useRef(0);
     const lastX = useRef(0);
     const animFrameRef = useRef<number | null>(null);
+    // O gesto com o mouse ARRASTOU a faixa? Então o clique que o navegador dispara ao soltar não abre o card.
+    const dragMoved = useRef(false);
 
     const stopMomentum = () => {
         if (animFrameRef.current !== null) {
@@ -96,8 +137,9 @@ export default function ClientDashboard() {
         scrollRef.current.scrollLeft += velocity.current;
         animFrameRef.current = requestAnimationFrame(applyMomentum);
     };
-    const loadData = useCallback(async () => {
-        setLoading(true);
+    // `silent`: recarrega sem o esqueleto (acompanhamento da gravação em andamento — E11).
+    const loadData = useCallback(async (silent = false) => {
+        if (!silent) setLoading(true);
         try {
             const [bookingsRes, contractsRes] = await Promise.all([
                 bookingsApi.getMy(),
@@ -112,9 +154,12 @@ export default function ClientDashboard() {
                 .sort((a, b) => bookingTs(b) - bookingTs(a));
             // Upcoming = active status AND in the future, soonest first (fixes past
             // CONFIRMED sessions showing as "próximos" with negative day counts).
+            // E11: a sessão que está sendo gravada AGORA continua na lista (com o selo "AO VIVO") até o
+            // estúdio finalizar — antes ela sumia do Início no minuto em que começava.
             const futureBookings = bookingsRes.bookings
-                .filter(b => (b.status === 'RESERVED' || b.status === 'CONFIRMED') && bookingTs(b) >= nowTs.getTime())
+                .filter(b => (b.status === 'RESERVED' || b.status === 'CONFIRMED') && (bookingTs(b) >= nowTs.getTime() || isRecordingLive(b)))
                 .sort((a, b) => bookingTs(a) - bookingTs(b));
+            setWatchToday(hasOpenSessionToday(bookingsRes.bookings));
 
             setRecentBookings(completedBookings.slice(0, 10));
             setUpcomingBookings(futureBookings.slice(0, 10));
@@ -139,15 +184,35 @@ export default function ClientDashboard() {
                 return bookingDateTime >= now && (b.status === 'RESERVED' || b.status === 'CONFIRMED');
             });
 
-            const allPayments = contractsRes.contracts.flatMap(c =>
-                (c.payments || []).map(p => ({ ...p, boletoAllowed: c.boletoAllowed, contractDuration: c.durationMonths }))
-            );
+            // Mesmos rótulos e contagem de Meus Pagamentos: multa, extras e anuladas ficam fora de "Parcela N/Total".
+            const allPayments: OpenInvoice[] = contractsRes.contracts.flatMap(c => {
+                const positions = installmentPositions(c.payments || []);
+                return (c.payments || []).map(p => ({
+                    ...p,
+                    contractName: c.name || c.type,
+                    contractType: c.type,
+                    contractDuration: c.durationMonths || 1,
+                    contractStatus: c.status,
+                    chargeLabel: chargeLabel(p, {
+                        isAvulso: isAvulsoContract(c),
+                        finePct: (c.cancellationFine?.id === p.id ? c.cancellationFine.finePct : null) ?? c.finePct,
+                        position: positions.get(p.id),
+                    }),
+                    blockedByCancellation: isBlockedByPendingCancellation(c.status, p),
+                }));
+            });
             const pendingOpenPayments = allPayments.filter(p => p.status === 'PENDING' || p.status === 'FAILED');
-            pendingOpenPayments.sort((a,b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+            // Suspensas pelo cancelamento em análise vão para o fim: não há o que fazer com elas agora.
+            pendingOpenPayments.sort((a, b) => {
+                if (a.blockedByCancellation !== b.blockedByCancellation) return a.blockedByCancellation ? 1 : -1;
+                return (a.dueDate ? new Date(a.dueDate).getTime() : 0) - (b.dueDate ? new Date(b.dueDate).getTime() : 0);
+            });
             setOpenPayments(pendingOpenPayments);
-            
-            const totalDebt = pendingOpenPayments.reduce((acc, p) => acc + p.amount, 0);
-            const overdueCount = pendingOpenPayments.filter(p => p.dueDate && new Date(p.dueDate) < now).length;
+
+            // E13: parcela de contrato com o cancelamento em análise fica suspensa — fora do total e do atraso.
+            const payablePayments = pendingOpenPayments.filter(p => !p.blockedByCancellation);
+            const totalDebt = payablePayments.reduce((acc, p) => acc + p.amount, 0);
+            const overdueCount = payablePayments.filter(p => isInvoiceOverdue(p, now)).length;
 
             setStats({
                 bookings: activeBookings.length,
@@ -163,10 +228,14 @@ export default function ClientDashboard() {
                 overdueCount,
             });
         } catch (err) { console.error('Failed to load dashboard:', err); }
-        finally { setLoading(false); }
+        finally { if (!silent) setLoading(false); }
     }, []);
 
     useEffect(() => { loadData(); }, [loadData]);
+
+    // E11: com sessão de hoje em aberto, relê os dados de tempos em tempos (e ao voltar para a aba) para o
+    // "AO VIVO" ligar quando o estúdio inicia a gravação e sumir quando ele finaliza.
+    useRecordingWatch(watchToday, () => { void loadData(true); });
 
     // Perform the bounce scroll hint on load when bookings exist
     useEffect(() => {
@@ -187,10 +256,21 @@ export default function ClientDashboard() {
     // Momentum do carrossel: cancela o requestAnimationFrame pendente no unmount.
     useEffect(() => stopMomentum, []);
 
+    // Abre o detalhe da gravação (editor do episódio ou métricas): Minhas Gravações procura o id na lista
+    // completa do cliente e abre o modal — o mesmo caminho do aviso de remarcação.
+    const openBookingDetail = useCallback((bookingId: string) => {
+        navigate('/minhas-gravacoes', { state: { openBookingId: bookingId } });
+    }, [navigate]);
+    const onCardKeyDown = (bookingId: string) => (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openBookingDetail(bookingId); }
+    };
+
     // Pull-to-refresh handlers
     const handleTouchStart = useCallback((e: React.TouchEvent) => {
         const el = containerRef.current;
-        if (!el || el.scrollTop > 0) return;
+        // Toque que não nasceu DENTRO do container no DOM (modal/sheet em portal: os eventos do React sobem
+        // pela árvore React até aqui) não é puxar-para-atualizar — senão derrubava o checkout aberto.
+        if (!el || !el.contains(e.target as Node) || el.scrollTop > 0) return;
         touchStartY.current = e.touches[0].clientY;
         isPulling.current = true;
     }, []);
@@ -211,7 +291,8 @@ export default function ClientDashboard() {
             setPullDistance(PULL_THRESHOLD);
             try {
                 if (navigator.vibrate) navigator.vibrate(15);
-                await loadData();
+                // Silenciosa: o gesto já tem o próprio indicador; o esqueleto desmontaria a página inteira.
+                await loadData(true);
             } finally {
                 setIsRefreshing(false);
                 setPullDistance(0);
@@ -226,6 +307,7 @@ export default function ClientDashboard() {
     const nextBooking = upcomingBookings[0];
     const heroMessage = (() => {
         if (stats.overdueCount > 0) return `Você tem ${stats.overdueCount} fatura(s) em atraso`;
+        if (nextBooking && isRecordingLive(nextBooking)) return 'Sua gravação está acontecendo agora';
         if (nextBooking) {
             // B7: ancorar ao meio-dia LOCAL de cada data-calendário (a data da reserva é 00:00Z). Antes,
             // subtrair o instante atual de 00:00Z rotulava a sessão de AMANHÃ como "hoje" entre 21h–24h SP.
@@ -383,7 +465,7 @@ export default function ClientDashboard() {
                 <div key={c.id} className="card client-addon-card animate-card-enter client-addon-section" style={{ '--i': 4 } as React.CSSProperties}>
                     <div className="card-header">
                         <h3 className="card-title client-addon-card__title">
-                            <Package size={18} style={{ color: 'var(--accent-primary)' }} /> Consumo de Pacotes ({c.tier})
+                            <Package size={18} style={{ color: 'var(--accent-primary)' }} /> Consumo de Pacotes ({getMeta(TIER_META, c.tier).label})
                         </h3>
                     </div>
                     <div className="client-addon-card__body">
@@ -419,7 +501,33 @@ export default function ClientDashboard() {
                     </h3>
                     <div className="stagger-enter client-invoice-list">
                         {openPayments.map((p, i) => {
-                            const isOverdue = new Date(p.dueDate) < new Date();
+                            // A multa vence num INSTANTE (a decisão do estúdio): dia de São Paulo, como em Meus Contratos.
+                            const dueLabel = new Date(p.dueDate).toLocaleDateString('pt-BR', { timeZone: dueDateTimeZone(p), day: '2-digit', month: 'short' });
+                            // E13: cancelamento em análise — a parcela do plano fica suspensa (sem pagar, sem selo de atraso).
+                            if (p.blockedByCancellation) {
+                                return (
+                                    <div key={p.id}
+                                        className="client-invoice-card animate-card-enter"
+                                        style={{ '--i': i, cursor: 'default' } as React.CSSProperties}>
+                                        <div className="client-invoice-card__row">
+                                            <div>
+                                                <div className="client-invoice-card__amount">{formatBRL(p.amount)}</div>
+                                                <div className="client-invoice-card__due">
+                                                    Vencimento {dueLabel}{p.chargeLabel ? ` · ${p.chargeLabel}` : ''}
+                                                </div>
+                                            </div>
+                                            <div className="client-invoice-card__right">
+                                                <StatusBadge status="PENDING" label="Suspensa" />
+                                            </div>
+                                        </div>
+                                        <div className="info-box info-box--warning" style={{ margin: '12px 0 0', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                                            <Hourglass size={16} aria-hidden="true" style={{ flexShrink: 0, marginTop: 1 }} />
+                                            <span>Cancelamento em análise: esta parcela não pode ser paga até a decisão do estúdio.</span>
+                                        </div>
+                                    </div>
+                                );
+                            }
+                            const isOverdue = isInvoiceOverdue(p);
                             return (
                                 <div key={p.id}
                                     className={`client-invoice-card animate-card-enter ${isOverdue ? 'client-invoice-card--overdue' : ''}`}
@@ -429,7 +537,8 @@ export default function ClientDashboard() {
                                         <div>
                                             <div className="client-invoice-card__amount">{formatBRL(p.amount)}</div>
                                             <div className="client-invoice-card__due">
-                                                {isOverdue ? 'Vencida' : 'Vence'} em {new Date(p.dueDate).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: 'short' })}
+                                                {isOverdue ? 'Vencida' : 'Vence'} em {dueLabel}
+                                                {p.chargeLabel ? ` · ${p.chargeLabel}` : ''}
                                             </div>
                                         </div>
                                         <div className="client-invoice-card__right">
@@ -469,6 +578,7 @@ export default function ClientDashboard() {
                             if (!scrollRef.current) return;
                             stopMomentum();
                             isDragging.current = true;
+                            dragMoved.current = false;
                             dragStartX.current = e.pageX;
                             dragScrollLeft.current = scrollRef.current.scrollLeft;
                             lastX.current = e.pageX;
@@ -480,6 +590,7 @@ export default function ClientDashboard() {
                         onMouseMove={(e) => {
                             if (!isDragging.current || !scrollRef.current) return;
                             const dx = e.pageX - dragStartX.current;
+                            if (Math.abs(dx) > 4) dragMoved.current = true;
                             scrollRef.current.scrollLeft = dragScrollLeft.current - dx;
                             velocity.current = (e.pageX - lastX.current) * -1;
                             lastX.current = e.pageX;
@@ -507,10 +618,17 @@ export default function ClientDashboard() {
                             const dateLabel = bookingDate.toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit' });
                             const d = daysUntil(b.date);
                             const isToday = d <= 0;
+                            const live = isRecordingLive(b);
                             return (
                                 <div key={b.id}
                                     className={`client-booking-card client-booking-card--scroll animate-card-enter ${isToday ? 'client-booking-card--today' : ''}`}
-                                    style={{ '--i': i } as React.CSSProperties}>
+                                    style={{ '--i': i, cursor: 'pointer' } as React.CSSProperties}
+                                    role="button"
+                                    tabIndex={0}
+                                    aria-label={`Abrir o agendamento de ${dayLabel}, ${dateLabel}, ${b.startTime}${live ? ` — ${LIVE_STATUS_LABEL.toLowerCase()}` : ''}`}
+                                    // Clique que encerra um arraste da faixa (mouse) não abre o detalhe.
+                                    onClick={() => { if (dragMoved.current) { dragMoved.current = false; return; } openBookingDetail(b.id); }}
+                                    onKeyDown={onCardKeyDown(b.id)}>
                                     {/* Decorative watermark mic */}
                                     <span className="client-booking-card__watermark" aria-hidden="true">
                                         <Mic size={96} strokeWidth={1.25} />
@@ -520,6 +638,12 @@ export default function ClientDashboard() {
                                         <div className={`client-booking-card__day-number ${isToday ? 'client-booking-card__day-number--today' : ''}`}>{dateLabel}</div>
                                     </div>
                                     <div className="client-booking-card__info">
+                                        {/* "AO VIVO" só enquanto o estúdio está gravando (isRecordingNow) */}
+                                        {live && (
+                                            <span className="poster-chip poster-chip--live" style={{ alignSelf: 'flex-start', marginBottom: 4 }}>
+                                                <Radio size={10} aria-hidden="true" /> {LIVE_BADGE_LABEL}
+                                            </span>
+                                        )}
                                         <div className="client-booking-card__contract-name">{formatContractOrigin(b)}</div>
                                         <div className="client-booking-card__time">{b.startTime} — {b.endTime}</div>
                                     </div>
@@ -551,7 +675,12 @@ export default function ClientDashboard() {
                             const dateLabel = bookingDate.toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit' });
                             return (
                                 <div key={b.id} className="client-booking-card animate-card-enter"
-                                    style={{ '--i': i } as React.CSSProperties}>
+                                    style={{ '--i': i, cursor: 'pointer' } as React.CSSProperties}
+                                    role="button"
+                                    tabIndex={0}
+                                    aria-label={`Abrir a gravação de ${dayLabel}, ${dateLabel}, ${b.startTime}`}
+                                    onClick={() => openBookingDetail(b.id)}
+                                    onKeyDown={onCardKeyDown(b.id)}>
                                     <div className="client-booking-card__date-badge">
                                         <div className="client-booking-card__day-name">{dayLabel}</div>
                                         <div className="client-booking-card__day-number">{dateLabel}</div>
@@ -573,16 +702,18 @@ export default function ClientDashboard() {
             {/* ─── Checkout Modal ─── */}
             {payingInvoice && (
                 <PaymentModal
-                    title="Pagar Fatura"
+                    title={isCancellationFine(payingInvoice) ? 'Pagar multa' : 'Pagar Fatura'}
                     amount={payingInvoice.amount}
                     paymentId={payingInvoice.id}
-                    description={`Fatura — ${formatBRL(payingInvoice.amount)}`}
+                    description={describeInvoice(payingInvoice)}
                     contractDuration={payingInvoice.contractDuration}
-                    allowedMethods={payingInvoice.boletoAllowed ? ['CARTAO', 'PIX', 'BOLETO'] : ['CARTAO', 'PIX']}
-                    allowBoleto={!!payingInvoice.boletoAllowed}
+                    // E3: o boleto é decidido pelo PaymentModal (chave-mestra + Cora; nunca com o contrato aguardando pagamento).
+                    allowedMethods={['CARTAO', 'PIX']}
+                    contractStatus={payingInvoice.contractStatus}
                     onSuccess={() => { setPayingInvoice(null); showToast('Pagamento realizado com sucesso!'); loadData(); }}
                     onError={(msg) => showToast({ message: msg, type: 'error' })}
-                    onClose={() => setPayingInvoice(null)}
+                    // E2: emitir o PIX pode mudar o valor da cobrança — recarrega (sem esqueleto) também ao cancelar.
+                    onClose={() => { setPayingInvoice(null); void loadData(true); }}
                 />
             )}
         </div>

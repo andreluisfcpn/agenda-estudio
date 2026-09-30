@@ -11,6 +11,8 @@ import InlineCheckout from '../InlineCheckout';
 import CouponField from '../CouponField';
 import CpfCnpjPrompt from '../CpfCnpjPrompt';
 import DangerConfirmDialog from '../ui/DangerConfirmDialog';
+import Tooltip from '../ui/Tooltip';
+import BrandLoader from '../ui/BrandLoader';
 import ContractSlotPicker, { formatSlotRange } from './ContractSlotPicker';
 import { useContractSlotGrid } from '../../hooks/useContractSlotGrid';
 import { useWizardStep } from '../../hooks/useWizardStep';
@@ -26,7 +28,7 @@ import {
 } from '../../api/client';
 import { TIER_META } from '../../constants/adminMeta';
 import {
-    getClientPaymentMethods, getPaymentMethods, methodInContext,
+    getClientPaymentMethods, getPaymentMethods, methodInContext, loadPaymentMethods, usePaymentMethodsVersion,
     type PaymentMethodConfig, type PaymentMethodKey,
 } from '../../constants/paymentMethods';
 import { DAY_NAMES, DAY_NAMES_FULL, formatBRL } from '../../utils/format';
@@ -298,6 +300,8 @@ export default function CustomContractFlow({ mode, pricing, users = [], onClose,
             .finally(() => setAddonsLoading(false));
     };
     useEffect(loadAddons, []);
+    // E3: o admin revalida a chave-mestra do boleto ao abrir (o cache é carregado uma vez por sessão).
+    useEffect(() => { if (isAdmin) void loadPaymentMethods(); }, [isAdmin]);
 
     // ── Derivados ──────────────────────────────────────────
     const clientOptions = useMemo(
@@ -322,6 +326,9 @@ export default function CustomContractFlow({ mode, pricing, users = [], onClose,
         return [{ addon: a, mode: c.mode, perCycle: clampCredits(c.perCycle) }];
     });
 
+    // E3 — formas de pagamento. Admin: as ativas, e o BOLETO só quando a chave-mestra está ligada E a Cora
+    // ativa (o cache só traz BOLETO com boleto.available). Cliente: nunca boleto (reserva de 10 minutos).
+    usePaymentMethodsVersion();
     const methodOptions: PaymentMethodConfig[] = (() => {
         if (isAdmin) return getPaymentMethods();
         const all = getClientPaymentMethods();
@@ -502,6 +509,9 @@ export default function CustomContractFlow({ mode, pricing, users = [], onClose,
         setPhase('form');
         setErrorAction(null);
         if (code === 'INVALID_SLOT') slotGrid.invalidate();
+        // E3: boleto recusado (chave desligada / Cora inativa / contratação com prazo) → revalida a chave;
+        // a opção some das formas de pagamento e o aviso do servidor fica no Resumo.
+        if (method === 'BOLETO' || code === 'BOLETO_UNAVAILABLE' || code === 'BOLETO_NOT_ALLOWED_HERE') void loadPaymentMethods();
         if (code === 'INVALID_SLOT' || code === 'SLOTS_TAKEN' || code === 'ALL_SLOTS_TAKEN') {
             goTo(2);
             setError(msg);
@@ -675,9 +685,9 @@ export default function CustomContractFlow({ mode, pricing, users = [], onClose,
                 amount={created.firstAmount}
                 description={`${name.trim() || 'Contrato personalizado'} · ${paymentPlan === 'FULL' ? 'pagamento integral' : '1ª parcela'}`}
                 title={paymentPlan === 'FULL' ? 'Cobrar pagamento integral' : 'Cobrar 1ª cobrança'}
-                subtitle={`Contrato criado e ativo.${skippedNote} Cobre agora (PIX ou cartão do cliente presente) ou deixe pendente — o cliente paga depois.`}
-                allowedMethods={[method ?? 'PIX']}
-                allowBoleto={method === 'BOLETO'}
+                subtitle={`Contrato criado e ativo.${skippedNote} Cobre agora no PIX ou no cartão do cliente (crédito ou débito), com ele presente — ou deixe pendente: o cliente paga depois.`}
+                // E1: sempre PIX | Cartão (| Boleto quando disponível), abrindo na forma escolhida no Resumo.
+                initialMethod={method}
                 context="contract"
                 contractDuration={paymentPlan === 'FULL' ? durationMonths : 1}
                 client={selectedClient ? { id: selectedClient.id, name: selectedClient.name, cpfCnpj: selectedClient.cpfCnpj } : undefined}
@@ -877,8 +887,8 @@ export default function CustomContractFlow({ mode, pricing, users = [], onClose,
     const renderGridState = () => {
         if (slotGrid.loading) {
             return (
-                <p className="ccf-grid-state" role="status">
-                    <Loader2 size={16} className="csp-spin" aria-hidden="true" /> Carregando os horários da faixa…
+                <p className="ccf-grid-state">
+                    <BrandLoader size="inline" label="Carregando os horários da faixa…" />
                 </p>
             );
         }
@@ -918,15 +928,23 @@ export default function CustomContractFlow({ mode, pricing, users = [], onClose,
         return (
             <div className="ccf-cal">
                 <div className="ccf-cal__nav">
-                    <button key="cal-prev" type="button" className="ccf-cal__navbtn" aria-label="Mês anterior"
-                        disabled={curKey <= startKey} onClick={() => go(-1)}>
-                        <ChevronLeft size={18} aria-hidden="true" />
-                    </button>
+                    <Tooltip key="cal-prev" content="Mês anterior" describe={false}>
+                        <span style={{ display: 'inline-flex' }}>
+                            <button type="button" className="ccf-cal__navbtn" aria-label="Mês anterior"
+                                disabled={curKey <= startKey} onClick={() => go(-1)}>
+                                <ChevronLeft size={18} aria-hidden="true" />
+                            </button>
+                        </span>
+                    </Tooltip>
                     <span className="ccf-cal__month" aria-live="polite">{MONTH_NAMES[month]} {year}</span>
-                    <button key="cal-next" type="button" className="ccf-cal__navbtn" aria-label="Próximo mês"
-                        disabled={curKey >= endKey} onClick={() => go(1)}>
-                        <ChevronRight size={18} aria-hidden="true" />
-                    </button>
+                    <Tooltip key="cal-next" content="Próximo mês" describe={false}>
+                        <span style={{ display: 'inline-flex' }}>
+                            <button type="button" className="ccf-cal__navbtn" aria-label="Próximo mês"
+                                disabled={curKey >= endKey} onClick={() => go(1)}>
+                                <ChevronRight size={18} aria-hidden="true" />
+                            </button>
+                        </span>
+                    </Tooltip>
                 </div>
                 <div className="ccf-cal__grid" role="group" aria-label={`Datas de ${MONTH_NAMES[month]} de ${year}`}>
                     {DAY_NAMES.map(d => <div key={`dow-${d}`} className="ccf-cal__dow" aria-hidden="true">{d}</div>)}
@@ -1100,10 +1118,12 @@ export default function CustomContractFlow({ mode, pricing, users = [], onClose,
                                             label={`Horário de ${fmtDate(cd.date)}`}
                                             onChange={time => setDateTime(cd.date, time)}
                                         />
-                                        <button key={`rm-${cd.date}`} type="button" className="ccf-icon-btn"
-                                            aria-label={`Remover ${fmtDate(cd.date)}`} onClick={() => toggleDate(cd.date)}>
-                                            <X size={16} aria-hidden="true" />
-                                        </button>
+                                        <Tooltip key={`rm-${cd.date}`} content="Remover data" describe={false}>
+                                            <button type="button" className="ccf-icon-btn"
+                                                aria-label={`Remover data ${fmtDate(cd.date)}`} onClick={() => toggleDate(cd.date)}>
+                                                <X size={16} aria-hidden="true" />
+                                            </button>
+                                        </Tooltip>
                                     </div>
                                 );
                             })}
@@ -1137,7 +1157,7 @@ export default function CustomContractFlow({ mode, pricing, users = [], onClose,
             </p>
 
             {addonsLoading ? (
-                <p className="ccf-grid-state" role="status"><Loader2 size={16} className="csp-spin" aria-hidden="true" /> Carregando serviços…</p>
+                <p className="ccf-grid-state"><BrandLoader size="inline" label="Carregando serviços…" /></p>
             ) : addonsError ? (
                 <div className="ccf-grid-state ccf-grid-state--error" role="alert">
                     <AlertCircle size={16} aria-hidden="true" />
@@ -1189,11 +1209,19 @@ export default function CustomContractFlow({ mode, pricing, users = [], onClose,
                                     <div className="ccf-addon__credits">
                                         <span id={`${uid}-cred-${addon.key}`}>Créditos por ciclo</span>
                                         <div className="ccf-stepper" role="group" aria-labelledby={`${uid}-cred-${addon.key}`}>
-                                            <button key="dec" type="button" className="ccf-stepper__btn" aria-label="Diminuir créditos"
-                                                disabled={credits <= 1} onClick={() => setAddonCredits(addon.key, credits - 1)}>−</button>
+                                            <Tooltip key="dec" content="Diminuir créditos" describe={false}>
+                                                <span style={{ display: 'inline-flex' }}>
+                                                    <button type="button" className="ccf-stepper__btn" aria-label="Diminuir créditos"
+                                                        disabled={credits <= 1} onClick={() => setAddonCredits(addon.key, credits - 1)}>−</button>
+                                                </span>
+                                            </Tooltip>
                                             <span className="ccf-stepper__value" aria-live="polite">{credits}</span>
-                                            <button key="inc" type="button" className="ccf-stepper__btn" aria-label="Aumentar créditos"
-                                                disabled={credits >= creditMax} onClick={() => setAddonCredits(addon.key, credits + 1)}>+</button>
+                                            <Tooltip key="inc" content="Aumentar créditos" describe={false}>
+                                                <span style={{ display: 'inline-flex' }}>
+                                                    <button type="button" className="ccf-stepper__btn" aria-label="Aumentar créditos"
+                                                        disabled={credits >= creditMax} onClick={() => setAddonCredits(addon.key, credits + 1)}>+</button>
+                                                </span>
+                                            </Tooltip>
                                         </div>
                                         <span className="ccf-addon__line-total">+ {formatBRL(lineTotal)}/ciclo</span>
                                     </div>
@@ -1476,12 +1504,17 @@ export default function CustomContractFlow({ mode, pricing, users = [], onClose,
                             onClick={() => { setPhase('form'); goTo(2); }}>
                             <ArrowLeft size={16} aria-hidden="true" /> Ajustar a agenda
                         </button>
-                        <button key="conflicts-accept" type="button" className="btn-admin-go" disabled={busy || !canAccept}
-                            title={canAccept ? undefined : 'Ajuste a agenda: há datas sem outro horário livre.'}
-                            onClick={e => { if (e.detail > 1) return; void acceptConflicts(); }}>
-                            <Check size={16} aria-hidden="true" />
-                            {isAdmin ? 'Aceitar sugestões e criar contrato' : 'Aceitar sugestões e ir para pagamento'}
-                        </button>
+                        {/* Botão pode estar desabilitado (não dispara eventos de ponteiro): a dica fica no span.
+                            alignSelf/flex mantêm a largura total no mobile (.admin-actions-row > button). */}
+                        <Tooltip key="conflicts-accept" content={canAccept ? null : 'Ajuste a agenda: há datas sem outro horário livre.'}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', alignSelf: 'stretch' }}>
+                                <button type="button" className="btn-admin-go ccf-accept-btn" style={{ flex: '1 1 auto' }} disabled={busy || !canAccept}
+                                    onClick={e => { if (e.detail > 1) return; void acceptConflicts(); }}>
+                                    <Check size={16} aria-hidden="true" />
+                                    {isAdmin ? 'Aceitar sugestões e criar contrato' : 'Aceitar sugestões e ir para pagamento'}
+                                </button>
+                            </span>
+                        </Tooltip>
                     </div>
                 </div>
             </div>
@@ -1489,9 +1522,9 @@ export default function CustomContractFlow({ mode, pricing, users = [], onClose,
     };
 
     const renderCreating = () => (
-        <div className="ccf-state" role="status" aria-live="polite">
-            <div className="spinner" style={{ width: 40, height: 40, marginBottom: 'var(--space-3)' }} aria-hidden="true" />
-            <h3 className="ccf-state__title">{isAdmin ? 'Criando o contrato…' : 'Reservando seus horários…'}</h3>
+        // Loading de marca compacto (E5): o BrandLoader já é o `role="status"` e o rótulo faz as vezes do título.
+        <div className="ccf-state">
+            <BrandLoader size="compact" label={isAdmin ? 'Criando o contrato…' : 'Reservando seus horários…'} />
             <p className="ccf-state__desc">Gerando {plural(volume.totalSessions, 'gravação', 'gravações')} do plano. Aguarde um instante.</p>
         </div>
     );

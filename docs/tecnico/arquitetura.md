@@ -5,7 +5,7 @@
 O sistema é um **monorepo** com dois workspaces npm:
 
 - **`frontend/`** — SPA em React 19 + Vite 6, empacotada como **PWA** (instalável, com service worker e push). Em produção é servida como arquivos estáticos pelo próprio backend.
-- **`backend/`** — API REST em Express 4 + TypeScript (ESM), com Prisma 7 sobre PostgreSQL e Redis para locks/rate-limit/OTP. Integra-se à **Stripe** (cartão) e à **Cora** (PIX/boleto).
+- **`backend/`** — API REST em Express 4 + TypeScript (ESM), com Prisma 7 sobre PostgreSQL e Redis para locks/rate-limit/OTP. Integra-se à **Stripe** (cartão) e à **Cora** (PIX/boleto). **Não há assinaturas Stripe**: a recorrência das parcelas no cartão é o `autoChargeJob` (diário, off-session, para o cliente com `User.autoChargeEnabled` e cartão de crédito padrão) — ver [pagamentos.md](pagamentos.md#cobrança-automática-e9).
 
 Em produção (Railway), um **único container** roda o backend, que também serve o build estático do frontend e faz o fallback de rotas do React Router para `index.html`.
 
@@ -29,7 +29,7 @@ flowchart TB
     end
 
     subgraph Externos["Provedores externos"]
-        ST["Stripe<br/>(cartão, assinaturas)"]
+        ST["Stripe<br/>(cartão, cartão salvo)"]
         CO["Cora<br/>(PIX, boleto — mTLS)"]
         GO["Google OAuth"]
         WP["Web Push (VAPID)"]

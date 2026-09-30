@@ -53,6 +53,12 @@ const V = {
     // Remarcação do avulso (D4/D5): último dia da janela e a nova data escolhida.
     prazo: { name: 'prazo', label: 'Prazo para remarcar (DD/MM)', example: '22/09' },
     novaData: { name: 'novaData', label: 'Nova data (DD/MM)', example: '19/09' },
+    // Multa de cancelamento (E13): % aplicado e base (o que faltava pagar do plano no pedido).
+    percentual: { name: 'percentual', label: 'Percentual da multa', example: '20' },
+    base: { name: 'base', label: 'Saldo a pagar do plano (R$)', example: 'R$ 1.680,00' },
+    // Cobrança em dobro no cartão (Z1-c): o PaymentIntent que deu a baixa e o excedente (a estornar).
+    piPago: { name: 'piPago', label: 'PaymentIntent que deu a baixa', example: 'pi_3QxA…baixa' },
+    piExtra: { name: 'piExtra', label: 'PaymentIntent a estornar', example: 'pi_3QxB…extra' },
 } as const;
 
 export const NOTIFICATION_EVENT_CATALOG: NotificationEventDef[] = [
@@ -81,7 +87,8 @@ export const NOTIFICATION_EVENT_CATALOG: NotificationEventDef[] = [
         group: 'pagamentos', audience: 'client', kind: 'persisted',
         type: 'PAYMENT_FAILED', severity: 'critical', pushDefault: true, actionUrl: '/meus-pagamentos',
         defaultTitle: 'Cobrança expirada',
-        defaultMessage: 'Seu PIX/boleto foi cancelado ou expirou. Gere uma nova cobrança em Meus Pagamentos.',
+        // Sem citar a forma de pagamento: com o boleto desligado (E3) ele não aparece em lugar nenhum.
+        defaultMessage: 'Sua cobrança foi cancelada ou expirou. Gere uma nova em Meus Pagamentos.',
         variables: [],
     },
     {
@@ -227,7 +234,58 @@ export const NOTIFICATION_EVENT_CATALOG: NotificationEventDef[] = [
         defaultMessage: 'Seu serviço "{servico}" foi ativado com sucesso!',
         variables: [V.servico],
     },
+    // ── Cancelamento do contrato (cliente) — E13 ──────────
+    // Tipo CANCELLATION_PENDING (sem migration de enum; não é efêmero — fica no sino). `critical` para
+    // chegar também a quem escolheu "só essenciais": é cobrança nova / fim do contrato.
+    {
+        eventKey: 'contract_cancellation_fine', label: 'Cancelamento concluído com multa',
+        description: 'Enviada ao cliente quando o estúdio conclui o pedido de cancelamento cobrando a multa: informa o valor e leva a Meus Pagamentos.',
+        group: 'contratos', audience: 'client', kind: 'persisted',
+        type: 'CANCELLATION_PENDING', severity: 'critical', pushDefault: true, actionUrl: '/meus-pagamentos',
+        defaultTitle: 'Multa de cancelamento: {valor}',
+        defaultMessage: 'O contrato "{contrato}" foi cancelado com multa de {valor} ({percentual}% de {base} que faltavam pagar). Pague em Meus Pagamentos.',
+        variables: [V.contrato, V.valor, V.percentual, V.base],
+    },
+    {
+        eventKey: 'contract_cancelled_no_fine', label: 'Contrato cancelado sem multa',
+        description: 'Enviada ao cliente quando o contrato é cancelado sem multa: isenção do pedido de cancelamento, pedido sem saldo a pagar ou cancelamento feito pelo estúdio.',
+        group: 'contratos', audience: 'client', kind: 'persisted',
+        type: 'CANCELLATION_PENDING', severity: 'critical', pushDefault: true, actionUrl: '/meus-contratos',
+        defaultTitle: 'Contrato cancelado',
+        defaultMessage: 'O contrato "{contrato}" foi cancelado, sem multa. As parcelas que estavam pendentes foram anuladas.',
+        variables: [V.contrato],
+    },
     // ── Admin (persisted) ─────────────────────────────────
+    {
+        // Mesmo tipo + entidade do alerta computado "Cancelamento pendente": no sino aparece uma vez só
+        // (a computada sombreia esta enquanto o pedido está em análise); esta existe para o PUSH imediato.
+        eventKey: 'admin_cancellation_requested', label: 'Admin — pedido de cancelamento (push)',
+        description: 'Avisa os admins, na hora e com push, que um cliente pediu o cancelamento de um contrato, com a multa prevista. É removida quando o pedido é resolvido.',
+        group: 'admin', audience: 'admin', kind: 'persisted',
+        type: 'CANCELLATION_PENDING', severity: 'warning', pushDefault: true, actionUrl: '/admin/contracts',
+        defaultTitle: 'Pedido de cancelamento',
+        defaultMessage: '{cliente} pediu o cancelamento do contrato "{contrato}". Multa prevista: {valor}. Decida entre cobrar ou isentar.',
+        variables: [V.cliente, V.contrato, V.valor],
+    },
+    {
+        eventKey: 'admin_payment_on_cancelled_charge', label: 'Admin — pagamento em cobrança cancelada',
+        description: 'Avisa os admins quando o banco/cartão confirma um pagamento de uma cobrança que já estava cancelada (parcela anulada de contrato cancelado): o dinheiro entrou e precisa de estorno ou baixa manual.',
+        group: 'admin', audience: 'admin', kind: 'persisted',
+        type: 'SYSTEM', severity: 'critical', pushDefault: true, actionUrl: '/admin/finance',
+        defaultTitle: 'Pagamento recebido em cobrança cancelada',
+        defaultMessage: '{cliente} pagou {valor} em uma cobrança já cancelada do contrato "{contrato}". O valor não foi baixado: confira no extrato e estorne ou dê baixa manual.',
+        variables: [V.cliente, V.valor, V.contrato],
+    },
+    {
+        // Z1-c: rede de segurança da cobrança em dobro (cobrança automática + checkout de cartão aberto).
+        eventKey: 'admin_card_double_charge', label: 'Admin — cobrança em dobro no cartão',
+        description: 'Avisa os admins quando um segundo pagamento no cartão (PaymentIntent) é aprovado para uma cobrança que já estava paga por outro — por exemplo, a cobrança automática quitou a parcela e o cliente confirmou um checkout de cartão que tinha ficado aberto. O cliente foi debitado duas vezes: o pagamento excedente precisa ser estornado no painel do Stripe.',
+        group: 'admin', audience: 'admin', kind: 'persisted',
+        type: 'SYSTEM', severity: 'critical', pushDefault: true, actionUrl: '/admin/finance',
+        defaultTitle: 'Cobrança em dobro no cartão',
+        defaultMessage: '{cliente} foi debitado duas vezes no cartão: a cobrança do contrato "{contrato}" já estava paga ({piPago}) e outro pagamento de {valor} também foi aprovado ({piExtra}). Estorne {piExtra} no painel do Stripe.',
+        variables: [V.cliente, V.valor, V.contrato, V.piPago, V.piExtra],
+    },
     {
         eventKey: 'admin_booking_confirmed', label: 'Admin — sessão confirmada',
         description: 'Notifica o admin quando um cliente confirma uma sessão.',

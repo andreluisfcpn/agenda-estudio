@@ -20,12 +20,24 @@ interface PaymentModalProps {
     description: string;
     /** Contract duration in months (for installment calculation) */
     contractDuration?: number;
-    /** Which methods to show */
+    /**
+     * Restringe PIX/Cartão. O BOLETO não é decidido por esta lista (E3): chamadores antigos a montavam a
+     * partir de contract.boletoAllowed, que deixou de ser autoridade — quem decide é offerBoleto + a
+     * chave-mestra das Configurações.
+     */
     allowedMethods?: PaymentMethodKey[];
     /** Aba aberta primeiro (a forma de pagamento do contrato — um PIX abre no PIX). */
     initialMethod?: PaymentMethodKey | null;
-    /** Release boleto for this checkout (per-contract authorization) */
+    /** @deprecated E3 — IGNORADO: não há mais liberação de boleto por contrato. Use offerBoleto. */
     allowBoleto?: boolean;
+    /**
+     * E3 — esta cobrança pode ser paga por boleto (fatura/parcela de contrato já ativo). Padrão: true
+     * quando a cobrança é de CONTRATO (contractDuration informado) e false quando não é (ex.: serviço
+     * extra de uma gravação avulsa, que não passa contractDuration). Informe para forçar um dos dois.
+     * A aba Boleto só aparece com o boleto disponível (chave-mestra + Cora) e NUNCA numa contratação
+     * aguardando pagamento (prazo de 10 min / renovação).
+     */
+    offerBoleto?: boolean;
     /**
      * Prazo da contratação "Aguardando pagamento" (reserva/serviço/personalizado: 10 min; renovação:
      * 3 dias). Mostra a contagem acima do checkout e chama `onDeadline` quando zera — a varredura do
@@ -74,15 +86,17 @@ function DeadlineBar({ deadline, onExpire }: { deadline: string; onExpire?: () =
 // D1: o valor do CARTÃO (sem o desconto PIX do à vista) e o aviso "o desconto vale só no PIX" são
 // exibidos pelo próprio InlineCheckout (plano 1x de /stripe/installment-plans) — valor exibido = cobrado.
 
+const DEFAULT_METHODS: PaymentMethodKey[] = ['PIX', 'CARTAO'];
+
 export default function PaymentModal({
     title = 'Pagar Fatura',
     amount,
     paymentId,
     description,
     contractDuration,
-    allowedMethods = ['CARTAO', 'PIX'],
+    allowedMethods = DEFAULT_METHODS,
     initialMethod,
-    allowBoleto = false,
+    offerBoleto,
     paymentDeadline,
     contractStatus,
     onDeadline,
@@ -94,6 +108,14 @@ export default function PaymentModal({
     const deadline = paymentDeadline && (contractStatus == null || contractStatus === 'AWAITING_PAYMENT')
         ? paymentDeadline
         : null;
+    // E3: boleto só em fatura/parcela de contrato JÁ ATIVO — nunca com prazo de pagamento correndo
+    // (o boleto compensa em dias e a varredura desfaria a contratação). O InlineCheckout ainda confere
+    // a chave-mestra (boleto.available) e o backend é a autoridade final.
+    const boletoHere = (offerBoleto ?? contractDuration != null) && !deadline && contractStatus !== 'AWAITING_PAYMENT';
+    const methods: PaymentMethodKey[] = [
+        ...allowedMethods.filter(m => m !== 'BOLETO'),
+        ...(boletoHere ? ['BOLETO' as const] : []),
+    ];
     // PaymentModal is now just a facade to BottomSheetModal
     // Note: We need to pass isOpen={true} because this component is only mounted when it should be open
     // based on how it's used in DashboardPage/ClientDashboard currently (e.g., {payingInvoice && <PaymentModal ... />})
@@ -105,9 +127,9 @@ export default function PaymentModal({
                 paymentId={paymentId}
                 description={description}
                 contractDuration={contractDuration}
-                allowedMethods={allowedMethods}
+                allowedMethods={methods}
                 initialMethod={initialMethod}
-                allowBoleto={allowBoleto}
+                offerBoleto={boletoHere}
                 context="invoice"
                 onSuccess={onSuccess}
                 onError={onError}

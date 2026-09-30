@@ -5,8 +5,35 @@
    que continuam sendo a base visual do bloco PIX.
    ═══════════════════════════════════════════════════════════ */
 
+/* E10 — tudo centralizado (valor, QR, contador "Expira em", código, botões), em qualquer largura.
+   Antes o bloco só tinha text-align:center: o contador (inline-flex) e o QR (inline-block) cabiam
+   na MESMA linha a partir de ~420px úteis e ficavam lado a lado (contador à esquerda, QR deslocado
+   para a direita). Em coluna flex cada item ocupa a sua linha, centralizado. */
 .pix-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
   text-align: center;
+}
+.pix-qr > * {
+  max-width: 100%;
+}
+.pix-qr .checkout-qr-wrapper {
+  display: block;
+  margin-bottom: var(--space-3);
+}
+.pix-qr .checkout-qr-wrapper img {
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+}
+/* Código copia-e-cola, botão de copiar e aviso ocupam a largura toda (conteúdo centralizado). */
+.pix-qr__code,
+.pix-qr .checkout-copy-btn,
+.pix-qr__copy-hint {
+  align-self: stretch;
 }
 
 /* ── Valor ── */

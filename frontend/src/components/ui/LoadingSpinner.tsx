@@ -1,12 +1,11 @@
+import BrandLoader from './BrandLoader';
+
 /**
- * Centralized loading spinner — the markup that was repeated across every page.
- * Prefer page-shaped skeletons (SkeletonLoader) on pages with a hero; use this
- * for small inline / in-modal waits.
+ * Loading de seção — desde o lote 2 (E5) é o loading de MARCA (microfone com os círculos em órbita),
+ * não mais o anel genérico `.spinner`. Mantido como atalho para os chamadores antigos; em código novo
+ * use `<BrandLoader size="page|section|inline" label="…" />` direto.
+ * Páginas com herói/tabela continuam com os esqueletos de `SkeletonLoader`.
  */
-export default function LoadingSpinner() {
-    return (
-        <div className="loading-spinner">
-            <div className="spinner" />
-        </div>
-    );
+export default function LoadingSpinner({ label }: { label?: string } = {}) {
+    return <BrandLoader size="section" label={label} />;
 }

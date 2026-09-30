@@ -2,22 +2,40 @@
 
 > Rota: **`/minhas-gravacoes`** · Menu: **Minhas Gravações**
 
-Veja suas gravações (próximas e passadas), os preparativos e as **métricas de transmissão** de cada uma.
+Veja a gravação que está acontecendo agora e as que já passaram, com as **métricas** de cada uma. (As sessões futuras ficam em [Agenda → Agendados](agenda-e-agendamento.md#seus-agendamentos).)
 
 ## Lista de gravações
 
-Suas sessões em ordem cronológica, com status (confirmada, concluída, cancelada, falta) e preço.
+Uma galeria de cartões (arraste com o dedo ou com o mouse): a gravação **em andamento** vem primeiro, depois as que ainda dá para remarcar e, em seguida, as mais recentes — cada uma com o selo de status (**Gravando agora**, **Concluída**, **Falta**, **Não realizada**). Os totais do topo (realizadas, visualizações, pico, curtidas) contam só as gravações concluídas.
 
 ![Lista de gravações](../images/cliente/gravacoes-01-lista.png)
 <!-- TODO screenshot: /minhas-gravacoes lista -->
 
+## Selo "AO VIVO"
+
+O selo **AO VIVO** (vermelho, pulsando) aparece no card **somente enquanto a gravação está acontecendo**: ele liga quando o estúdio clica em **Iniciar gravação** e some assim que o estúdio **finaliza** a gravação. A tela se atualiza sozinha (a cada meio minuto e quando você volta para o app) enquanto houver uma sessão sua **reservada ou confirmada** para hoje — não é preciso recarregar. O mesmo selo aparece no **Início** e em **Agenda → Agendados**.
+
+Uma gravação já concluída **nunca** mostra "AO VIVO". Se ela foi transmitida, o card traz apenas o selo discreto **Transmitida ao vivo**.
+
 ## Detalhe de uma gravação
 
-Toque numa gravação para expandir. Você encontra:
+Toque (ou clique) numa gravação para abrir o detalhe. Você encontra:
 
-- **Preparativos** — notas e seleção de **redes** (YouTube, TikTok, Instagram, Facebook) com os links de cada transmissão.
-- **Métricas** — para gravações ao vivo já finalizadas pelo estúdio: **visualizações, pico de audiência, curtidas/comentários e duração**, por rede.
-- **Serviços** — os serviços cobrados naquela gravação.
+- **Resultados da gravação** — depois que o estúdio finaliza: **duração, início e fim, visualizações, pico de espectadores, inscritos, curtidas, comentários e mensagens no chat**, no total e **por rede**, com o link **Abrir** de cada transmissão (ou **Assistir gravação**, quando não foi ao vivo) e a **origem da audiência**.
+- **Recado do estúdio** — o feedback que a equipe deixa para você ao finalizar a gravação.
+- **Informações do episódio** — título, descrição, **capa** e as **redes** onde pretende transmitir (YouTube, TikTok, Instagram, Facebook).
+- **Serviços** — os serviços daquela gravação.
+
+Durante a gravação o detalhe mostra **AO VIVO** e "Gravação em andamento desde HH:MM"; quando o estúdio finaliza, os resultados aparecem ali mesmo.
+
+### Até quando posso editar as informações?
+
+Você pode salvar e alterar título, descrição, capa e redes **enquanto a gravação não foi finalizada nem cancelada** — inclusive com o pagamento ainda pendente e durante a própria gravação. Toque em **Salvar** para gravar título, descrição e redes (a capa é gravada assim que você a envia); o cartão passa a mostrar o título e a capa salvos. Se algo não puder ser salvo, o motivo aparece no próprio detalhe.
+
+Depois que o estúdio finaliza (ou se o agendamento foi cancelado, ou marcado como falta / não realizada), os campos ficam **desabilitados**, com um aviso dizendo o motivo. Se uma gravação avulsa perdida for remarcada, ela volta a poder ser editada.
+
+- Título: até 140 caracteres. Descrição: até 4000 caracteres.
+- Capa: JPG, PNG, WEBP, AVIF ou HEIC, até 12 MB (ela é ajustada para 1280×720).
 
 ![Detalhe com métricas](../images/cliente/gravacoes-02-detalhe-metricas.png)
 <!-- TODO screenshot: detalhe expandido com aba de métricas -->

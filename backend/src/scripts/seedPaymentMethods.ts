@@ -37,7 +37,8 @@ const DEFAULTS = [
     emoji: '📄',
     description: 'Compensação em até 3 dias úteis',
     color: '#f59e0b',
-    active: true,
+    // E3: chave-mestra "Aceitar pagamento por boleto" — nasce desligada (liga-se nas Configurações).
+    active: false,
     sortOrder: 2,
     accessMode: 'PROGRESSIVE',
   },

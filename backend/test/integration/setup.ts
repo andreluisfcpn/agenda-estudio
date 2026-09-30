@@ -27,9 +27,15 @@ export async function truncateAll() {
 
 beforeAll(async () => {
     const db = await assertTestDb();
-    // Clear any lock keys a previous crashed run may have left behind.
-    const keys = await redis.keys('lock:*');
-    if (keys.length) await redis.del(...keys);
+    // Clear any lock keys a previous crashed run may have left behind. Com o db de Redis dedicado da suíte
+    // (vitest.integration.config.ts) limpa tudo — inclusive as travas de horário `booking:lock:*`, que duram
+    // 10 min e faziam a rodada seguinte ver "horário ocupado". No db compartilhado com o dev, só `lock:*`.
+    if (process.env.INTEGRATION_REDIS_ISOLATED === '1') {
+        await redis.flushdb();
+    } else {
+        const keys = await redis.keys('lock:*');
+        if (keys.length) await redis.del(...keys);
+    }
     // eslint-disable-next-line no-console
     console.log(`[integration] using test database "${db}"`);
 });

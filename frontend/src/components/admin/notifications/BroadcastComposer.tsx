@@ -3,6 +3,7 @@ import { notificationsAdminApi, usersApi, UserSummary, BroadcastBatch } from '..
 import { useUI } from '../../../context/UIContext';
 import { getErrorMessage } from '../../../utils/errors';
 import ToggleSwitch from '../../ui/ToggleSwitch';
+import BrandLoader from '../../ui/BrandLoader';
 import { Megaphone, Send, Search, Users, User as UserIcon } from 'lucide-react';
 
 type Target = 'all' | 'specific';
@@ -22,14 +23,23 @@ export default function BroadcastComposer() {
     const [loaded, setLoaded] = useState(false);
     const [search, setSearch] = useState('');
     const [selected, setSelected] = useState<UserSummary | null>(null);
+    // Falha ao buscar os clientes: o loading (E5) some e aparece "Tentar de novo" (nunca loader eterno).
+    const [clientsFailed, setClientsFailed] = useState(false);
+    const [clientsRetry, setClientsRetry] = useState(0);
     useEffect(() => {
         if (target !== 'specific' || loaded) return;
-        usersApi.getAll('CLIENTE').then(r => { setClients(r.users); setLoaded(true); }).catch(() => {});
-    }, [target, loaded]);
+        setClientsFailed(false);
+        usersApi.getAll('CLIENTE').then(r => { setClients(r.users); setLoaded(true); }).catch(() => setClientsFailed(true));
+    }, [target, loaded, clientsRetry]);
 
     // History
     const [history, setHistory] = useState<BroadcastBatch[]>([]);
-    const loadHistory = () => notificationsAdminApi.getBroadcasts().then(r => setHistory(r.broadcasts)).catch(() => {});
+    // Só a 1ª carga mostra o loading de marca (E5); a recarga depois de um envio é silenciosa.
+    const [historyLoaded, setHistoryLoaded] = useState(false);
+    const loadHistory = () => notificationsAdminApi.getBroadcasts()
+        .then(r => setHistory(r.broadcasts))
+        .catch(() => {})
+        .finally(() => setHistoryLoaded(true));
     useEffect(() => { loadHistory(); }, []);
 
     const canSend = title.trim().length >= 3 && message.trim().length >= 3 && (target === 'all' || !!selected);
@@ -120,6 +130,15 @@ export default function BroadcastComposer() {
                                     <input className="form-input" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar cliente por nome ou e-mail…" style={{ border: 'none', background: 'transparent' }} />
                                 </div>
                                 <div className="notif-broadcast__client-list">
+                                    {!loaded && !clientsFailed && (
+                                        <div style={{ padding: 8 }}><BrandLoader size="inline" label="Carregando clientes…" /></div>
+                                    )}
+                                    {!loaded && clientsFailed && (
+                                        <div className="notif-template-row__hint" role="alert" style={{ padding: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                            Não foi possível carregar os clientes.
+                                            <button type="button" className="btn-admin-ghost btn-admin-ghost--compact" onClick={() => setClientsRetry(n => n + 1)}>Tentar de novo</button>
+                                        </div>
+                                    )}
                                     {filteredClients.map(c => (
                                         <button key={c.id} type="button" className="notif-broadcast__client" onClick={() => setSelected(c)}>
                                             <span>{c.name}</span>
@@ -145,6 +164,12 @@ export default function BroadcastComposer() {
                     <Send size={16} /> {sending ? 'Enviando…' : 'Enviar aviso'}
                 </button>
             </div>
+
+            {!historyLoaded && (
+                <div className="notif-broadcast__history">
+                    <BrandLoader size="inline" label="Carregando avisos enviados…" />
+                </div>
+            )}
 
             {history.length > 0 && (
                 <div className="notif-broadcast__history">

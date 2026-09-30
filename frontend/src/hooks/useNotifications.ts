@@ -23,12 +23,16 @@ export function useNotifications(opts: { poll?: boolean; onBump?: () => void } =
     const reload = useCallback(async () => {
         try {
             const res = await notificationsApi.getAll();
-            setNotifications(res.notifications);
-            setSummary(res.summary);
-            if (res.summary.unread > prevUnreadRef.current && prevUnreadRef.current > 0) {
+            // Resposta sem `summary`/`notifications` (backend reiniciando, proxy, versão antiga) não pode
+            // derrubar o Layout: o sino lê summary.unread a cada render. Cai num resumo vazio.
+            const list = Array.isArray(res?.notifications) ? res.notifications : [];
+            const nextSummary: NotificationSummary = { ...EMPTY_SUMMARY, ...(res?.summary ?? {}) };
+            setNotifications(list);
+            setSummary(nextSummary);
+            if (nextSummary.unread > prevUnreadRef.current && prevUnreadRef.current > 0) {
                 onBumpRef.current?.();
             }
-            prevUnreadRef.current = res.summary.unread;
+            prevUnreadRef.current = nextSummary.unread;
         } catch (err) {
             // Transient poll failure (backend restart, network) — next tick recovers.
             if (import.meta.env.DEV) console.error('Erro ao carregar notificações:', err);

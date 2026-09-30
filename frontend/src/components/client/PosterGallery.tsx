@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useDragScroll } from '../../hooks/useDragScroll';
+import Tooltip from '../ui/Tooltip';
 
 /**
  * Horizontal, draggable gallery of poster cards — shared by "Minhas Gravações"
@@ -30,17 +31,21 @@ export function PosterGallery({ children, revision, label, busy }: PosterGallery
             {/* Polite live region announces loading start/finish to screen readers. */}
             <span className="sr-only" role="status" aria-live="polite">{busy ? 'Carregando…' : ''}</span>
             {showLeft && (
-                <button type="button" className="scrollrow-arrow scrollrow-arrow--left" aria-label="Anterior" tabIndex={-1} onClick={() => scrollByPage(-1)}>
-                    <ChevronLeft size={16} />
-                </button>
+                <Tooltip content="Ver anteriores" describe={false}>
+                    <button type="button" className="scrollrow-arrow scrollrow-arrow--left" aria-label="Ver anteriores" tabIndex={-1} onClick={() => scrollByPage(-1)}>
+                        <ChevronLeft size={16} aria-hidden="true" />
+                    </button>
+                </Tooltip>
             )}
             <div ref={ref} role="group" aria-label={label} aria-busy={busy || undefined} className="poster-gallery scrollrow-track stagger-enter">
                 {children}
             </div>
             {showRight && (
-                <button type="button" className="scrollrow-arrow scrollrow-arrow--right" aria-label="Próximo" tabIndex={-1} onClick={() => scrollByPage(1)}>
-                    <ChevronRight size={16} />
-                </button>
+                <Tooltip content="Ver mais" describe={false}>
+                    <button type="button" className="scrollrow-arrow scrollrow-arrow--right" aria-label="Ver mais" tabIndex={-1} onClick={() => scrollByPage(1)}>
+                        <ChevronRight size={16} aria-hidden="true" />
+                    </button>
+                </Tooltip>
             )}
         </div>
     );
@@ -56,26 +61,32 @@ interface PosterCardProps {
     placeholder: ReactNode;
     badgeTopLeft?: ReactNode;
     badgeTopRight?: ReactNode;
+    /** Selo discreto acima do eyebrow (ex.: "Transmitida ao vivo") — não compete com os chips do topo. */
+    seal?: ReactNode;
     eyebrow: ReactNode;
     title: string;
     footer?: ReactNode;
     onClick?: () => void;
     ariaLabel?: string;
     highlight?: boolean;
+    /** Gravação acontecendo agora: contorno vermelho (o chip "AO VIVO" vem em badgeTopLeft). */
+    live?: boolean;
     tone?: 'violet' | 'teal';
     index?: number;
 }
 
 export function PosterCard({
-    coverUrl, placeholder, badgeTopLeft, badgeTopRight, eyebrow, title, footer,
-    onClick, ariaLabel, highlight, tone = 'violet', index = 0,
+    coverUrl, placeholder, badgeTopLeft, badgeTopRight, seal, eyebrow, title, footer,
+    onClick, ariaLabel, highlight, live, tone = 'violet', index = 0,
 }: PosterCardProps) {
     const [failed, setFailed] = useState(false);
+    // Capa trocada (o cliente salvou outra no detalhe): a nova URL merece nova tentativa.
+    useEffect(() => { setFailed(false); }, [coverUrl]);
     const hasCover = !!coverUrl && !failed;
     return (
         <button
             type="button"
-            className={`poster-card poster-card--${tone} animate-card-enter ${highlight ? 'poster-card--highlight' : ''}`}
+            className={`poster-card poster-card--${tone} animate-card-enter ${highlight ? 'poster-card--highlight' : ''} ${live ? 'poster-card--live' : ''}`}
             style={{ '--i': index } as React.CSSProperties}
             aria-label={ariaLabel}
             onClick={onClick}
@@ -88,6 +99,7 @@ export function PosterCard({
             {badgeTopLeft && <span className="poster-card__tl">{badgeTopLeft}</span>}
             {badgeTopRight && <span className="poster-card__tr">{badgeTopRight}</span>}
             <div className="poster-card__info">
+                {seal && <div className="poster-card__seal">{seal}</div>}
                 <div className="poster-card__eyebrow">{eyebrow}</div>
                 <div className="poster-card__title">{title}</div>
                 {footer && <div className="poster-card__footer">{footer}</div>}

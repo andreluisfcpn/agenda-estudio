@@ -19,7 +19,7 @@ export default function PaymentOverviewCard({ overview, autoSaving, onToggleAuto
             <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '12px 14px', borderRadius: 'var(--radius-md)', background: overview.autoChargeEnabled ? 'rgba(16,185,129,0.06)' : 'var(--bg-elevated)', border: `1px solid ${overview.autoChargeEnabled ? 'rgba(16,185,129,0.25)' : 'var(--border-default)'}`, cursor: overview.hasSavedCard ? 'pointer' : 'not-allowed', opacity: overview.hasSavedCard ? 1 : 0.6 }}>
                 <div>
                     <div style={{ fontSize: '0.875rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><RefreshCw size={14} aria-hidden="true" /> Cobrança automática</div>
-                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '2px' }}>{overview.hasSavedCard ? 'Cobra o cartão salvo na data de vencimento.' : 'Requer um cartão salvo do cliente.'}</div>
+                    <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '2px' }}>{overview.hasSavedCard ? 'Cobra o cartão de crédito salvo na data de vencimento.' : 'Requer um cartão salvo do cliente.'}</div>
                 </div>
                 <input type="checkbox" checked={overview.autoChargeEnabled} disabled={!overview.hasSavedCard || autoSaving} onChange={e => onToggleAutoCharge(e.target.checked)} style={{ width: 20, height: 20, accentColor: 'var(--success)', cursor: overview.hasSavedCard ? 'pointer' : 'not-allowed' }} />
             </label>

@@ -8,6 +8,7 @@ import { NotificationItem } from '../api/client';
 import AdminPageHeader from '../components/admin/AdminPageHeader';
 import HeroAmbient from '../components/client/HeroAmbient';
 import { DashboardSkeleton } from '../components/ui/SkeletonLoader';
+import Tooltip from '../components/ui/Tooltip';
 
 type SeverityFilter = 'all' | 'critical' | 'warning' | 'info';
 
@@ -142,13 +143,15 @@ export default function NotificationsPage() {
                                         )}
                                     </span>
                                     {!n.read && (
-                                        <span
-                                            role="button" tabIndex={0}
-                                            className="notif-item__read-btn"
-                                            onClick={(e) => { e.stopPropagation(); markRead(n.id); }}
-                                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); markRead(n.id); } }}
-                                            title="Marcar como lida" aria-label="Marcar como lida"
-                                        ><Check size={16} /></span>
+                                        <Tooltip content="Marcar como lida" describe={false}>
+                                            <span
+                                                role="button" tabIndex={0}
+                                                className="notif-item__read-btn"
+                                                onClick={(e) => { e.stopPropagation(); markRead(n.id); }}
+                                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); markRead(n.id); } }}
+                                                aria-label="Marcar como lida"
+                                            ><Check size={16} /></span>
+                                        </Tooltip>
                                     )}
                                 </button>
                             );

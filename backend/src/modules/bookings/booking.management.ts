@@ -27,8 +27,14 @@ import {
     makeupSchema,
     addOnPurchaseSchema,
 } from './validators.js';
-import { restoreCredit, deductCredit, checkMoveSlotTier, withMovableSlot, SlotUnavailableError, syncAvulsoContractSchedule } from './booking.service.js';
+import { restoreCredit, deductCredit, checkMoveSlotTier, withMovableSlot, SlotUnavailableError, syncAvulsoContractSchedule, voidExtrasOfCancelledBooking, voidedExtrasNote } from './booking.service.js';
 import { syncContractCompletion } from '../../lib/contractCompletion.js';
+import {
+    CLIENT_BOOKING_SELECT,
+    CLIENT_EDITABLE_STATUSES,
+    clientEditBlockReason,
+    toClientBooking,
+} from './booking.clientView.js';
 import {
     MakeupError,
     applyMakeupOnStatusChange,
@@ -139,7 +145,11 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
     }
     await syncContractCompletion(booking.contractId, userId);
 
-    res.json({ message: 'Reserva cancelada com sucesso.' });
+    // Gravação de plano cancelada: a cobrança em aberto dos EXTRAS dela deixa de ser devida (best-effort;
+    // avulso não entra — ver voidExtrasOfCancelledBooking).
+    const voidedExtras = await voidExtrasOfCancelledBooking(id, booking.contractId);
+
+    res.json({ message: `Reserva cancelada com sucesso.${voidedExtrasNote(voidedExtras)}`, voidedExtras });
 });
 
 // ─── DELETE /api/bookings/:id/hard-delete (ADMIN - permanent removal) ─────
@@ -174,16 +184,22 @@ router.delete('/:id/hard-delete', authenticate, authorize('ADMIN'), async (req: 
             creditRestored = await restoreCredit(booking.contractId);
         }
 
+        // Gravação de plano excluída: anula a cobrança em aberto dos EXTRAS dela ANTES de apagar — a FK
+        // zera o bookingId do pagamento, e um extra pendente sem bookingId passaria a parecer uma parcela
+        // do plano (entraria na multa e na cobrança automática). Best-effort; avulso não entra.
+        const voidedExtras = await voidExtrasOfCancelledBooking(id, booking.contractId);
+
         // Hard delete from database
         await prisma.booking.delete({ where: { id } });
         // D6: sem esta sessão o contrato pode ter virado (ou deixado de ser) "concluído".
         await syncContractCompletion(booking.contractId, req.user!.userId);
 
         res.json({
-            message: creditRestored
+            message: (creditRestored
                 ? 'Agendamento removido permanentemente. Crédito devolvido ao contrato.'
-                : 'Agendamento removido permanentemente.',
+                : 'Agendamento removido permanentemente.') + voidedExtrasNote(voidedExtras),
             creditRestored,
+            voidedExtras,
         });
     } catch (err) {
         console.error('Hard delete booking error:', err);
@@ -196,55 +212,19 @@ router.delete('/:id/hard-delete', authenticate, authorize('ADMIN'), async (req: 
 router.get('/my', authenticate, async (req: Request, res: Response) => {
     // Auto-complete removed: only admin can change booking status to COMPLETED
 
-    const bookings = await prisma.booking.findMany({
+    // Visão do cliente (booking.clientView): sem adminNotes; com clientNotes, métricas, início da
+    // gravação e os derivados isRecordingNow / canEditEpisode.
+    const rows = await prisma.booking.findMany({
         where: {
             userId: req.user!.userId,
             status: { not: BookingStatus.CANCELLED },
         },
         orderBy: [{ date: 'desc' }, { startTime: 'asc' }],
-        select: {
-            id: true,
-            date: true,
-            startTime: true,
-            endTime: true,
-            status: true,
-            tierApplied: true,
-            price: true,
-            contractId: true,
-            adminNotes: true,
-            clientNotes: true,
-            platforms: true,
-            platformLinks: true,
-            durationMinutes: true,
-            peakViewers: true,
-            chatMessages: true,
-            audienceOrigin: true,
-            isLivestream: true,
-            streamMetrics: true,
-            episodeTitle: true,
-            episodeDescription: true,
-            coverImageUrl: true,
-            addOns: true,
-            originalDate: true,
-            // Motivo da falta/não realização + janela de remarcação do avulso (D4/D5).
-            statusReason: true,
-            makeupStatus: true,
-            makeupDeadline: true,
-            missedDate: true,
-            contract: {
-                select: {
-                    id: true,
-                    name: true,
-                    type: true,
-                    tier: true,
-                    discountPct: true,
-                    addOns: true
-                }
-            }
-        },
+        select: CLIENT_BOOKING_SELECT,
     });
 
-    res.json({ bookings });
+    const now = new Date();
+    res.json({ bookings: rows.map(b => toClientBooking(b, now)) });
 });
 
 // ─── GET /api/bookings/my/results (Client analytics) ────
@@ -325,19 +305,10 @@ router.get('/my/results', authenticate, async (req: Request, res: Response) => {
 router.get('/:id', authenticate, async (req: Request, res: Response) => {
     const booking = await prisma.booking.findFirst({
         where: { id: req.params.id as string, userId: req.user!.userId },
-        select: {
-            id: true, date: true, startTime: true, endTime: true, status: true,
-            tierApplied: true, price: true, contractId: true,
-            adminNotes: true, clientNotes: true, platforms: true, platformLinks: true,
-            episodeTitle: true, episodeDescription: true, coverImageUrl: true,
-            durationMinutes: true, peakViewers: true, chatMessages: true, audienceOrigin: true,
-            isLivestream: true, streamMetrics: true, addOns: true, holdExpiresAt: true,
-            originalDate: true, statusReason: true, makeupStatus: true, makeupDeadline: true, missedDate: true,
-            contract: { select: { id: true, name: true, type: true, tier: true, discountPct: true, addOns: true } },
-        },
+        select: CLIENT_BOOKING_SELECT, // nunca adminNotes — ver booking.clientView
     });
     if (!booking) { res.status(404).json({ error: 'Agendamento não encontrado.' }); return; }
-    res.json({ booking });
+    res.json({ booking: toClientBooking(booking) });
 });
 
 // ─── GET /api/bookings (ADMIN) ──────────────────────────
@@ -496,6 +467,18 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
             updateData.price = await getBasePriceDynamic(slotTier);
         }
 
+        // E11: sessão ABERTA que mudou de dia/horário é uma nova sessão — o "Iniciar Gravação" anterior
+        // deixa de valer (mesmo critério da remarcação do avulso). Sem isto o cliente veria "gravando
+        // agora" numa gravação remarcada, e o start-recording seguinte (idempotente) manteria o início
+        // antigo. Sessão que fica finalizada (COMPLETED/FALTA/…) preserva o registro do operador.
+        const slotMoved = (!!data.date && data.date !== booking.date.toISOString().slice(0, 10))
+            || (!!data.startTime && data.startTime !== booking.startTime);
+        if (slotMoved && booking.recordingStartedAt && (CLIENT_EDITABLE_STATUSES as string[]).includes(targetStatus)) {
+            updateData.recordingStartedAt = null;
+            updateData.recordingStartedById = null;
+            updateData.recordingStartedByName = null;
+        }
+
         // B17/B3: aplica a transição de status ATOMICAMENTE (updateMany guardado pelo status atual) e
         // ajusta o crédito só se ESTA requisição venceu — e só aqui, DEPOIS de todas as validações.
         // Antes, restoreCredit/deductCredit rodavam no topo: um 400 posterior deixava o crédito
@@ -560,9 +543,17 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
             await syncAvulsoContractSchedule(updated.contractId, { date: updated.date, startTime: updated.startTime });
         }
 
+        // Troca de status para CANCELADO (só se ESTA requisição venceu a transição): a cobrança em aberto
+        // dos EXTRAS da gravação de plano deixa de ser devida. Best-effort; avulso não entra. Mudar só
+        // data/horário (remarcar) nunca passa por aqui.
+        const voidedExtras = statusMoved && data.status === 'CANCELLED'
+            ? await voidExtrasOfCancelledBooking(id, booking.contractId)
+            : 0;
+
         res.json({
             booking: updated,
-            message: 'Agendamento atualizado com sucesso.',
+            message: `Agendamento atualizado com sucesso.${voidedExtrasNote(voidedExtras)}`,
+            ...(voidedExtras > 0 && { voidedExtras }),
         });
     } catch (err) {
         if (err instanceof z.ZodError) {
@@ -578,10 +569,12 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
 router.patch('/:id/client-update', authenticate, async (req: Request, res: Response) => {
     try {
         const id = req.params.id as string;
+        const userId = req.user!.userId;
         const data = clientUpdateBookingSchema.parse(req.body);
 
         const booking = await prisma.booking.findFirst({
-            where: { id, userId: req.user!.userId },
+            where: { id, userId },
+            select: { id: true, status: true },
         });
 
         if (!booking) {
@@ -589,51 +582,43 @@ router.patch('/:id/client-update', authenticate, async (req: Request, res: Respo
             return;
         }
 
-        const updateData: Prisma.BookingUncheckedUpdateInput = {};
-        if (data.clientNotes !== undefined) updateData.clientNotes = data.clientNotes;
+        // E12: o cliente edita o episódio só enquanto a gravação não foi finalizada/cancelada.
+        const blocked = clientEditBlockReason(booking.status);
+        if (blocked) {
+            res.status(409).json({ error: blocked, code: 'BOOKING_NOT_EDITABLE' });
+            return;
+        }
+
+        // Só os campos do episódio. clientNotes (feedback do estúdio), links e métricas da transmissão
+        // são do estúdio — o schema nem os aceita.
+        const updateData: Prisma.BookingUncheckedUpdateManyInput = {};
         if (data.episodeTitle !== undefined) updateData.episodeTitle = data.episodeTitle;
         if (data.episodeDescription !== undefined) updateData.episodeDescription = data.episodeDescription;
-        // Planned broadcast networks (client). Actual broadcast LINKS are admin-only (complete flow).
+        // Redes PLANEJADAS pelo cliente. As redes/links efetivos são gravados pelo estúdio ao finalizar.
         if (data.platforms !== undefined) updateData.platforms = data.platforms;
 
-        // Phase 2 Metrics Logic
-        const hasMetricsPayload = data.durationMinutes !== undefined || data.peakViewers !== undefined || data.chatMessages !== undefined || data.audienceOrigin !== undefined;
-
-        if (hasMetricsPayload) {
-            if (booking.status !== 'COMPLETED') {
-                // Mesma regra do PATCH admin: null não é edição de métrica — só
-                // bloqueia valor real, senão salvar notas de booking futuro dava 400.
-                const hasRealMetricValues = data.durationMinutes != null || data.peakViewers != null
-                    || data.chatMessages != null || data.audienceOrigin != null;
-                if (hasRealMetricValues) {
-                    res.status(400).json({ error: 'Métricas de evento só podem ser editadas quando a gravação estiver como REALIZADA.' });
-                    return;
-                }
-            } else {
-                if (data.durationMinutes !== undefined) updateData.durationMinutes = data.durationMinutes;
-                if (data.peakViewers !== undefined) updateData.peakViewers = data.peakViewers;
-                if (data.chatMessages !== undefined) updateData.chatMessages = data.chatMessages;
-                if (data.audienceOrigin !== undefined) updateData.audienceOrigin = data.audienceOrigin;
+        if (Object.keys(updateData).length > 0) {
+            // Guarda atômica: se o estúdio finalizar/cancelar entre a leitura e a escrita, não grava.
+            const written = await prisma.booking.updateMany({
+                where: { id, userId, status: { in: CLIENT_EDITABLE_STATUSES } },
+                data: updateData,
+            });
+            if (written.count === 0) {
+                const current = await prisma.booking.findFirst({ where: { id, userId }, select: { status: true } });
+                res.status(409).json({
+                    error: (current && clientEditBlockReason(current.status)) || 'Esta gravação não pode mais ser editada.',
+                    code: 'BOOKING_NOT_EDITABLE',
+                });
+                return;
             }
         }
 
-        const updated = await prisma.booking.update({
-            where: { id },
-            data: updateData,
-            select: {
-                id: true, date: true, startTime: true, endTime: true,
-                status: true, tierApplied: true, price: true, contractId: true,
-                adminNotes: true, clientNotes: true, platforms: true, platformLinks: true,
-                episodeTitle: true, episodeDescription: true, coverImageUrl: true,
-                durationMinutes: true, peakViewers: true, chatMessages: true, audienceOrigin: true,
-                isLivestream: true, streamMetrics: true,
-            },
-        });
-
-        res.json({ booking: updated, message: 'Gravação atualizada com sucesso.' });
+        const updated = await prisma.booking.findFirstOrThrow({ where: { id, userId }, select: CLIENT_BOOKING_SELECT });
+        res.json({ booking: toClientBooking(updated), message: 'Gravação atualizada com sucesso.' });
     } catch (err) {
         if (err instanceof z.ZodError) {
-            res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
+            // Todas as mensagens do schema do cliente são em pt-BR — a 1ª vai direto para a tela.
+            res.status(400).json({ error: err.errors[0]?.message || 'Dados inválidos.', details: err.errors });
             return;
         }
         throw err;
@@ -645,28 +630,59 @@ router.patch('/:id/client-update', authenticate, async (req: Request, res: Respo
 router.post('/:id/cover-image', authenticate, coverUploadMw, async (req: Request, res: Response) => {
     try {
         const id = req.params.id as string;
+        const userId = req.user!.userId;
         const file = req.file;
         if (!file) { res.status(400).json({ error: 'Nenhuma imagem enviada.' }); return; }
 
-        const booking = await prisma.booking.findFirst({ where: { id, userId: req.user!.userId } });
+        const booking = await prisma.booking.findFirst({
+            where: { id, userId },
+            select: { id: true, status: true, coverImageUrl: true },
+        });
         if (!booking) { res.status(404).json({ error: 'Agendamento não encontrado.' }); return; }
+
+        // E12: mesma regra do client-update — capa só enquanto a gravação não foi finalizada/cancelada.
+        const blocked = clientEditBlockReason(booking.status);
+        if (blocked) { res.status(409).json({ error: blocked, code: 'BOOKING_NOT_EDITABLE' }); return; }
 
         const safeId = id.replace(/[^a-zA-Z0-9\-_]/g, '');
         const filename = `cover_${safeId}_${Date.now()}.jpg`;
-        await sharp(file.buffer)
-            .resize(1280, 720, { fit: 'cover', position: 'centre' })
-            .jpeg({ quality: 82 })
-            .toFile(path.join(UPLOADS_DIR, filename));
+        const filePath = path.join(UPLOADS_DIR, filename);
+        let optimized: Buffer;
+        try {
+            optimized = await sharp(file.buffer)
+                .resize(1280, 720, { fit: 'cover', position: 'centre' })
+                .jpeg({ quality: 82 })
+                .toBuffer();
+        } catch {
+            // Mimetype de imagem mas conteúdo ilegível: erro do envio (400), não do servidor (500).
+            res.status(400).json({ error: 'Não foi possível ler a imagem. Envie um JPG, PNG, WEBP, AVIF ou HEIC válido.' });
+            return;
+        }
+        await fs.promises.writeFile(filePath, optimized); // falha de disco continua sendo 500 (catch externo)
 
         const coverImageUrl = `/uploads/${filename}`;
-        await prisma.booking.update({ where: { id }, data: { coverImageUrl } });
+        // Guarda atômica (finalização/cancelamento concorrente): se não gravou, descarta o arquivo novo.
+        const written = await prisma.booking.updateMany({
+            where: { id, userId, status: { in: CLIENT_EDITABLE_STATUSES } },
+            data: { coverImageUrl },
+        });
+        if (written.count === 0) {
+            fs.promises.unlink(filePath).catch(() => {});
+            const current = await prisma.booking.findFirst({ where: { id, userId }, select: { status: true } });
+            res.status(409).json({
+                error: (current && clientEditBlockReason(current.status)) || 'Esta gravação não pode mais ser editada.',
+                code: 'BOOKING_NOT_EDITABLE',
+            });
+            return;
+        }
 
         // Best-effort cleanup of the previous cover file (avoid orphan accumulation).
         if (booking.coverImageUrl && booking.coverImageUrl.startsWith('/uploads/')) {
             const oldName = path.basename(booking.coverImageUrl);
             fs.promises.unlink(path.join(UPLOADS_DIR, oldName)).catch(() => {});
         }
-        res.json({ coverImageUrl, message: 'Capa atualizada com sucesso.' });
+        const updated = await prisma.booking.findFirstOrThrow({ where: { id, userId }, select: CLIENT_BOOKING_SELECT });
+        res.json({ coverImageUrl, booking: toClientBooking(updated), message: 'Capa atualizada com sucesso.' });
     } catch (err: unknown) {
         console.error('Cover upload error:', err);
         res.status(500).json({ error: 'Erro ao processar a imagem.' });
@@ -739,13 +755,16 @@ router.patch('/:id/reschedule', authenticate, async (req: Request, res: Response
                 if (!booking.originalDate) {
                     updateData.originalDate = booking.date; // store the initial date as anchor
                 }
+                // E11: nova data/horário = nova sessão; um "Iniciar Gravação" anterior não vale mais.
+                if (booking.recordingStartedAt) {
+                    updateData.recordingStartedAt = null;
+                    updateData.recordingStartedById = null;
+                    updateData.recordingStartedByName = null;
+                }
                 return prisma.booking.update({
                     where: { id },
                     data: updateData,
-                    select: {
-                        id: true, date: true, startTime: true, endTime: true,
-                        status: true, tierApplied: true, price: true, contractId: true,
-                    },
+                    select: { id: true, date: true, startTime: true, contractId: true },
                 });
             },
         );
@@ -753,7 +772,9 @@ router.patch('/:id/reschedule', authenticate, async (req: Request, res: Response
         // Avulso: a vigência e o nome do micro-contrato acompanham a nova data (no-op p/ outros tipos).
         await syncAvulsoContractSchedule(updated.contractId, { date: updated.date, startTime: updated.startTime });
 
-        res.json({ booking: updated, message: 'Agendamento reagendado com sucesso!' });
+        // Resposta na visão do cliente (lida DEPOIS do sync, para o nome do avulso já vir atualizado).
+        const view = await prisma.booking.findUniqueOrThrow({ where: { id }, select: CLIENT_BOOKING_SELECT });
+        res.json({ booking: toClientBooking(view), message: 'Agendamento reagendado com sucesso!' });
     } catch (err) {
         if (err instanceof z.ZodError) {
             res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
@@ -774,13 +795,23 @@ router.patch('/:id/reschedule', authenticate, async (req: Request, res: Response
 router.patch('/:id/makeup', authenticate, async (req: Request, res: Response) => {
     try {
         const data = makeupSchema.parse(req.body);
+        const isAdmin = req.user!.role === 'ADMIN';
         const result = await rescheduleAvulsoMakeup({
             bookingId: req.params.id as string,
-            actor: { userId: req.user!.userId, isAdmin: req.user!.role === 'ADMIN' },
+            actor: { userId: req.user!.userId, isAdmin },
             date: data.date,
             startTime: data.startTime,
         });
-        res.json(result);
+        if (isAdmin) {
+            res.json(result);
+            return;
+        }
+        // Cliente: mesma forma das outras rotas dele (superconjunto do que o makeup já devolvia).
+        const view = await prisma.booking.findFirst({
+            where: { id: req.params.id as string, userId: req.user!.userId },
+            select: CLIENT_BOOKING_SELECT,
+        });
+        res.json({ ...result, booking: view ? toClientBooking(view) : result.booking });
     } catch (err) {
         if (err instanceof z.ZodError) {
             res.status(400).json({ error: 'Dados inválidos.', details: err.errors });

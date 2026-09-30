@@ -160,6 +160,12 @@ describe('PATCH /api/bookings/:id/makeup + conclusão do contrato', () => {
         const again = await call('PATCH', `/api/bookings/${booking.id}/makeup`, client, { date: TARGET, startTime: '13:00' });
         expect(again.status).toBe(400);
 
+        // REC-2: sessão FUTURA não pode ser iniciada (a remarcação caiu em TARGET, ≥ hoje + 2).
+        const early = await call('PUT', `/api/bookings/${booking.id}/start-recording`, admin);
+        expect(early.status).toBe(400);
+        expect(early.body.code).toBe('RECORDING_START_FUTURE');
+        // Chegou o dia da sessão remarcada.
+        await prisma.booking.update({ where: { id: booking.id }, data: { date: dbDate(todaySp) } });
         expect((await call('PUT', `/api/bookings/${booking.id}/start-recording`, admin)).status).toBe(200);
         expect((await call('PUT', `/api/bookings/${booking.id}/complete`, admin, {})).status).toBe(200);
         expect(await contractStatus(contract.id)).toBe('COMPLETED');

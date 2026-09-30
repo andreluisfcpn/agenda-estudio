@@ -28,6 +28,62 @@
   color: var(--text-primary);
 }
 
+/* Cotação falhou (CHK-2): o valor no cartão/boleto não é conhecido — aviso + "Tentar de novo". */
+.checkout-quote-failed {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--warning-bg);
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.checkout-quote-failed > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--warning);
+}
+
+.checkout-quote-failed > span {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.checkout-quote-failed__retry {
+  flex-shrink: 0;
+  align-self: center;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.checkout-quote-failed__retry:focus-visible {
+  outline: 2px solid var(--warning);
+  outline-offset: 2px;
+}
+
+/* Cartão novo (CHK-1): o que vai acontecer com o cartão — a escolha foi feita antes do formulário. */
+.checkout-save-note {
+  margin: 0 0 12px;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
 /* Prazo da contratação aguardando pagamento (PaymentModal): contagem acima do checkout. */
 .checkout-deadline {
   display: flex;

@@ -1,24 +1,42 @@
 import { getErrorMessage } from '../../../utils/errors';
-import { useState, useEffect, useId } from 'react';
-import { pricingApi, PaymentMethodConfigItem } from '../../../api/client';
-import { setPaymentMethods as setCachedPaymentMethods } from '../../../constants/paymentMethods';
+import { useState, useEffect, useId, useRef } from 'react';
+import { pricingApi, ApiError, PaymentMethodConfigItem, type BoletoStatus } from '../../../api/client';
+import { loadPaymentMethods, setBoletoStatus as setCachedBoletoStatus } from '../../../constants/paymentMethods';
 import LoadingSpinner from '../../ui/LoadingSpinner';
+import ToggleSwitch from '../../ui/ToggleSwitch';
+import DangerConfirmDialog from '../../ui/DangerConfirmDialog';
 import SettingsSaveBar, { SettingsMessages } from './SettingsSaveBar';
 import SegmentedControl from '../../ui/fields/SegmentedControl';
 import ColorField from '../../ui/fields/ColorField';
 import EmojiField from '../../ui/fields/EmojiField';
 import StepperField from '../../ui/fields/StepperField';
-import { CreditCard, Check } from 'lucide-react';
+import { CreditCard, Check, FileText, AlertTriangle, Lock } from 'lucide-react';
+
+/** Estado do boleto devolvido junto de um 400 BOLETO_PROVIDER_DISABLED (ApiError.body.boleto). */
+function boletoFromError(err: unknown): BoletoStatus | null {
+    if (!(err instanceof ApiError) || err.code !== 'BOLETO_PROVIDER_DISABLED') return null;
+    const b = err.body?.boleto as Partial<BoletoStatus> | undefined;
+    return b && typeof b.enabled === 'boolean' && typeof b.providerEnabled === 'boolean' ? b as BoletoStatus : null;
+}
 
 /**
  * Self-contained payment-methods editor. Reuses the payment-method cards from
  * AdminPricingPage's "payments" tab verbatim, and on save updates the global
  * payment-methods cache so the rest of the app reflects changes immediately.
+ *
+ * E3 — chave-mestra "Aceitar pagamento por boleto" (topo): salva NA HORA (PUT /pricing/payment-methods/boleto),
+ * fica bloqueada com o aviso `boleto.message` enquanto a integração Cora não estiver ativa, e é a fonte
+ * única de "o boleto aparece?" em todo o sistema. O card "Boleto" da lista só edita nome/emoji/contextos.
  */
 export default function SettingsPaymentMethodsSection() {
     const uid = useId();
     const [paymentMethods, setPaymentMethods] = useState<PaymentMethodConfigItem[]>([]);
     const [pmEdited, setPmEdited] = useState(false);
+    // E3 — chave-mestra do boleto (estado vindo da API: chave + Cora).
+    const [boleto, setBoleto] = useState<BoletoStatus | null>(null);
+    const [boletoSaving, setBoletoSaving] = useState(false);
+    const [confirmBoletoOff, setConfirmBoletoOff] = useState(false);
+    const boletoInFlightRef = useRef(false); // trava por requisição em voo (nunca por tempo)
 
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -32,6 +50,7 @@ export default function SettingsPaymentMethodsSection() {
         try {
             const res = await pricingApi.getPaymentMethodsAll();
             setPaymentMethods(res.methods);
+            setBoleto(res.boleto ?? null);
             setPmEdited(false);
         } catch (err) {
             console.error(err);
@@ -48,17 +67,67 @@ export default function SettingsPaymentMethodsSection() {
         setPmEdited(true); setSuccess('');
     };
 
+    /** Aplica o estado do boleto vindo da API: tela + cache global (o resto do app reflete na hora). */
+    const applyBoleto = (next: BoletoStatus) => {
+        setBoleto(next);
+        // O card "Boleto" da lista espelha a chave (sem marcar a lista como editada).
+        setPaymentMethods(prev => prev.map(pm => (pm.key === 'BOLETO' ? { ...pm, active: next.enabled } : pm)));
+        setCachedBoletoStatus(next);
+        // O endpoint público é a verdade do que está de fato disponível (ativo + provedor).
+        void loadPaymentMethods();
+    };
+
     const handleSavePaymentMethods = async () => {
         setSaving(true); setError('');
         try {
             const res = await pricingApi.updatePaymentMethods(paymentMethods);
             showMsg('✅ Métodos de pagamento atualizados!');
             setPmEdited(false);
-            // Update the global cache so all components reflect changes immediately
-            setCachedPaymentMethods(res.methods);
-        } catch (err: unknown) { setError(getErrorMessage(err)); }
+            if (res.boleto) setBoleto(res.boleto);
+            // Update the global cache so all components reflect changes immediately — pelo endpoint
+            // público, que já respeita o provedor de cada método (e a chave-mestra do boleto).
+            if (res.boleto) setCachedBoletoStatus(res.boleto);
+            void loadPaymentMethods();
+        } catch (err: unknown) {
+            const current = boletoFromError(err);
+            if (current) applyBoleto(current);
+            setError(getErrorMessage(err));
+        }
         finally { setSaving(false); }
     };
+
+    /** Liga/desliga a chave-mestra do boleto — salva na hora. Lança em caso de erro (o diálogo mostra). */
+    const saveBoleto = async (enabled: boolean) => {
+        if (boletoInFlightRef.current) return;
+        boletoInFlightRef.current = true;
+        setBoletoSaving(true); setError(''); setSuccess('');
+        try {
+            const res = await pricingApi.setBoletoEnabled(enabled);
+            applyBoleto(res.boleto);
+            showMsg(res.message || (enabled ? 'Pagamento por boleto ativado.' : 'Pagamento por boleto desativado.'));
+        } catch (err: unknown) {
+            // Ligar sem a Cora ativa → 400 BOLETO_PROVIDER_DISABLED (traz o estado atual).
+            const current = boletoFromError(err);
+            if (current) applyBoleto(current);
+            throw err;
+        } finally {
+            boletoInFlightRef.current = false;
+            setBoletoSaving(false);
+        }
+    };
+
+    const handleBoletoToggle = (next: boolean) => {
+        if (!boleto || boletoSaving || boletoInFlightRef.current) return;
+        if (next === boleto.enabled) return;
+        if (!next) { setConfirmBoletoOff(true); return; } // desligar tem impacto → confirma antes
+        if (!boleto.providerEnabled) return; // bloqueado: a Cora não está ativa
+        saveBoleto(true).catch((err: unknown) => setError(getErrorMessage(err)));
+    };
+
+    // Bloqueado enquanto a Cora não estiver ativa. Exceção: se a chave ficou ligada e a Cora foi
+    // desativada depois, ainda dá para DESLIGAR (o backend sempre aceita desligar).
+    const boletoLocked = !!boleto && !boleto.providerEnabled && !boleto.enabled;
+    const boletoTone = !boleto ? 'off' : boleto.available ? 'on' : !boleto.providerEnabled ? 'blocked' : 'off';
 
     if (loading) return <LoadingSpinner />;
 
@@ -70,6 +139,72 @@ export default function SettingsPaymentMethodsSection() {
             </div>
 
             <SettingsMessages error={error} success={success} />
+
+            {/* E3 — chave-mestra do boleto: salva na hora; bloqueada enquanto a Cora não está ativa. */}
+            {boleto && (
+                <section
+                    aria-labelledby={`${uid}-boleto-title`}
+                    style={{
+                        padding: '18px 20px', borderRadius: '16px', marginBottom: '20px',
+                        background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
+                        // Mesmo acento dos cards de método logo abaixo (faixa superior de 3px).
+                        borderTop: `3px solid ${boletoTone === 'on' ? 'var(--success)' : boletoTone === 'blocked' ? 'var(--warning)' : 'var(--border-color)'}`,
+                    }}
+                >
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', flexWrap: 'wrap' }}>
+                        <div aria-hidden="true" style={{
+                            width: 44, height: 44, borderRadius: '12px', flexShrink: 0,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            background: boletoTone === 'on' ? 'var(--success-bg)' : 'var(--bg-elevated)',
+                            color: boletoTone === 'on' ? 'var(--success)' : 'var(--text-muted)',
+                            border: '1px solid var(--border-color)',
+                        }}>
+                            <FileText size={20} />
+                        </div>
+                        <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                <h3 id={`${uid}-boleto-title`} style={{ fontSize: '0.9375rem', fontWeight: 800, margin: 0 }}>
+                                    Aceitar pagamento por boleto
+                                </h3>
+                                <span role="status" style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                    fontSize: '0.6875rem', fontWeight: 700, padding: '2px 8px', borderRadius: '999px',
+                                    background: boletoTone === 'on' ? 'var(--success-bg)' : boletoTone === 'blocked' ? 'var(--warning-bg)' : 'var(--bg-elevated)',
+                                    color: boletoTone === 'on' ? 'var(--success)' : boletoTone === 'blocked' ? 'var(--warning)' : 'var(--text-muted)',
+                                }}>
+                                    {boletoTone === 'blocked' && <Lock size={11} aria-hidden="true" />}
+                                    {boletoSaving ? 'Salvando…' : boletoTone === 'on' ? 'Ligado' : boletoTone === 'blocked' ? (boleto.enabled ? 'Indisponível' : 'Bloqueado') : 'Desligado'}
+                                </span>
+                            </div>
+                            <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', lineHeight: 1.5, margin: '6px 0 0' }}>
+                                Ligado, o Boleto aparece como 3ª opção (junto de PIX e Cartão) nas cobranças feitas pelo admin e nas
+                                faturas e parcelas de contratos já ativos. Desligado, não aparece em lugar nenhum. Nunca entra nas
+                                contratações com reserva de 10 minutos, porque o boleto compensa em até 3 dias úteis.
+                            </p>
+                        </div>
+                        <div style={{ flexShrink: 0, alignSelf: 'center' }}>
+                            <ToggleSwitch
+                                id={`${uid}-boleto-switch`}
+                                checked={boleto.enabled}
+                                disabled={boletoLocked || boletoSaving}
+                                onChange={handleBoletoToggle}
+                                label="Aceitar boleto"
+                            />
+                        </div>
+                    </div>
+                    {!boleto.providerEnabled && (
+                        <div role="note" style={{
+                            display: 'flex', alignItems: 'flex-start', gap: '8px', marginTop: '14px',
+                            padding: '10px 12px', borderRadius: '10px', fontSize: '0.8125rem', lineHeight: 1.45,
+                            background: 'var(--warning-bg)', color: 'var(--text-primary)',
+                            border: '1px solid color-mix(in srgb, var(--warning) 35%, transparent)',
+                        }}>
+                            <AlertTriangle size={15} aria-hidden="true" style={{ flexShrink: 0, marginTop: 2, color: 'var(--warning)' }} />
+                            <span>{boleto.message || 'A integração Cora não está ativa. Ative a Cora em Integrações para aceitar pagamento por boleto.'}</span>
+                        </div>
+                    )}
+                </section>
+            )}
 
             {/* Info banner */}
             <div style={{
@@ -103,16 +238,16 @@ export default function SettingsPaymentMethodsSection() {
                                 }}>
                                     {pm.emoji}
                                 </div>
-                                <div>
-                                    <div style={{ fontWeight: 700, fontSize: '1.0625rem' }}>{pm.label}</div>
-                                    <span style={{
-                                        fontSize: '0.625rem', color: 'var(--text-muted)', background: 'var(--bg-elevated)',
-                                        padding: '2px 8px', borderRadius: '6px', fontFamily: "'JetBrains Mono', monospace",
-                                    }}>{pm.key}</span>
-                                </div>
+                                {/* Só o nome legível: a chave técnica (PIX/CARTAO/BOLETO) não é editável nem útil aqui (E8). */}
+                                <div style={{ fontWeight: 700, fontSize: '1.0625rem', minWidth: 0, overflowWrap: 'anywhere' }}>{pm.label}</div>
                             </div>
 
-                            {/* Active Toggle */}
+                            {/* Active Toggle — o do BOLETO é a chave-mestra do topo (salva na hora, exige a Cora). */}
+                            {pm.key === 'BOLETO' ? (
+                                <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--text-muted)', textAlign: 'right', maxWidth: 150 }}>
+                                    {pm.active ? 'Ligado' : 'Desligado'} · use a chave “Aceitar pagamento por boleto” acima
+                                </span>
+                            ) : (
                             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                                 <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: pm.active ? '#10b981' : 'var(--text-muted)' }}>
                                     {pm.active ? 'Ativo' : 'Inativo'}
@@ -135,6 +270,7 @@ export default function SettingsPaymentMethodsSection() {
                                     }} />
                                 </div>
                             </label>
+                            )}
                         </div>
 
                         {/* Fields */}
@@ -252,6 +388,24 @@ export default function SettingsPaymentMethodsSection() {
             {pmEdited && (
                 <SettingsSaveBar saving={saving} onSave={handleSavePaymentMethods} onDiscard={loadAll} />
             )}
+
+            {/* Desligar o boleto: reversível, mas com impacto → confirmação em tom de aviso (design-system §3a). */}
+            <DangerConfirmDialog
+                isOpen={confirmBoletoOff}
+                tone="warning"
+                icon={FileText}
+                title="Desligar o pagamento por boleto?"
+                description="A opção Boleto deixa de aparecer em todo o sistema, para o admin e para os clientes."
+                consequences={[
+                    'Nenhum boleto novo é emitido — o sistema recusa qualquer tentativa.',
+                    'Boletos já emitidos continuam válidos no banco e são conciliados enquanto a integração Cora estiver ativa.',
+                    'Cobranças pendentes seguem pagáveis por PIX ou cartão.',
+                ]}
+                confirmLabel="Desligar boleto"
+                loadingLabel="Desligando…"
+                onConfirm={() => saveBoleto(false)}
+                onClose={() => setConfirmBoletoOff(false)}
+            />
         </div>
     );
 }

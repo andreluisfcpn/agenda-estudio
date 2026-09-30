@@ -58,12 +58,100 @@ export const PROVIDER_MAP: Record<string, 'STRIPE' | 'CORA' | 'SICOOB'> = {
     BOLETO: 'CORA',
 };
 
+// ─── Boleto (E3): chave-mestra + provedor ───────────────
+// Fonte ÚNICA de "o boleto funciona?": a chave-mestra "Aceitar pagamento por boleto"
+// (PaymentMethodConfig BOLETO.active) LIGADA **e** a integração Cora habilitada (é quem emite). Usada por
+// GET /pricing/payment-methods, validatePaymentMethod, create-payment (ramo boleto), criação de
+// contrato/agendamento pelo admin e pelo próprio createPayment. `Contract.boletoAllowed` NÃO é mais
+// autoridade (a coluna fica sem uso).
+
+export type BoletoUnavailableReason = 'SWITCH_OFF' | 'PROVIDER_DISABLED';
+
+export interface BoletoStatus {
+    /** Chave-mestra "Aceitar pagamento por boleto" (PaymentMethodConfig BOLETO.active). */
+    enabled: boolean;
+    /** A integração Cora (provedor do boleto) está habilitada e com credenciais do ambiente ativo. */
+    providerEnabled: boolean;
+    /** Boleto EFETIVO: chave ligada E Cora habilitada. */
+    available: boolean;
+    /** Por que não está disponível (null quando disponível). */
+    reason: BoletoUnavailableReason | null;
+    /** Texto pronto para a tela (null quando disponível). */
+    message: string | null;
+}
+
+export const BOLETO_PROVIDER_DISABLED_MESSAGE = 'A integração Cora não está ativa. Ative a Cora em Integrações para aceitar pagamento por boleto.';
+export const BOLETO_SWITCH_OFF_MESSAGE = 'O pagamento por boleto está desligado nas Configurações.';
+
+/** Estado do boleto (chave-mestra + Cora). Nunca lança: falha ao consultar a Cora conta como desligada. */
+export async function getBoletoStatus(): Promise<BoletoStatus> {
+    const [row, providerEnabled] = await Promise.all([
+        prisma.paymentMethodConfig.findUnique({ where: { key: 'BOLETO' }, select: { active: true } }),
+        isCoraEnabled().catch(() => false),
+    ]);
+    const enabled = !!row?.active;
+    const available = enabled && providerEnabled;
+    const reason: BoletoUnavailableReason | null = available ? null : (!providerEnabled ? 'PROVIDER_DISABLED' : 'SWITCH_OFF');
+    return {
+        enabled,
+        providerEnabled,
+        available,
+        reason,
+        message: reason === 'PROVIDER_DISABLED' ? BOLETO_PROVIDER_DISABLED_MESSAGE : reason === 'SWITCH_OFF' ? BOLETO_SWITCH_OFF_MESSAGE : null,
+    };
+}
+
+/** O boleto está EFETIVAMENTE disponível (chave ligada E Cora habilitada)? */
+export async function isBoletoAvailable(): Promise<boolean> {
+    return (await getBoletoStatus()).available;
+}
+
+/** Erro de boleto indisponível (chave desligada ou Cora inativa) — as rotas respondem 400 com a mensagem. */
+export class BoletoUnavailableError extends Error {
+    readonly code = 'BOLETO_UNAVAILABLE';
+    readonly reason: BoletoUnavailableReason;
+    constructor(reason: BoletoUnavailableReason) {
+        super(reason === 'PROVIDER_DISABLED'
+            ? 'Boleto indisponível: a integração Cora não está ativa.'
+            : 'Boleto indisponível: o pagamento por boleto está desligado nas Configurações.');
+        this.name = 'BoletoUnavailableError';
+        this.reason = reason;
+    }
+}
+
+/** Lança BoletoUnavailableError se o boleto não estiver efetivamente disponível. */
+export async function assertBoletoAvailable(): Promise<void> {
+    const status = await getBoletoStatus();
+    if (!status.available) throw new BoletoUnavailableError(status.reason ?? 'SWITCH_OFF');
+}
+
+/**
+ * E3: o boleto compensa em dias, então nunca serve a uma contratação com PRAZO de pagamento (reserva de
+ * 10 minutos do avulso, /self, serviço, personalizado do cliente; renovação aguardando pagamento). Vale
+ * para cobranças do admin e para parcelas/faturas de contrato JÁ ativado. Devolve o motivo da recusa ou null.
+ */
+export function boletoBlockedForPayment(payment: {
+    contractId?: string | null;
+    contract?: { status?: string | null } | null;
+    booking?: { status?: string | null; holdExpiresAt?: Date | null } | null;
+}): string | null {
+    const timed = 'O boleto compensa em até 3 dias úteis e não está disponível para contratações com prazo de pagamento. Use PIX ou cartão.';
+    if (!payment.contractId || !payment.contract) return timed; // contratação /self ainda sem contrato
+    if (payment.contract.status === 'AWAITING_PAYMENT') return timed;
+    if (payment.booking?.status === 'HELD' || (payment.booking?.holdExpiresAt && payment.booking.holdExpiresAt.getTime() > Date.now())) return timed;
+    return null;
+}
+
 /** Returns only payment methods that are BOTH admin-active AND have their provider enabled. */
 export async function getAvailablePaymentMethods() {
-    const methods = await prisma.paymentMethodConfig.findMany({
+    const allActive = await prisma.paymentMethodConfig.findMany({
         where: { active: true },
         orderBy: { sortOrder: 'asc' },
     });
+    // E3: o BOLETO só entra quando EFETIVO (chave ligada E Cora habilitada — getBoletoStatus), inclusive
+    // no atalho de dev abaixo: nunca oferecer um boleto que ninguém emite.
+    const boletoAvailable = allActive.some(m => m.key.toUpperCase() === 'BOLETO') && (await isBoletoAvailable());
+    const methods = allActive.filter(m => m.key.toUpperCase() !== 'BOLETO' || boletoAvailable);
 
     const integrations = await prisma.integrationConfig.findMany();
 
@@ -90,6 +178,8 @@ export async function getAvailablePaymentMethods() {
         if (key === 'PIX') {
             return enabledProviders.has('SICOOB') || enabledProviders.has('CORA');
         }
+        // Boleto: já filtrado acima pela fonte única (chave + Cora com credenciais).
+        if (key === 'BOLETO') return true;
         const provider = PROVIDER_MAP[key];
         // If no provider mapping exists, keep it (future-proof)
         return !provider || enabledProviders.has(provider);
@@ -194,6 +284,10 @@ function generateMockResult(opts: CreatePaymentOpts): PaymentResult {
     }
 
     if (opts.paymentMethod === 'BOLETO') {
+        if (process.env.NODE_ENV === 'production') {
+            // Defesa em profundidade: nunca entregar um boleto falso em produção.
+            throw new Error('Erro ao gerar boleto. Tente novamente ou use outro método de pagamento.');
+        }
         return {
             provider: 'MOCK',
             providerRef: mockId,
@@ -319,9 +413,14 @@ export async function createPayment(opts: CreatePaymentOpts): Promise<PaymentRes
 
     // ─── BOLETO: Cora boleto puro ────────────────────────
     if (paymentMethod === 'BOLETO') {
-        const coraEnabled = await isCoraEnabled();
-        if (!coraEnabled) {
-            console.log('[Gateway] Cora not configured, using mock for BOLETO');
+        // E3: boleto só com a chave-mestra ligada E a Cora habilitada. Em produção, indisponível é ERRO
+        // (antes caía num boleto MOCK — um link falso podia ir ao cliente); em dev/teste, mock.
+        const boletoStatus = await getBoletoStatus();
+        if (!boletoStatus.available) {
+            if (process.env.NODE_ENV === 'production') {
+                throw new BoletoUnavailableError(boletoStatus.reason ?? 'SWITCH_OFF');
+            }
+            console.log('[Gateway] Boleto indisponível (chave desligada ou Cora inativa), usando mock (dev)');
             return generateMockResult(opts);
         }
 

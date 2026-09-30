@@ -5,6 +5,7 @@ import { authenticate } from '../../middleware/auth.js';
 import { BookingStatus } from '../../generated/prisma/client.js';
 import { publicAvailabilitySchema, availabilitySchema } from './validators.js';
 import { getPublicDayAvailability, getAuthDayAvailability } from './availability.service.js';
+import { CLIENT_BOOKING_SELECT, toClientBooking } from './booking.clientView.js';
 
 export function registerAvailabilityRoutes(router: Router) {
 
@@ -47,21 +48,19 @@ router.get('/availability', authenticate, async (req: Request, res: Response) =>
             return;
         }
 
-        // Get client's own bookings for this date
+        // Get client's own bookings for this date — na MESMA forma do GET /my (booking.clientView):
+        // título/capa/contrato para o card da agenda não regredir ao nome da faixa, e sem adminNotes.
         const dateObj = new Date(date + 'T00:00:00');
-        const myBookings = req.user ? await prisma.booking.findMany({
+        const now = new Date();
+        const myBookings = req.user ? (await prisma.booking.findMany({
             where: {
                 date: dateObj,
                 userId: req.user.userId,
                 status: { notIn: [BookingStatus.CANCELLED] },
             },
-            select: {
-                id: true, startTime: true, endTime: true, status: true,
-                tierApplied: true, price: true, contractId: true,
-                adminNotes: true, clientNotes: true, platforms: true, platformLinks: true,
-                addOns: true, holdExpiresAt: true,
-            },
-        }) : [];
+            orderBy: { startTime: 'asc' },
+            select: CLIENT_BOOKING_SELECT,
+        })).map(b => toClientBooking(b, now)) : [];
 
         res.json({
             date,

@@ -1,6 +1,7 @@
 import { getErrorMessage } from '../utils/errors';
 import { useState, useEffect, useRef, FormEvent } from 'react';
 import BottomSheetModal from './BottomSheetModal';
+import Tooltip from './ui/Tooltip';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Loader2, ChevronLeft, Eye, EyeOff, Mail } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -287,26 +288,30 @@ export default function LoginModal({ isOpen, onClose, pendingSlotLabel }: LoginM
                 <div className="login-modal-header">
                     <div className="login-modal-nav">
                         {canGoBack ? (
-                            <button
-                                onClick={() => {
-                                    if (view === 'register_code') navigateTo('register_form');
-                                    else if (view === 'login_code') navigateTo('login');
-                                    else navigateTo('login');
-                                }}
-                                className="login-modal-icon-btn"
-                                aria-label="Voltar"
-                            >
-                                <ChevronLeft size={22} />
-                            </button>
+                            <Tooltip content="Voltar" describe={false}>
+                                <button
+                                    onClick={() => {
+                                        if (view === 'register_code') navigateTo('register_form');
+                                        else if (view === 'login_code') navigateTo('login');
+                                        else navigateTo('login');
+                                    }}
+                                    className="login-modal-icon-btn"
+                                    aria-label="Voltar"
+                                >
+                                    <ChevronLeft size={22} />
+                                </button>
+                            </Tooltip>
                         ) : (
                             <div style={{ width: '44px' }} />
                         )}
 
                         <h2 className="login-modal-title">{getTitle()}</h2>
 
-                        <button onClick={onClose} className="login-modal-icon-btn" aria-label="Fechar">
-                            <X size={20} />
-                        </button>
+                        <Tooltip content="Fechar" describe={false}>
+                            <button onClick={onClose} className="login-modal-icon-btn" aria-label="Fechar">
+                                <X size={20} />
+                            </button>
+                        </Tooltip>
                     </div>
 
                     {/* Step indicator for register flow (2 steps) */}
@@ -403,15 +408,17 @@ export default function LoginModal({ isOpen, onClose, pendingSlotLabel }: LoginM
                                                     minLength={6}
                                                     required
                                                 />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setShowPassword(p => !p)}
-                                                    className="login-input-action"
-                                                    aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
-                                                    tabIndex={-1}
-                                                >
-                                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                                                </button>
+                                                <Tooltip content={showPassword ? 'Ocultar senha' : 'Mostrar senha'} describe={false}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowPassword(p => !p)}
+                                                        className="login-input-action"
+                                                        aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                                                        tabIndex={-1}
+                                                    >
+                                                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                                    </button>
+                                                </Tooltip>
                                             </div>
                                             {fieldErrors.password && <div className="login-field-error">{translateError(fieldErrors.password)}</div>}
                                         </div>

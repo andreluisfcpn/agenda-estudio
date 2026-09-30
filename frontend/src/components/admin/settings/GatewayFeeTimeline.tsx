@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { pricingApi } from '../../../api/client';
 import { formatBRL } from '../../../utils/format';
 import { History, ArrowRight } from 'lucide-react';
+import BrandLoader from '../../ui/BrandLoader';
 
 interface FeeRow { effectiveFrom: string; feePct: number; feeFixedCents: number }
 type HistoryMap = Record<string, FeeRow[]>;
@@ -27,17 +28,28 @@ export default function GatewayFeeTimeline({ refreshKey }: Props) {
     const [history, setHistory] = useState<HistoryMap>({});
     const [current, setCurrent] = useState<CurrentMap>({});
     const [loaded, setLoaded] = useState(false);
+    const [failed, setFailed] = useState(false);
 
     useEffect(() => {
         let alive = true;
         pricingApi.getFeeHistory()
             .then(res => { if (alive) { setHistory(res.history || {}); setCurrent(res.current || {}); setLoaded(true); } })
-            .catch(() => { /* silencioso: complemento informativo; num refetch mantém o que já estava na tela */ });
+            // Silencioso: complemento informativo; num refetch mantém o que já estava na tela. Na 1ª carga,
+            // a falha só tira o indicador de carregamento (o bloco não aparece).
+            .catch(() => { if (alive) setFailed(true); });
         return () => { alive = false; };
     }, [refreshKey]);
 
-    // Silencioso até a 1ª carga concluir. Depois NÃO desmonta em recargas (não pisca ao salvar a taxa).
-    if (!loaded) return null;
+    // 1ª carga: loading de marca discreto (E5 — antes não aparecia nada). Depois NÃO desmonta em
+    // recargas (não pisca ao salvar a taxa).
+    if (!loaded) {
+        if (failed) return null;
+        return (
+            <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px dashed var(--border-color)' }}>
+                <BrandLoader size="inline" label="Carregando histórico de taxas…" />
+            </div>
+        );
+    }
 
     return (
         <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px dashed var(--border-color)' }}>

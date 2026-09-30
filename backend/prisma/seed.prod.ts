@@ -101,7 +101,9 @@ async function main() {
   const paymentMethods = [
     { key: "PIX", label: "PIX", shortLabel: "PIX", emoji: "⚡", description: "Pagamento instantâneo", color: "#22c55e", active: true, sortOrder: 0, accessMode: "FULL" },
     { key: "CARTAO", label: "Cartão de Crédito", shortLabel: "Cartão", emoji: "💳", description: "Crédito ou débito", color: "#8b5cf6", active: true, sortOrder: 1, accessMode: "FULL" },
-    { key: "BOLETO", label: "Boleto Bancário", shortLabel: "Boleto", emoji: "📄", description: "Compensação em até 3 dias úteis", color: "#f59e0b", active: true, sortOrder: 2, accessMode: "PROGRESSIVE" },
+    // E3: BOLETO.active é a chave-mestra "Aceitar pagamento por boleto" — nasce DESLIGADA (o dono liga nas
+    // Configurações depois de ativar a Cora). O upsert abaixo usa update: {} → só vale em instalação nova.
+    { key: "BOLETO", label: "Boleto Bancário", shortLabel: "Boleto", emoji: "📄", description: "Compensação em até 3 dias úteis", color: "#f59e0b", active: false, sortOrder: 2, accessMode: "PROGRESSIVE" },
   ];
   for (const pm of paymentMethods) {
     await prisma.paymentMethodConfig.upsert({ where: { key: pm.key }, create: pm, update: {} });

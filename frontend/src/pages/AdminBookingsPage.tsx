@@ -7,6 +7,7 @@ import { ClipboardList, Search, FilterX, Pencil, Trash2, Clock, Moon, Ban } from
 import AdminPageHeader from '../components/admin/AdminPageHeader';
 import { HeroSkeleton, TableSkeleton } from '../components/ui/SkeletonLoader';
 import StatusBadge from '../components/ui/StatusBadge';
+import Tooltip from '../components/ui/Tooltip';
 import { TIER_META, BOOKING_STATUS_META, getMeta } from '../constants/adminMeta';
 import { formatBRL } from '../utils/format';
 import { useAdminBookings } from '../hooks/useAdminBookings';
@@ -273,12 +274,13 @@ export default function AdminBookingsPage() {
                                                             {b.user.name.charAt(0).toUpperCase()}
                                                         </div>
                                                         <div>
-                                                            <button
-                                                                style={{ fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', color: 'var(--accent-text)', background: 'none', border: 'none', padding: 0, fontFamily: 'inherit', textAlign: 'left' }}
-                                                                title={`Abrir perfil de ${b.user.name}`}
-                                                                onClick={() => navigate(`/admin/clients/${b.user.id}`)}>
-                                                                {b.user.name}
-                                                            </button>
+                                                            <Tooltip content={`Abrir perfil de ${b.user.name}`}>
+                                                                <button type="button"
+                                                                    style={{ fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', color: 'var(--accent-text)', background: 'none', border: 'none', padding: 0, fontFamily: 'inherit', textAlign: 'left' }}
+                                                                    onClick={() => navigate(`/admin/clients/${b.user.id}`)}>
+                                                                    {b.user.name}
+                                                                </button>
+                                                            </Tooltip>
                                                             {b.user.email && (
                                                                 <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '1px' }}>
                                                                     {b.user.email}
@@ -350,16 +352,20 @@ export default function AdminBookingsPage() {
                                                 {/* Actions */}
                                                 <td data-label="" style={{ textAlign: 'center' }}>
                                                     <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                                                        <button className="admin-icon-btn admin-icon-btn--success"
-                                                            aria-label={`Editar agendamento de ${b.user.name}`}
-                                                            onClick={() => setEditBooking(b)}>
-                                                            <Pencil size={16} aria-hidden="true" />
-                                                        </button>
-                                                        <button className="admin-icon-btn admin-icon-btn--danger"
-                                                            aria-label={`Excluir permanentemente agendamento de ${b.user.name}`}
-                                                            onClick={() => handleHardDelete(b)}>
-                                                            <Trash2 size={16} aria-hidden="true" />
-                                                        </button>
+                                                        <Tooltip content="Editar agendamento" describe={false}>
+                                                            <button type="button" className="admin-icon-btn admin-icon-btn--success"
+                                                                aria-label={`Editar agendamento de ${b.user.name}`}
+                                                                onClick={() => setEditBooking(b)}>
+                                                                <Pencil size={16} aria-hidden="true" />
+                                                            </button>
+                                                        </Tooltip>
+                                                        <Tooltip content="Excluir agendamento" describe={false}>
+                                                            <button type="button" className="admin-icon-btn admin-icon-btn--danger"
+                                                                aria-label={`Excluir permanentemente agendamento de ${b.user.name}`}
+                                                                onClick={() => handleHardDelete(b)}>
+                                                                <Trash2 size={16} aria-hidden="true" />
+                                                            </button>
+                                                        </Tooltip>
                                                     </div>
                                                 </td>
                                             </tr>

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { usersApi } from '../../../api/client';
 import { useUI } from '../../../context/UIContext';
 import { X } from 'lucide-react';
+import Tooltip from '../../ui/Tooltip';
 
 const SAVE_ERROR = { message: 'Não foi possível salvar. Tente novamente.', type: 'error' as const };
 
@@ -30,8 +31,10 @@ export default function TagsEditor({ tags, userId, onSaved }: TagsEditorProps) {
                 {tags.map(t => (
                     <span key={t} style={{ fontSize: '0.6875rem', padding: '2px 8px', borderRadius: '999px', background: 'rgba(17,129,155,0.15)', color: 'var(--accent-text)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                         #{t}
-                        <button onClick={() => removeTag(t)} aria-label={`Remover tag ${t}`}
-                            style={{ cursor: 'pointer', opacity: 0.6, background: 'none', border: 'none', color: 'inherit', padding: '2px 4px', display: 'inline-flex', alignItems: 'center' }}><X size={12} aria-hidden="true" /></button>
+                        <Tooltip content="Remover tag" describe={false}>
+                            <button type="button" onClick={() => removeTag(t)} aria-label={`Remover tag ${t}`}
+                                style={{ cursor: 'pointer', opacity: 0.6, background: 'none', border: 'none', color: 'inherit', padding: '2px 4px', display: 'inline-flex', alignItems: 'center' }}><X size={12} aria-hidden="true" /></button>
+                        </Tooltip>
                     </span>
                 ))}
                 <input placeholder="+ tag" aria-label="Adicionar tag" value={newTag} onChange={e => setNewTag(e.target.value)} onKeyDown={e => e.key === 'Enter' && addTag()} onBlur={addTag}

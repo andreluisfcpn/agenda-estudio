@@ -65,6 +65,60 @@ async function verifyCoraSignature(req: Request): Promise<CoraSigState> {
     }
 }
 
+/**
+ * E13 — fatura Cora (boleto/PIX) de uma cobrança CANCELADA foi paga? Relê a fatura na API da Cora
+ * (nunca confia no corpo do webhook) e, se paga, avisa o admin (1 aviso por cobrança).
+ */
+async function alertIfCancelledCoraInvoicePaid(paymentId: string, invoiceId: string): Promise<void> {
+    try {
+        const { coraGetBoleto } = await import('../../lib/coraService.js');
+        const { isCoraInvoicePaid } = await import('../../lib/coraReconciliation.js');
+        const invoice = await coraGetBoleto(invoiceId);
+        if (!isCoraInvoicePaid(invoice)) return;
+        const paid = Number(invoice?.total_paid);
+        const total = Number(invoice?.total_amount);
+        const { alertPaymentOnCancelledCharge } = await import('../../lib/paymentEffects.js');
+        await alertPaymentOnCancelledCharge(paymentId, {
+            provider: 'Cora',
+            providerRef: invoiceId,
+            amountCents: Number.isFinite(paid) && paid > 0 ? paid : (Number.isFinite(total) && total > 0 ? total : null),
+        });
+    } catch (err) {
+        console.error(`[Webhook:Cora] Falha ao conferir a fatura ${invoiceId} da cobrança cancelada ${paymentId}:`, err instanceof Error ? err.message : err);
+    }
+}
+
+/**
+ * E13 — o Stripe confirmou (evento assinado) o pagamento de uma cobrança que está CANCELADA: o cartão
+ * foi debitado e a linha não vira PAID sozinha → avisa o admin em vez de só ignorar.
+ */
+async function alertIfCancelledStripeChargePaid(paymentId: string, ref: string | null | undefined, amountCents: number | null | undefined): Promise<void> {
+    const fresh = await prisma.payment.findUnique({ where: { id: paymentId }, select: { status: true } });
+    if (fresh?.status !== 'CANCELLED') return;
+    const { alertPaymentOnCancelledCharge } = await import('../../lib/paymentEffects.js');
+    await alertPaymentOnCancelledCharge(paymentId, { provider: 'Stripe (cartão)', providerRef: ref ?? null, amountCents: amountCents ?? null });
+}
+
+/**
+ * Z1-c — rede de segurança da cobrança em dobro (resto do AC-2): o Stripe confirmou (evento assinado) um
+ * PaymentIntent de uma cobrança que JÁ está PAID por OUTRO PaymentIntent (ex.: a cobrança automática quitou
+ * a parcela e o checkout de cartão que ficou aberto foi confirmado depois). O cliente foi debitado duas
+ * vezes e só há uma baixa → avisa o admin para estornar (1 aviso por PaymentIntent), em vez de ignorar.
+ * Mesmo PI da baixa (webhook reentregue / depois do verify) → nada.
+ */
+async function alertIfPaidByAnotherCardIntent(paymentId: string, piId: string, amountCents: number | null | undefined): Promise<void> {
+    const fresh = await prisma.payment.findUnique({ where: { id: paymentId }, select: { status: true, providerRef: true } });
+    if (fresh?.status !== 'PAID' || !fresh.providerRef || fresh.providerRef === piId) return;
+    if (!fresh.providerRef.startsWith('pi_')) {
+        // Paga por outro meio (PIX/boleto/baixa manual) e o cartão aprovou depois: fora do aviso de
+        // "dois PaymentIntents", mas nunca em silêncio — rastro para conferência e estorno manual.
+        console.error(`[Webhook:Stripe][SECURITY] PI ${piId} aprovado (valor ${amountCents ?? '?'}) para o payment ${paymentId}, que já estava PAID por outro meio (providerRef=${fresh.providerRef}) — possível pagamento em duplicidade, conferir e estornar manualmente.`);
+        return;
+    }
+    const { alertDoubleCardCharge } = await import('../../jobs/autoChargeJob.js');
+    await alertDoubleCardCharge(paymentId, { extraPi: piId, paidByPi: fresh.providerRef, amountCents: amountCents ?? null });
+}
+
 // ─── POST /api/webhooks/cora ────────────────────────────
 // Cora sends notifications when boleto/PIX payments are confirmed
 
@@ -103,6 +157,14 @@ router.post('/cora', async (req: Request, res: Response) => {
 
         const { reconcileCoraPayment, reconcileCoraCancellation } = await import('../../lib/coraReconciliation.js');
         const cancellationEvents = ['invoice.cancelled', 'invoice.canceled', 'invoice.expired'];
+
+        // E13: cobrança já CANCELADA (parcela anulada de contrato cancelado) — nunca vira PAID aqui, mas
+        // um pagamento confirmado pela Cora não pode ficar só no log: confere a fatura real e avisa o admin.
+        if (payment.status === 'CANCELLED') {
+            if (!cancellationEvents.includes(eventType)) await alertIfCancelledCoraInvoicePaid(payment.id, String(invoiceId));
+            res.status(200).json({ received: true });
+            return;
+        }
 
         if (cancellationEvents.includes(eventType)) {
             // Verify the invoice is genuinely cancelled/expired via Cora before failing it.
@@ -161,6 +223,11 @@ async function handleSicoobWebhook(req: Request, res: Response) {
             }
             if (owner.status === 'PENDING' && owner.provider === 'SICOOB') {
                 if (await reconcileSicoobPayment(owner.id, { txid: String(txid) })) continue;
+            }
+            // E13: QR anterior de uma cobrança CANCELADA foi pago → alerta ao admin (além do log abaixo).
+            if (owner.status === 'CANCELLED') {
+                const { alertIfCancelledSicoobChargePaid } = await import('../../lib/sicoobReconciliation.js');
+                await alertIfCancelledSicoobChargePaid(owner.id, { txid: String(txid) });
             }
             // Já pago por outro meio (ou trocado para cartão): nunca marcar PAID duas vezes — estorno manual.
             console.error(`[Webhook:Sicoob][SECURITY] Pagamento no QR anterior ${txid} do payment ${owner.id} (status=${owner.status}, provider=${owner.provider}) não conciliado automaticamente — possível pagamento em duplicidade, conferir e estornar manualmente.`);
@@ -243,6 +310,13 @@ router.post('/stripe', async (req: Request, res: Response) => {
                         if (updated.count > 0) {
                             console.log(`[Webhook:Stripe] Payment ${paymentId} marked as PAID`);
                             await onPaymentConfirmed(paymentId);
+                        } else if (session.payment_status === 'paid') {
+                            // E13: a linha não estava PENDING — se está CANCELADA, o admin é avisado.
+                            await alertIfCancelledStripeChargePaid(
+                                paymentId,
+                                typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id,
+                                session.amount_total,
+                            );
                         }
                     }
                 }
@@ -327,12 +401,24 @@ router.post('/stripe', async (req: Request, res: Response) => {
                     // VULN-H2 FIX: Verify amount matches before marking as PAID.
                     // Card charges may carry an installment surcharge in chargedAmount; PIX/boleto use amount.
                     const expectedAmount = payment.chargedAmount ?? payment.amount;
-                    if (pi.amount !== expectedAmount) {
+                    if (payment.status === 'CANCELLED') {
+                        // E13: cobrança anulada (contrato cancelado) cujo PaymentIntent foi aprovado depois —
+                        // seja qual for o valor, o cartão foi debitado sem baixa: avisa o admin.
+                        await alertIfCancelledStripeChargePaid(paymentId, pi.id, pi.amount);
+                    } else if (pi.amount !== expectedAmount) {
                         console.error(`[Webhook:Stripe] Amount mismatch on PI succeeded: PI=${pi.amount}, DB=${expectedAmount} — skipping payment ${paymentId}`);
                     } else {
-                        // Atomic update to prevent race conditions
+                        // Atomic update to prevent race conditions.
+                        // PAY-6: também a linha que uma recusa ATRASADA (payment_intent.payment_failed do
+                        // MESMO PaymentIntent) marcou FAILED — o cliente trocou o cartão no mesmo PI e ele foi
+                        // aprovado; sem isto o cartão era debitado e a cobrança ficava FAILED para sempre.
+                        // Só quando o PI aprovado é exatamente o providerRef da linha (FAILED de outro PI ou
+                        // de PIX fica de fora); CANCELLED e valor divergente já foram tratados acima.
                         const updated = await prisma.payment.updateMany({
-                            where: { id: paymentId, status: 'PENDING' },
+                            where: {
+                                id: paymentId,
+                                OR: [{ status: 'PENDING' }, { status: 'FAILED', provider: 'STRIPE', providerRef: String(pi.id) }],
+                            },
                             data: {
                                 status: 'PAID',
                                 paidAt: new Date(),
@@ -350,8 +436,25 @@ router.post('/stripe', async (req: Request, res: Response) => {
                                 await cancelStalePixCharge(payment.provider, payment.providerRef, payment.pixString);
                             }
                             await onPaymentConfirmed(paymentId);
+                        } else {
+                            // E13: a linha não estava PENDING — se está CANCELADA (parcela anulada de
+                            // contrato cancelado), o cartão foi debitado sem baixa: avisa o admin.
+                            await alertIfCancelledStripeChargePaid(paymentId, pi.id, pi.amount);
+                            // PAY-6: aprovado sem baixa numa linha que não é PENDING, nem a FAILED deste PI,
+                            // nem CANCELLED (ex.: FAILED de outra tentativa) → rastro no log para conferência.
+                            const fresh = await prisma.payment.findUnique({ where: { id: paymentId }, select: { status: true, providerRef: true } });
+                            if (fresh && fresh.status !== 'PAID' && fresh.status !== 'CANCELLED') {
+                                console.error(`[Webhook:Stripe][ALERTA] PI ${pi.id} aprovado (valor ${pi.amount}) mas o payment ${paymentId} está ${fresh.status} (providerRef=${fresh.providerRef}) — sem baixa automática, conferir manualmente.`);
+                            }
+                            // Z1-c: virou PAID por OUTRO PaymentIntent entre a leitura e o update (corrida com
+                            // a cobrança automática / o verify de outro PI) → cobrança em dobro: avisa o admin.
+                            await alertIfPaidByAnotherCardIntent(paymentId, String(pi.id), pi.amount);
                         }
                     }
+                } else if (payment) {
+                    // Z1-c: a cobrança JÁ estava PAID. Se foi por OUTRO PaymentIntent, o cliente foi debitado
+                    // duas vezes — antes este evento era ignorado em silêncio. Mesmo PI → nada (idempotente).
+                    await alertIfPaidByAnotherCardIntent(paymentId, String(pi.id), pi.amount);
                 }
             }
 

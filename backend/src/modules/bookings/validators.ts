@@ -80,17 +80,49 @@ export const completeBookingSchema = z.object({
     chatMessages: z.number().int().min(0).optional().nullable(),
 });
 
+/** Redes em que uma gravação pode ser transmitida (mesmas chaves de `platform_<rede>_enabled` e do frontend). */
+export const BOOKING_PLATFORM_KEYS = ['YOUTUBE', 'INSTAGRAM', 'FACEBOOK', 'TIKTOK'] as const;
+
+export const EPISODE_TITLE_MAX = 140;
+export const EPISODE_DESCRIPTION_MAX = 4000;
+
+// Redes planejadas pelo cliente: string JSON com um array de chaves conhecidas (é assim que a coluna
+// Booking.platforms guarda). Normaliza (sem repetição, ordem fixa) e recusa qualquer outra coisa —
+// antes a rota aceitava qualquer texto.
+const clientPlatformsSchema = z
+    .string({ invalid_type_error: 'Redes de transmissão inválidas.' })
+    .max(400, 'Redes de transmissão inválidas.')
+    .transform((raw, ctx) => {
+        let parsed: unknown;
+        try { parsed = JSON.parse(raw); } catch { parsed = undefined; }
+        const known = BOOKING_PLATFORM_KEYS as readonly string[];
+        if (!Array.isArray(parsed) || !parsed.every(k => typeof k === 'string' && known.includes(k))) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Redes de transmissão inválidas.' });
+            return z.NEVER;
+        }
+        return JSON.stringify(known.filter(k => (parsed as string[]).includes(k)));
+    });
+
+// O que o CLIENTE edita na própria gravação (E12): título, descrição e redes planejadas (a capa vai
+// pelo upload). Texto vazio (ou null) limpa o campo. Campos fora desta lista são ignorados:
+//   - clientNotes é o feedback do ESTÚDIO ao cliente (escrito na finalização) — só leitura aqui;
+//   - métricas e links da transmissão são registrados pelo estúdio (PUT /:id/complete, PATCH /:id).
 export const clientUpdateBookingSchema = z.object({
-    clientNotes: z.string().optional(),
-    episodeTitle: z.string().max(140).optional(),
-    episodeDescription: z.string().max(4000).optional(),
-    // Planned broadcast networks (client picks where it will air). The actual broadcast
-    // LINKS are admin-only (set in the finalize/complete flow), so platformLinks is not here.
-    platforms: z.string().optional(),
-    durationMinutes: z.number().optional().nullable(),
-    peakViewers: z.number().optional().nullable(),
-    chatMessages: z.number().optional().nullable(),
-    audienceOrigin: z.string().optional().nullable(),
+    episodeTitle: z
+        .string({ invalid_type_error: 'Título inválido.' })
+        .transform(v => v.replace(/\s+/g, ' ').trim()) // título é uma linha só
+        .pipe(z.string().max(EPISODE_TITLE_MAX, `O título pode ter no máximo ${EPISODE_TITLE_MAX} caracteres.`))
+        .nullable()
+        .optional()
+        .transform(v => (v === undefined ? undefined : v || null)),
+    episodeDescription: z
+        .string({ invalid_type_error: 'Descrição inválida.' })
+        .transform(v => v.trim())
+        .pipe(z.string().max(EPISODE_DESCRIPTION_MAX, `A descrição pode ter no máximo ${EPISODE_DESCRIPTION_MAX} caracteres.`))
+        .nullable()
+        .optional()
+        .transform(v => (v === undefined ? undefined : v || null)),
+    platforms: clientPlatformsSchema.optional(),
 });
 
 export const rescheduleSchema = z.object({

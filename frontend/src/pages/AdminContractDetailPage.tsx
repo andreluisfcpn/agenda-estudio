@@ -1,14 +1,15 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { contractsApi, pricingApi, paymentsApi, bookingsApi, ContractDetail, PaymentSummary, AddOnConfig, Booking } from '../api/client';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import { useUI } from '../context/UIContext';
 import { HeroSkeleton, TableSkeleton } from '../components/ui/SkeletonLoader';
 import StatusBadge from '../components/ui/StatusBadge';
+import Tooltip from '../components/ui/Tooltip';
+import BrandLoader from '../components/ui/BrandLoader';
 import ServiceLineItem from '../components/ui/ServiceLineItem';
 import ServiceContractPanel from '../components/client/ServiceContractPanel';
-import BottomSheetModal from '../components/BottomSheetModal';
-import InlineCheckout from '../components/InlineCheckout';
+import ChargeNowSheet from '../components/admin/ChargeNowSheet';
 import FinalizeRecordingModal from '../components/admin/bookings/FinalizeRecordingModal';
 import { MakeupStatusPanel } from '../components/admin/bookings/MakeupRescheduleModal';
 import { TIER_META, BOOKING_STATUS_META, CONTRACT_STATUS_META, CONTRACT_TYPE_META, PAYMENT_STATUS_META, getMeta } from '../constants/adminMeta';
@@ -18,9 +19,16 @@ import { decomposeBookingPricing, AddonCatalogEntry } from '../utils/bookingPric
 import { formatBRL } from '../utils/format';
 import { paidChargedAmount } from '../utils/clientHealth';
 import { getErrorMessage } from '../utils/errors';
-import { ArrowLeft, Mic, CreditCard, Receipt, Sparkles, ExternalLink, CheckCircle2, Zap, Eye, MessageCircle, Radio, ClipboardCheck, UserX } from 'lucide-react';
+import { todayStrSaoPaulo } from '../utils/time';
+import { bookingSummary } from '../components/admin/bookings/bookingDanger';
+import { ArrowLeft, Mic, CreditCard, Receipt, Sparkles, ExternalLink, CheckCircle2, Zap, Eye, MessageCircle, Radio, ClipboardCheck, UserX, RefreshCw, FolderSymlink, Scale, Undo2 } from 'lucide-react';
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' });
+/** Instante (ISO) → data no fuso do estúdio. Para carimbos de data/hora (pedido/cancelamento), não para datas @db.Date. */
+const fmtDateSP = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: 'short', year: 'numeric' });
+
+/** E13: a cobrança é a multa de cancelamento (rótulo próprio, fora da contagem de parcelas). */
+const isFinePayment = (p: PaymentSummary) => p.kind === 'CANCELLATION_FINE' || p.metadata?.kind === 'CANCELLATION_FINE';
 
 export default function AdminContractDetailPage() {
     const { id } = useParams<{ id: string }>();
@@ -34,22 +42,29 @@ export default function AdminContractDetailPage() {
     const [loading, setLoading] = useState(true);
     const [sandbox, setSandbox] = useState(false);
     const [charge, setCharge] = useState<PaymentSummary | null>(null);
+    const [chargeError, setChargeError] = useState('');
     const [editingServices, setEditingServices] = useState(false);
     const [serviceDraft, setServiceDraft] = useState<string[]>([]);
     const [savingServices, setSavingServices] = useState(false);
     const [finalizeBooking, setFinalizeBooking] = useState<Booking | null>(null);
+    /** true durante uma recarga SILENCIOSA (após uma ação): a página continua na tela, com "Atualizando…". */
+    const [refreshing, setRefreshing] = useState(false);
+    const loadedOnce = useRef(false);
 
     const load = useCallback(async () => {
         if (!id) return;
+        if (loadedOnce.current) setRefreshing(true);
         try {
             const [c, a] = await Promise.all([contractsApi.getById(id), pricingApi.getAddons()]);
             setContract(c.contract);
             setAddons(a.addons);
         } catch { setContract(null); }
-        finally { setLoading(false); }
+        finally { loadedOnce.current = true; setLoading(false); setRefreshing(false); }
     }, [id]);
 
-    useEffect(() => { load(); }, [load]);
+    // `load` só muda com o id: trocar de contrato na MESMA tela (link "abrir contrato novo" da renovação)
+    // volta ao esqueleto em vez de mostrar o contrato anterior com "Atualizando…".
+    useEffect(() => { loadedOnce.current = false; setLoading(true); setCharge(null); load(); }, [load]);
     useEffect(() => { paymentsApi.getSandboxMode().then(s => setSandbox(s.pix || s.card)).catch(() => {}); }, []);
 
     if (loading) return <div><HeroSkeleton /><TableSkeleton rows={4} cols={3} /></div>;
@@ -73,7 +88,11 @@ export default function AdminContractDetailPage() {
     // cartão, o do PaymentIntent — mesmo critério do fechamento financeiro); em aberto = o amount.
     const payments = contract.payments || [];
     const valueOf = (p: PaymentSummary) => (p.status === 'PAID' ? paidChargedAmount(p) : p.amount);
-    const contractValue = payments.reduce((s, p) => s + valueOf(p), 0);
+    // E13: a multa de cancelamento não é parcela — fica fora do "Valor do contrato" e da numeração das
+    // parcelas (as demais mantêm o número original, mesmo anuladas). Em "Pago"/"Pendente" ela entra: é
+    // dinheiro recebido / a receber de verdade.
+    const contractValue = payments.filter(p => !isFinePayment(p)).reduce((s, p) => s + valueOf(p), 0);
+    const installmentNumber = new Map(payments.filter(p => !isFinePayment(p)).map((p, i) => [p.id, i + 1]));
     const paidValue = payments.filter(p => p.status === 'PAID').reduce((s, p) => s + paidChargedAmount(p), 0);
     const pendingValue = payments.filter(p => p.status === 'PENDING' || p.status === 'FAILED').reduce((s, p) => s + p.amount, 0);
 
@@ -102,10 +121,18 @@ export default function AdminContractDetailPage() {
         title: `Marcar ${formatBRL(p.amount)} como pago?`,
         message: 'Use só se o valor foi recebido por fora do sistema (dinheiro, transferência, maquininha).',
         consequences: [
-            'A parcela passa a Pago, com a data de hoje como data do pagamento.',
-            'O sistema segue como num pagamento online: confirma a gravação ou o contrato vinculado, confirma o cupom usado e avisa o cliente.',
+            // E13: a multa paga só avisa o cliente — não reativa nem confirma nada do contrato cancelado.
+            ...(isFinePayment(p)
+                ? [
+                    'A multa de cancelamento passa a Paga, com a data de hoje como data do pagamento.',
+                    'O cliente é avisado do pagamento confirmado; o contrato continua Cancelado.',
+                ]
+                : [
+                    'A parcela passa a Pago, com a data de hoje como data do pagamento.',
+                    'O sistema segue como num pagamento online: confirma a gravação ou o contrato vinculado, confirma o cupom usado e avisa o cliente.',
+                ]),
             ...(p.pixString || p.boletoUrl
-                ? ['Um PIX ou boleto já emitido para esta parcela continua válido no banco — oriente o cliente a não pagá-lo.']
+                ? ['Um PIX ou boleto já emitido para esta cobrança continua válido no banco — oriente o cliente a não pagá-lo.']
                 : []),
             'Depois disso ela não volta a Pendente (só pode ser marcada como estornada).',
         ],
@@ -119,14 +146,63 @@ export default function AdminContractDetailPage() {
 
     const simulate = async (p: PaymentSummary) => { try { await paymentsApi.simulate(p.id); showToast('Pagamento simulado (sandbox).'); load(); } catch { showToast('Erro na simulação.'); } };
 
+    // E4 — mesma confirmação neutra da lista. O botão só aparece com `contract.canRenew` (backend); se ainda
+    // assim a renovação for recusada (já renovado por outro admin), mostra o motivo e recarrega.
+    const renew = () => showConfirm({
+        title: 'Renovar Contrato',
+        message: `Renovar "${contract.name}" por mais 3 meses?`,
+        onConfirm: async () => {
+            try {
+                const r = await contractsApi.renew(contract.id, { durationMonths: 3 });
+                showToast(r.message);
+            } catch (e) {
+                showToast({ message: getErrorMessage(e) || 'Erro ao renovar o contrato.', type: 'error' });
+            }
+            load();
+        },
+    });
+
+    // E13 — cancelamento e multa (dados do backend; o pedido congela o % — a base é a efetiva: parcela paga
+    // durante a análise sai, e a multa nunca aumenta).
+    const fine = contract.cancellationFine;
+    const clientDeleted = !!(contract.user as { deletedAt?: string | null } | undefined)?.deletedAt;
+    const openCharge = (p: PaymentSummary) => { setChargeError(''); setCharge(p); };
+
     // Fluxo de gravação em etapas: Confirmar presença → Iniciar (registra operador) → Finalizar.
+    // "Iniciar" só é oferecido para sessão de hoje ou passada; se ainda assim o backend recusar
+    // (400 RECORDING_START_FUTURE), a mensagem dele aparece no aviso de erro.
     const bookingStep = async (bookingId: string, action: 'checkin' | 'start') => {
         try {
             const res = action === 'checkin' ? await bookingsApi.checkIn(bookingId) : await bookingsApi.startRecording(bookingId);
             showToast(res.message);
             load();
-        } catch (e) { showToast(getErrorMessage(e) || 'Erro ao atualizar a gravação.'); }
+        } catch (e) { showToast({ message: getErrorMessage(e) || 'Erro ao atualizar a gravação.', type: 'error' }); }
     };
+
+    // "Iniciar gravação" clicado por engano: desfaz o início — mesma confirmação e mesmos textos da tela Hoje.
+    // Sem try/catch no onConfirm: o erro da API (ex.: 409 já finalizada) aparece DENTRO do diálogo.
+    const undoStartRecording = (b: Booking) => showConfirm({
+        tone: 'warning',
+        icon: Undo2,
+        title: 'Desfazer o início da gravação?',
+        message: bookingSummary({ ...b, user: { name: contract.user?.name || '' }, contract: b.contract ?? { id: contract.id, name: contract.name, type: contract.type, tier: contract.tier } }),
+        consequences: [
+            'O registro de quem iniciou e do horário de início é apagado.',
+            'O cliente deixa de ver o selo "AO VIVO" nesta gravação.',
+            'Para finalizar, será preciso clicar em "Iniciar gravação" de novo.',
+            'O agendamento continua confirmado — nada é cancelado nem cobrado.',
+        ],
+        confirmLabel: 'Desfazer início',
+        loadingLabel: 'Desfazendo…',
+        onConfirm: async () => {
+            // Recusado (ex.: outra aba já finalizou): o detalhe daqui está velho — recarrega por trás do diálogo.
+            const res = await bookingsApi.undoStartRecording(b.id).catch((err: unknown) => { void load(); throw err; });
+            showToast(res.message || 'Início da gravação desfeito.');
+            await load();
+        },
+    });
+    /** Hoje no fuso do estúdio (YYYY-MM-DD) — "Iniciar gravação" só aparece para sessão de hoje ou passada. */
+    const todaySP = todayStrSaoPaulo();
 
 
     // Editing recurring services is allowed only for FIXO/FLEX active contracts (recompute future).
@@ -147,8 +223,10 @@ export default function AdminContractDetailPage() {
 
     return (
         <div>
-            <div style={{ marginBottom: 16 }}>
+            <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 32 }}>
                 <button className="btn btn-ghost btn-sm" onClick={() => navigate('/admin/contracts')}><ArrowLeft size={14} /> Voltar para Contratos</button>
+                {/* Recarga silenciosa após uma ação (cobrar, marcar pago, renovar, editar serviços…). */}
+                {refreshing && <BrandLoader size="inline" label="Atualizando…" />}
             </div>
 
             {/* ── Header ── */}
@@ -167,9 +245,9 @@ export default function AdminContractDetailPage() {
                         )}
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
                             <StatusBadge meta={tMeta} />
-                            <StatusBadge meta={tierMeta} label={contract.tier} />
+                            <StatusBadge meta={tierMeta} label={tierMeta.label.toLocaleUpperCase('pt-BR')} />
                             <StatusBadge meta={cMeta} />
-                            {(contract.user as { deletedAt?: string | null } | undefined)?.deletedAt && (
+                            {clientDeleted && (
                                 <StatusBadge meta={{ label: 'Cliente excluído', color: 'var(--danger)', bg: 'var(--danger-bg)', icon: UserX }} />
                             )}
                             {contract.contractUrl && (
@@ -179,6 +257,25 @@ export default function AdminContractDetailPage() {
                             )}
                         </div>
                     </div>
+                    {/* E4 — Renovar: só quando o backend libera (`canRenew`: plano Ativo/Concluído a ≤ 30 dias do fim
+                        ou Expirado, ainda não renovado, nunca avulso/serviço nem cliente excluído). Já renovado →
+                        atalho para o contrato novo. */}
+                    {(contract.canRenew || (contract.alreadyRenewed && contract.renewedToId)) && (
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                            {contract.canRenew && (
+                                <button type="button" className="btn btn-secondary btn-sm" onClick={renew}
+                                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                    <RefreshCw size={14} aria-hidden="true" /> Renovar (+3 meses)
+                                </button>
+                            )}
+                            {contract.alreadyRenewed && contract.renewedToId && (
+                                <button type="button" className="btn btn-ghost btn-sm" onClick={() => navigate(`/admin/contracts/${contract.renewedToId}`)}
+                                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                    <FolderSymlink size={14} aria-hidden="true" /> Renovado — abrir contrato novo
+                                </button>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 <div className="admin-grid-2" style={{ marginTop: 16, gap: 12 }}>
@@ -189,7 +286,30 @@ export default function AdminContractDetailPage() {
                     {contract.type === 'FLEX' && contract.flexCreditsRemaining != null && (
                         <Meta label="Créditos restantes" value={`${contract.flexCreditsRemaining} de ${contract.flexCreditsTotal ?? '—'}`} />
                     )}
+                    {/* E13 — pedido de cancelamento em análise: quando foi pedido e a multa prevista (% do pedido × base efetiva). */}
+                    {contract.status === 'PENDING_CANCELLATION' && (
+                        <>
+                            {contract.cancellationRequestedAt && <Meta label="Cancelamento pedido em" value={fmtDateSP(contract.cancellationRequestedAt)} />}
+                            <Meta label="Multa prevista" value={contract.fineAmountPreview > 0
+                                ? `${formatBRL(contract.fineAmountPreview)} — ${contract.finePct}% de ${formatBRL(contract.fineBaseAmount)} que faltavam pagar`
+                                : 'Sem multa (nada a pagar do plano)'} />
+                        </>
+                    )}
+                    {/* E13 — contrato cancelado mostra QUANDO foi cancelado e a situação da multa. */}
+                    {contract.status === 'CANCELLED' && (
+                        <>
+                            {contract.cancelledAt && <Meta label="Cancelado em" value={fmtDateSP(contract.cancelledAt)} />}
+                            <Meta label="Multa de cancelamento" value={fine && fine.status !== 'CANCELLED'
+                                ? `${formatBRL(fine.amount)} · ${getMeta(PAYMENT_STATUS_META, fine.status).label}${fine.status === 'PAID' && fine.paidAt ? ` em ${fmtDateSP(fine.paidAt)}` : ''}`
+                                : 'Sem multa'} />
+                        </>
+                    )}
                 </div>
+                {contract.status === 'PENDING_CANCELLATION' && (
+                    <div className="admin-alert admin-alert--warning" role="note" style={{ margin: '14px 0 0' }}>
+                        O cliente pediu o cancelamento. Resolva na lista de Contratos: <strong>Cobrar multa</strong> ou <strong>Isentar multa</strong>.
+                    </div>
+                )}
             </div>
 
             {/* ── Totals strip ── */}
@@ -308,18 +428,24 @@ export default function AdminContractDetailPage() {
                                             </button>
                                         </div>
                                     )}
-                                    {b.status === 'CONFIRMED' && !b.recordingStartedAt && (
+                                    {/* Sessão FUTURA não mostra "Iniciar": o backend recusa e o cliente veria "AO VIVO" falso. */}
+                                    {b.status === 'CONFIRMED' && !b.recordingStartedAt && b.date.split('T')[0] <= todaySP && (
                                         <div style={{ marginTop: 8 }}>
-                                            <button className="btn btn-ghost btn-sm" onClick={() => bookingStep(b.id, 'start')}>
+                                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => bookingStep(b.id, 'start')}>
                                                 <Radio size={14} /> Iniciar gravação
                                             </button>
                                         </div>
                                     )}
                                     {b.status === 'CONFIRMED' && b.recordingStartedAt && (
                                         <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                                            <button className="btn btn-ghost btn-sm" onClick={() => setFinalizeBooking(b)}>
+                                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setFinalizeBooking(b)}>
                                                 <CheckCircle2 size={14} /> Finalizar gravação
                                             </button>
+                                            <Tooltip content="Clicou em “Iniciar gravação” por engano? Desfaz o início: o cliente deixa de ver “AO VIVO”.">
+                                                <button type="button" className="btn btn-ghost btn-sm" onClick={() => undoStartRecording(b)}>
+                                                    <Undo2 size={14} aria-hidden="true" /> Desfazer início
+                                                </button>
+                                            </Tooltip>
                                             <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--danger)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                                                 <Radio size={12} /> Em gravação{b.recordingStartedByName ? ` — ${b.recordingStartedByName}` : ''}
                                             </span>
@@ -358,20 +484,35 @@ export default function AdminContractDetailPage() {
                     <Empty>Nenhuma cobrança gerada.</Empty>
                 ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        {payments.map((p, i) => {
+                        {payments.map(p => {
                             const pMeta = getMeta(PAYMENT_STATUS_META, p.status);
                             const isOpen = p.status === 'PENDING' || p.status === 'FAILED';
+                            // E13 — multa de cancelamento: rótulo próprio e sem número de parcela. % e base vêm
+                            // gravados na cobrança (metadata); multas anteriores à regra caem no % do contrato.
+                            const isFine = isFinePayment(p);
+                            const finePct = isFine ? (p.metadata?.finePct ?? fine?.finePct ?? contract.finePct) : null;
+                            const fineBase = isFine ? (p.metadata?.baseAmount ?? fine?.baseAmount ?? null) : null;
                             // Forma de pagamento pelo PROVEDOR (SICOOB/CORA → PIX, STRIPE → Cartão; nunca a chave crua).
                             const method = providerToMethod(p.provider, { boletoUrl: p.boletoUrl, pixString: p.pixString });
                             const methodText = method
                                 ? `${getPaymentBadge(method).label}${method === 'CARTAO' && (p.installments ?? 1) > 1 ? ` em ${p.installments}x` : ''}`
                                 : '';
                             return (
-                                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: 'var(--space-3)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-card)' }}>
-                                    <div style={{ width: 30, height: 30, borderRadius: 8, display: 'grid', placeItems: 'center', background: 'var(--bg-elevated)', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>{i + 1}</div>
-                                    <div style={{ minWidth: 0 }}>
+                                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: 'var(--space-3)', border: `1px solid ${isFine ? 'var(--warning)' : 'var(--border-default)'}`, borderRadius: 'var(--radius-lg)', background: 'var(--bg-card)' }}>
+                                    {isFine ? (
+                                        <div aria-hidden="true" style={{ width: 30, height: 30, borderRadius: 8, display: 'grid', placeItems: 'center', background: 'var(--warning-bg)', color: 'var(--warning)', flexShrink: 0 }}><Scale size={15} /></div>
+                                    ) : (
+                                        <div style={{ width: 30, height: 30, borderRadius: 8, display: 'grid', placeItems: 'center', background: 'var(--bg-elevated)', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', flexShrink: 0 }}>{installmentNumber.get(p.id)}</div>
+                                    )}
+                                    <div style={{ minWidth: 0, flex: '1 1 150px' }}>
+                                        {isFine && (
+                                            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--warning)' }}>
+                                                Multa de cancelamento{finePct != null ? ` (${finePct}%)` : ''}
+                                            </div>
+                                        )}
                                         <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>{formatBRL(valueOf(p))}</div>
                                         <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
+                                            {isFine && finePct != null && fineBase != null ? `${finePct}% de ${formatBRL(fineBase)} que faltavam pagar · ` : ''}
                                             Vence {p.dueDate ? fmtDate(p.dueDate) : '—'}{methodText ? ` · ${methodText}` : ''}
                                         </div>
                                     </div>
@@ -379,13 +520,18 @@ export default function AdminContractDetailPage() {
                                         <StatusBadge meta={pMeta} />
                                         {isOpen && (
                                             <>
-                                                <button className="btn btn-sm" style={{ background: 'var(--accent-primary)', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, padding: '5px 12px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => setCharge(p)}>
-                                                    <CreditCard size={13} /> Cobrar
-                                                </button>
-                                                {sandbox && (
-                                                    <button className="btn btn-ghost btn-sm" title="Simular pagamento (sandbox)" onClick={() => simulate(p)}><Zap size={13} /></button>
+                                                {/* D3: cliente excluído (anonimizado) não é cobrado — mesmo critério da lista de contratos. */}
+                                                {!clientDeleted && (
+                                                    <button type="button" className="btn btn-sm" style={{ background: 'var(--accent-primary)', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, padding: '5px 12px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => openCharge(p)}>
+                                                        <CreditCard size={13} aria-hidden="true" /> {isFine ? 'Cobrar agora' : 'Cobrar'}
+                                                    </button>
                                                 )}
-                                                <button className="btn btn-ghost btn-sm" onClick={() => markPaid(p)}>Marcar pago</button>
+                                                {sandbox && (
+                                                    <Tooltip content="Simular pagamento (sandbox)" describe={false}>
+                                                        <button type="button" className="btn btn-ghost btn-sm" aria-label="Simular pagamento (sandbox)" onClick={() => simulate(p)}><Zap size={13} aria-hidden="true" /></button>
+                                                    </Tooltip>
+                                                )}
+                                                <button type="button" className="btn btn-ghost btn-sm" onClick={() => markPaid(p)}>Marcar pago</button>
                                             </>
                                         )}
                                     </div>
@@ -396,28 +542,26 @@ export default function AdminContractDetailPage() {
                 )}
             </div>
 
-            {/* ── Charge-now modal (reuses the client InlineCheckout, role-aware) ── */}
+            {/* ── Cobrar agora (E1): o mesmo ChargeNowSheet da criação de contrato, com o CLIENTE do contrato —
+                 o CPF do PIX e os cartões salvos são os dele, nunca os do admin. As formas oferecidas (PIX,
+                 Cartão e Boleto quando a chave-mestra permite) são decididas pelo próprio sheet. ── */}
             {charge && (
-                <BottomSheetModal isOpen onClose={() => setCharge(null)} hideHeader size="sm" className="admin-sheet" title="Cobrar parcela">
-                    <div style={{ padding: '24px 28px' }}>
-                        <h3 style={{ fontSize: '1.0625rem', fontWeight: 800, margin: '0 0 4px' }}>Cobrar {formatBRL(charge.amount)}</h3>
-                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0 0 16px' }}>
-                            Gera PIX ou cobra o cartão do cliente (presente). A cobrança é feita em nome do cliente.
-                        </p>
-                        <InlineCheckout
-                            amount={charge.amount}
-                            paymentId={charge.id}
-                            description={`${contract.name} - parcela`}
-                            allowedMethods={(contract.boletoAllowed ? ['CARTAO', 'PIX', 'BOLETO'] : ['CARTAO', 'PIX']) as ('CARTAO' | 'PIX' | 'BOLETO')[]}
-                            isAdmin
-                            allowBoleto={!!contract.boletoAllowed}
-                            context="contract"
-                            onSuccess={() => { setCharge(null); showToast('Pagamento confirmado!'); load(); }}
-                            onError={(msg) => showToast(msg)}
-                            onCancel={() => setCharge(null)}
-                        />
-                    </div>
-                </BottomSheetModal>
+                <ChargeNowSheet
+                    paymentId={charge.id}
+                    amount={charge.amount}
+                    description={`${contract.name} - ${isFinePayment(charge) ? 'Multa de cancelamento' : 'parcela'}`}
+                    title={isFinePayment(charge) ? 'Cobrar multa de cancelamento' : `Cobrar parcela ${installmentNumber.get(charge.id) ?? ''}`.trim()}
+                    subtitle="Gere o PIX ou cobre o cartão do cliente (presente). A cobrança é feita em nome do cliente."
+                    context="contract"
+                    initialMethod={contract.paymentMethod ?? null}
+                    client={contract.user ? { id: contract.user.id, name: contract.user.name, cpfCnpj: contract.user.cpfCnpj } : undefined}
+                    error={chargeError || undefined}
+                    onError={setChargeError}
+                    onSuccess={() => { setCharge(null); showToast('Pagamento confirmado!'); load(); }}
+                    // Recarrega também ao fechar: gerar o PIX de um à vista pode ter mudado o valor da cobrança (E2).
+                    onDismiss={() => { setCharge(null); load(); }}
+                    dismissLabel="Fechar (a cobrança continua pendente)"
+                />
             )}
 
             <FinalizeRecordingModal
@@ -425,6 +569,7 @@ export default function AdminContractDetailPage() {
                 booking={finalizeBooking}
                 onClose={() => setFinalizeBooking(null)}
                 onSaved={() => { setFinalizeBooking(null); load(); }}
+                onStale={load}
             />
         </div>
     );

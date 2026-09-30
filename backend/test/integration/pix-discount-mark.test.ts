@@ -47,10 +47,12 @@ import { mkUser, mkContract, mkPayment, mkBooking, mkCoupon } from './factories'
 
 type Who = { id: string; email: string | null; role: string };
 
-// pagamentos-3 / D1 (regra única, conservadora): o desconto PIX do à vista só é revertido no cartão pela
-// marca metadata.pixDiscount gravada na CRIAÇÃO. Sem a marca, o cartão cobra o próprio amount — não há
-// fallback legado, corte por data nem congelamento. Cobrança antiga sem a marca pode sair ABAIXO do preço
-// de cartão, NUNCA acima. Valor zero (cupom 100% / VALOR ≥ total) nunca recebe marca nem vai ao cartão.
+// pagamentos-3 / D1 → E2 (30/09/2026): TODA cobrança à vista grava na CRIAÇÃO a marca metadata.pixDiscount
+// { pct, cardAmount, pixAmount } (os dois preços), seja qual for a forma: criada no PIX o amount é o preço
+// PIX e o cartão cobra cardAmount; criada no Cartão/Boleto o amount é cardAmount e o PIX ganha o desconto na
+// emissão do QR (ver pix-discount-bidirectional.test.ts). Sem a marca, PIX e cartão cobram o próprio amount —
+// não há fallback legado, corte por data nem congelamento. Cobrança antiga sem a marca pode sair ABAIXO do
+// preço de cartão, NUNCA acima. Valor zero (cupom 100% / VALOR ≥ total) nunca recebe marca nem vai ao cartão.
 // A troca de forma pelo admin não altera valores.
 
 const VALID_CPF = '52998224725';
@@ -115,7 +117,7 @@ async function call(method: string, path: string, who?: { id: string; email: str
     return { status: res.status, body: (await res.json().catch(() => ({}))) as any };
 }
 
-/** PIX (Sicoob sandbox), Cartão (Stripe) e Boleto habilitados, como no dev. */
+/** PIX (Sicoob sandbox), Cartão (Stripe) e a chave do Boleto ligada, como no dev. */
 async function enableMethods() {
     for (const [i, key] of ['PIX', 'CARTAO', 'BOLETO'].entries()) {
         await prisma.paymentMethodConfig.create({
@@ -124,6 +126,11 @@ async function enableMethods() {
     }
     await prisma.integrationConfig.create({ data: { provider: 'SICOOB', enabled: true, environment: 'sandbox', config: '{}' } });
     await prisma.integrationConfig.create({ data: { provider: 'STRIPE', enabled: true, environment: 'sandbox', config: '{}' } });
+}
+
+/** E3: o boleto só é aceito com a chave ligada E a integração Cora habilitada. */
+async function enableCora() {
+    await prisma.integrationConfig.create({ data: { provider: 'CORA', enabled: true, environment: 'sandbox', config: '{}' } });
 }
 
 async function setPixPct(v: number) {
@@ -209,10 +216,20 @@ describe('criação grava metadata.pixDiscount com a BASE do cartão (FULL + PIX
         expect(await cardChargeBaseAmount(p)).toBe(cardFull - p.discountAmount!);
     });
 
-    it('sem desconto PIX não há marca: FULL + CARTÃO e MENSAL + PIX cobram o próprio amount', async () => {
+    it('E2: FULL + CARTÃO nasce com a marca dos dois preços (amount = cardAmount) e o cartão cobra o próprio amount; MENSAL não tem marca', async () => {
         const card = await adminFixo('CARTAO');
-        expect(card.payment.metadata).toBeNull();
+        const { cardFull, pixFull, pct } = await fullTotals3m();
+        expect(card.payment.amount).toBe(cardFull);
+        expect((card.payment.metadata as any).pixDiscount).toEqual({ pct, cardAmount: cardFull, pixAmount: pixFull });
+        expect(await cardChargeBaseAmount(card.payment)).toBe(cardFull);
         expect(await plan1x(card.client, card.payment.id)).toBe(card.payment.amount);
+        const { res, piAmount } = await payByCard(card.client, card.payment.id);
+        expect(res.status).toBe(200);
+        expect(piAmount).toBe(cardFull);
+        // Pagar no cartão não mexe no amount nem na marca.
+        const after = await prisma.payment.findUniqueOrThrow({ where: { id: card.payment.id } });
+        expect(after.amount).toBe(cardFull);
+        expect((after.metadata as any).pixDiscount).toEqual({ pct, cardAmount: cardFull, pixAmount: pixFull });
 
         const monthly = await adminFixo('PIX', { paymentPlan: 'MONTHLY' });
         const rows = await prisma.payment.findMany({ where: { contractId: monthly.contractId } });
@@ -303,6 +320,7 @@ describe('PROBE 1 — admin troca a forma de pagamento (PATCH /contracts/:id): v
     });
 
     it('BOLETO → PIX: idem (a linha Cora sem QR não vira "PIX")', async () => {
+        await enableCora();
         const { admin, client, contractId, payment } = await adminFixo('BOLETO');
         expect(payment.provider).toBe('CORA');
         expect((await call('PATCH', `/api/contracts/${contractId}`, admin, { paymentMethod: 'PIX' })).status).toBe(200);
@@ -335,6 +353,8 @@ describe('PROBE 1 — admin troca a forma de pagamento (PATCH /contracts/:id): v
     });
 
     it('a troca de forma NÃO grava nada nas cobranças (nem marca, nem amount, nem provider) — marcadas ou não', async () => {
+        // E3 (lote 2, b6): o PATCH só aceita trocar para BOLETO com o boleto efetivo (chave-mestra + Cora).
+        await enableCora();
         const { admin, contractId, payment } = await adminFixo('PIX');
         const u = await mkUser();
         const c2 = await mkContract(u.id, { type: 'FIXO', paymentPlan: 'FULL', paymentMethod: 'PIX' });
@@ -464,24 +484,28 @@ describe('PROBE 2 — mudar pix_extra_discount_pct depois da criação não alte
 
 // ─── 4) Extras e multa nunca inflam ───────────────────────────────────────────────────────────────
 describe('extras e multa de um FULL + PIX nunca inflam no cartão', () => {
-    it('extras da gravação e a multa gerada pelo resolve-cancellation saem pelo próprio amount', async () => {
-        const { admin, client, contractId, payment } = await adminFixo('PIX');
+    it('extras da gravação e a multa de cancelamento (contrato CANCELLED) saem pelo próprio amount', async () => {
+        const { client, contractId, payment } = await adminFixo('PIX');
         const booking = await prisma.booking.findFirstOrThrow({ where: { contractId } });
         const extras = await mkPayment(client.id, { contractId, bookingId: booking.id, provider: 'SICOOB', amount: 5000, dueDate: secondsAgo(60) });
         expect(await plan1x(client, extras.id)).toBe(5000);
 
-        await prisma.payment.update({ where: { id: payment.id }, data: { status: 'PAID', paidAt: new Date() } });
-        expect((await call('POST', `/api/contracts/${contractId}/request-cancellation`, client)).status).toBe(200);
-        const resolved = await call('POST', `/api/contracts/${contractId}/resolve-cancellation`, admin, { action: 'CHARGE_FEE' });
-        expect(resolved.status).toBe(200);
-        const fine = await prisma.payment.findFirstOrThrow({ where: { contractId, status: 'PENDING', bookingId: null } });
-        const finePct = await getConfig('cancellation_fine_pct');
-        // Base da multa = soma do amount das cobranças PAGAS (o CancelContractModal mostra a mesma conta).
-        expect(fine.amount).toBe(Math.round(payment.amount * finePct / 100));
-        expect(fine.metadata).toBeNull();
-        expect(await plan1x(client, fine.id)).toBe(fine.amount);
-        const { piAmount } = await payByCard(client, fine.id);
-        expect(piAmount).toBe(fine.amount);
+        // E13: a multa é uma cobrança identificada (metadata.kind) num contrato já CANCELADO — nunca leva a
+        // marca do desconto PIX: PIX e cartão cobram o próprio amount.
+        await prisma.payment.update({ where: { id: payment.id }, data: { status: 'CANCELLED' } });
+        await prisma.contract.update({ where: { id: contractId }, data: { status: 'CANCELLED' } });
+        const fine = await mkPayment(client.id, {
+            contractId, provider: 'SICOOB', amount: 56700, dueDate: secondsAgo(60),
+            metadata: { kind: 'CANCELLATION_FINE', finePct: 20, baseAmount: 283500 },
+        });
+        expect(await cardChargeBaseAmount(fine)).toBe(56700);
+        const plans = await call('POST', '/api/stripe/installment-plans', client, { paymentId: fine.id });
+        expect(plans.status).toBe(200);
+        expect(plans.body).toMatchObject({ cardAmount: 56700, pixAmount: 56700 });
+        expect(plans.body.plans.map((x: any) => [x.count, x.total])).toEqual([[1, 56700]]);
+        const { res, piAmount } = await payByCard(client, fine.id);
+        expect(res.status).toBe(200);
+        expect(piAmount).toBe(56700);
     });
 
     it('linhas antigas sem a marca (original, extras e multa) → o próprio amount; nada é gravado', async () => {

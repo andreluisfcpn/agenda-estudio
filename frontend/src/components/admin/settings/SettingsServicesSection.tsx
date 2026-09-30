@@ -9,7 +9,7 @@ import CurrencyInput from '../../ui/fields/CurrencyInput';
 import DangerConfirmDialog from '../../ui/DangerConfirmDialog';
 import { Plus, Trash2, Save, Check, CalendarDays, Mic } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { renderServiceIcon, SERVICE_ICON_OPTIONS } from '../../../utils/serviceIcons';
+import { renderServiceIcon, SERVICE_ICON_OPTIONS, serviceIconLabel, humanizeServiceKey, suggestServiceKey } from '../../../utils/serviceIcons';
 
 type EditableAddon = AddOnConfig & { _isNew?: boolean };
 
@@ -27,7 +27,13 @@ function AddonCard({ initial, siblingKeys, onSaved, onRequestDelete }: {
     onRequestDelete: (addon: EditableAddon, dirty: boolean) => void;
 }) {
     const uid = useId();
-    const [draft, setDraft] = useState<EditableAddon>(initial);
+    // Serviço novo: `initial.key` é só a identidade provisória do card na lista. O código interno de
+    // verdade nasce do nome (suggestServiceKey) e só é editado à mão se o admin quiser.
+    const [draft, setDraft] = useState<EditableAddon>(() => initial._isNew
+        ? { ...initial, key: suggestServiceKey(initial.name || '', siblingKeys) }
+        : initial);
+    const [keyTouched, setKeyTouched] = useState(false);
+    const [keyOpen, setKeyOpen] = useState(false); // bloco "Código interno" do serviço novo (fechado por padrão)
     const [benefitsText, setBenefitsText] = useState(PARSE_BENEFITS(initial.benefits).join('\n'));
     const [dirty, setDirty] = useState(!!initial._isNew);
     const [saving, setSaving] = useState(false);
@@ -39,11 +45,20 @@ function AddonCard({ initial, siblingKeys, onSaved, onRequestDelete }: {
     const active = draft.active !== false;
     const plans = (draft.plansAllowed || 'FULL').split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
 
+    // Nome → (no serviço novo, enquanto o admin não mexeu no código) código interno sugerido.
+    const setName = (name: string) => set(draft._isNew && !keyTouched
+        ? { name, key: suggestServiceKey(name, siblingKeys) }
+        : { name });
+
+    // E8: o card mostra o NOME do serviço; sem nome, um rótulo legível da chave — nunca a chave crua.
+    const displayName = draft.name?.trim() || (draft._isNew ? 'Novo serviço' : humanizeServiceKey(draft.key)) || 'Serviço';
+
     const save = async () => {
         const key = (draft.key || '').trim();
-        if (!/^[A-Z0-9_]+$/.test(key) || key.startsWith('NOVO_')) { setErr('Defina uma chave válida (MAIÚSCULAS, números e _).'); return; }
-        if (draft._isNew && siblingKeys.includes(key)) { setErr('Já existe um serviço com essa chave.'); return; }
         if (!draft.name?.trim()) { setErr('Informe o nome do serviço.'); return; }
+        // Problema no código interno: abre o bloco (fica fechado por padrão) para o admin ver o campo.
+        if (!/^[A-Z0-9_]+$/.test(key)) { setKeyOpen(true); setErr('Defina um código interno válido (letras maiúsculas, números e _).'); return; }
+        if (draft._isNew && siblingKeys.includes(key)) { setKeyOpen(true); setErr('Já existe um serviço com esse código interno. Ajuste o código.'); return; }
         setSaving(true); setErr('');
         try {
             const { _isNew, ...payload } = { ...draft, key };
@@ -61,7 +76,7 @@ function AddonCard({ initial, siblingKeys, onSaved, onRequestDelete }: {
             borderTop: `3px solid ${active ? 'var(--accent-primary)' : 'var(--border-color)'}`,
             opacity: active ? 1 : 0.65, transition: 'all 0.3s ease',
         }}>
-            {/* Header: icon + key + active toggle */}
+            {/* Header: icon + nome legível + active toggle */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, gap: 10 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                     <div style={{
@@ -71,13 +86,11 @@ function AddonCard({ initial, siblingKeys, onSaved, onRequestDelete }: {
                     }}>
                         {renderServiceIcon(draft.icon, 22)}
                     </div>
-                    {draft._isNew ? (
-                        <input className="form-input" placeholder="CHAVE_UNICA" value={draft.key}
-                            onChange={e => set({ key: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '') })}
-                            style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem', maxWidth: 170 }} />
-                    ) : (
-                        <span style={{ fontSize: '0.625rem', color: 'var(--text-muted)', background: 'var(--bg-elevated)', padding: '2px 8px', borderRadius: 6, fontFamily: "'JetBrains Mono', monospace" }}>{draft.key}</span>
-                    )}
+                    <span style={{
+                        fontSize: '0.6875rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', lineHeight: 1.35,
+                        color: 'var(--text-secondary)', background: 'var(--bg-elevated)', padding: '3px 9px', borderRadius: 6,
+                        minWidth: 0, overflowWrap: 'anywhere',
+                    }}>{displayName}</span>
                 </div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                     <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: active ? '#10b981' : 'var(--text-muted)' }}>{active ? 'Ativo' : 'Inativo'}</span>
@@ -105,7 +118,8 @@ function AddonCard({ initial, siblingKeys, onSaved, onRequestDelete }: {
             <div className="admin-grid-2" style={{ gap: 12 }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label" htmlFor={`${uid}-name`}>Nome</label>
-                    <input id={`${uid}-name`} className="form-input" value={draft.name} onChange={e => set({ name: e.target.value })} />
+                    <input id={`${uid}-name`} className="form-input" value={draft.name} placeholder="Ex.: Gestão de Redes Sociais"
+                        onChange={e => setName(e.target.value)} />
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label" htmlFor={`${uid}-price`}>Preço {monthly ? 'mensal' : 'por episódio'}</label>
@@ -126,7 +140,7 @@ function AddonCard({ initial, siblingKeys, onSaved, onRequestDelete }: {
                     <label className="form-label" htmlFor={`${uid}-icon`}>Ícone</label>
                     <select id={`${uid}-icon`} className="form-input" value={SERVICE_ICON_OPTIONS.includes(draft.icon || '') ? (draft.icon || 'Sparkles') : 'Sparkles'}
                         onChange={e => set({ icon: e.target.value })}>
-                        {SERVICE_ICON_OPTIONS.map(ic => <option key={ic} value={ic}>{ic}</option>)}
+                        {SERVICE_ICON_OPTIONS.map(ic => <option key={ic} value={ic}>{serviceIconLabel(ic)}</option>)}
                     </select>
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
@@ -192,7 +206,30 @@ function AddonCard({ initial, siblingKeys, onSaved, onRequestDelete }: {
                 </details>
             )}
 
-            {err && <div style={{ marginTop: 12, fontSize: '0.8125rem', color: '#ef4444' }}>{err}</div>}
+            {/* Código interno (chave técnica): discreto. Só é definido na criação — depois de salvo não muda. */}
+            {draft._isNew ? (
+                <details className="sf-advanced" open={keyOpen} onToggle={e => setKeyOpen(e.currentTarget.open)}>
+                    <summary>Código interno (gerado do nome)</summary>
+                    <div className="sf-advanced-body">
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label className="form-label" htmlFor={`${uid}-key`}>Código interno</label>
+                            <input id={`${uid}-key`} className="form-input" value={draft.key}
+                                autoCapitalize="characters" autoComplete="off" spellCheck={false}
+                                onChange={e => { setKeyTouched(true); set({ key: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '') }); }}
+                                style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem' }} />
+                            <p style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', margin: '6px 0 0', lineHeight: 1.4 }}>
+                                É a identificação do serviço dentro do sistema: nasce do nome, aceita só letras maiúsculas, números e _ , e não pode ser alterado depois de salvo.
+                            </p>
+                        </div>
+                    </div>
+                </details>
+            ) : (
+                <p style={{ fontSize: '0.625rem', color: 'var(--text-muted)', margin: '14px 0 0', overflowWrap: 'anywhere' }}>
+                    Código interno: <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{draft.key}</span>
+                </p>
+            )}
+
+            {err && <div role="alert" style={{ marginTop: 12, fontSize: '0.8125rem', color: '#ef4444' }}>{err}</div>}
 
             {/* Footer: per-card Save + Delete */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16, borderTop: '1px solid var(--border-color)', paddingTop: 14 }}>
@@ -201,7 +238,8 @@ function AddonCard({ initial, siblingKeys, onSaved, onRequestDelete }: {
                 </button>
                 <div style={{ marginLeft: 'auto' }}>
                     {/* Card novo (nunca salvo) só descarta o rascunho; um salvo abre a confirmação de perigo. */}
-                    <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--text-muted)' }} onClick={() => onRequestDelete(draft, dirty)}>
+                    {/* `key: initial.key`: no card novo a lista o identifica pela chave provisória, não pelo código digitado. */}
+                    <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--text-muted)' }} onClick={() => onRequestDelete({ ...draft, key: initial.key }, dirty)}>
                         <Trash2 size={14} aria-hidden="true" /> {draft._isNew ? 'Descartar' : 'Remover'}
                     </button>
                 </div>
@@ -244,7 +282,7 @@ export default function SettingsServicesSection() {
     const handleAdd = () => {
         const tempKey = `NOVO_${Date.now().toString().slice(-4)}`;
         setAddons(prev => [{
-            key: tempKey, name: 'Novo serviço', price: 0, description: '', monthly: true,
+            key: tempKey, name: '', price: 0, description: '', monthly: true,
             active: true, sortOrder: (prev.reduce((m, a) => Math.max(m, a.sortOrder ?? 0), 0) + 1),
             icon: 'Sparkles', showOnLanding: true, benefits: '', durationsOffered: '3,6',
             plansAllowed: 'MONTHLY,FULL', billingCadence: 'CALENDAR_MONTH', _isNew: true,
@@ -328,7 +366,7 @@ export default function SettingsServicesSection() {
                 // consequências abaixo explicam os dois casos.
                 irreversible={false}
                 icon={Trash2}
-                title={pendingDelete ? `Remover o serviço “${pendingDelete.addon.name || pendingDelete.addon.key}”?` : 'Remover serviço?'}
+                title={pendingDelete ? `Remover o serviço “${pendingDelete.addon.name?.trim() || humanizeServiceKey(pendingDelete.addon.key)}”?` : 'Remover serviço?'}
                 description="O sistema confere na hora se o serviço já foi usado e escolhe entre apagar ou só desativar."
                 consequences={[
                     'Se nenhum contrato ou gravação usa este serviço, ele é apagado de vez.',

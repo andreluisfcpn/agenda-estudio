@@ -1,8 +1,9 @@
-import React, { useEffect, useState, useCallback, useId } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import { X } from 'lucide-react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import Tooltip from './ui/Tooltip';
 
 /** Desktop max-width preset: sm=480px (default, original behavior), md=640px,
  *  lg=820px, xl=1000px. On mobile (<640px) the sheet is always full-width and
@@ -58,6 +59,14 @@ export default function BottomSheetModal({
         if (!preventClose) onClose();
     }, [preventClose, onClose]);
 
+    // Esc lê preventClose/onClose por ref: vale o valor ATUAL na hora da tecla. Antes o handler só
+    // enxergava o preventClose novo depois que o efeito era reinscrito — um Esc logo após o clique
+    // em "Salvar" fechava o modal com a requisição em voo.
+    const preventCloseRef = useRef(preventClose);
+    const onCloseRef = useRef(onClose);
+    preventCloseRef.current = preventClose;
+    onCloseRef.current = onClose;
+
     // Check matchMedia for desktop
     useEffect(() => {
         const mq = window.matchMedia('(min-width: 640px)');
@@ -102,13 +111,13 @@ export default function BottomSheetModal({
     // Handle escape key
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape' && isOpen) {
-                safeClose();
+            if (e.key === 'Escape' && isOpen && !preventCloseRef.current) {
+                onCloseRef.current();
             }
         };
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, safeClose]);
+    }, [isOpen]);
 
     const handleDragEnd = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
         const velocity = info.velocity.y;
@@ -181,13 +190,16 @@ export default function BottomSheetModal({
                                 {(title || !isDesktop) && (
                                     <div className="bottom-sheet-title-row">
                                         <h2 className="bottom-sheet-title" id={titleId}>{title}</h2>
-                                        <button
-                                            onClick={safeClose}
-                                            aria-label="Fechar"
-                                            className="bottom-sheet-close-btn"
-                                        >
-                                            <X size={20} />
-                                        </button>
+                                        <Tooltip content="Fechar" describe={false}>
+                                            <button
+                                                type="button"
+                                                onClick={safeClose}
+                                                aria-label="Fechar"
+                                                className="bottom-sheet-close-btn"
+                                            >
+                                                <X size={20} />
+                                            </button>
+                                        </Tooltip>
                                     </div>
                                 )}
                             </div>

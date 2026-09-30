@@ -69,7 +69,8 @@ export default function ServiceLineItem({
             <button
                 type="button"
                 className={`service-line service-line--selectable ${selected ? 'service-line--selected' : ''} ${compact ? 'service-line--compact' : ''}`}
-                onClick={onToggle}
+                // 2º clique de um clique duplo ignorado (marcaria e desmarcaria em seguida); teclado = detail 0.
+                onClick={(e) => { if (e.detail > 1) return; onToggle(); }}
                 aria-pressed={selected}
             >
                 {body}

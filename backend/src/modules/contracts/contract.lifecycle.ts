@@ -2,13 +2,20 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import { authenticate, authorize } from '../../middleware/auth.js';
-import { BookingStatus } from '../../generated/prisma/client.js';
+import { BookingStatus, Prisma } from '../../generated/prisma/client.js';
 import { getBasePriceDynamic, applyDiscount, calculateEndTime, getPackageSlots, getSlotDuration, studioDateTime } from '../../utils/pricing.js';
 import { getConfig } from '../../lib/businessConfig.js';
-import { getProviderForMethod } from '../../lib/paymentGateway.js';
+import { getProviderForMethod, getBoletoStatus } from '../../lib/paymentGateway.js';
 import { saoPauloParts } from '../../lib/spTime.js';
 import { updateContractSchema, resolveCancellationSchema } from './validators.js';
 import { createSlotClaimer, DELETED_CLIENT_ERROR } from './contract.creation.js';
+import { notifyEvent } from '../notifications/notificationService.js';
+import {
+    CANCELLATION_FINE_KIND, freezeCancellationFine, resolveCancellationBasis, loadCancellationInfo,
+    markContractCancelled, paymentKind, AUDIT_CONTRACT_CANCELLED,
+    effectiveCancellationBasis, loadFineBasisPayments, isUnpaidPlanInstallment, isCancellationFine,
+} from '../../lib/cancellationFine.js';
+import { acquireMutexBlocking, releaseMutex } from '../../lib/redis.js';
 
 /** 'YYYY-MM-DD' + n dias (UTC). */
 const addDaysYmd = (ds: string, n: number): string => {
@@ -95,6 +102,203 @@ function skippedNote(skipped: string[], fixedTime: string, missing: number): str
         : head;
 }
 
+// ─── Cancelamento / multa / renovação: apoio (E13, E4) ──────────────────────
+
+/** "R$ 1.680,00" (com separador de milhar; sem o espaço não separável do Intl). */
+const formatBRL = (cents: number): string =>
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(cents / 100).replace(/\u00a0/g, ' ');
+
+const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
+
+const SP_HHMM = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+
+/**
+ * Gravações que o cancelamento de um contrato libera (E13): só as que ainda NÃO aconteceram —
+ * RESERVED/CONFIRMED/HELD, sem "Iniciar gravação", com INÍCIO (data + hora, relógio de São Paulo) no
+ * futuro. Nunca COMPLETED / FALTA / NAO_REALIZADO (o histórico da sessão feita — e o contador de
+ * gravações realizadas — não é reescrito), nem a sessão de hoje que já começou (fica para o operador
+ * finalizar ou marcar falta). `startTime` é sempre 'HH:MM' com zero à esquerda → comparação de texto vale.
+ * Mesmo critério da exclusão de cliente (lib/userDeletion.futureBookingsWhere).
+ */
+function upcomingContractBookingsWhere(contractId: string, now: Date = new Date()): Prisma.BookingWhereInput {
+    const today = new Date(`${saoPauloParts(now).dateStr}T00:00:00.000Z`);
+    return {
+        contractId,
+        status: { in: ['RESERVED', 'CONFIRMED', 'HELD'] },
+        recordingStartedAt: null,
+        OR: [
+            { date: { gt: today } },
+            { date: today, startTime: { gt: SP_HHMM.format(now) } },
+        ],
+    };
+}
+
+/** Janela (dias até o fim da vigência) em que o admin vê o botão "Renovar" (E4). */
+export const ADMIN_RENEW_WINDOW_DAYS = 30;
+
+/** Dias do calendário de SP até o fim da vigência (endDate é data SEM hora). Negativo = já encerrou. */
+function daysToContractEnd(endDate: Date, now: Date = new Date()): number {
+    const sp = saoPauloParts(now);
+    const [y, m, d] = dateOnlyYmd(endDate).split('-').map(Number);
+    return Math.round((Date.UTC(y!, m! - 1, d!) - Date.UTC(sp.y, sp.m - 1, sp.day)) / 86_400_000);
+}
+
+/**
+ * E4 — quando o botão "Renovar contrato" do admin aparece: contrato de plano (nunca AVULSO nem SERVIÇO,
+ * que não têm renovação por este caminho), cliente não excluído, AINDA NÃO renovado (1 renovação por
+ * contrato) e (a) ACTIVE/COMPLETED a ≤ 30 dias do fim da vigência (inclui vigência já encerrada) ou
+ * (b) EXPIRED. Fonte única para a lista e o detalhe.
+ */
+function renewalState(
+    c: { type: string; status: string; endDate: Date; user?: { deletedAt?: Date | null } | null },
+    alreadyRenewed: boolean,
+    now: Date = new Date(),
+): { daysToEnd: number; canRenew: boolean } {
+    const daysToEnd = daysToContractEnd(c.endDate, now);
+    const supported = c.type !== 'AVULSO' && c.type !== 'SERVICO';
+    const inWindow = c.status === 'EXPIRED'
+        || ((c.status === 'ACTIVE' || c.status === 'COMPLETED') && daysToEnd <= ADMIN_RENEW_WINDOW_DAYS);
+    return { daysToEnd, canRenew: supported && !c.user?.deletedAt && !alreadyRenewed && inWindow };
+}
+
+/** Renovações NÃO canceladas de cada contrato (contrato original → id da renovação mais recente). */
+async function loadRenewals(contractIds: string[]): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    if (contractIds.length === 0) return map;
+    const rows = await prisma.contract.findMany({
+        where: { renewedFromId: { in: contractIds }, status: { not: 'CANCELLED' } },
+        select: { id: true, renewedFromId: true },
+        orderBy: { createdAt: 'asc' },
+    });
+    for (const r of rows) if (r.renewedFromId) map.set(r.renewedFromId, r.id);
+    return map;
+}
+
+/**
+ * Avisa os admins (persistida + push) de um pedido de cancelamento recém-feito. A dedup é POR PEDIDO
+ * (`requestedAt`): um contrato reaberto pelo admin e pedido de novo no mesmo dia avisa outra vez.
+ * Nunca lança.
+ */
+async function notifyAdminsCancellationRequested(
+    contract: { id: string; name: string },
+    clientName: string,
+    fine: { fineAmount: number; requestedAt: Date },
+): Promise<void> {
+    try {
+        const admins = await prisma.user.findMany({ where: { role: 'ADMIN', deletedAt: null }, select: { id: true } });
+        for (const admin of admins) {
+            await notifyEvent('admin_cancellation_requested', {
+                userId: admin.id,
+                vars: { cliente: clientName, contrato: contract.name, valor: formatBRL(fine.fineAmount) },
+                entityType: 'CONTRACT',
+                entityId: contract.id,
+                dedupKey: `cancel-request:${contract.id}:${fine.requestedAt.getTime()}:${admin.id}`,
+            }).catch(() => '');
+        }
+    } catch (err) {
+        console.error('[cancellation] Falha ao avisar os admins do pedido de cancelamento:', err);
+    }
+}
+
+/**
+ * Remove o aviso persistido "pedido de cancelamento" dos admins quando o pedido deixa de estar em
+ * análise (resolvido, cancelado ou contrato reaberto): sem isto ele reapareceria no sino assim que o
+ * alerta computado "Cancelamento pendente" some. Nunca lança.
+ */
+async function clearAdminCancellationRequestNotices(contractId: string): Promise<void> {
+    try {
+        await prisma.notification.deleteMany({
+            where: { type: 'CANCELLATION_PENDING', entityType: 'CONTRACT', entityId: contractId, user: { role: 'ADMIN' } },
+        });
+    } catch (err) {
+        console.error('[cancellation] Falha ao limpar o aviso do pedido de cancelamento:', err);
+    }
+}
+
+/**
+ * Fecha o ciclo de avisos quando o contrato vira CANCELLED: limpa o aviso do pedido dos admins e avisa
+ * o CLIENTE (persistida + push): multa gerada (com o valor) ou cancelamento sem multa. Nunca lança.
+ */
+async function notifyClientContractCancelled(
+    contract: { id: string; name: string; userId: string },
+    fine: { id: string; amount: number; finePct: number; baseAmount: number } | null,
+): Promise<void> {
+    await clearAdminCancellationRequestNotices(contract.id);
+    try {
+        if (fine) {
+            await notifyEvent('contract_cancellation_fine', {
+                userId: contract.userId,
+                vars: { contrato: contract.name, valor: formatBRL(fine.amount), percentual: fine.finePct, base: formatBRL(fine.baseAmount) },
+                entityType: 'PAYMENT',
+                entityId: fine.id,
+            });
+        } else {
+            await notifyEvent('contract_cancelled_no_fine', {
+                userId: contract.userId,
+                vars: { contrato: contract.name },
+                entityType: 'CONTRACT',
+                entityId: contract.id,
+            });
+        }
+    } catch (err) {
+        console.error('[cancellation] Falha ao avisar o cliente do cancelamento:', err);
+    }
+}
+
+/** Frase para o admin sobre o que a anulação encontrou no provedor (vazia quando nada a dizer). */
+function providerSettlementNote(v: { paidAtProvider: string[]; liveAtProvider: string[] }): string {
+    let note = '';
+    if (v.paidAtProvider.length > 0) {
+        note += ` ${plural(v.paidAtProvider.length, 'cobrança já estava paga', 'cobranças já estavam pagas')} no banco/cartão e ${v.paidAtProvider.length === 1 ? 'ficou registrada como paga' : 'ficaram registradas como pagas'} (não ${v.paidAtProvider.length === 1 ? 'foi anulada' : 'foram anuladas'}).`;
+    }
+    if (v.liveAtProvider.length > 0) {
+        note += ` Atenção: ${plural(v.liveAtProvider.length, 'cobrança emitida não pôde', 'cobranças emitidas não puderam')} ser ${v.liveAtProvider.length === 1 ? 'cancelada' : 'canceladas'} no banco/cartão agora — se o cliente pagar, você será avisado.`;
+    }
+    return note;
+}
+
+/** Mensagem do cancelamento feito pelo admin (DELETE e PATCH status=CANCELLED): o que foi cancelado + a nota do provedor. */
+function adminCancelMessage(voidResult: { voided: number; paidAtProvider: string[]; liveAtProvider: string[] }): string {
+    return (voidResult.voided > 0
+        ? `Contrato cancelado. Agendamentos futuros e ${voidResult.voided} parcela(s) pendente(s) foram cancelados.`
+        : 'Contrato cancelado. Agendamentos futuros foram cancelados.') + providerSettlementNote(voidResult);
+}
+
+/**
+ * Trava por contrato que serializa TODO cancelamento (decisão do pedido, DELETE e PATCH status=CANCELLED):
+ * reler o status → anular as parcelas → mudar o status acontecem com exclusividade. Sem ela, duas
+ * requisições passavam juntas pela checagem de status e a segunda anulava (ou avisava por cima de) o que
+ * a primeira acabara de gravar. Espera até ~15 s pela outra requisição (a anulação fala com o provedor).
+ * Devolve a chave (para liberar no `finally`), `null` se continua ocupada, ou `''` com o Redis fora do ar —
+ * aí segue sem a trava: o claim atômico do banco e o filtro da multa na anulação continuam valendo.
+ */
+async function acquireContractCancelLock(contractId: string): Promise<string | null> {
+    const key = `mutex:contract-cancel:${contractId}`;
+    try {
+        return (await acquireMutexBlocking(key, 120, 150, 100)) ? key : null;
+    } catch (err) {
+        console.warn(`[cancellation] Redis indisponível — cancelamento do contrato ${contractId} segue sem a trava:`, err instanceof Error ? err.message : err);
+        return '';
+    }
+}
+
+/** 409 quando outra requisição ainda está cancelando o mesmo contrato. */
+const CANCELLATION_IN_PROGRESS_BODY = {
+    error: 'O cancelamento deste contrato já está sendo processado. Aguarde alguns instantes e atualize a lista.',
+    code: 'CANCELLATION_IN_PROGRESS',
+} as const;
+
+/** 409 da decisão quando o contrato não está (mais) em PENDING_CANCELLATION — lista defasada, duplo clique, outro admin. */
+const cancellationNotPendingBody = (status: string | null | undefined) => ({
+    error: status === 'CANCELLED'
+        ? 'Este pedido de cancelamento já foi resolvido.'
+        : 'O contrato não está mais aguardando cancelamento.',
+    code: 'CANCELLATION_NOT_PENDING' as const,
+});
+
+/** `kind` (ex.: 'CANCELLATION_FINE') exposto ao lado de cada cobrança — as telas não leem o metadata. */
+const withPaymentKind = <T extends { metadata?: unknown }>(p: T): T & { kind: string | null } => ({ ...p, kind: paymentKind(p.metadata) });
+
 export function registerLifecycleRoutes(router: Router) {
 
 // ─── GET /api/contracts (ADMIN) ─────────────────────────
@@ -123,7 +327,24 @@ router.get('/', authenticate, authorize('ADMIN'), async (req: Request, res: Resp
         prisma.contract.count({ where }),
     ]);
 
-    res.json({ contracts, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
+    // E13/E4: o admin decide com os números na mão — pago, saldo do plano, multa (congelada no pedido),
+    // data do pedido/cancelamento, multa gerada — e o botão "Renovar" sabe se o contrato já foi renovado.
+    // Consultas em lote (nº fixo, seja qual for o tamanho da página).
+    const ids = contracts.map(c => c.id);
+    const [cancellation, renewals] = await Promise.all([loadCancellationInfo(contracts), loadRenewals(ids)]);
+    const now = new Date();
+    const enriched = contracts.map(c => {
+        const renewedToId = renewals.get(c.id) ?? null;
+        return {
+            ...c,
+            ...cancellation.get(c.id),
+            alreadyRenewed: !!renewedToId,
+            renewedToId,
+            ...renewalState(c, !!renewedToId, now),
+        };
+    });
+
+    res.json({ contracts: enriched, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
 });
 
 // ─── GET /api/contracts/my ──────────────────────────────
@@ -138,7 +359,14 @@ router.get('/my', authenticate, async (req: Request, res: Response) => {
                 select: {
                     id: true, status: true, date: true, originalDate: true,
                     startTime: true, endTime: true, tierApplied: true, price: true,
-                    clientNotes: true, adminNotes: true, platforms: true, platformLinks: true, addOns: true,
+                    // E11: a nota INTERNA do admin (adminNotes) NUNCA vai para o cliente — só o recado do
+                    // estúdio (clientNotes). recordingStartedAt → "AO VIVO" só enquanto a gravação acontece.
+                    clientNotes: true, platforms: true, platformLinks: true, addOns: true,
+                    recordingStartedAt: true,
+                    // Episódio + métricas da gravação (modal de métricas do cliente).
+                    episodeTitle: true, coverImageUrl: true,
+                    durationMinutes: true, peakViewers: true, chatMessages: true, audienceOrigin: true,
+                    isLivestream: true, streamMetrics: true,
                     // Motivo da falta + janela de remarcação do avulso (D4/D5).
                     statusReason: true, makeupStatus: true, makeupDeadline: true, missedDate: true,
                 },
@@ -148,11 +376,20 @@ router.get('/my', authenticate, async (req: Request, res: Response) => {
             payments: {
                 // installments/provider: o ContractCard mostra "Parcelado no cartão (Nx)" e o método real (D1/D15).
                 // chargedAmount/providerRef: "total pago" pelo valor efetivamente cobrado (cartão = valor do PI).
-                select: { id: true, amount: true, status: true, dueDate: true, pixString: true, boletoUrl: true, paymentUrl: true, installments: true, provider: true, chargedAmount: true, providerRef: true },
+                // bookingId/metadata: distinguem parcela do plano, extra de gravação e multa (E13) — o
+                // metadata NÃO sai na resposta, só o `kind` derivado dele.
+                select: { id: true, amount: true, status: true, dueDate: true, paidAt: true, pixString: true, pixExpiresAt: true, boletoUrl: true, paymentUrl: true, installments: true, provider: true, chargedAmount: true, providerRef: true, bookingId: true, metadata: true },
                 orderBy: { dueDate: 'asc' },
             },
         },
     });
+
+    // E13: saldo do plano, prévia da multa (a congelada enquanto o pedido está em análise), datas do
+    // pedido/cancelamento e a multa gerada — o CancelContractModal e o card cancelado leem daqui.
+    const [cancellation, renewals] = await Promise.all([
+        loadCancellationInfo(contracts),
+        loadRenewals(contracts.map(c => c.id)),
+    ]);
 
     // Enrich with completed bookings count and addon usage
     const sessionsPerMonthMy = await getConfig('sessions_per_month');
@@ -207,6 +444,9 @@ router.get('/my', authenticate, async (req: Request, res: Response) => {
 
         const result = {
             ...c,
+            payments: c.payments.map(({ metadata, ...p }) => ({ ...p, kind: paymentKind(metadata) })),
+            ...cancellation.get(c.id),
+            alreadyRenewed: renewals.has(c.id),
             completedBookings,
             totalBookings,
             ...(addonUsage ? { addonUsage } : {})
@@ -229,7 +469,9 @@ router.get('/:id', authenticate, async (req: Request, res: Response) => {
             ...(isAdmin ? {} : { userId: req.user!.userId }),
         },
         include: {
-            user: { select: { id: true, name: true, email: true, deletedAt: true } }, // deletedAt: selo "Cliente excluído" (D3)
+            // deletedAt: selo "Cliente excluído" (D3). cpfCnpj SÓ para o admin (E1): o "Cobrar" do detalhe
+            // usa o CPF do CLIENTE no PIX — nunca o do admin logado.
+            user: { select: { id: true, name: true, email: true, deletedAt: true, cpfCnpj: isAdmin } },
             bookings: {
                 orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
                 select: {
@@ -241,7 +483,8 @@ router.get('/:id', authenticate, async (req: Request, res: Response) => {
                     tierApplied: true,
                     price: true,
                     clientNotes: true,
-                    adminNotes: true,
+                    // E11: nota interna e nome do operador só para o admin (a rota também atende o dono do contrato).
+                    adminNotes: isAdmin,
                     platforms: true,
                     platformLinks: true,
                     addOns: true,
@@ -252,7 +495,7 @@ router.get('/:id', authenticate, async (req: Request, res: Response) => {
                     isLivestream: true,
                     streamMetrics: true,
                     recordingStartedAt: true,
-                    recordingStartedByName: true,
+                    recordingStartedByName: isAdmin,
                     statusReason: true,
                     originalDate: true,
                     makeupStatus: true,
@@ -271,12 +514,26 @@ router.get('/:id', authenticate, async (req: Request, res: Response) => {
         return;
     }
 
-    res.json({ contract });
+    // E13/E4: mesmos campos da lista (multa, datas, renovação) + `kind` em cada cobrança.
+    const [cancellation, renewals] = await Promise.all([loadCancellationInfo([contract]), loadRenewals([contract.id])]);
+    const renewedToId = renewals.get(contract.id) ?? null;
+
+    res.json({
+        contract: {
+            ...contract,
+            payments: contract.payments.map(withPaymentKind),
+            ...cancellation.get(contract.id),
+            alreadyRenewed: !!renewedToId,
+            renewedToId,
+            ...renewalState(contract, !!renewedToId),
+        },
+    });
 });
 
 // ─── PATCH /api/contracts/:id (ADMIN update) ────────────
 
 router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
+    let cancelLock: string | null = null;
     try {
         const id = req.params.id as string;
         const data = updateContractSchema.parse(req.body);
@@ -297,13 +554,29 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
             return;
         }
 
+        // E3: trocar a forma do contrato para BOLETO só com o boleto EFETIVO (chave-mestra ligada E Cora
+        // habilitada — fonte única getBoletoStatus), como na criação. Recusa ANTES de qualquer efeito.
+        // Reenviar o BOLETO que o contrato já tinha (legado) não é troca e não bloqueia as outras edições.
+        if (data.paymentMethod === 'BOLETO' && contract.paymentMethod !== 'BOLETO') {
+            const boleto = await getBoletoStatus();
+            if (!boleto.available) {
+                res.status(400).json({
+                    error: boleto.message ?? 'O pagamento por boleto não está disponível.',
+                    code: 'BOLETO_UNAVAILABLE',
+                    reason: boleto.reason,
+                });
+                return;
+            }
+        }
+
         const updateData: any = {};
         if (data.status) updateData.status = data.status;
         if (data.endDate) updateData.endDate = new Date(data.endDate + 'T00:00:00');
         if (data.flexCreditsRemaining !== undefined) updateData.flexCreditsRemaining = data.flexCreditsRemaining;
         if (data.contractUrl !== undefined) updateData.contractUrl = data.contractUrl || null;
         if (data.paymentMethod) updateData.paymentMethod = data.paymentMethod;
-        if (data.boletoAllowed !== undefined) updateData.boletoAllowed = data.boletoAllowed;
+        // E3: `boletoAllowed` no corpo é IGNORADO — a liberação por contrato não é mais autoridade (a coluna
+        // fica sem uso; quem decide é a chave-mestra + Cora).
         // addOns is NOT applied via updateData — it goes through applyContractServiceChange,
         // which also recomputes the future PENDING installments and future bookings' services.
 
@@ -321,10 +594,25 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
         // cancelar bookings futuros. Sem isto o contrato ficava CANCELLED com parcelas cobráveis
         // (auto-charge / webhook tardio) e a agenda futura ativa. Só na transição real p/ CANCELLED;
         // void-before-update (idempotente) para retries permanecerem seguros.
-        const cancelingViaPatch = data.status === 'CANCELLED' && contract.status !== 'CANCELLED';
+        // Serializado com a decisão do pedido e o DELETE (acquireContractCancelLock): o status é RELIDO com
+        // a trava — se outra requisição já cancelou, este PATCH não anula nem avisa o cliente de novo.
+        // A anulação nunca toca na multa de cancelamento (criada pela decisão do pedido).
+        let cancelingViaPatch = data.status === 'CANCELLED' && contract.status !== 'CANCELLED';
+        let voidResult: { voided: number; paidAtProvider: string[]; liveAtProvider: string[] } | null = null;
         if (cancelingViaPatch) {
-            const { voidContractPendingPayments } = await import('../../lib/paymentEffects.js');
-            await voidContractPendingPayments(id);
+            cancelLock = await acquireContractCancelLock(id);
+            if (cancelLock === null) {
+                res.status(409).json(CANCELLATION_IN_PROGRESS_BODY);
+                return;
+            }
+            const fresh = await prisma.contract.findUnique({ where: { id }, select: { status: true } });
+            cancelingViaPatch = !!fresh && fresh.status !== 'CANCELLED';
+        }
+        if (cancelingViaPatch) {
+            // Versão detalhada: o que o provedor respondeu (cobrança já paga / não cancelável) volta ao
+            // admin na resposta, como no DELETE.
+            const { voidContractPendingPaymentsDetailed } = await import('../../lib/paymentEffects.js');
+            voidResult = await voidContractPendingPaymentsDetailed(id);
         }
 
         // D1 (pagamentos-3) — troca da forma de pagamento: os valores das cobranças NÃO mudam. O cartão
@@ -346,15 +634,29 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
             await syncContractCompletion(id, req.user!.userId);
         }
 
-        if (cancelingViaPatch) {
-            // B6: ancorar em meia-noite (não no instante). booking.date é date-only à meia-noite, então
-            // `gte: new Date()` deixava o agendamento de HOJE por cancelar (fica < agora).
-            const startOfToday = new Date();
-            startOfToday.setUTCHours(0, 0, 0, 0);
-            await prisma.booking.updateMany({
-                where: { contractId: id, status: { not: 'CANCELLED' }, date: { gte: startOfToday } },
+        if (cancelingViaPatch && voidResult) {
+            // E13: só as gravações que ainda NÃO aconteceram (início futuro no relógio de SP). Inclui a de
+            // hoje que ainda não começou (B6) e nunca reescreve COMPLETED/FALTA/NAO_REALIZADO.
+            const cancelledBookings = await prisma.booking.updateMany({
+                where: upcomingContractBookingsWhere(id),
                 data: { status: 'CANCELLED' },
             });
+            await markContractCancelled(id, req.user!.userId, { via: 'ADMIN_PATCH', from: contract.status, voidedCount: voidResult.voided });
+            await notifyClientContractCancelled(updated, null);
+            // Mesma resposta do DELETE: contagens + a nota do provedor (o front mostra o alerta persistente
+            // quando uma cobrança já estava paga ou não pôde ser cancelada no banco/cartão).
+            res.json({
+                contract: updated,
+                message: adminCancelMessage(voidResult),
+                voidedCount: voidResult.voided,
+                cancelledBookings: cancelledBookings.count,
+                paidAtProvider: voidResult.paidAtProvider.length,
+                liveAtProvider: voidResult.liveAtProvider.length,
+            });
+            return;
+        } else if (contract.status === 'PENDING_CANCELLATION' && updated.status !== 'PENDING_CANCELLATION') {
+            // Pedido de cancelamento desfeito pelo admin (contrato reaberto): o aviso do pedido sai do sino.
+            await clearAdminCancellationRequestNotices(id);
         }
 
         res.json({ contract: updated, message: 'Contrato atualizado com sucesso.' });
@@ -364,6 +666,8 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req: Request, res:
             return;
         }
         throw err;
+    } finally {
+        if (cancelLock) await releaseMutex(cancelLock).catch(() => {});
     }
 });
 
@@ -383,37 +687,59 @@ router.delete('/:id', authenticate, authorize('ADMIN'), async (req: Request, res
         return;
     }
 
-    // Void still-pending installments FIRST (idempotent), so they stop being open invoices /
-    // auto-charged / reconcilable, and cancel any Stripe subscription. Doing this before the
-    // status change keeps retries safe: if a later step fails, the contract is still ACTIVE and
-    // a retry re-runs the (idempotent) void — never a "CANCELLED contract with PENDING parcelas".
-    const { voidContractPendingPayments } = await import('../../lib/paymentEffects.js');
-    const voidedCount = await voidContractPendingPayments(id);
+    // Serializado com a decisão do pedido e o PATCH status=CANCELLED: o status é RELIDO com a trava. Se
+    // outra requisição cancelou no meio do caminho (ex.: a decisão que gerou a multa), este DELETE não
+    // anula nada nem manda ao cliente um segundo aviso "cancelado sem multa".
+    const cancelLock = await acquireContractCancelLock(id);
+    if (cancelLock === null) {
+        res.status(409).json(CANCELLATION_IN_PROGRESS_BODY);
+        return;
+    }
+    try {
+        const fresh = await prisma.contract.findUnique({ where: { id }, select: { status: true } });
+        if (!fresh || fresh.status === 'CANCELLED') {
+            res.status(400).json({ error: 'Contrato já está cancelado.' });
+            return;
+        }
 
-    // Cancel contract
-    await prisma.contract.update({
-        where: { id },
-        data: { status: 'CANCELLED' },
-    });
+        // Void still-pending installments FIRST (idempotent), so they stop being open invoices /
+        // auto-charged / reconcilable, and cancel any Stripe subscription. Doing this before the
+        // status change keeps retries safe: if a later step fails, the contract is still ACTIVE and
+        // a retry re-runs the (idempotent) void — never a "CANCELLED contract with PENDING parcelas".
+        // E13: antes de anular, a cobrança viva de cada parcela é aposentada no provedor (PIX já pago → PAID).
+        // A multa de cancelamento (de um cancelamento anterior, contrato reaberto) nunca é anulada aqui.
+        const { voidContractPendingPaymentsDetailed } = await import('../../lib/paymentEffects.js');
+        const voidResult = await voidContractPendingPaymentsDetailed(id);
+        const voidedCount = voidResult.voided;
 
-    // Cancel future bookings tied to this contract. B6: ancorar em meia-noite (não no instante) —
-    // booking.date é date-only à meia-noite, então `gte: new Date()` deixava o de HOJE por cancelar.
-    const startOfToday = new Date();
-    startOfToday.setUTCHours(0, 0, 0, 0);
-    await prisma.booking.updateMany({
-        where: {
-            contractId: id,
-            status: { not: 'CANCELLED' },
-            date: { gte: startOfToday },
-        },
-        data: { status: 'CANCELLED' },
-    });
+        // Cancel contract
+        await prisma.contract.update({
+            where: { id },
+            data: { status: 'CANCELLED' },
+        });
+        await markContractCancelled(id, req.user!.userId, { via: 'ADMIN_DELETE', from: fresh.status, voidedCount });
 
-    res.json({
-        message: voidedCount > 0
-            ? `Contrato cancelado. Agendamentos futuros e ${voidedCount} parcela(s) pendente(s) foram cancelados.`
-            : 'Contrato cancelado. Agendamentos futuros foram cancelados.',
-    });
+        // Cancel the recordings that have NOT happened yet (E13): RESERVED/CONFIRMED/HELD com início futuro
+        // no relógio de SP — inclui a de hoje que ainda não começou (B6); a sessão de hoje já feita
+        // (COMPLETED/FALTA/NAO_REALIZADO) ou em andamento fica como está.
+        const cancelledBookings = await prisma.booking.updateMany({
+            where: upcomingContractBookingsWhere(id),
+            data: { status: 'CANCELLED' },
+        });
+
+        // O cliente é avisado (persistida + push) — sem multa neste caminho.
+        await notifyClientContractCancelled(contract, null);
+
+        res.json({
+            message: adminCancelMessage(voidResult),
+            voidedCount,
+            cancelledBookings: cancelledBookings.count,
+            paidAtProvider: voidResult.paidAtProvider.length,
+            liveAtProvider: voidResult.liveAtProvider.length,
+        });
+    } finally {
+        if (cancelLock) await releaseMutex(cancelLock).catch(() => {});
+    }
 });
 
 // ─── POST /api/contracts/:id/request-cancellation (CLIENT)
@@ -423,6 +749,7 @@ router.post('/:id/request-cancellation', authenticate, async (req: Request, res:
 
     const contract = await prisma.contract.findFirst({
         where: { id, userId },
+        include: { user: { select: { name: true } } },
     });
 
     if (!contract) {
@@ -435,71 +762,185 @@ router.post('/:id/request-cancellation', authenticate, async (req: Request, res:
         return;
     }
 
-    const updated = await prisma.contract.update({
-        where: { id },
-        data: { status: 'PENDING_CANCELLATION' },
+    // E13: o pedido e a multa CONGELADA nascem juntos (mesma transação). Base = o que falta pagar do
+    // plano AGORA (parcelas não pagas, sem extras de gravação) × cancellation_fine_pct vigente. Mudar o %
+    // depois do pedido não altera a multa, e a base nunca aumenta; uma parcela da base paga durante a
+    // análise SAI dela (base efetiva = mínimo entre a congelada e o que ainda falta — ver a decisão).
+    // Claim atômico (só um pedido vence dois cliques simultâneos).
+    const snapshot = await prisma.$transaction(async (tx) => {
+        const claim = await tx.contract.updateMany({
+            where: { id, userId, status: 'ACTIVE' },
+            data: { status: 'PENDING_CANCELLATION' },
+        });
+        if (claim.count === 0) return null;
+        return freezeCancellationFine(tx, id, userId);
     });
+    if (!snapshot) {
+        res.status(400).json({ error: 'Apenas contratos ativos podem solicitar cancelamento.' });
+        return;
+    }
+    const updated = await prisma.contract.findUniqueOrThrow({ where: { id } });
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
+    // Só as gravações que ainda NÃO aconteceram (início futuro no relógio de SP): a sessão de hoje já
+    // feita (COMPLETED/FALTA/NAO_REALIZADO) ou em andamento não é cancelada. Os ids são lidos ANTES, para
+    // saber depois quais gravações ESTE pedido cancelou.
+    const upcomingIds = (await prisma.booking.findMany({
+        where: upcomingContractBookingsWhere(id),
+        select: { id: true },
+    })).map(b => b.id);
     const cancelledBookings = await prisma.booking.updateMany({
-        where: {
-            contractId: id,
-            status: { not: 'CANCELLED' },
-            date: { gte: today },
-        },
+        where: upcomingContractBookingsWhere(id),
         data: { status: 'CANCELLED' },
     });
 
+    // A gravação que o próprio pedido cancelou não vai acontecer: a cobrança em aberto dos EXTRAS dela
+    // (bookingId) deixa de ser pagável já — antes ela seguia com "Pagar" e avisando como vencida durante a
+    // análise. Mesma sequência da anulação: a cobrança viva é aposentada no provedor antes (PIX/cartão já
+    // pago → fica PAID, não é anulado). Extras de gravações já REALIZADAS continuam pagáveis e as parcelas
+    // do plano ficam como estão (suspensas para o cliente até a decisão). Best-effort: uma falha aqui não
+    // desfaz o pedido — a decisão do estúdio anula o que sobrar.
+    let voidedExtras = 0;
+    if (upcomingIds.length > 0) {
+        try {
+            const cancelledIds = (await prisma.booking.findMany({
+                where: { id: { in: upcomingIds }, status: 'CANCELLED' },
+                select: { id: true },
+            })).map(b => b.id);
+            if (cancelledIds.length > 0) {
+                const { voidContractPendingPaymentsDetailed } = await import('../../lib/paymentEffects.js');
+                voidedExtras = (await voidContractPendingPaymentsDetailed(id, { bookingIds: cancelledIds })).voided;
+            }
+        } catch (err) {
+            console.error(`[cancellation] Falha ao anular os extras das gravações canceladas pelo pedido (contrato ${id}):`, err);
+        }
+    }
+
+    // Admin avisado na hora (persistida + push); no sino, o alerta computado "Cancelamento pendente"
+    // continua sendo a única linha enquanto o pedido está em análise.
+    await notifyAdminsCancellationRequested(updated, contract.user?.name ?? 'Cliente', snapshot);
+
+    // Multa zero tem dois motivos diferentes — a mensagem diz o verdadeiro: nada em aberto (base 0) ou
+    // percentual de multa zerado (há parcelas em aberto, mas o cancelamento não tem multa).
+    let fineNote: string;
+    if (snapshot.fineAmount > 0) {
+        fineNote = ` Multa prevista: ${formatBRL(snapshot.fineAmount)} (${snapshot.finePct}% de ${formatBRL(snapshot.baseAmount)} que faltam pagar) — o estúdio decide entre cobrar ou isentar.`;
+    } else if (snapshot.baseAmount > 0) {
+        fineNote = ' O cancelamento não tem multa.';
+    } else {
+        fineNote = ' Não há parcelas do plano em aberto: o cancelamento não tem multa.';
+    }
+    const extrasNote = voidedExtras > 0
+        ? ` ${plural(voidedExtras, 'cobrança de serviços extras dessas gravações foi cancelada', 'cobranças de serviços extras dessas gravações foram canceladas')}.`
+        : '';
     res.json({
-        contract: updated,
-        message: `Solicitação de cancelamento enviada. ${cancelledBookings.count} agendamentos futuros foram liberados.`
+        contract: {
+            ...updated,
+            cancellationRequestedAt: snapshot.requestedAt.toISOString(),
+            finePct: snapshot.finePct,
+            fineBaseAmount: snapshot.baseAmount,
+            fineAmountPreview: snapshot.fineAmount,
+        },
+        cancelledBookings: cancelledBookings.count,
+        voidedExtras,
+        fine: { finePct: snapshot.finePct, baseAmount: snapshot.baseAmount, amount: snapshot.fineAmount },
+        message: `Solicitação de cancelamento enviada. ${cancelledBookings.count} agendamentos futuros foram liberados.${extrasNote}${fineNote}`
     });
 });
 
 // ─── POST /api/contracts/:id/resolve-cancellation (ADMIN)
 router.post('/:id/resolve-cancellation', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
+    let cancelLock: string | null = null;
     try {
         const id = req.params.id as string;
         const data = resolveCancellationSchema.parse(req.body);
 
-        const contract = await prisma.contract.findUnique({
-            where: { id },
-            include: { bookings: true }
-        });
+        const contract = await prisma.contract.findUnique({ where: { id } });
 
         if (!contract) {
             res.status(404).json({ error: 'Contrato não encontrado.' });
             return;
         }
 
+        // Pedido que não está (mais) em análise — lista defasada, outro admin, duplo clique: 409 com código
+        // (o front recarrega a lista e fecha o diálogo), nunca um 400 preso no diálogo.
         if (contract.status !== 'PENDING_CANCELLATION') {
-            res.status(400).json({ error: 'O contrato não está aguardando cancelamento.' });
+            res.status(409).json(cancellationNotPendingBody(contract.status));
             return;
         }
 
-        // Void existing pending installments BEFORE any fine is created (the fine, created
-        // below, must stay PENDING). Also cancels any linked Stripe subscription.
-        const { voidContractPendingPayments } = await import('../../lib/paymentEffects.js');
-        const voidedCount = await voidContractPendingPayments(id);
+        // Exclusividade ANTES de qualquer efeito: a decisão é serializada por contrato e o status é RELIDO
+        // com a trava. Quem chega depois recebe 409 sem anular nada nem tocar no provedor — antes, a segunda
+        // requisição passava junto pela checagem acima e anulava a multa que a primeira acabara de criar.
+        cancelLock = await acquireContractCancelLock(id);
+        if (cancelLock === null) {
+            res.status(409).json(CANCELLATION_IN_PROGRESS_BODY);
+            return;
+        }
+        const fresh = await prisma.contract.findUnique({ where: { id }, select: { status: true } });
+        if (fresh?.status !== 'PENDING_CANCELLATION') {
+            res.status(409).json(cancellationNotPendingBody(fresh?.status));
+            return;
+        }
 
-        let message = 'Contrato cancelado com sucesso.';
+        // E13 — base da multa = o que FALTAVA pagar do plano no PEDIDO (congelada em request-cancellation;
+        // parcelas não pagas, sem extras de gravação). Lida ANTES de anular as parcelas: num pedido
+        // anterior a esta regra (sem a marca) ela é calculada agora e gravada, para uma nova tentativa
+        // chegar ao mesmo valor. À vista quitado / nada a pagar → base 0 → sem multa.
+        const frozenBasis = await resolveCancellationBasis(id, req.user!.userId);
+        // Marca antiga (sem a lista de parcelas): guarda quais estavam em aberto ANTES de anular.
+        const openBeforeVoid = frozenBasis.installments
+            ? undefined
+            : new Set((await loadFineBasisPayments(id)).filter(isUnpaidPlanInstallment).map(p => p.id));
 
-        if (data.action === 'CHARGE_FEE') {
-            // Calculate and create actual payment record for the cancellation fine.
-            // Base = soma do `amount` das cobranças PAGAS do contrato (o valor contratado de cada uma — sem os
-            // juros do parcelamento nem a reversão do desconto PIX no cartão). O CancelContractModal exibe
-            // exatamente esta conta.
-            const finePct = await getConfig('cancellation_fine_pct');
-            const totalPaid = await prisma.payment.aggregate({
-                where: { contractId: id, status: 'PAID' },
-                _sum: { amount: true },
+        // Void the unpaid installments BEFORE the fine is created (the fine, created below, must stay
+        // PENDING). A cobrança viva de cada parcela é aposentada no provedor antes (PIX já pago → PAID);
+        // também cancela a assinatura Stripe vinculada. A anulação nunca toca numa multa de cancelamento.
+        const { voidContractPendingPaymentsDetailed } = await import('../../lib/paymentEffects.js');
+        const voidResult = await voidContractPendingPaymentsDetailed(id);
+        const voidedCount = voidResult.voided;
+
+        // Base EFETIVA = mínimo entre a congelada no pedido e o que ainda falta pagar: congelar impede a
+        // base de AUMENTAR, nunca cobra multa sobre parcela já quitada. Uma parcela que compunha a base e
+        // foi paga durante a análise (QR PIX / PaymentIntent emitido antes do pedido, cobrança do admin,
+        // ou confirmada no provedor agora, ao anular) sai dela — por isso a leitura é DEPOIS de anular.
+        // Base efetiva 0 → sem multa (mesmo caminho do à vista quitado). O % continua o do pedido.
+        const paymentsAfterVoid = await loadFineBasisPayments(id);
+        const basis = effectiveCancellationBasis(frozenBasis, paymentsAfterVoid, openBeforeVoid);
+        const fineAmount = data.action === 'CHARGE_FEE' ? basis.fineAmount : 0;
+
+        // Contrato reaberto pelo admin e cancelado de novo: a multa em aberto (PENDING/FAILED) de um
+        // cancelamento ANTERIOR não pode conviver com a nova — nunca duas multas em aberto. Quem decide
+        // (com a trava) aposenta a cobrança viva dela no provedor e a anula ANTES de criar a nova; se o
+        // provedor disser que ela já foi paga, fica PAID. Sem multa nova, a anterior continua devida.
+        // SÓ multas criadas ANTES deste pedido: uma multa posterior ao pedido é de uma decisão concorrente
+        // do MESMO pedido (a trava não serializou — Redis fora do ar ou trava expirada) e nunca pode ser
+        // anulada por quem ainda vai disputar o claim. A anulação fica restrita a esses ids.
+        const openFineCandidates = paymentsAfterVoid.filter(p => isCancellationFine(p) && (p.status === 'PENDING' || p.status === 'FAILED'));
+        const priorFineIds = openFineCandidates.length === 0 ? new Set<string>() : new Set((await prisma.payment.findMany({
+            where: { id: { in: openFineCandidates.map(p => p.id) }, createdAt: { lt: frozenBasis.requestedAt } },
+            select: { id: true },
+        })).map(p => p.id));
+        const priorOpenFines = openFineCandidates.filter(p => priorFineIds.has(p.id));
+        let replacedFines = 0;
+        if (fineAmount > 0 && priorOpenFines.length > 0) {
+            const prior = await voidContractPendingPaymentsDetailed(id, { onlyFines: true, paymentIds: priorOpenFines.map(p => p.id) });
+            replacedFines = prior.voided;
+            voidResult.paidAtProvider.push(...prior.paidAtProvider);
+            voidResult.liveAtProvider.push(...prior.liveAtProvider);
+        }
+
+        // Decisão ATÔMICA: o contrato sai de PENDING_CANCELLATION uma única vez (dois admins / duplo
+        // clique não geram duas multas) e a multa nasce na mesma transação. A multa é uma cobrança
+        // identificada (metadata.kind), PENDENTE: o cliente paga em Meus Pagamentos ou o admin cobra
+        // agora; o auto-charge nunca a cobra (contrato CANCELLED).
+        const decided = await prisma.$transaction(async (tx) => {
+            const claim = await tx.contract.updateMany({
+                where: { id, status: 'PENDING_CANCELLATION' },
+                data: { status: 'CANCELLED' },
             });
-            const fineAmount = Math.round((totalPaid._sum.amount || 0) * finePct / 100);
-
-            if (fineAmount > 0) {
-                const finePayment = await prisma.payment.create({
+            if (claim.count === 0) return null;
+            const fine = fineAmount > 0
+                ? await tx.payment.create({
                     data: {
                         userId: contract.userId,
                         contractId: id,
@@ -507,32 +948,79 @@ router.post('/:id/resolve-cancellation', authenticate, authorize('ADMIN'), async
                         amount: fineAmount,
                         status: 'PENDING',
                         dueDate: new Date(),
+                        metadata: { kind: CANCELLATION_FINE_KIND, finePct: basis.finePct, baseAmount: basis.baseAmount },
                     },
-                });
-                message = `Quebra de contrato aplicada. Multa de ${finePct}% (R$ ${(fineAmount / 100).toFixed(2).replace('.', ',')}) gerada com sucesso. ID do pagamento: ${finePayment.id}. Contrato cancelado.`;
-            } else {
-                message = 'Contrato cancelado. Nenhuma multa aplicada (sem pagamentos anteriores).';
-            }
-        } else if (data.action === 'WAIVE_FEE') {
-            message = 'Cancelamento isento efetuado pelo estúdio. Contrato cancelado.';
-        }
-
-        const updated = await prisma.contract.update({
-            where: { id },
-            data: { status: 'CANCELLED' },
+                })
+                : null;
+            await tx.auditLog.create({
+                data: {
+                    entityType: 'CONTRACT', entityId: id, action: AUDIT_CONTRACT_CANCELLED, performedBy: req.user!.userId,
+                    changes: JSON.stringify({
+                        via: 'RESOLVE_CANCELLATION', action: data.action, finePct: basis.finePct, baseAmount: basis.baseAmount,
+                        frozenBaseAmount: basis.frozenBaseAmount,
+                        fineAmount, finePaymentId: fine?.id ?? null, voidedCount,
+                        ...(replacedFines > 0 ? { replacedFines } : {}),
+                    }),
+                },
+            });
+            return { fine };
         });
+        if (!decided) {
+            // Só chega aqui se o status mudou por fora da trava (ex.: contrato reaberto por um PATCH).
+            const now = await prisma.contract.findUnique({ where: { id }, select: { status: true } });
+            res.status(409).json(cancellationNotPendingBody(now?.status ?? 'CANCELLED'));
+            return;
+        }
+        const fine = decided.fine;
+        const updated = await prisma.contract.findUniqueOrThrow({ where: { id } });
 
+        // Cliente avisado na decisão (persistida + push): multa gerada (valor) ou cancelamento sem multa.
+        await notifyClientContractCancelled(
+            updated,
+            fine ? { id: fine.id, amount: fine.amount, finePct: basis.finePct, baseAmount: basis.baseAmount } : null,
+        );
+
+        let message: string;
+        if (data.action === 'CHARGE_FEE') {
+            if (fine) {
+                message = `Contrato cancelado com multa de ${basis.finePct}% (${formatBRL(fine.amount)}) sobre ${formatBRL(basis.baseAmount)} que faltavam pagar. A multa fica pendente: o cliente foi avisado e paga em Meus Pagamentos, ou você cobra agora pelo painel (ela não é cobrada automaticamente).`;
+            } else if (basis.baseAmount > 0) {
+                // Há parcelas em aberto, mas a multa do pedido é zero (percentual configurado em 0%).
+                message = `Contrato cancelado. Nenhuma multa aplicada: o cancelamento não tem multa (percentual de ${basis.finePct}% neste pedido).`;
+            } else {
+                message = 'Contrato cancelado. Nenhuma multa aplicada: não há parcelas do plano em aberto.';
+            }
+        } else {
+            message = 'Cancelamento isento efetuado pelo estúdio. Contrato cancelado e cliente avisado.';
+        }
         if (voidedCount > 0) {
             message += ` ${voidedCount} parcela(s) pendente(s) foram canceladas.`;
         }
+        if (replacedFines > 0) {
+            message += ' A multa em aberto de um cancelamento anterior deste contrato foi anulada e substituída por esta.';
+        } else if (!fine && priorOpenFines.length > 0) {
+            message += ` Atenção: a multa de um cancelamento anterior deste contrato (${formatBRL(priorOpenFines.reduce((s, p) => s + p.amount, 0))}) continua pendente.`;
+        }
+        message += providerSettlementNote(voidResult);
 
-        res.json({ contract: updated, message });
+        res.json({
+            contract: updated,
+            message,
+            fine: fine
+                ? { id: fine.id, amount: fine.amount, status: fine.status, dueDate: fine.dueDate, finePct: basis.finePct, baseAmount: basis.baseAmount }
+                : null,
+            voidedCount,
+            paidAtProvider: voidResult.paidAtProvider.length,
+            liveAtProvider: voidResult.liveAtProvider.length,
+        });
     } catch (err) {
         if (err instanceof z.ZodError) {
             res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
             return;
         }
         throw err;
+    } finally {
+        if (cancelLock) await releaseMutex(cancelLock).catch(() => {});
     }
 });
 
@@ -554,6 +1042,12 @@ router.post('/:id/renew', authenticate, authorize('ADMIN'), async (req: Request,
         const renewable = ['ACTIVE', 'EXPIRED'].includes(original.status)
             || (original.status === 'COMPLETED' && original.type !== 'AVULSO');
         if (!renewable) { res.status(400).json({ error: 'Só é possível renovar contratos ativos, concluídos ou expirados.' }); return; }
+        // E4: avulso (sessão única) e serviço (contratação própria, com outra lógica de cobrança) não têm
+        // renovação por este caminho — o botão nem aparece; a rota recusa por garantia.
+        if (original.type === 'AVULSO' || original.type === 'SERVICO') {
+            res.status(400).json({ error: 'Este tipo de contrato não é renovável por aqui. Faça uma nova contratação.' });
+            return;
+        }
 
         // Renovação 1× por contrato (mesma regra do client-renew; admin não tem a janela de 7 dias).
         const existingRenewal = await prisma.contract.findFirst({

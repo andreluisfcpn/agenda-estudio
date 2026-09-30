@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
+import Tooltip from './ui/Tooltip';
 
 interface VideoModalProps {
     isOpen: boolean;
@@ -55,8 +56,11 @@ export default function VideoModal({ isOpen, onClose, videoUrl }: VideoModalProp
                         boxShadow: '0 40px 100px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.1)'
                     }}
                 >
+                    <Tooltip content="Fechar vídeo" placement="left" describe={false}>
                     <button
+                        type="button"
                         onClick={onClose}
+                        aria-label="Fechar vídeo"
                         style={{
                             position: 'absolute', top: '24px', right: '24px',
                             background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff',
@@ -76,6 +80,7 @@ export default function VideoModal({ isOpen, onClose, videoUrl }: VideoModalProp
                     >
                         <X size={24} />
                     </button>
+                    </Tooltip>
 
                     <iframe
                         width="100%"

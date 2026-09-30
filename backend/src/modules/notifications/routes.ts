@@ -10,6 +10,7 @@ import {
     getUserNotifications,
 } from './notificationService.js';
 import { getAllEffectiveEvents, renderTemplate, EffectiveEvent } from './templateStore.js';
+import { planPaymentBlockedByPendingCancellation } from '../../lib/cancellationPending.js';
 import adminRouter from './admin.js';
 
 const router = Router();
@@ -112,12 +113,19 @@ async function buildComputedNotifications(userId: string, userRole: string): Pro
 
     // 2. Overdue payments — AGGREGATED (B1): one per user (client) / per client (admin),
     // instead of one identical row per invoice.
+    // Cancelamento em análise (E13): o CLIENTE não paga parcela do plano de um contrato
+    // PENDING_CANCELLATION (as rotas de pagamento devolvem 409 CANCELLATION_PENDING) — então também não é
+    // lembrado dela. Mesma regra das rotas (planPaymentBlockedByPendingCancellation): extras de gravação e
+    // a multa continuam avisando; o admin (que pode cobrar) continua vendo tudo.
+    // Cobrança de uma gravação CANCELADA (extra que ficou em aberto — dado legado) não pode mais ser paga
+    // (create-payment → 400 BOOKING_CANCELLED): fica fora de "vencidas" e de "pagamento falhou", para o
+    // cliente e para o admin.
     const overdueEff = ev(isAdmin ? 'computed_payment_overdue_admin' : 'computed_payment_overdue');
     if (overdueEff.enabled) {
-        const overduePayments = await prisma.payment.findMany({
+        const overduePayments = (await prisma.payment.findMany({
             where: { status: 'PENDING', dueDate: { lt: today }, ...(isAdmin ? {} : { userId }) },
-            include: { user: { select: { name: true } } },
-        });
+            include: { user: { select: { name: true } }, contract: { select: { status: true } }, booking: { select: { status: true } } },
+        })).filter(p => p.booking?.status !== 'CANCELLED' && !planPaymentBlockedByPendingCancellation(p, isAdmin));
         const daysOverdue = (p: { dueDate: Date | null }) => Math.ceil((today.getTime() - new Date(p.dueDate!).getTime()) / (1000 * 60 * 60 * 24));
         if (isAdmin) {
             const byClient = new Map<string, { name: string; count: number; total: number; maxDays: number }>();
@@ -161,10 +169,11 @@ async function buildComputedNotifications(userId: string, userRole: string): Pro
         // L12: este alerta é "Pagamento com CARTÃO falhou" — restringir a provider STRIPE. Falhas de
         // PIX/boleto (Sicoob/Cora) têm seu próprio evento "Cobrança expirada"; antes elas disparavam a
         // cópia de cartão ("Atualize o cartão"), confundindo clientes que só usam PIX.
-        const failedPayments = await prisma.payment.findMany({
+        // Mesma regra do "vencido": com o cancelamento em análise o cliente não consegue repagar a parcela.
+        const failedPayments = (await prisma.payment.findMany({
             where: { status: 'FAILED', provider: 'STRIPE', ...(isAdmin ? {} : { userId }) },
-            include: { user: { select: { name: true } } },
-        });
+            include: { user: { select: { name: true } }, contract: { select: { status: true } }, booking: { select: { status: true } } },
+        })).filter(p => p.booking?.status !== 'CANCELLED' && !planPaymentBlockedByPendingCancellation(p, isAdmin));
         for (const p of failedPayments) {
             const vars: Record<string, string | number> = isAdmin ? { cliente: p.user.name, valor: fmtBRL(p.amount) } : {};
             notifications.push({

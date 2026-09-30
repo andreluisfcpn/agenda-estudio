@@ -3,6 +3,8 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Slot, MyBookingSlot } from '../../api/client';
 import { studioSlotDate } from '../../utils/time';
 import HoldCountdownCell from './HoldCountdownCell';
+import Tooltip from '../ui/Tooltip';
+import BrandLoader from '../ui/BrandLoader';
 import { DAYS, GRID_ROWS, TIER_COLORS, formatDate, formatDateShort, BookingLookup } from './calendarShared';
 
 /**
@@ -40,7 +42,9 @@ export default function CalendarDesktopView({
                     Hoje
                 </button>
                 <div className="calendar-toolbar__nav-group">
-                    <button className="calendar-toolbar__nav" aria-label="Semana anterior" onClick={() => navigateWeek(-1)}><ChevronLeft size={18} /></button>
+                    <Tooltip content="Semana anterior" describe={false}>
+                        <button type="button" className="calendar-toolbar__nav" aria-label="Semana anterior" onClick={() => navigateWeek(-1)}><ChevronLeft size={18} aria-hidden="true" /></button>
+                    </Tooltip>
 
                     <div className="calendar-toolbar__range">
                         <div className="calendar-toolbar__range-dates">
@@ -49,14 +53,16 @@ export default function CalendarDesktopView({
                         <div className="calendar-toolbar__range-month">{displayMonth}</div>
                     </div>
 
-                    <button className="calendar-toolbar__nav" aria-label="Próxima semana" onClick={() => navigateWeek(1)}><ChevronRight size={18} /></button>
+                    <Tooltip content="Próxima semana" describe={false}>
+                        <button type="button" className="calendar-toolbar__nav" aria-label="Próxima semana" onClick={() => navigateWeek(1)}><ChevronRight size={18} aria-hidden="true" /></button>
+                    </Tooltip>
                 </div>
                 {/* Spacer to balance */}
                 <div className="calendar-toolbar__spacer" />
             </div>
 
             {loading ? (
-                <div className="loading-spinner"><div className="spinner" /></div>
+                <BrandLoader size="section" label="Carregando a agenda…" />
             ) : (
                 <div className="calendar-grid calendar-grid--scroll">
                     <div className="calendar-day-header calendar-day-header--sticky"></div>

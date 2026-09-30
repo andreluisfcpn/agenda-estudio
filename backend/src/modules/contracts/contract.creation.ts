@@ -13,8 +13,8 @@ import { getConfig } from '../../lib/businessConfig.js';
 import { config } from '../../config/index.js';
 import { saoPauloParts } from '../../lib/spTime.js';
 import { cleanDocument, isValidCpfCnpj } from '../../utils/document.js';
-import { createPayment as gatewayCreatePayment, updatePaymentWithGatewayResult, validatePaymentMethod, getProviderForMethod, PaymentMethodDisabledError } from '../../lib/paymentGateway.js';
-import { pixExpirySecondsFor, pixQrDataUrl, pixDiscountMetaForCharge } from '../../lib/pixGateway.js';
+import { createPayment as gatewayCreatePayment, updatePaymentWithGatewayResult, validatePaymentMethod, getProviderForMethod, PaymentMethodDisabledError, getBoletoStatus } from '../../lib/paymentGateway.js';
+import { pixExpirySecondsFor, pixQrDataUrl, pixDiscountMetaForFullCharge } from '../../lib/pixGateway.js';
 import { createContractSchema, selfContractSchema, customContractSchema } from './validators.js';
 import { computeAddonsCost, computeFullContractTotals } from '../../lib/contractPricing.js';
 import { resolvePlanAmounts } from '../../lib/paymentPolicy.js';
@@ -206,6 +206,12 @@ function discountSchedule(quote: CouponQuote | null, amounts: number[]): { amoun
     });
 }
 
+/** E3: corpo do 400 quando o boleto é pedido numa contratação do CLIENTE com prazo de pagamento (10 min). */
+const CLIENT_BOLETO_ERROR = {
+    error: 'O boleto compensa em até 3 dias úteis e não está disponível nesta contratação. Escolha PIX ou cartão.',
+    code: 'BOLETO_NOT_ALLOWED_HERE',
+};
+
 export function registerCreationRoutes(router: Router) {
 
 // ─── POST /api/contracts (ADMIN) ────────────────────────
@@ -218,6 +224,20 @@ router.post('/', authenticate, authorize('ADMIN'), async (req: Request, res: Res
         if (data.type === 'FIXO' && (!data.fixedDayOfWeek || !data.fixedTime)) {
             res.status(400).json({ error: 'Plano Fixo requer dia da semana e horário.' });
             return;
+        }
+
+        // E3: boleto só com a chave-mestra "Aceitar pagamento por boleto" ligada E a Cora habilitada
+        // (fonte única getBoletoStatus). `boletoAllowed` por contrato não é mais autoridade.
+        if (data.paymentMethod === 'BOLETO') {
+            const boleto = await getBoletoStatus();
+            if (!boleto.available) {
+                res.status(400).json({
+                    error: boleto.message ?? 'O pagamento por boleto não está disponível.',
+                    code: 'BOLETO_UNAVAILABLE',
+                    reason: boleto.reason,
+                });
+                return;
+            }
         }
 
         // D3: nada novo para um cliente excluído (soft delete / anonimizado).
@@ -396,18 +416,19 @@ router.post('/', authenticate, authorize('ADMIN'), async (req: Request, res: Res
             }
         }
         const schedule = discountSchedule(adminCoupon, adminPlan.scheduleDueDates.map(() => perInstallmentBase));
-        // D1 (pagamentos-3): à vista + PIX grava o amount JÁ com o desconto PIX → a cobrança leva a marca
-        // `pixDiscount` com o VALOR BASE do cartão (sem o desconto PIX, mesmo cupom em R$).
+        // E2: TODA cobrança à vista (PIX, Cartão ou Boleto) leva a marca `pixDiscount` com os DOIS preços
+        // (cartão e PIX, mesmo cupom em R$): criada no PIX o amount já é o preço PIX; criada no
+        // Cartão/Boleto o amount é o de cartão e o PIX ganha o desconto na emissão do QR (issuePixCharge).
         const adminFullTotals = adminIsFull
             ? await computeFullContractTotals(baseMonthly, data.durationMonths, data.paymentMethod)
             : null;
         const payments = adminPlan.scheduleDueDates.map((dueDate, i) => {
             const pixDiscount = adminFullTotals
-                ? pixDiscountMetaForCharge({
-                    amount: schedule[i]!.amount,
+                ? pixDiscountMetaForFullCharge({
                     cardTotal: adminFullTotals.cardTotal,
+                    pixTotal: adminFullTotals.pixTotal,
                     couponDiscount: schedule[i]!.discountAmount,
-                    pct: adminFullTotals.pixDiscountPct,
+                    pct: adminFullTotals.pixPct,
                 })
                 : undefined;
             return {
@@ -526,6 +547,12 @@ router.post('/self', authenticate, async (req: Request, res: Response) => {
         const data = selfContractSchema.parse(req.body);
         const userId = req.user!.userId;
 
+        // E3: contratação com reserva de 10 minutos → boleto nunca entra (compensa em dias).
+        if (data.paymentMethod === 'BOLETO') {
+            res.status(400).json(CLIENT_BOLETO_ERROR);
+            return;
+        }
+
         // Global guard: reject disabled payment methods
         try {
             await validatePaymentMethod(data.paymentMethod);
@@ -629,16 +656,16 @@ router.post('/self', authenticate, async (req: Request, res: Response) => {
             couponQuote = await validateCoupon({ code: data.couponCode, userId, baseAmount: firstAmount });
         }
         const chargeAmount = couponQuote ? couponQuote.finalAmount : firstAmount;
-        // D1 (pagamentos-3): à vista + PIX → marca `pixDiscount` com a base do cartão (sem o desconto PIX,
-        // mesmo cupom em R$). Viaja junto com o contractData no metadata desta cobrança.
+        // E2: à vista (qualquer forma) → marca `pixDiscount` com os dois preços (cartão e PIX, mesmo cupom
+        // em R$). Viaja junto com o contractData no metadata desta cobrança.
         const selfPixDiscount = data.paymentPlan === 'FULL'
             ? await (async () => {
                 const totals = await computeFullContractTotals(baseMonthly, data.durationMonths, data.paymentMethod);
-                return pixDiscountMetaForCharge({
-                    amount: chargeAmount,
+                return pixDiscountMetaForFullCharge({
                     cardTotal: totals.cardTotal,
+                    pixTotal: totals.pixTotal,
                     couponDiscount: couponQuote?.discountAmount,
-                    pct: totals.pixDiscountPct,
+                    pct: totals.pixPct,
                 });
             })()
             : undefined;
@@ -840,6 +867,14 @@ async function createCustomContract(req: Request, res: Response): Promise<void> 
         // Admin can create on behalf of a client
         const userId = (isAdmin && data.userId) ? data.userId : req.user!.userId;
 
+        // E3: o personalizado do CLIENTE tem prazo de 10 minutos para pagar → boleto nunca entra. O do
+        // admin (contrato já ativo, cobrança pelo painel) aceita boleto quando ele está EFETIVO — a
+        // validatePaymentMethod abaixo usa a fonte única (chave-mestra + Cora).
+        if (!isAdmin && data.paymentMethod === 'BOLETO') {
+            res.status(400).json(CLIENT_BOLETO_ERROR);
+            return;
+        }
+
         // Global guard: reject disabled payment methods
         try {
             await validatePaymentMethod(data.paymentMethod);
@@ -992,7 +1027,7 @@ async function createCustomContract(req: Request, res: Response): Promise<void> 
         // (sessionsPerCycle = round(N/durationMonths)) divergia da contagem real de datas quando N não é
         // múltiplo de durationMonths (over/undercharge). Demais frequências mantêm o cálculo uniforme.
         let perInstallmentBases: number[];
-        // D1: à vista → totais nos dois meios (a marca `pixDiscount` guarda a base do cartão).
+        // E2: à vista → totais nos dois meios (a marca `pixDiscount` guarda o preço de cartão e o de PIX).
         let customFullTotals: Awaited<ReturnType<typeof computeFullContractTotals>> | null = null;
         if (frequency === 'CUSTOM') {
             let addonsCostExact = 0;
@@ -1173,13 +1208,13 @@ async function createCustomContract(req: Request, res: Response): Promise<void> 
 
         // ─── Generate payments per cycle (4 weeks) ──────────
         const payments: any[] = customPlan.scheduleDueDates.map((dueDate, i) => {
-            // D1 (pagamentos-3): à vista + PIX → marca `pixDiscount` com a base do cartão (mesmo cupom em R$).
+            // E2: à vista (qualquer forma) → marca `pixDiscount` com os dois preços (mesmo cupom em R$).
             const pixDiscount = customFullTotals
-                ? pixDiscountMetaForCharge({
-                    amount: customSchedule2[i]!.amount,
+                ? pixDiscountMetaForFullCharge({
                     cardTotal: customFullTotals.cardTotal,
+                    pixTotal: customFullTotals.pixTotal,
                     couponDiscount: customSchedule2[i]!.discountAmount,
-                    pct: customFullTotals.pixDiscountPct,
+                    pct: customFullTotals.pixPct,
                 })
                 : undefined;
             return {

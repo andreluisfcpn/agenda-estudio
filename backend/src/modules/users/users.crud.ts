@@ -296,7 +296,7 @@ export function registerUserCrudRoutes(router: Router) {
     });
 
     // ─── PATCH /api/users/:id/auto-charge (ADMIN) ───────────
-    // Admin toggles a client's automatic charging (requires a saved card to enable).
+    // Admin toggles a client's automatic charging (enabling requires a saved CREDIT card — checkAutoChargeCard).
     router.patch('/:id/auto-charge', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
         try {
             const userId = req.params.id as string;
@@ -308,11 +308,18 @@ export function registerUserCrudRoutes(router: Router) {
                 return;
             }
             if (enabled) {
-                const cardCount = await prisma.savedPaymentMethod.count({ where: { userId } });
-                if (cardCount === 0) {
-                    res.status(400).json({ error: 'O cliente precisa ter um cartão salvo para ativar a cobrança automática.' });
+                // AC-3 / E9 "só crédito": a MESMA conferência de quem liga pelo cliente (PUT /stripe/auto-charge
+                // e /contracts/:id/subscribe) — o cartão que o autoChargeJob vai cobrar existe, é do cliente e é
+                // de crédito. Mesmos códigos, mensagens na 3ª pessoa. Desligar nunca consulta o Stripe.
+                const { checkAutoChargeCard, pinAutoChargeCard } = await import('../../lib/savedCards.js');
+                const check = await checkAutoChargeCard(userId, { forAdmin: true, logTag: '[AUTO-CHARGE-TOGGLE:ADMIN]' });
+                if (!check.ok) {
+                    res.status(check.status).json(check.body);
                     return;
                 }
+                // Z1-a: o cartão conferido vira o PADRÃO do cliente — um cartão salvo depois não assume a
+                // cobrança automática sem passar pela conferência (PUT …/default).
+                await pinAutoChargeCard(userId, check.card);
             }
             await prisma.user.update({ where: { id: userId }, data: { autoChargeEnabled: enabled } });
             res.json({ autoChargeEnabled: enabled });

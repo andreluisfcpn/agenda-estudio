@@ -1,5 +1,5 @@
 // ─── Stripe Payment Service ─────────────────────────────
-// Handles Checkout Sessions and Payment Intents via Stripe API
+// Handles Payment Intents, Setup Intents and saved cards via Stripe API
 // Docs: https://docs.stripe.com/api
 
 import Stripe from 'stripe';
@@ -298,7 +298,15 @@ export async function stripeGetOrCreateCustomer(userId: string): Promise<string>
             }
             console.warn(`[Stripe] Customer ${user.stripeCustomerId} was deleted. Creating a new one.`);
         } catch (err: unknown) {
-            console.warn(`[Stripe] Error retrieving customer ${user.stripeCustomerId} (e.g. absent in test mode). Creating a new one.`, getErrorMessage(err));
+            // AC-5: só um Customer AUSENTE (404 / resource_missing — ex.: troca sandbox ↔ produção) é
+            // recriado. Erro transitório (rede, 429, 5xx, credencial) PROPAGA: recriar aqui trocava o
+            // stripeCustomerId e deixava os cartões salvos órfãos no Customer antigo (carteira vazia e
+            // cobrança automática falhando todo dia). Mesmo critério de stripeDeleteCustomer/stripeGetCard.
+            const e = err as { code?: string; statusCode?: number; raw?: { code?: string } };
+            if (!(e?.code === 'resource_missing' || e?.raw?.code === 'resource_missing' || e?.statusCode === 404)) {
+                throw err;
+            }
+            console.warn(`[Stripe] Customer ${user.stripeCustomerId} not found (e.g. absent in test mode). Creating a new one.`, getErrorMessage(err));
         }
     }
 
@@ -489,6 +497,23 @@ export async function stripeCreateSetupIntent(customerId: string): Promise<{ cli
     };
 }
 
+/**
+ * Lê um SetupIntent (E9 — cadastro de cartão dentro do app): status, o Customer dono e o cartão (pm_…)
+ * que ele salvou. Quem chama confere a posse (customerId === Customer do usuário) antes de persistir.
+ */
+export async function stripeGetSetupIntent(setupIntentId: string): Promise<{ id: string; status: string; customerId: string | null; paymentMethodId: string | null }> {
+    const stripe = await getStripeClient();
+    const si = await stripe.setupIntents.retrieve(setupIntentId);
+    const customer = si.customer;
+    const pm = si.payment_method;
+    return {
+        id: si.id,
+        status: si.status,
+        customerId: typeof customer === 'string' ? customer : (customer?.id ?? null),
+        paymentMethodId: typeof pm === 'string' ? pm : (pm?.id ?? null),
+    };
+}
+
 // ─── Payment Method Management ──────────────────────────
 
 export interface StripeCardInfo {
@@ -518,6 +543,33 @@ export async function stripeListPaymentMethods(customerId: string): Promise<Stri
     }));
 }
 
+/**
+ * Um cartão (pm_…) com o Customer a que está anexado (`customerId` null = não anexado a ninguém) e o
+ * `funding` (credit | debit | prepaid | unknown). Devolve null quando o pm não existe ou não é cartão
+ * (resource_missing / 404); demais erros (rede, credencial) propagam.
+ */
+export async function stripeGetCard(paymentMethodId: string): Promise<(StripeCardInfo & { customerId: string | null }) | null> {
+    const stripe = await getStripeClient();
+    try {
+        const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+        if (pm.type !== 'card' || !pm.card) return null;
+        const customer = pm.customer;
+        return {
+            paymentMethodId: pm.id,
+            brand: pm.card.brand || 'unknown',
+            last4: pm.card.last4 || '0000',
+            expMonth: pm.card.exp_month || 0,
+            expYear: pm.card.exp_year || 0,
+            funding: pm.card.funding || 'unknown',
+            customerId: typeof customer === 'string' ? customer : (customer?.id ?? null),
+        };
+    } catch (err: unknown) {
+        const e = err as { code?: string; statusCode?: number; raw?: { code?: string } };
+        if (e?.code === 'resource_missing' || e?.raw?.code === 'resource_missing' || e?.statusCode === 404) return null;
+        throw err;
+    }
+}
+
 /** Detach a payment method from a customer */
 export async function stripeDetachPaymentMethod(paymentMethodId: string): Promise<void> {
     const stripe = await getStripeClient();
@@ -532,87 +584,11 @@ export async function stripeSetDefaultPaymentMethod(customerId: string, paymentM
     });
 }
 
-// ─── Subscriptions (Recurring Payments) ─────────────────
-
-export interface CreateSubscriptionOpts {
-    customerId: string;
-    amount: number;             // monthly amount in cents (BRL)
-    description: string;
-    paymentMethodId: string;    // saved card to charge
-    paymentId: string;          // our internal first payment ID
-    contractId?: string;
-    userId: string;
-    durationMonths?: number;    // optional: auto-cancel after N months
-}
-
-export interface SubscriptionResult {
-    subscriptionId: string;
-    clientSecret?: string; // if requires payment confirmation (3D Secure)
-    status: string;
-}
-
-/** Create a Stripe Subscription for recurring billing */
-export async function stripeCreateSubscription(opts: CreateSubscriptionOpts): Promise<SubscriptionResult> {
-    const stripe = await getStripeClient();
-
-    // Create a one-time Product + Price dynamically
-    const product = await stripe.products.create({
-        name: opts.description,
-        metadata: { userId: opts.userId },
-    });
-
-    const price = await stripe.prices.create({
-        product: product.id,
-        unit_amount: opts.amount,
-        currency: 'brl',
-        recurring: { interval: 'month' },
-    });
-
-    // Attach payment method as default for the customer
-    await stripeSetDefaultPaymentMethod(opts.customerId, opts.paymentMethodId);
-
-    const subParams: Stripe.SubscriptionCreateParams = {
-        customer: opts.customerId,
-        items: [{ price: price.id }],
-        default_payment_method: opts.paymentMethodId,
-        payment_settings: {
-            payment_method_types: ['card'],
-            save_default_payment_method: 'on_subscription',
-        },
-        payment_behavior: 'default_incomplete',
-        expand: ['latest_invoice.payment_intent'],
-        metadata: {
-            paymentId: opts.paymentId,
-            userId: opts.userId,
-            ...(opts.contractId && { contractId: opts.contractId }),
-        },
-    };
-
-    if (opts.durationMonths) {
-        const cancelAt = new Date();
-        cancelAt.setMonth(cancelAt.getMonth() + opts.durationMonths);
-        subParams.cancel_at = Math.floor(cancelAt.getTime() / 1000);
-    }
-
-    const subscription = await stripe.subscriptions.create(subParams);
-
-    // Extract client secret if first invoice requires confirmation
-    let clientSecret: string | undefined;
-    const latestInvoice = subscription.latest_invoice;
-    if (latestInvoice && typeof latestInvoice !== 'string') {
-        // payment_intent exists at runtime but isn't exposed in all SDK type versions
-        const pi = (latestInvoice as unknown as Record<string, unknown>).payment_intent;
-        if (pi && typeof pi === 'object' && pi !== null && 'client_secret' in pi) {
-            clientSecret = (pi as { client_secret?: string }).client_secret || undefined;
-        }
-    }
-
-    return {
-        subscriptionId: subscription.id,
-        clientSecret,
-        status: subscription.status,
-    };
-}
+// ─── Subscriptions (legado) ─────────────────────────────
+// E9: a "assinatura Stripe paralela" foi REMOVIDA (criava cobrança em dobro sobre as parcelas do contrato
+// e nunca era confirmada). A cobrança automática é o `autoChargeJob` (User.autoChargeEnabled + cartão
+// padrão). Fica só o cancelamento, para encerrar uma assinatura antiga ainda ligada a parcelas
+// (Payment.stripeSubscriptionId) quando o contrato é cancelado.
 
 /** Cancel a Stripe Subscription */
 export async function stripeCancelSubscription(subscriptionId: string): Promise<void> {

@@ -4,6 +4,7 @@ import { bookingsApi, BookingResults } from '../api/client';
 import HeroAmbient from '../components/client/HeroAmbient';
 import StatCard from '../components/ui/StatCard';
 import Skeleton from '../components/ui/SkeletonLoader';
+import Tooltip from '../components/ui/Tooltip';
 import { ResultsTimeline, ResultsByContract } from '../components/client/ResultsChart';
 import { ArrowLeft, BarChart3, Eye, TrendingUp, Heart, MessageCircle, Clapperboard, FolderOpen, Users } from 'lucide-react';
 
@@ -41,9 +42,11 @@ export default function MyResultsPage() {
             <div className="client-hero client-hero--default animate-card-enter">
                 <HeroAmbient variant="gravacoes" />
                 <div className="client-hero__header" style={{ marginBottom: '16px' }}>
-                    <button className="results-back" onClick={() => navigate('/minhas-gravacoes')} aria-label="Voltar">
-                        <ArrowLeft size={18} />
-                    </button>
+                    <Tooltip content="Voltar" describe={false}>
+                        <button type="button" className="results-back" onClick={() => navigate('/minhas-gravacoes')} aria-label="Voltar para Minhas Gravações">
+                            <ArrowLeft size={18} aria-hidden="true" />
+                        </button>
+                    </Tooltip>
                     <div className="client-hero__icon-wrapper client-hero__icon-wrapper--violet">
                         <BarChart3 size={22} />
                     </div>

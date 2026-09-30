@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma.js';
 import { saoPauloParts } from '../lib/spTime.js';
 import { notifyEvent } from '../modules/notifications/notificationService.js';
+import { planPaymentBlockedByPendingCancellation } from '../lib/cancellationPending.js';
 
 /**
  * Push Notification Job — runs every 5 minutes.
@@ -83,10 +84,15 @@ async function computeUserEvents(userId: string, today: Date): Promise<PendingEv
     const daysOverdue = (p: { dueDate: Date | null }) => Math.ceil((today.getTime() - new Date(p.dueDate!).getTime()) / (1000 * 60 * 60 * 24));
 
     // ── Overdue payments — AGGREGATED (B1) ──
-    const overduePayments = await prisma.payment.findMany({
+    // Mesmo filtro do sino (GET /notifications): com o cancelamento em análise (E13) o CLIENTE não paga
+    // parcela do plano (409 CANCELLATION_PENDING) — então também não recebe o push de "faturas vencidas"
+    // dela. Extras de gravação, a multa e parcelas de outros contratos continuam avisando; o admin vê tudo.
+    // Cobrança de uma gravação CANCELADA (extra que ficou em aberto — dado legado) não é pagável
+    // (BOOKING_CANCELLED) e fica fora do aviso, para o cliente e para o admin.
+    const overduePayments = (await prisma.payment.findMany({
         where: { status: 'PENDING', dueDate: { lt: today }, ...(isAdmin ? {} : { userId }) },
-        include: { user: { select: { name: true } } },
-    });
+        include: { user: { select: { name: true } }, contract: { select: { status: true } }, booking: { select: { status: true } } },
+    })).filter(p => p.booking?.status !== 'CANCELLED' && !planPaymentBlockedByPendingCancellation(p, isAdmin));
     if (isAdmin) {
         const byClient = new Map<string, { name: string; count: number; total: number; maxDays: number }>();
         for (const p of overduePayments) {

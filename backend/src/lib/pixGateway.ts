@@ -431,6 +431,27 @@ export async function cardIntentInFlight(piId: string | null | undefined, now: D
 }
 
 /**
+ * AC-2 — o PaymentIntent de cartão desta cobrança está ABERTO num checkout e o cliente (ou o admin com o
+ * cliente ao lado) ainda pode confirmá-lo? requires_payment_method (formulário de cartão novo aberto),
+ * requires_confirmation ou requires_action, criado há menos de 30 min. Usado SÓ pela cobrança automática:
+ * ela não debita o cartão salvo por cima de um checkout em andamento (mesma regra do QR PIX vivo).
+ * NÃO é o critério do PIX — `cardIntentInFlight` segue deixando requires_payment_method livre para a troca
+ * de método. Mock/sem Stripe → não; falha ao consultar → não (mesmo comportamento de cardIntentInFlight).
+ */
+export async function cardIntentAwaitingCustomer(piId: string | null | undefined, now: Date = new Date()): Promise<boolean> {
+    if (!piId || !piId.startsWith('pi_') || piId.startsWith('pi_mock')) return false;
+    try {
+        const { isStripeEnabled, stripeGetPaymentIntent } = await import('./stripeService.js');
+        if (!(await isStripeEnabled())) return false;
+        const pi = await stripeGetPaymentIntent(piId);
+        const open = pi.status === 'requires_payment_method' || pi.status === 'requires_confirmation' || pi.status === 'requires_action';
+        return open && now.getTime() - pi.created * 1000 < CARD_ACTION_GRACE_MS;
+    } catch {
+        return false;
+    }
+}
+
+/**
  * PaymentIntent de cartão pendente nesta mesma cobrança (troca de método). Se já foi pago, está
  * processando ou aguardando o 3DS/aprovação (pagamentos-14), NÃO emitimos PIX (evita cobrança
  * dupla). O PI em aberto não é cancelado aqui: a chave de idempotência do cartão é derivada do
@@ -440,18 +461,20 @@ async function cardIntentBlocksPix(piId: string): Promise<boolean> {
     return cardIntentInFlight(piId);
 }
 
-// ─── Desconto PIX do "à vista" (D1) ─────────────────────
-// Um Payment "à vista" (plano FULL) criado com PIX grava `amount` JÁ com o desconto PIX. O desconto
-// só vale no PIX: pago no CARTÃO, cobra-se o valor SEM o desconto PIX (o cupom, se houver, é mantido
-// no mesmo valor em R$). Regra ÚNICA (sem fallback que adivinhe pelo estado atual do contrato):
-//  • TODA cobrança criada com desconto PIX grava `metadata.pixDiscount = { pct, cardAmount, pixAmount }`
-//    (pixDiscountMetaForCharge): `cardAmount` é o VALOR BASE do cartão calculado na criação — o cartão
-//    cobra exatamente ele, nunca um valor recalculado pelo % configurado hoje.
-//  • Sem a marca → o cartão cobra o próprio `amount`. Troca de forma de pagamento do contrato, provider
-//    da linha ou mudança do % nunca alteram o valor. Cobranças anteriores a esta regra (sem marca) cobram
-//    no cartão o valor gravado — pode ficar ABAIXO do preço de cartão, NUNCA acima (decisão conservadora:
-//    o fallback que revertia o % atual podia cobrar a mais — revisão final, 24/09/2026).
-//  • Valor ZERO (cupom 100%) nunca recebe marca e nunca vai ao cartão.
+// ─── Desconto PIX do "à vista" (D1 → E2: bidirecional) ──
+// Toda cobrança "à vista" (plano FULL) grava NA CRIAÇÃO a marca `metadata.pixDiscount = { pct, cardAmount,
+// pixAmount }` — os DOIS preços da mesma cobrança (pixDiscountMetaForFullCharge), seja qual for a forma
+// escolhida: criada no PIX, `amount` = pixAmount; criada no Cartão/Boleto, `amount` = cardAmount.
+//  • PIX (issuePixCharge): cobrança pendente com `amount === cardAmount` e `pixAmount < amount` → o amount
+//    passa a valer `pixAmount` (update condicional atômico) e o QR sai com o desconto.
+//  • CARTÃO (cardChargeBaseAmount): cobra `cardAmount` quando o amount é o preço PIX da marca; senão o
+//    próprio amount. NUNCA mais que o preço de cartão marcado; valor ZERO nunca vai ao gateway.
+//  • O cupom é mantido no MESMO valor em R$ nos dois preços. `cardAmount`/`pixAmount` são os valores
+//    calculados na criação — mudar o % configurado depois não altera nada.
+//  • Sem a marca (cobranças antigas, mensalidades, avulso, extras, multa) → PIX e cartão cobram o próprio
+//    `amount`. Se o amount mudar depois sem a marca ser regravada (não é nem cardAmount nem pixAmount), a
+//    marca CADUCA. Não há fallback que adivinhe pelo estado atual do contrato (ele cobrava a mais —
+//    revisão final, 24/09/2026). Valor ZERO (cupom 100%) nunca recebe marca.
 
 export type PixDiscountMeta = {
     /** % de desconto PIX aplicado (informativo — o cartão usa `cardAmount`, nunca o % atual). */
@@ -503,6 +526,41 @@ export function pixDiscountMetaForCharge(args: { amount: number; cardTotal: numb
     });
 }
 
+/**
+ * E2 — marca BIDIRECIONAL da criação de uma cobrança à vista (FULL), para QUALQUER forma de pagamento:
+ * `cardTotal` / `pixTotal` = o total nos dois meios ANTES do cupom; `couponDiscount` = o cupom em R$ (o
+ * mesmo valor nos dois preços). Quem cria grava `amount` = cardAmount (Cartão/Boleto) ou pixAmount (PIX).
+ * undefined quando não há diferença de preço (pct 0) ou o preço PIX zeraria (cupom ≥ total PIX) — aí a
+ * cobrança fica sem marca e PIX/cartão cobram o próprio amount.
+ */
+export function pixDiscountMetaForFullCharge(args: { cardTotal: number; pixTotal: number; couponDiscount?: number | null; pct: number }): PixDiscountMeta | undefined {
+    if (!(args.pct > 0)) return undefined;
+    const coupon = Math.max(0, args.couponDiscount ?? 0);
+    return buildPixDiscountMeta({
+        pixAmount: args.pixTotal - coupon,
+        cardAmount: args.cardTotal - coupon,
+        pct: args.pct,
+    });
+}
+
+/**
+ * E2 — preço PIX de uma cobrança que está hoje no preço de CARTÃO da marca (`amount === cardAmount` e
+ * `pixAmount < amount`), ou null quando não há o que baixar (sem marca, marca antiga sem pixAmount, amount
+ * já no preço PIX ou alterado depois da marca, preço PIX ≤ 0).
+ */
+export function pixPriceFromMark(payment: { amount: number; metadata?: unknown }): number | null {
+    const meta = readPixDiscountMeta(payment.metadata);
+    if (!meta || meta.pixAmount === undefined) return null;
+    if (payment.amount !== meta.cardAmount) return null;
+    if (!(meta.pixAmount > 0) || meta.pixAmount >= payment.amount) return null;
+    return meta.pixAmount;
+}
+
+/** Valor que o PIX cobra por um Payment: o preço PIX da marca (E2) ou, sem ela, o próprio `amount`. */
+export function pixChargeAmount(payment: { amount: number; metadata?: unknown }): number {
+    return pixPriceFromMark(payment) ?? payment.amount;
+}
+
 type CardChargePayment = {
     /** Aceito por compatibilidade: o valor sai só de `amount` + `metadata` desta linha (nada é lido do banco). */
     id?: string;
@@ -519,7 +577,11 @@ type CardChargePayment = {
     contract?: { type?: string | null; paymentPlan?: string | null; paymentMethod?: string | null } | null;
 };
 
-/** Valor do cartão pela marca (caduca se o amount mudou depois da marca). Nunca abaixo do amount. */
+/**
+ * Valor do cartão pela marca: `cardAmount` quando o amount é o preço PIX marcado; se o amount é outro (já é o
+ * preço de cartão — cobrança criada no Cartão/Boleto — ou mudou depois da marca), o próprio amount. Nunca
+ * abaixo do amount e nunca acima do preço de cartão marcado.
+ */
 function markedCardAmount(amount: number, meta: PixDiscountMeta): number {
     if (amount <= 0) return amount;
     if (meta.pixAmount !== undefined && meta.pixAmount !== amount) return amount;
@@ -528,7 +590,8 @@ function markedCardAmount(amount: number, meta: PixDiscountMeta): number {
 
 /**
  * Valor a cobrar no CARTÃO (antes de juros de parcelamento) para um Payment: a base marcada
- * (`metadata.pixDiscount.cardAmount`) quando a cobrança nasceu com desconto PIX; senão o próprio `amount`.
+ * (`metadata.pixDiscount.cardAmount`) quando o `amount` é o preço PIX da marca (cobrança criada no PIX, ou
+ * baixada para o preço PIX ao emitir um QR — E2); senão o próprio `amount`.
  * Valor zero volta zero (nunca vai ao cartão). Os chamadores passam a linha lida do banco (com metadata).
  * Mantida assíncrona por compatibilidade com os chamadores.
  */
@@ -609,6 +672,9 @@ export function paidChargedAmount(p: { amount: number; chargedAmount?: number | 
     const paidByCard = p.provider === 'STRIPE' || (typeof p.providerRef === 'string' && p.providerRef.startsWith('pi_'));
     return paidByCard && p.chargedAmount != null && p.chargedAmount > 0 ? p.chargedAmount : p.amount;
 }
+
+/** Mensagem quando um cartão em andamento impede emitir (ou repreçar) o PIX da mesma cobrança. */
+export const CARD_IN_FLIGHT_BLOCKS_PIX_MESSAGE = 'Há um pagamento com cartão em processamento para esta cobrança. Aguarde a confirmação antes de gerar o PIX.';
 
 export interface IssuePixChargeOpts {
     /** Validade explícita (segundos). Sem isso: derivada da reserva/prazo do contrato (ver pixExpirySecondsFor). */
@@ -695,6 +761,9 @@ async function adoptLivePixCharge(
  * Fonte ÚNICA de emissão de PIX sob demanda para um Payment existente (D15).
  * Reusa a cobrança viva e com o mesmo valor; senão concilia/cancela a anterior e emite nova,
  * gravando provider/providerRef/pixString/pixExpiresAt e metadata.pixCharge num único update.
+ * E2: a cobrança à vista que está no preço de cartão da marca passa a valer o preço PIX — mas só DEPOIS de
+ * conciliar/aposentar a cobrança anterior com o valor antigo (PAY-3: um boleto já pago não se perde) e logo
+ * antes de emitir; se a emissão falhar, o repreço deste pedido é desfeito.
  * @throws Error com mensagem para o cliente (CPF ausente, provedor desligado, falha do provedor…).
  */
 export async function issuePixCharge(paymentId: string, opts: IssuePixChargeOpts = {}): Promise<IssuePixChargeResult> {
@@ -714,26 +783,36 @@ export async function issuePixCharge(paymentId: string, opts: IssuePixChargeOpts
 
     const now = new Date();
 
-    // 1) Reuso: só a cobrança viva, válida e com o MESMO valor.
-    if (!opts.forceNew && isPixChargeReusable(payment, now)) {
-        return {
-            provider: payment.provider,
-            providerRef: payment.providerRef,
-            pixString: payment.pixString,
-            qrCodeDataUrl: await pixQrDataUrl(payment.pixString),
-            expiresAt: payment.pixExpiresAt ? payment.pixExpiresAt.toISOString() : null,
-            amount: payment.amount,
-            reused: true,
-            alreadyPaid: false,
-        };
-    }
+    // E2) Desconto PIX bidirecional: cobrança à vista que está no preço de CARTÃO da marca
+    //     (amount === cardAmount, pixAmount < amount) passa a valer o preço PIX. O preço é só CALCULADO
+    //     aqui; o amount é baixado DEPOIS dos passos 2 e 3 (PAY-3): a cobrança anterior — inclusive um
+    //     boleto Cora já pago cujo webhook ainda não chegou — é conciliada com o valor pelo qual foi
+    //     emitida (o de cartão). Baixar antes fazia a conciliação acusar valor divergente e o boleto pago
+    //     se perdia sob um QR novo.
+    const pixPrice = pixPriceFromMark(payment);
+    const chargeRef = { provider: payment.provider, providerRef: payment.providerRef };
+    const reuseLive = async (): Promise<IssuePixChargeResult> => ({
+        provider: payment.provider,
+        providerRef: payment.providerRef,
+        pixString: payment.pixString,
+        qrCodeDataUrl: await pixQrDataUrl(payment.pixString),
+        expiresAt: payment.pixExpiresAt ? payment.pixExpiresAt.toISOString() : null,
+        amount: payment.amount,
+        reused: true,
+        alreadyPaid: false,
+    });
 
-    // 2) Cartão em andamento nesta cobrança → não emitir PIX por cima.
+    // 1) Reuso: só a cobrança viva, válida e com o MESMO valor. Com repreço pendente (pixPrice) a cobrança
+    //    viva, se houver, é do valor antigo — nunca reaproveitada.
+    if (pixPrice === null && !opts.forceNew && isPixChargeReusable(payment, now)) return reuseLive();
+
+    // 2) Cartão em andamento nesta cobrança → não emitir PIX por cima (nem repreçar: o PaymentIntent em
+    //    voo foi emitido pelo valor de cartão).
     if (payment.provider === 'STRIPE' && payment.providerRef && await cardIntentBlocksPix(payment.providerRef)) {
-        throw new Error('Há um pagamento com cartão em processamento para esta cobrança. Aguarde a confirmação antes de gerar o PIX.');
+        throw new Error(CARD_IN_FLIGHT_BLOCKS_PIX_MESSAGE);
     }
 
-    // 3) Cobrança PIX anterior: conciliar (pode já estar paga) e cancelar antes de reemitir.
+    // 3) Cobrança PIX/boleto anterior: conciliar (pode já estar paga) e cancelar antes de reemitir.
     if (isPixProvider(payment.provider) && payment.providerRef) {
         const retired = await retirePixChargeDetailed(payment.id);
         if (retired.result === 'paid') {
@@ -744,26 +823,81 @@ export async function issuePixCharge(paymentId: string, opts: IssuePixChargeOpts
             // pagamentos-4/regressoes-3: a cobrança anterior continua pagável e não pôde ser removida.
             // Emitir outra por cima trocaria o providerRef e um pagamento no QR antigo nunca casaria
             // com o Payment. Adota a viva quando é do MESMO valor (ex.: linha legada sem pixExpiresAt);
-            // senão, erro amigável — o cliente tenta de novo em instantes.
-            const adopted = await adoptLivePixCharge(payment, retired.liveCob, now);
+            // senão, erro amigável — o cliente tenta de novo em instantes. Com repreço pendente a viva é
+            // do valor antigo: nunca adotada.
+            const adopted = pixPrice === null ? await adoptLivePixCharge(payment, retired.liveCob, now) : null;
             if (adopted) return adopted;
             throw new Error(PIX_LIVE_CHARGE_MESSAGE);
+        }
+    }
+
+    // E2) Agora sim o amount passa a valer o preço PIX, logo antes de emitir. Update condicional atômico:
+    //     só vale se a linha continua PENDING, no mesmo amount e com a mesma marca (dois cliques / um
+    //     repreço concorrente não baixam duas vezes nem o valor errado).
+    const cardPrice = payment.amount;
+    let loweredHere = false;
+    if (pixPrice !== null) {
+        const lowered = await prisma.payment.updateMany({
+            where: {
+                id: payment.id,
+                status: 'PENDING',
+                amount: payment.amount,
+                AND: [
+                    { metadata: { path: ['pixDiscount', 'cardAmount'], equals: payment.amount } },
+                    { metadata: { path: ['pixDiscount', 'pixAmount'], equals: pixPrice } },
+                ],
+            },
+            data: { amount: pixPrice },
+        });
+        if (lowered.count === 0) {
+            const fresh = await prisma.payment.findUnique({ where: { id: payment.id } });
+            if (fresh?.status === 'PAID') return paidResult(fresh);
+            // Outro pedido já baixou para o MESMO preço PIX → segue com ele; qualquer outra mudança → aborta.
+            if (!fresh || fresh.status !== 'PENDING' || fresh.amount !== pixPrice) {
+                throw new Error('Esta cobrança mudou de situação. Atualize a página e tente novamente.');
+            }
+            Object.assign(payment, fresh);
+            // O pedido gêmeo pode já ter emitido o QR: reaproveita-o (como no passo 1). Se a cobrança da
+            // linha é OUTRA e não dá para reaproveitar, os passos 2–3 acima valeram para a anterior → aborta.
+            if (!opts.forceNew && isPixChargeReusable(payment, now)) return reuseLive();
+            if (payment.provider !== chargeRef.provider || payment.providerRef !== chargeRef.providerRef) {
+                throw new Error('Esta cobrança mudou de situação. Atualize a página e tente novamente.');
+            }
+        } else {
+            console.log(`[PIX] payment ${payment.id}: desconto PIX do à vista aplicado na emissão (${payment.amount} → ${pixPrice})`);
+            payment.amount = pixPrice;
+            loweredHere = true;
         }
     }
 
     // 4) Emitir nova cobrança.
     const attempt = nextPixAttempt(payment);
     const expiresSeconds = opts.expiresSeconds ?? pixExpirySecondsFor(payment, now);
-    const pixRes = await createPixPayment({
-        userId: payment.userId,
-        amount: payment.amount,
-        description: opts.description || `Pagamento PIX - ${payment.contract?.name || 'Avulso'}`,
-        withPixQrCode: true,
-        idempotencyKey: payment.id,
-        attempt,
-        expiresSeconds,
-    });
-    if (!pixRes.pixString) throw new Error('O provedor não retornou o código PIX. Tente novamente em instantes.');
+    let pixRes: PixPaymentResponse;
+    try {
+        pixRes = await createPixPayment({
+            userId: payment.userId,
+            amount: payment.amount,
+            description: opts.description || `Pagamento PIX - ${payment.contract?.name || 'Avulso'}`,
+            withPixQrCode: true,
+            idempotencyKey: payment.id,
+            attempt,
+            expiresSeconds,
+        });
+        if (!pixRes.pixString) throw new Error('O provedor não retornou o código PIX. Tente novamente em instantes.');
+    } catch (err) {
+        // PAY-3: a emissão falhou (provedor fora do ar, CPF ausente…) DEPOIS de este pedido baixar o amount.
+        // Desfaz o repreço — só se a linha continua como este pedido a deixou (PENDING, no preço PIX, com a
+        // MESMA cobrança anterior): senão o amount ficaria no preço PIX com o boleto/PI de cartão ainda
+        // como cobrança da linha, e um pagamento dele nunca conciliaria (valor divergente).
+        if (loweredHere && pixPrice !== null) {
+            await prisma.payment.updateMany({
+                where: { id: payment.id, status: 'PENDING', amount: pixPrice, provider: chargeRef.provider, providerRef: chargeRef.providerRef },
+                data: { amount: cardPrice },
+            }).catch(() => {});
+        }
+        throw err;
+    }
 
     const expiresAt = pixRes.expiresAt ?? new Date(now.getTime() + expiresSeconds * 1000);
     const updated = await prisma.payment.updateMany({
@@ -774,6 +908,9 @@ export async function issuePixCharge(paymentId: string, opts: IssuePixChargeOpts
             pixString: pixRes.pixString,
             pixExpiresAt: expiresAt,
             installments: 1,
+            // E2: o amount acompanha o QR emitido (preço PIX) — cobre o pedido gêmeo cuja emissão falhou e
+            // desfez o repreço enquanto este emitia.
+            ...(pixPrice !== null ? { amount: payment.amount } : {}),
             // chargedAmount NÃO é zerado (pagamentos-14): o PIX concilia por `amount` e nunca lê o
             // chargedAmount; um PaymentIntent anterior que ainda aprove (3DS concluído depois) precisa
             // dele para a checagem de valor do webhook. Uma volta ao cartão regrava o chargedAmount.

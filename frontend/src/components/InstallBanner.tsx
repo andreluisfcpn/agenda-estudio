@@ -1,5 +1,6 @@
 import { Download, X } from 'lucide-react';
 import { useInstallPrompt } from '../hooks/useInstallPrompt';
+import Tooltip from './ui/Tooltip';
 import '../styles/pwa.css';
 
 export default function InstallBanner() {
@@ -22,9 +23,11 @@ export default function InstallBanner() {
                 <button className="install-banner-btn" onClick={install}>
                     INSTALAR
                 </button>
-                <button className="install-banner-dismiss" onClick={dismiss} aria-label="Fechar">
-                    <X size={16} />
-                </button>
+                <Tooltip content="Dispensar" describe={false}>
+                    <button className="install-banner-dismiss" onClick={dismiss} aria-label="Dispensar aviso de instalação">
+                        <X size={16} />
+                    </button>
+                </Tooltip>
             </div>
         </div>
     );

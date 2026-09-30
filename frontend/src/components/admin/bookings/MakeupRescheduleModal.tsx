@@ -7,8 +7,9 @@
 // • MakeupStatusPanel: bloco/chips de status da remarcação no admin com as ações "Justificar falta"
 //   (PATCH { noShowJustified: true }) e "Remarcar" (abre o sheet acima).
 import { useState, useEffect, useMemo, useRef, useId } from 'react';
-import { CalendarClock, CalendarCheck, CalendarX, ShieldCheck, AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
+import { CalendarClock, CalendarCheck, CalendarX, ShieldCheck, AlertTriangle, RefreshCw } from 'lucide-react';
 import BottomSheetModal from '../../BottomSheetModal';
+import BrandLoader from '../../ui/BrandLoader';
 import { bookingsApi, ApiError, type Booking, type MakeupStatus, type Slot } from '../../../api/client';
 import { useBusinessConfig } from '../../../hooks/useBusinessConfig';
 import { useUI } from '../../../context/UIContext';
@@ -282,8 +283,9 @@ export default function MakeupRescheduleModal({
                     <span className="mkp-label" id={`${uid}-slots`}>Horário · {tierLabel}</span>
                     <div className="mkp-slots-area" aria-live="polite" aria-busy={loadingSlots || undefined}>
                         {loadingSlots ? (
-                            <div className="mkp-state" role="status">
-                                <Loader2 size={20} className="mkp-spin" aria-hidden="true" /> Carregando horários…
+                            // role="status" fica no próprio BrandLoader.
+                            <div className="mkp-state">
+                                <BrandLoader size="inline" label="Carregando horários…" />
                             </div>
                         ) : slotsError ? (
                             <div className="mkp-state mkp-state--error" role="alert">

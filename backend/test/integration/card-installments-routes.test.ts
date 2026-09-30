@@ -74,6 +74,10 @@ async function serviceSplitPayment(status: 'PENDING' | 'FAILED' = 'PENDING') {
     const u = await mkUser();
     const c = await mkContract(u.id, { type: 'SERVICO', paymentPlan: 'FULL', paymentMethod: 'CARTAO', durationMonths: 3, status: 'AWAITING_PAYMENT' });
     const p = await mkPayment(u.id, { contractId: c.id, provider: 'STRIPE', amount: 315000, status, metadata: { installmentCap: 3 } });
+    // E1: o cartão salvo informado ao create-payment tem de ser do DONO do pagamento (linha dele no banco).
+    await prisma.savedPaymentMethod.create({
+        data: { userId: u.id, stripePaymentMethodId: 'pm_saved', brand: 'visa', last4: '4242', expMonth: 12, expYear: 2030, isDefault: true },
+    });
     return { u, c, p };
 }
 

@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { couponsApi, ApiError, type CouponValidation } from '../api/client';
 import { formatBRL } from '../utils/format';
+import Tooltip from './ui/Tooltip';
 
 interface CouponFieldProps {
     /** Total atual em centavos (pré-cupom). */
@@ -89,19 +90,23 @@ export default function CouponField({ amount, userId, applied, onApply, onRemove
                 <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#10b981' }}>
                     ✓ Cupom {applied.code} aplicado — −{formatBRL(applied.discountAmount)}
                 </span>
-                <button
-                    type="button"
-                    onClick={() => { if (!disabled) { lastValidatedAmount.current = null; setWarning(''); onRemove(); } }}
-                    disabled={disabled}
-                    title={disabled ? LOCKED_TITLE : undefined}
-                    style={{
-                        background: 'none', border: 'none', padding: 0,
-                        fontSize: '0.78rem', fontWeight: 600, whiteSpace: 'nowrap',
-                        color: disabled ? 'var(--text-muted)' : '#ef4444',
-                        cursor: disabled ? 'not-allowed' : 'pointer',
-                    }}>
-                    ✕ Remover
-                </button>
+                {/* Botão desabilitado não dispara eventos de ponteiro: a dica do bloqueio fica no span. */}
+                <Tooltip content={disabled ? LOCKED_TITLE : null}>
+                    <span style={{ display: 'inline-flex' }}>
+                        <button
+                            type="button"
+                            onClick={() => { if (!disabled) { lastValidatedAmount.current = null; setWarning(''); onRemove(); } }}
+                            disabled={disabled}
+                            style={{
+                                background: 'none', border: 'none', padding: 0,
+                                fontSize: '0.78rem', fontWeight: 600, whiteSpace: 'nowrap',
+                                color: disabled ? 'var(--text-muted)' : '#ef4444',
+                                cursor: disabled ? 'not-allowed' : 'pointer',
+                            }}>
+                            ✕ Remover
+                        </button>
+                    </span>
+                </Tooltip>
             </div>
         );
     }
@@ -110,20 +115,24 @@ export default function CouponField({ amount, userId, applied, onApply, onRemove
     return (
         <div style={{ marginBottom: 12 }}>
             {!expanded ? (
-                <button
-                    type="button"
-                    onClick={() => { if (!disabled) { setExpanded(true); setWarning(''); } }}
-                    disabled={disabled}
-                    title={disabled ? LOCKED_TITLE : undefined}
-                    style={{
-                        background: 'none', border: 'none', padding: 0,
-                        fontSize: '0.85rem', color: 'var(--text-secondary)',
-                        textDecoration: 'underline', textUnderlineOffset: 3,
-                        cursor: disabled ? 'not-allowed' : 'pointer',
-                    }}>
-                    Tem um cupom de desconto?
-                </button>
+                <Tooltip content={disabled ? LOCKED_TITLE : null}>
+                    <span style={{ display: 'inline-flex' }}>
+                        <button
+                            type="button"
+                            onClick={() => { if (!disabled) { setExpanded(true); setWarning(''); } }}
+                            disabled={disabled}
+                            style={{
+                                background: 'none', border: 'none', padding: 0,
+                                fontSize: '0.85rem', color: 'var(--text-secondary)',
+                                textDecoration: 'underline', textUnderlineOffset: 3,
+                                cursor: disabled ? 'not-allowed' : 'pointer',
+                            }}>
+                            Tem um cupom de desconto?
+                        </button>
+                    </span>
+                </Tooltip>
             ) : (
+                <Tooltip content={disabled ? LOCKED_TITLE : null}>
                 <div style={{ display: 'flex', gap: 8 }}>
                     <input
                         className="form-input"
@@ -133,7 +142,6 @@ export default function CouponField({ amount, userId, applied, onApply, onRemove
                         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); apply(); } }}
                         placeholder="CÓDIGO DO CUPOM"
                         disabled={disabled || validating}
-                        title={disabled ? LOCKED_TITLE : undefined}
                         autoFocus
                         style={{ flex: 1, textTransform: 'uppercase', fontSize: '0.875rem' }}
                     />
@@ -147,6 +155,7 @@ export default function CouponField({ amount, userId, applied, onApply, onRemove
                         {validating ? 'Validando...' : 'Aplicar'}
                     </button>
                 </div>
+                </Tooltip>
             )}
             {error && (
                 <div style={{ fontSize: '0.78rem', color: '#ef4444', marginTop: 6 }}>{error}</div>

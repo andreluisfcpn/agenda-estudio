@@ -83,8 +83,9 @@
   --z-savebar: 90;
   --z-bottomtab: 120;
   --z-modal: 1000;
-  /* Tooltip (components/ui/Tooltip) acima dos modais: funciona também dentro de sheets. */
-  --z-tooltip: 1100;
+  /* Tooltip (components/ui/Tooltip) acima de TUDO, inclusive dos modais empilhados com z-index próprio
+     (sheets com zIndex 1100, VideoModal 9999, alerta/confirmação global 10000, toast 10001). */
+  --z-tooltip: 10100;
 
   /* Missing alias used across the admin (fell back to currentColor before) */
   --border-color: var(--border-default);
@@ -1296,6 +1297,9 @@ tr:hover td {
   border-radius: 20px;
   white-space: nowrap;
   line-height: 1;
+  /* O selo tem a largura do conteúdo: não estica quando é item de flex/grid (coluna, célula em card).
+     Sem max-width: com white-space: nowrap, limitar a caixa faria o texto vazar para fora do fundo. */
+  width: fit-content;
 }
 
 .status-badge--sm {

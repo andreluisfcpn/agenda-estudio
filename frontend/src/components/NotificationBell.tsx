@@ -4,6 +4,7 @@ import { NotificationItem } from '../api/client';
 import { useNavigate } from 'react-router-dom';
 import { Bell, CheckCheck, Check, ArrowRight, CheckCircle } from 'lucide-react';
 import BottomSheetModal from './BottomSheetModal';
+import Tooltip from './ui/Tooltip';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useNotifications } from '../hooks/useNotifications';
 import { resolveNotifMeta, formatTimeAgo } from '../utils/notificationMeta';
@@ -47,6 +48,11 @@ export default function NotificationBell() {
 
     const preview = notifications.slice(0, PREVIEW_COUNT);
 
+    // Dica do sino: a contagem de não lidas (o mesmo texto que antes ia no title nativo).
+    const bellTip = unreadCount > 0
+        ? `${unreadCount} notifica${unreadCount !== 1 ? 'ções' : 'ção'} não lida${unreadCount !== 1 ? 's' : ''}`
+        : 'Nenhuma notificação não lida';
+
     // ── Shared body (dropdown + sheet) ──
     const body = (
         <div className="notif-panel">
@@ -59,9 +65,11 @@ export default function NotificationBell() {
                     )}
                 </div>
                 {unreadCount > 0 && (
-                    <button className="notif-mark-all" onClick={markAllRead} title="Marcar todas como lidas">
-                        <CheckCheck size={14} /> Ler todas
-                    </button>
+                    <Tooltip content="Marcar todas como lidas">
+                        <button className="notif-mark-all" onClick={markAllRead}>
+                            <CheckCheck size={14} /> Ler todas
+                        </button>
+                    </Tooltip>
                 )}
             </div>
 
@@ -91,13 +99,15 @@ export default function NotificationBell() {
                                     )}
                                 </span>
                                 {!n.read && (
-                                    <span
-                                        role="button" tabIndex={0}
-                                        className="notif-item__read-btn"
-                                        onClick={(e) => { e.stopPropagation(); markRead(n.id); }}
-                                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); markRead(n.id); } }}
-                                        title="Marcar como lida" aria-label="Marcar como lida"
-                                    ><Check size={15} /></span>
+                                    <Tooltip content="Marcar como lida" describe={false}>
+                                        <span
+                                            role="button" tabIndex={0}
+                                            className="notif-item__read-btn"
+                                            onClick={(e) => { e.stopPropagation(); markRead(n.id); }}
+                                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); markRead(n.id); } }}
+                                            aria-label="Marcar como lida"
+                                        ><Check size={15} /></span>
+                                    </Tooltip>
                                 )}
                             </button>
                         );
@@ -117,6 +127,8 @@ export default function NotificationBell() {
 
     return (
         <div style={{ position: 'relative' }}>
+            {/* Dica desligada com o painel aberto: a bolha cairia em cima do dropdown. */}
+            <Tooltip content={bellTip} placement="bottom" describe={false} disabled={open}>
             <button
                 ref={bellRef}
                 onClick={() => setOpen(!open)}
@@ -137,7 +149,6 @@ export default function NotificationBell() {
                     width: '100%',
                     fontFamily: 'inherit',
                 }}
-                title={`${unreadCount} notifica${unreadCount !== 1 ? 'ções' : 'ção'} não lida${unreadCount !== 1 ? 's' : ''}`}
             >
                 <span className="sidebar-link-icon"><Bell size={20} strokeWidth={1.8} /></span>
                 <span className="sidebar-link-label" style={{ fontSize: '0.8125rem', fontWeight: 600, flex: 1, textAlign: 'left' }}>
@@ -149,6 +160,7 @@ export default function NotificationBell() {
                     </span>
                 )}
             </button>
+            </Tooltip>
 
             {isMobile ? (
                 <BottomSheetModal isOpen={open} onClose={() => setOpen(false)} title="Notificações" maxWidth="520px">

@@ -12,6 +12,10 @@ import { prisma } from './prisma.js';
 import { notifyEvent } from '../modules/notifications/notificationService.js';
 import { fulfillContractFromPayment } from './contractFulfillment.js';
 import { confirmCouponRedemption, releaseCouponForPayments } from './couponService.js';
+import { isCancellationFine } from './cancellationFine.js';
+
+/** audit_logs.action (entityType PAYMENT) que marca o aviso "pago depois de cancelado" — 1 aviso por cobrança. */
+export const AUDIT_PAID_AFTER_CANCELLED = 'PAID_AFTER_CANCELLED';
 
 /** R$ formatter for notification variables. */
 const fmtBRL = (cents: number) => `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
@@ -470,8 +474,154 @@ export async function notifyPaymentExpired(payment: PaymentLike): Promise<void> 
     }).catch(() => {});
 }
 
+/** Resultado detalhado da anulação das cobranças de um contrato cancelado. */
+export interface VoidContractPaymentsResult {
+    /** Cobranças anuladas (→ CANCELLED). */
+    voided: number;
+    /** Cobranças que o provedor confirmou como PAGAS durante a anulação: viraram PAID (com os efeitos), não CANCELLED. */
+    paidAtProvider: string[];
+    /**
+     * Cobranças anuladas cuja cobrança no provedor NÃO pôde ser cancelada agora (QR PIX ainda pagável,
+     * PaymentIntent em processamento). Se o dinheiro entrar depois, a conciliação/webhook avisa o admin
+     * (alertPaymentOnCancelledCharge) — nunca fica só no log.
+     */
+    liveAtProvider: string[];
+}
+
+type VoidablePayment = {
+    id: string;
+    status: string;
+    provider: string;
+    providerRef: string | null;
+    pixString: string | null;
+    amount: number;
+    chargedAmount: number | null;
+};
+
 /**
- * Void every still-PENDING installment of a contract when it is cancelled.
+ * 'paid' = virou PAID (efeitos rodaram) · 'retired' = nada pagável no provedor · 'live' = continua pagável ·
+ * 'captured' = o provedor JÁ recebeu o dinheiro mas a linha não pode virar PAID (não está PENDING ou o
+ * valor diverge) → é anulada e o admin é avisado na hora (nunca só um log).
+ */
+type ProviderRetire = 'paid' | 'retired' | 'live' | 'captured';
+
+/**
+ * PaymentIntent de cartão de uma cobrança que vai ser anulada: aprovado → marca PAID (mesmas checagens
+ * do webhook: PI desta cobrança e valor igual) + efeitos; pagável → cancela (uma aba de checkout aberta
+ * não conclui depois); em processamento / não consultável → 'live'.
+ */
+async function retireCardIntentForVoid(p: VoidablePayment): Promise<ProviderRetire> {
+    const ref = p.providerRef;
+    if (!ref || !ref.startsWith('pi_') || ref.startsWith('pi_mock')) return 'retired';
+    const { isStripeEnabled, stripeGetPaymentIntent, stripeCancelPaymentIntent } = await import('./stripeService.js');
+    if (!(await isStripeEnabled().catch(() => false))) return 'retired';
+    const missing = (err: unknown) => {
+        const e = err as { code?: string; statusCode?: number; raw?: { code?: string } } | null;
+        return e?.code === 'resource_missing' || e?.raw?.code === 'resource_missing' || e?.statusCode === 404;
+    };
+    let pi: Awaited<ReturnType<typeof stripeGetPaymentIntent>>;
+    try {
+        pi = await stripeGetPaymentIntent(ref);
+    } catch (err) {
+        if (missing(err)) return 'retired';
+        console.warn(`[PaymentEffects] PI ${ref} (payment ${p.id}) não pôde ser consultado antes da anulação:`, err instanceof Error ? err.message : err);
+        return 'live';
+    }
+    if (!pi || pi.status === 'canceled') return 'retired';
+    if (pi.status !== 'succeeded' && pi.status !== 'processing' && pi.status !== 'requires_capture') {
+        const r = await stripeCancelPaymentIntent(ref);
+        if (r.canceled) return 'retired';
+        if (r.status !== 'succeeded') return 'live';
+        pi = await stripeGetPaymentIntent(ref); // aprovou no meio do caminho
+    }
+    if (pi.status !== 'succeeded') return 'live'; // processing / requires_capture: o dinheiro pode entrar
+
+    if (pi.metadata?.paymentId && pi.metadata.paymentId !== p.id) {
+        console.error(`[PaymentEffects][SECURITY] PI ${pi.id} pertence a outro pagamento (${pi.metadata.paymentId}) — payment ${p.id} anulado sem confirmar.`);
+        return 'retired';
+    }
+    const expected = p.chargedAmount ?? p.amount;
+    if (pi.amount !== expected) {
+        console.error(`[PaymentEffects][SECURITY] PI ${pi.id} aprovado com valor divergente (PI=${pi.amount}, DB=${expected}) — payment ${p.id}: conferir manualmente.`);
+        return 'captured';
+    }
+    const upd = await prisma.payment.updateMany({
+        where: { id: p.id, status: 'PENDING' },
+        data: { status: 'PAID', paidAt: new Date(), providerRef: pi.id, paymentType: pi.payment_method_types?.includes('card') ? 'CREDIT' : null },
+    });
+    if (upd.count > 0) {
+        console.log(`[PaymentEffects] PI ${pi.id} já estava aprovado — payment ${p.id} confirmado PAID (não anulado).`);
+        await onPaymentConfirmed(p.id);
+        return 'paid';
+    }
+    // Aprovado no Stripe, mas a linha não estava PENDING (ex.: FAILED por uma recusa anterior do mesmo PI).
+    const fresh = await prisma.payment.findUnique({ where: { id: p.id }, select: { status: true } });
+    return fresh?.status === 'PAID' ? 'paid' : 'captured';
+}
+
+/**
+ * Aposenta no provedor a cobrança viva de uma parcela que vai ser anulada (E13): um QR PIX/boleto/PI
+ * emitido antes do cancelamento não pode continuar pagável sem registro.
+ *  • PIX (Sicoob/Cora): retirePixCharge — concilia (já pago → PAID com os efeitos) e cancela a cobrança;
+ *  • boleto puro da Cora: concilia e cancela a fatura;
+ *  • cartão (Stripe): retireCardIntentForVoid.
+ * Linha FAILED (não conciliável): só cancela a cobrança que ficou para trás, best-effort.
+ */
+async function retireProviderChargeForVoid(p: VoidablePayment): Promise<ProviderRetire> {
+    if (!p.providerRef) return 'retired';
+    const { isPixProvider, retirePixCharge, cancelStalePixCharge } = await import('./pixGateway.js');
+
+    if (p.status !== 'PENDING') {
+        if (p.provider === 'STRIPE') return retireCardIntentForVoid(p);
+        if (isPixProvider(p.provider)) await cancelStalePixCharge(p.provider, p.providerRef, p.pixString);
+        return 'retired';
+    }
+
+    if (p.provider === 'STRIPE') return retireCardIntentForVoid(p);
+
+    if (p.provider === 'CORA' && !p.pixString) {
+        // Boleto puro (sem QR): retirePixCharge não o cancela — concilia e cancela a fatura aqui.
+        const { reconcileCoraPayment, isCoraInvoiceCancelled } = await import('./coraReconciliation.js');
+        if (await reconcileCoraPayment(p.id)) return 'paid';
+        const { coraCancelBoleto, coraGetBoleto, isCoraEnabled } = await import('./coraService.js');
+        try {
+            await coraCancelBoleto(p.providerRef);
+        } catch (err) {
+            console.warn(`[PaymentEffects] cancelar boleto Cora ${p.providerRef} falhou:`, err instanceof Error ? err.message : err);
+            if (await reconcileCoraPayment(p.id)) return 'paid';
+            // Integração desligada: não há como cancelar nem consultar — segue (mesmo critério do PIX).
+            if (await isCoraEnabled().catch(() => false)) {
+                try {
+                    if (!isCoraInvoiceCancelled(await coraGetBoleto(p.providerRef))) return 'live';
+                } catch {
+                    return 'live';
+                }
+            }
+        }
+        return 'retired';
+    }
+
+    if (isPixProvider(p.provider)) {
+        const r = await retirePixCharge(p.id);
+        return r === 'paid' ? 'paid' : r === 'live' ? 'live' : 'retired';
+    }
+    return 'retired';
+}
+
+/** Escopo da anulação (padrão: tudo que está em aberto no contrato, MENOS a multa de cancelamento). */
+export interface VoidContractPaymentsOpts {
+    /** Também anula a multa de cancelamento (default false). Usado pela exclusão de cliente. */
+    includeFines?: boolean;
+    /** SÓ as multas de cancelamento em aberto (a decisão que gera uma multa nova aposenta as anteriores). */
+    onlyFines?: boolean;
+    /** Restringe às cobranças de EXTRAS destas gravações (bookingId na lista) — pedido de cancelamento. */
+    bookingIds?: string[];
+    /** Restringe a estas cobranças (id na lista) — combinado com os filtros acima. */
+    paymentIds?: string[];
+}
+
+/**
+ * Void every still-unpaid installment of a contract when it is cancelled.
  *
  * Without this, a cancelled contract leaves its future parcelas as PENDING — they
  * keep showing as "faturas abertas", can be auto-charged (Stripe subscription), and
@@ -479,17 +629,77 @@ export async function notifyPaymentExpired(payment: PaymentLike): Promise<void> 
  * PAID. We move them to CANCELLED (a terminal, non-collectible state distinct from a
  * FAILED charge) and cancel any Stripe subscription so it stops billing.
  *
- * Idempotent: only PENDING rows are touched; PAID/FAILED/REFUNDED are left intact.
- * Returns the number of installments voided.
+ * E13 (30/09/2026):
+ *  • ANTES de anular, a cobrança viva de cada parcela é aposentada no provedor (QR PIX, boleto,
+ *    PaymentIntent). Se o provedor disser que já foi paga, a parcela vira PAID com todos os efeitos —
+ *    não CANCELLED. Falha do provedor não bloqueia o cancelamento (best-effort): a parcela é anulada
+ *    e, se o dinheiro entrar depois, o admin é avisado (alertPaymentOnCancelledCharge).
+ *  • Parcelas FAILED (cobrança recusada/expirada, ainda devida) também são anuladas: num contrato
+ *    cancelado nada continua pagável além da multa de cancelamento.
+ *  • A MULTA de cancelamento (metadata.kind) NUNCA é anulada por padrão: uma segunda requisição de
+ *    cancelamento (duas decisões, DELETE/PATCH concorrentes, ou o contrato reaberto e cancelado de novo)
+ *    não pode apagar a multa que outra acabou de criar. Só `includeFines` (exclusão de cliente) ou
+ *    `onlyFines` (decisão que SUBSTITUI a multa anterior por uma nova) a alcançam.
+ *
+ * Idempotent: only PENDING/FAILED rows are touched; PAID/REFUNDED are left intact.
+ * Returns the number of installments voided (detalhes: voidContractPendingPaymentsDetailed).
  */
-export async function voidContractPendingPayments(contractId: string): Promise<number> {
-    // Snapshot the pending rows first so we can cancel any linked Stripe subscription
-    // AFTER they are voided (see ordering note below).
-    const pending = await prisma.payment.findMany({
-        where: { contractId, status: 'PENDING' },
-        select: { id: true, stripeSubscriptionId: true },
-    });
-    if (pending.length === 0) return 0;
+export async function voidContractPendingPayments(contractId: string, opts: VoidContractPaymentsOpts = {}): Promise<number> {
+    return (await voidContractPendingPaymentsDetailed(contractId, opts)).voided;
+}
+
+export async function voidContractPendingPaymentsDetailed(contractId: string, opts: VoidContractPaymentsOpts = {}): Promise<VoidContractPaymentsResult> {
+    const result: VoidContractPaymentsResult = { voided: 0, paidAtProvider: [], liveAtProvider: [] };
+    // Filtro em JS (metadata selecionado): um filtro JSON `NOT` do Prisma descartaria as linhas com
+    // metadata nulo — que são a maioria das parcelas.
+    const inScope = (p: { id: string; bookingId: string | null; metadata: unknown }): boolean => {
+        if (opts.paymentIds && !opts.paymentIds.includes(p.id)) return false;
+        const fine = isCancellationFine(p);
+        if (opts.onlyFines) return fine;
+        if (fine && !opts.includeFines) return false;
+        if (opts.bookingIds) return !!p.bookingId && opts.bookingIds.includes(p.bookingId);
+        return true;
+    };
+
+    // 1) Provedor primeiro (chamadas de rede fora de qualquer transação): cobranças emitidas das
+    //    parcelas ainda em aberto. Best-effort por linha — uma falha aqui nunca impede o cancelamento.
+    const issued = (await prisma.payment.findMany({
+        where: { contractId, status: { in: ['PENDING', 'FAILED'] }, providerRef: { not: null } },
+        select: { id: true, status: true, provider: true, providerRef: true, pixString: true, amount: true, chargedAmount: true, bookingId: true, metadata: true },
+    })).filter(inScope);
+    const captured: VoidablePayment[] = [];
+    for (const p of issued) {
+        let r: ProviderRetire;
+        try {
+            r = await retireProviderChargeForVoid(p);
+        } catch (err) {
+            console.warn(`[PaymentEffects] Falha ao aposentar a cobrança ${p.providerRef} do payment ${p.id} (best-effort):`, err instanceof Error ? err.message : err);
+            r = 'live';
+        }
+        if (r === 'paid') result.paidAtProvider.push(p.id);
+        else if (r === 'live') result.liveAtProvider.push(p.id);
+        else if (r === 'captured') { result.liveAtProvider.push(p.id); captured.push(p); }
+    }
+    if (result.liveAtProvider.length > 0) {
+        console.warn(`[PaymentEffects] Contrato ${contractId}: ${result.liveAtProvider.length} cobrança(s) anulada(s) com a cobrança ainda viva no provedor (${result.liveAtProvider.join(', ')}) — um pagamento nela gera alerta ao admin.`);
+    }
+
+    // 2) Snapshot the open rows (DEPOIS do provedor: uma confirmação acima pode ter gerado parcelas
+    //    novas — ex.: 1ª parcela de uma renovação — que também precisam ser anuladas) so we can cancel
+    //    any linked Stripe subscription AFTER they are voided (see ordering note below).
+    const open = (await prisma.payment.findMany({
+        where: { contractId, status: { in: ['PENDING', 'FAILED'] } },
+        select: { id: true, stripeSubscriptionId: true, bookingId: true, metadata: true },
+    })).filter(inScope);
+    // Dinheiro já confirmado no provedor numa linha que não pôde virar PAID: depois de anulada, o admin é
+    // avisado imediatamente (mesmo alerta do webhook/conciliação — 1 por cobrança).
+    const alertCaptured = async () => {
+        for (const p of captured) {
+            await alertPaymentOnCancelledCharge(p.id, { provider: 'Stripe (cartão)', providerRef: p.providerRef, amountCents: p.chargedAmount ?? p.amount });
+        }
+    };
+    if (open.length === 0) { await alertCaptured(); return result; }
+    const openIds = open.map(p => p.id);
 
     // Void the installments FIRST, then cancel the subscription. Ordering matters:
     // cancelling the Stripe subscription emits a `customer.subscription.deleted` webhook that
@@ -499,24 +709,27 @@ export async function voidContractPendingPayments(contractId: string): Promise<n
     // PENDING-only updateMany no longer matches them.
     //
     // Race note: between the snapshot above and this updateMany a concurrent confirmation may
-    // flip a row PENDING→PAID. That is safe and correct — the atomic `where status: 'PENDING'`
-    // only voids rows still pending, so a legitimately-paid installment is never voided, and a
-    // voided installment can never be (re)confirmed (onPaymentConfirmed re-checks status==='PAID').
+    // flip a row PENDING→PAID. That is safe and correct — the atomic `where status` only voids
+    // rows still unpaid, so a legitimately-paid installment is never voided, and a voided
+    // installment can never be (re)confirmed (onPaymentConfirmed re-checks status==='PAID').
     const voided = await prisma.payment.updateMany({
-        where: { contractId, status: 'PENDING' },
+        where: { id: { in: openIds }, status: { in: ['PENDING', 'FAILED'] } },
         data: { status: 'CANCELLED' },
     });
+    result.voided = voided.count;
     if (voided.count > 0) {
-        console.log(`[PaymentEffects] Voided ${voided.count} pending installment(s) for cancelled contract ${contractId}`);
-        // Give back any coupon uses still reserved on the voided installments.
-        await releaseCouponForPayments(pending.map(p => p.id));
+        console.log(`[PaymentEffects] Voided ${voided.count} unpaid installment(s) for cancelled contract ${contractId}`);
+        // Give back any coupon uses still reserved on the voided installments (só RESERVED é devolvido:
+        // uma parcela confirmada no meio do caminho mantém o uso).
+        await releaseCouponForPayments(openIds);
     }
+    await alertCaptured();
 
     // Cancel any Stripe subscription tied to these installments so it stops billing. Best-effort:
     // a transient Stripe failure is logged but does not abort the cancellation (the parcelas are
     // already voided locally; the downstream guards reject any late confirmation).
     const subscriptionIds = [...new Set(
-        pending.map(p => p.stripeSubscriptionId).filter((s): s is string => !!s)
+        open.map(p => p.stripeSubscriptionId).filter((s): s is string => !!s)
     )];
     if (subscriptionIds.length > 0) {
         try {
@@ -536,7 +749,58 @@ export async function voidContractPendingPayments(contractId: string): Promise<n
         }
     }
 
-    return voided.count;
+    return result;
+}
+
+/**
+ * Pagamento confirmado no provedor para uma cobrança que já estava CANCELLED (parcela anulada de um
+ * contrato cancelado cujo QR/PI continuou pagável): o dinheiro entrou e a linha não pode virar PAID
+ * sozinha. Em vez de só logar, avisa TODOS os admins (persistida + push) e grava a marca na auditoria
+ * — que também garante UM aviso por cobrança (webhook reentregue / varredura a cada 2 min).
+ * Nunca lança. Devolve true se o aviso foi emitido agora.
+ */
+export async function alertPaymentOnCancelledCharge(
+    paymentId: string,
+    info: { provider: string; providerRef?: string | null; amountCents?: number | null },
+): Promise<boolean> {
+    try {
+        const payment = await prisma.payment.findUnique({
+            where: { id: paymentId },
+            select: {
+                id: true, status: true, amount: true, userId: true,
+                user: { select: { name: true } },
+                contract: { select: { name: true } },
+            },
+        });
+        if (!payment || payment.status !== 'CANCELLED') return false;
+        const already = await prisma.auditLog.count({
+            where: { entityType: 'PAYMENT', entityId: paymentId, action: AUDIT_PAID_AFTER_CANCELLED },
+        });
+        if (already > 0) return false;
+
+        const amount = info.amountCents && info.amountCents > 0 ? info.amountCents : payment.amount;
+        console.error(`[PaymentEffects][ALERTA] Pagamento de ${fmtBRL(amount)} confirmado no ${info.provider} (${info.providerRef ?? 's/ ref'}) para a cobrança CANCELADA ${paymentId} — avisando o admin (estornar ou dar baixa manual).`);
+        await prisma.auditLog.create({
+            data: {
+                entityType: 'PAYMENT', entityId: paymentId, action: AUDIT_PAID_AFTER_CANCELLED, performedBy: 'SYSTEM',
+                changes: JSON.stringify({ provider: info.provider, providerRef: info.providerRef ?? null, amount }),
+            },
+        });
+        const admins = await prisma.user.findMany({ where: { role: 'ADMIN', deletedAt: null }, select: { id: true } });
+        for (const admin of admins) {
+            await notifyEvent('admin_payment_on_cancelled_charge', {
+                userId: admin.id,
+                vars: { cliente: payment.user?.name ?? 'Cliente', valor: fmtBRL(amount), contrato: payment.contract?.name ?? 'sem contrato' },
+                entityType: 'PAYMENT',
+                entityId: paymentId,
+                dedupKey: `paid-on-cancelled:${paymentId}:${admin.id}`,
+            }).catch(() => '');
+        }
+        return true;
+    } catch (err) {
+        console.error(`[PaymentEffects] Falha ao avisar o admin do pagamento na cobrança cancelada ${paymentId}:`, err);
+        return false;
+    }
 }
 
 /**
@@ -556,6 +820,10 @@ export async function generateRemainingInstallments(contractId: string): Promise
         if (!contract) return;
         if (contract.paymentPlan === 'FULL') return;             // FULL = single upfront payment
         if (contract.type === 'AVULSO') return;                  // avulso has no installments
+        // Contrato cancelado / em cancelamento nunca ganha parcelas novas. Sem isto, a MULTA paga de um
+        // contrato cancelado antes de qualquer parcela paga (E13: multa sobre o que FALTA pagar) seria
+        // "a única cobrança paga, sem pendentes" e regeraria as parcelas 2..N com o valor da multa.
+        if (contract.status === 'CANCELLED' || contract.status === 'PENDING_CANCELLATION') return;
 
         // Serialize per contract: two concurrent confirmations (e.g. two admin PATCHes marking the
         // same payment PAID, which lacks an atomic guard) must not both pass the count check and
@@ -646,8 +914,10 @@ export async function generateRemainingInstallments(contractId: string): Promise
 /**
  * Apply a change to a contract's recurring services (Contract.addOns), affecting ONLY THE FUTURE:
  *  - recomputes the amount of still-PENDING installments (MONTHLY) / the single PENDING payment (FULL) —
- *    only the PLAN charges (bookingId null): a pending extras charge of a recording keeps its own value;
- *    FULL + PIX also rewrites metadata.pixDiscount (card value without the PIX discount — D1)
+ *    only the PLAN charges (bookingId null): a pending extras charge of a recording keeps its own value,
+ *    and so does a pending cancellation fine (metadata.kind — E13);
+ *    FULL (any payment method) also rewrites the bidirectional metadata.pixDiscount { pct, cardAmount,
+ *    pixAmount } with both prices of the NEW total (E2), so PIX keeps its discount and card its price
  *  - updates the addOns of FUTURE bookings (date >= today, not CANCELLED/COMPLETED) by delta —
  *    drops removed services, adds newly-added per-episode services, and PRESERVES any per-booking
  *    extras the client added individually. booking.price is left untouched (recurring services are
@@ -659,7 +929,11 @@ export async function generateRemainingInstallments(contractId: string): Promise
  * recusa por valor divergente). Por isso, nas parcelas PENDING cujo valor muda, a cobrança PIX viva
  * é conciliada (se já paga, fica PAID e não é repreçada) e cancelada no provedor (best-effort), e
  * pixString/providerRef/pixExpiresAt são zerados — o próximo "Pagar" emite um QR com o valor novo.
- * Cartão cria o PaymentIntent a partir de payment.amount no checkout, então já pega o valor novo.
+ * Cartão: o PaymentIntent JÁ emitido (checkout aberto numa aba) carrega o valor antigo e o webhook o
+ * aceitaria (`chargedAmount ?? amount`). Nas parcelas cujo valor muda, o PI é resolvido ANTES da transação
+ * (settleExistingCardIntent): pagável → cancelado, e providerRef/chargedAmount são zerados (o próximo
+ * "Pagar" cria um PI com o valor novo); aprovado/em processamento ou não consultável → a parcela fica no
+ * valor antigo (mesmo critério do QR 'live'). Nunca se zera o chargedAmount com o PI ainda vivo.
  * Known limitation: a PENDING pure boleto whose external invoice was already issued is not re-issued.
  */
 export async function applyContractServiceChange(contractId: string, newAddOns: string[]): Promise<void> {
@@ -672,15 +946,18 @@ export async function applyContractServiceChange(contractId: string, newAddOns: 
 
     const { getBasePriceDynamic, applyDiscount } = await import('../utils/pricing.js');
     const { getConfig } = await import('./businessConfig.js');
-    const { computeAddonsCost, computeFullContractTotal } = await import('./contractPricing.js');
+    const { computeAddonsCost, computeFullContractTotals } = await import('./contractPricing.js');
 
     const sessions = await getConfig('sessions_per_month');
     const basePrice = await getBasePriceDynamic(contract.tier);
     const discountedPrice = applyDiscount(basePrice, contract.discountPct);
     const newMonthly = (sessions * discountedPrice) + await computeAddonsCost(newAddOns, contract.discountPct, sessions);
-    const newFull = contract.paymentPlan === 'FULL'
-        ? await computeFullContractTotal(newMonthly, contract.durationMonths, contract.paymentMethod || undefined)
+    // À vista: os DOIS preços do total novo (cartão e PIX). `total` segue a forma do contrato, como na
+    // criação: PIX grava o preço PIX; cartão/boleto gravam o preço de cartão.
+    const fullTotals = contract.paymentPlan === 'FULL'
+        ? await computeFullContractTotals(newMonthly, contract.durationMonths, contract.paymentMethod)
         : null;
+    const newFull = fullTotals ? fullTotals.total : null;
 
     // Per-episode (monthly:false) services accompany every recording; monthly add-ons never land on bookings.
     const newConfigs = await prisma.addOnConfig.findMany({ where: { key: { in: newAddOns } } });
@@ -695,11 +972,18 @@ export async function applyContractServiceChange(contractId: string, newAddOns: 
     // 0. PIX charges already issued for the OLD amount: reconcile + cancel them at the provider
     //    BEFORE repricing (network calls stay outside the transaction). Best-effort per row.
     const { retirePixCharge, isPixProvider, pixMetadataAfterDiscard } = await import('./pixGateway.js');
+    // Multa de cancelamento (E13) também é PENDING sem bookingId, mas NÃO é parcela do plano: num contrato
+    // reaberto pelo admin com a multa ainda em aberto, ela mantém o próprio valor (nunca vira o valor do plano).
+    const fineIds = (await prisma.payment.findMany({
+        where: { contractId, bookingId: null, status: 'PENDING' },
+        select: { id: true, metadata: true },
+    })).filter(isCancellationFine).map(p => p.id);
     // Só as parcelas do PLANO (sem bookingId): cobranças de extras de uma gravação têm valor próprio e
     // nunca são repreçadas pela troca de serviços recorrentes.
     const stalePix = await prisma.payment.findMany({
         where: {
             contractId, bookingId: null, status: 'PENDING', amount: { not: newAmount },
+            ...(fineIds.length > 0 ? { id: { notIn: fineIds } } : {}),
             OR: [{ pixString: { not: null } }, { pixExpiresAt: { not: null } }],
         },
         select: { id: true, provider: true, providerRef: true, metadata: true, pixString: true },
@@ -720,24 +1004,75 @@ export async function applyContractServiceChange(contractId: string, newAddOns: 
         console.warn(`[PaymentEffects] Contrato ${contractId}: ${liveIds.length} parcela(s) com QR PIX vivo não cancelável mantida(s) no valor antigo (${liveIds.join(', ')}) — conferir com o cliente.`);
     }
 
-    // D1: à vista + PIX → o valor novo embute o desconto PIX; a marca `pixDiscount` (valor do cartão) é
-    // regravada junto, senão o cartão cobraria o valor ANTIGO (cardChargeBaseAmount lê a marca). Nas
-    // demais formas, uma marca que exista deixa de valer (o valor novo não tem desconto PIX).
-    const { buildPixDiscountMeta, mergePaymentMetadata } = await import('./pixGateway.js');
-    const newCardFull = newFull !== null && contract.paymentMethod === 'PIX'
-        ? await computeFullContractTotal(newMonthly, contract.durationMonths, 'CARTAO')
-        : null;
-    const newPixDiscount = newCardFull !== null
-        ? buildPixDiscountMeta({ pixAmount: newAmount, cardAmount: newCardFull, pct: Number(await getConfig('pix_extra_discount_pct')) || 0 })
+    // 0b. PaymentIntent de cartão já emitido pelo valor ANTIGO (checkout aberto): resolvido antes do
+    //     repreço, como o QR PIX. Pagável → cancelado (a linha perde providerRef/chargedAmount na
+    //     transação); aprovado/em processamento ou não consultável → a parcela fica no valor antigo, com o
+    //     PI intacto (o pagamento nele precisa casar com o Payment); PI que já cobra o valor novo → fica.
+    const { settleExistingCardIntent } = await import('./pixGateway.js');
+    const newCardAmount = fullTotals?.cardTotal ?? newAmount;
+    const staleCard = await prisma.payment.findMany({
+        where: {
+            contractId, bookingId: null, status: 'PENDING', amount: { not: newAmount },
+            ...(fineIds.length > 0 ? { id: { notIn: fineIds } } : {}),
+            providerRef: { startsWith: 'pi_' },
+        },
+        select: { id: true, providerRef: true },
+    });
+    const cardReset: { id: string; providerRef: string | null }[] = [];
+    const cardLiveIds: string[] = [];
+    for (const p of staleCard) {
+        let state: string;
+        try {
+            state = (await settleExistingCardIntent(p.providerRef, newCardAmount)).state;
+        } catch (err) {
+            console.warn(`[PaymentEffects] Falha ao resolver o PaymentIntent ${p.providerRef} da parcela ${p.id}:`, err instanceof Error ? err.message : err);
+            state = 'unknown';
+        }
+        if (state === 'cancelled' || state === 'none') cardReset.push({ id: p.id, providerRef: p.providerRef });
+        else if (state === 'in_flight' || state === 'unknown') cardLiveIds.push(p.id);
+    }
+    if (cardLiveIds.length > 0) {
+        console.warn(`[PaymentEffects] Contrato ${contractId}: ${cardLiveIds.length} parcela(s) com pagamento no cartão em andamento (ou não consultável) mantida(s) no valor antigo (${cardLiveIds.join(', ')}) — conferir com o cliente.`);
+    }
+
+    // E2 (marca bidirecional): TODA cobrança à vista repreçada regrava `pixDiscount { pct, cardAmount,
+    // pixAmount }` com os dois preços do total NOVO — seja qual for a forma do contrato. Criada no PIX, o
+    // amount novo é o preço PIX (o cartão cobra cardAmount); criada no cartão/boleto, o amount novo é o
+    // preço de cartão e o PIX continua saindo com o desconto (issuePixCharge baixa para pixAmount). Sem
+    // isso a marca antiga caducava e o PIX de um à vista + cartão saía pelo valor cheio depois da troca.
+    // Mensal (newFull null) não tem diferença de preço: uma marca que exista é removida.
+    const { pixDiscountMetaForFullCharge, mergePaymentMetadata } = await import('./pixGateway.js');
+    const newPixDiscount = fullTotals
+        ? pixDiscountMetaForFullCharge({ cardTotal: fullTotals.cardTotal, pixTotal: fullTotals.pixTotal, pct: fullTotals.pixPct })
         : undefined;
 
     await prisma.$transaction(async (tx) => {
-        const repriceWhere = { contractId, bookingId: null, status: 'PENDING' as const, ...(liveIds.length > 0 ? { id: { notIn: liveIds } } : {}) };
+        // O cliente pode ter aberto um checkout de cartão NOVO entre o cancelamento do PI antigo (acima,
+        // fora da transação) e aqui: a linha já aponta para outro PI, criado pelo valor antigo. Essa linha
+        // não é repreçada nem perde a referência — o pagamento nesse PI precisa casar com `chargedAmount`.
+        const resetNow = cardReset.length === 0 ? [] : await tx.payment.findMany({
+            where: { id: { in: cardReset.map(p => p.id) } },
+            select: { id: true, providerRef: true },
+        });
+        const cardMovedIds = cardReset
+            .filter(p => resetNow.find(r => r.id === p.id)?.providerRef !== p.providerRef)
+            .map(p => p.id);
+        const skipIds = [...liveIds, ...cardLiveIds, ...cardMovedIds, ...fineIds];
+        const repriceWhere = { contractId, bookingId: null, status: 'PENDING' as const, ...(skipIds.length > 0 ? { id: { notIn: skipIds } } : {}) };
         // 1. Recompute still-PENDING installments (PAID/past ones are never matched).
         await tx.payment.updateMany({
             where: repriceWhere,
             data: { amount: newAmount },
         });
+        // 1a. PaymentIntent antigo cancelado acima: a linha deixa de apontar para ele e de guardar o valor
+        //     antigo do cartão (senão o webhook aceitaria o valor antigo por `chargedAmount ?? amount`).
+        for (const p of cardReset) {
+            if (cardMovedIds.includes(p.id)) continue;
+            await tx.payment.updateMany({
+                where: { id: p.id, status: 'PENDING', providerRef: p.providerRef },
+                data: { chargedAmount: null, providerRef: null },
+            });
+        }
         // 1b. Drop the stale PIX artifacts (old value) so the next "Pagar" issues a fresh QR.
         for (const p of stalePix) {
             if (liveIds.includes(p.id)) continue;
@@ -789,7 +1124,7 @@ export async function applyContractServiceChange(contractId: string, newAddOns: 
 export async function onPaymentConfirmed(paymentId: string): Promise<void> {
     const payment = await prisma.payment.findUnique({
         where: { id: paymentId },
-        select: { id: true, userId: true, amount: true, bookingId: true, contractId: true, paymentUrl: true, status: true },
+        select: { id: true, userId: true, amount: true, bookingId: true, contractId: true, paymentUrl: true, status: true, metadata: true },
     });
     if (!payment) return;
     // Defense-in-depth: callers must flip the row to PAID atomically first. Never run
@@ -802,6 +1137,14 @@ export async function onPaymentConfirmed(paymentId: string): Promise<void> {
 
     // 0. Coupon bookkeeping: RESERVED → CONFIRMED (idempotent; no-op without coupon)
     await confirmCouponRedemption(payment.id);
+
+    // Multa de cancelamento (E13): é só uma cobrança — o contrato já está CANCELLED e nada é entregue.
+    // Pula os efeitos de contratação (ativar contrato, gerar sessões/parcelas, liberar ciclo): a multa
+    // não é parcela do plano e não pode contar como tal. Só avisa o cliente.
+    if (isCancellationFine(payment)) {
+        await notifyPaymentConfirmed(payment);
+        return;
+    }
 
     // 1. Activate purchased add-on(s)
     await activateAddonIfNeeded(payment.id);

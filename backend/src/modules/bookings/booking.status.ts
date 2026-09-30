@@ -6,11 +6,20 @@ import { releaseMultiSlotLock } from '../../lib/redis.js';
 import { stripeGetPaymentIntent } from '../../lib/stripeService.js';
 import { getPackageSlots } from '../../utils/pricing.js';
 import { BookingStatus } from '../../generated/prisma/client.js';
-import { restoreCredit } from './booking.service.js';
+import { restoreCredit, voidExtrasOfCancelledBooking, voidedExtrasNote } from './booking.service.js';
 import { syncContractCompletion } from '../../lib/contractCompletion.js';
 import { notifyEvent } from '../notifications/notificationService.js';
 import { completeBookingSchema } from './validators.js';
 import { deriveStreamAggregates } from '../../lib/streamMetrics.js';
+import { logAudit } from '../../lib/audit.js';
+import { spDaysFromToday } from '../../lib/spTime.js';
+
+/**
+ * Teto da duração derivada automaticamente (Iniciar → Finalizar). Um início antigo esquecido (ex.: de
+ * outro dia) não pode virar uma "duração" de dias: acima disso a derivação é ignorada e a duração só é
+ * gravada se o operador informar o valor.
+ */
+const AUTO_DURATION_MAX_MINUTES = 12 * 60;
 
 export function registerStatusRoutes(router: Router) {
 
@@ -255,6 +264,10 @@ router.put('/:id/client-cancel', authenticate, async (req: Request, res: Respons
         }
         await syncContractCompletion(booking.contractId, userId);
 
+        // Gravação de plano cancelada: a cobrança em aberto dos EXTRAS dela deixa de ser devida
+        // (best-effort; avulso não entra — ver voidExtrasOfCancelledBooking).
+        const voidedExtras = await voidExtrasOfCancelledBooking(id, booking.contractId);
+
         // Instant push: notify admin of cancellation
         const admins = await prisma.user.findMany({ where: { role: 'ADMIN' }, select: { id: true } });
         const clientName = (await prisma.user.findUnique({ where: { id: booking.userId }, select: { name: true } }))?.name || 'Cliente';
@@ -269,7 +282,7 @@ router.put('/:id/client-cancel', authenticate, async (req: Request, res: Respons
             }).catch(() => {});
         }
 
-        res.json({ message: 'Agendamento cancelado com sucesso. O crédito retornou ao seu plano.' });
+        res.json({ message: `Agendamento cancelado com sucesso. O crédito retornou ao seu plano.${voidedExtrasNote(voidedExtras)}`, voidedExtras });
     } else {
         // Cancel without refund (Late cancellation)
         await prisma.booking.update({
@@ -322,24 +335,51 @@ router.put('/:id/complete', authenticate, authorize('ADMIN'), async (req: Reques
         // re-salvar métricas de um COMPLETED preserva a duração já registrada (não recalcula do início).
         let durationMinutes = data.durationMinutes;
         if (durationMinutes == null && booking.status !== 'COMPLETED' && booking.recordingStartedAt) {
-            durationMinutes = Math.max(1, Math.round((Date.now() - booking.recordingStartedAt.getTime()) / 60000));
+            const derived = Math.max(1, Math.round((Date.now() - booking.recordingStartedAt.getTime()) / 60000));
+            // Início antigo (esquecido de outro dia) → não grava uma duração absurda; fica sem duração.
+            if (derived <= AUTO_DURATION_MAX_MINUTES) durationMinutes = derived;
         }
-        const updated = await prisma.booking.update({
-            where: { id },
-            data: {
-                status: BookingStatus.COMPLETED,
-                ...(durationMinutes != null && { durationMinutes }),
-                ...(data.isLivestream !== undefined && { isLivestream: data.isLivestream }),
-                ...(data.platforms !== undefined && { platforms: data.platforms }),
-                ...(data.platformLinks !== undefined && { platformLinks: data.platformLinks }),
-                ...(data.streamMetrics !== undefined && { streamMetrics: data.streamMetrics }),
-                ...(data.audienceOrigin !== undefined && { audienceOrigin: data.audienceOrigin }),
-                ...(data.adminNotes !== undefined && { adminNotes: data.adminNotes }),
-                ...(data.clientNotes !== undefined && { clientNotes: data.clientNotes }),
-                ...(peakViewers != null && { peakViewers }),
-                ...(chatMessages != null && { chatMessages }),
-            },
-        });
+        const completeData = {
+            status: BookingStatus.COMPLETED,
+            ...(durationMinutes != null && { durationMinutes }),
+            ...(data.isLivestream !== undefined && { isLivestream: data.isLivestream }),
+            ...(data.platforms !== undefined && { platforms: data.platforms }),
+            ...(data.platformLinks !== undefined && { platformLinks: data.platformLinks }),
+            ...(data.streamMetrics !== undefined && { streamMetrics: data.streamMetrics }),
+            ...(data.audienceOrigin !== undefined && { audienceOrigin: data.audienceOrigin }),
+            ...(data.adminNotes !== undefined && { adminNotes: data.adminNotes }),
+            ...(data.clientNotes !== undefined && { clientNotes: data.clientNotes }),
+            ...(peakViewers != null && { peakViewers }),
+            ...(chatMessages != null && { chatMessages }),
+        };
+        let updated;
+        if (booking.status === 'COMPLETED') {
+            // Re-salvar métricas de uma gravação já finalizada: escrita direta, como sempre foi.
+            updated = await prisma.booking.update({ where: { id }, data: completeData });
+        } else {
+            // 1ª finalização: escrita guardada pelo estado LIDO (mesmo status + início ainda registrado).
+            // Se outra tela desfez o início (ou mudou o status/horário) entre a leitura e a escrita, nada é
+            // gravado — sem isso a gravação ficava COMPLETED sem registro de início.
+            const finalized = await prisma.booking.updateMany({
+                where: { id, status: booking.status, recordingStartedAt: { not: null } },
+                data: completeData,
+            });
+            if (finalized.count === 0) {
+                const current = await prisma.booking.findUnique({ where: { id } });
+                if (!current) { res.status(404).json({ error: 'Agendamento não encontrado.' }); return; }
+                // Duplo clique / outro operador já finalizou: idempotente, sem regravar nada.
+                if (current.status === BookingStatus.COMPLETED) {
+                    res.json({ booking: current, message: '🏁 Sessão finalizada com sucesso!' });
+                    return;
+                }
+                res.status(409).json({
+                    error: 'A gravação foi alterada em outra tela (o início foi desfeito ou o status mudou). Atualize e tente de novo.',
+                    code: 'RECORDING_STATE_CHANGED',
+                });
+                return;
+            }
+            updated = await prisma.booking.findUniqueOrThrow({ where: { id } });
+        }
         // D6: gravação finalizada → o contrato pode estar concluído (avulso sempre; plano se não resta nada).
         await syncContractCompletion(booking.contractId, req.user!.userId);
         res.json({ booking: updated, message: '🏁 Sessão finalizada com sucesso!' });
@@ -365,6 +405,16 @@ router.put('/:id/start-recording', authenticate, authorize('ADMIN'), async (req:
         res.status(400).json({ error: `Só é possível iniciar uma gravação confirmada (status atual: ${booking.status}).` });
         return;
     }
+    // Sessão FUTURA (dia de São Paulo posterior a hoje) não pode ser iniciada: um clique por engano na
+    // sessão da semana que vem acenderia "AO VIVO" para o cliente. Só o futuro é recusado — sessão de
+    // hoje ou passada segue permitida (Iniciar → Finalizar retroativo de quem esqueceu de iniciar).
+    if (spDaysFromToday(booking.date) > 0) {
+        res.status(400).json({
+            error: 'Só é possível iniciar a gravação no dia da sessão.',
+            code: 'RECORDING_START_FUTURE',
+        });
+        return;
+    }
     // Idempotente: se já foi iniciada, mantém o operador/horário original (não sobrescreve).
     if (booking.recordingStartedAt) {
         res.json({ booking, message: 'Gravação já iniciada.' });
@@ -380,6 +430,50 @@ router.put('/:id/start-recording', authenticate, authorize('ADMIN'), async (req:
         },
     });
     res.json({ booking: updated, message: '🔴 Gravação iniciada.' });
+});
+
+// ─── PUT /api/bookings/:id/undo-start-recording (Admin) ─
+// Desfaz um "Iniciar Gravação" clicado por engano: zera QUEM/QUANDO iniciou. O cliente deixa de ver o
+// selo "AO VIVO" (isRecordingNow) e a sessão volta a exigir "Iniciar Gravação" antes de finalizar.
+// Só em gravação CONFIRMED (iniciada e ainda NÃO finalizada); o registro anterior fica na auditoria.
+
+router.put('/:id/undo-start-recording', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
+    const id = req.params.id as string;
+    const booking = await prisma.booking.findUnique({ where: { id } });
+    if (!booking) { res.status(404).json({ error: 'Agendamento não encontrado.' }); return; }
+    const notUndoable = (status: BookingStatus) => res.status(409).json({
+        error: status === BookingStatus.COMPLETED
+            ? 'Esta gravação já foi finalizada. O início não pode mais ser desfeito.'
+            : `Só é possível desfazer o início de uma gravação confirmada e ainda não finalizada (status atual: ${status}).`,
+        code: 'RECORDING_UNDO_NOT_ALLOWED',
+    });
+    if (booking.status !== BookingStatus.CONFIRMED) { notUndoable(booking.status); return; }
+    // Idempotente: nada iniciado → nada a desfazer (dois cliques, ou duas abas do painel).
+    if (!booking.recordingStartedAt) {
+        res.json({ booking, message: 'A gravação não estava iniciada.' });
+        return;
+    }
+    // Escrita guardada pelo estado: se a finalização gravou ANTES (status → COMPLETED), o início não é
+    // zerado (cai no 409 abaixo). A ordem inversa (finalização leu antes, grava depois deste undo) é
+    // barrada do outro lado: o /complete só grava se o início ainda estiver registrado (409
+    // RECORDING_STATE_CHANGED), então o 200 daqui é sempre verdadeiro.
+    const undone = await prisma.booking.updateMany({
+        where: { id, status: BookingStatus.CONFIRMED, recordingStartedAt: { not: null } },
+        data: { recordingStartedAt: null, recordingStartedById: null, recordingStartedByName: null },
+    });
+    const current = await prisma.booking.findUnique({ where: { id } });
+    if (!current) { res.status(404).json({ error: 'Agendamento não encontrado.' }); return; }
+    if (undone.count === 0) {
+        if (current.status !== BookingStatus.CONFIRMED) { notUndoable(current.status); return; }
+        res.json({ booking: current, message: 'A gravação não estava iniciada.' });
+        return;
+    }
+    await logAudit('BOOKING', id, 'RECORDING_START_UNDONE', req.user!.userId, {
+        recordingStartedAt: booking.recordingStartedAt.toISOString(),
+        recordingStartedById: booking.recordingStartedById,
+        recordingStartedByName: booking.recordingStartedByName,
+    });
+    res.json({ booking: current, message: 'Início da gravação desfeito.' });
 });
 
 } // end registerStatusRoutes

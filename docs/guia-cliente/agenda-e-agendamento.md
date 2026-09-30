@@ -42,6 +42,18 @@ Ao agendar, o horário fica **reservado por 10 minutos** aguardando o pagamento 
 ![Contador de reserva](../images/cliente/agenda-04-hold-contador.png)
 <!-- TODO screenshot: slot reservado com contador (hold) -->
 
+## Seus agendamentos
+
+No botão **Agendados** (topo da Agenda) ficam os cartões das suas próximas sessões — reservadas ou confirmadas —, da mais próxima para a mais distante. A sessão continua ali até o fim do horário e, enquanto o estúdio estiver gravando, mostra o selo **AO VIVO**.
+
+Toque (ou clique) num cartão para abrir o **detalhe do agendamento**. Nele você preenche e edita, em cada agendamento, as **informações da gravação**:
+
+- **Título** e **descrição** do episódio;
+- **Capa** (enviada na hora);
+- **Onde vai transmitir** (YouTube, TikTok, Instagram, Facebook).
+
+Toque em **Salvar**: o cartão passa a mostrar o título e a capa. Fechar sem salvar descarta o que foi digitado. Você pode editar enquanto a gravação não foi finalizada nem cancelada (detalhes em [Minhas Gravações](minhas-gravacoes.md#ate-quando-posso-editar-as-informacoes)). O mesmo detalhe abre ao tocar num horário seu na grade.
+
 ## Remarcar
 
 Sessões podem ser remarcadas dentro da **janela de 7 dias** (sujeita às políticas do estúdio). Abra a sessão e escolha a nova data/horário.

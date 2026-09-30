@@ -6,7 +6,7 @@ Análises de uso e desempenho do estúdio.
 
 ## Visão geral
 
-Selecione o período (últimos 7/30/90/365 dias). Os cartões de resumo mostram total de sessões, concluídas, canceladas, receita, % de cobrança e ticket médio.
+Selecione o período (últimos 7/30/90/365 dias). Os cartões de resumo mostram total de sessões, concluídas (com % de presença), faltas, cancelamentos e receita.
 
 ![Resumo](../images/admin/relatorios-01-resumo.png)
 <!-- TODO screenshot: /admin/reports cartões de resumo -->
@@ -24,12 +24,29 @@ Selecione o período (últimos 7/30/90/365 dias). Os cartões de resumo mostram 
   ![Audiência](../images/admin/relatorios-03-audiencia.png)
   <!-- TODO screenshot: métricas de audiência -->
 
-- **Ranking de clientes** — top clientes por receita.
+- **Ranking de clientes** — os 10 primeiros por receita (o ranking completo sai no CSV).
+
+## Exportar CSV
+
+O botão **Exportar CSV** (no cabeçalho, ao lado do período) baixa a **página inteira do período escolhido** em um arquivo
+que abre direto no Excel:
+
+- cabeçalho com o nome do estúdio, o título, o **período em datas** (ex.: `31/08/2026 a 30/09/2026`) e a data e hora em que foi gerado;
+- um bloco para cada seção da tela — **Resumo**, **Ocupação por horário**, **Ocupação por dia da semana**,
+  **Distribuição por faixa**, **Métricas de audiência** — cada um com título e colunas. A linha de **TOTAL** sai
+  só nos blocos em que somar faz sentido: ocupação por horário, ocupação por dia da semana e distribuição por faixa
+  (Resumo e Métricas de audiência são listas de indicadores, sem total);
+- o **ranking de clientes completo** (todos os clientes do período, não só os 10 da tela), com a linha de **TOTAL** no fim.
+
+Valores em reais (`R$ 1.234,56`), percentuais e datas no formato brasileiro. O nome do arquivo traz o período
+(ex.: `relatorio-estudio_2026-08-31_a_2026-09-30.csv`). Enquanto o arquivo é montado o botão mostra "Exportando…".
+Por enquanto a exportação é só em CSV (sem PDF/Excel com cores).
 
 Os dados vêm dos endpoints `GET /api/reports/{summary,occupancy,tiers,audience,ranking}` (ver [API](../tecnico/api.md)).
 
 ## Dicas
 
+- **"Receita" aqui é o valor das sessões agendadas** (não canceladas) no período — não é o que entrou no caixa. O recebido de fato está em [Financeiro](financeiro.md).
 - As métricas de **audiência** dependem das gravações finalizadas com dados de transmissão (ver [Hoje → Finalizar gravação](hoje.md#finalizar-gravacao-metricas-de-transmissao)).
 
 ## Ver também

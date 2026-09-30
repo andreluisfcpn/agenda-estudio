@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { contractsApi, usersApi, pricingApi, Contract, UserSummary, PricingConfig } from '../api/client';
+import { contractsApi, usersApi, pricingApi, AdminContract, UserSummary, PricingConfig } from '../api/client';
 
 export type ContractFilter = 'ALL' | 'ACTIVE' | 'AWAITING_PAYMENT' | 'COMPLETED' | 'EXPIRED' | 'CANCELLED' | 'PENDING_CANCELLATION' | 'PAUSED';
 
 export function useAdminContracts() {
-    const [contracts, setContracts] = useState<Contract[]>([]);
+    // GET /contracts devolve AdminContract: os dados de multa/cancelamento (E13) e de renovação (E4) vêm SEMPRE.
+    const [contracts, setContracts] = useState<AdminContract[]>([]);
     const [users, setUsers] = useState<UserSummary[]>([]);
     const [pricing, setPricing] = useState<PricingConfig[]>([]);
     const [loading, setLoading] = useState(true);

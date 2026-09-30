@@ -1,4 +1,5 @@
 import { ExternalLink, Link2 } from 'lucide-react';
+import Tooltip from '../Tooltip';
 
 interface UrlFieldProps {
     value: string;
@@ -21,16 +22,17 @@ export default function UrlField({ value, onChange, placeholder }: UrlFieldProps
                 spellCheck={false}
             />
             {looksValid && (
-                <a
-                    className="sf-url-open"
-                    href={value}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title="Abrir em nova aba"
-                    aria-label="Abrir URL em nova aba"
-                >
-                    <ExternalLink size={14} />
-                </a>
+                <Tooltip content="Abrir em nova aba" describe={false}>
+                    <a
+                        className="sf-url-open"
+                        href={value}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label="Abrir URL em nova aba"
+                    >
+                        <ExternalLink size={14} />
+                    </a>
+                </Tooltip>
             )}
         </div>
     );

@@ -8,6 +8,7 @@ import AdminPageHeader from '../components/admin/AdminPageHeader';
 import CouponModal from '../components/admin/coupons/CouponModal';
 import { HeroSkeleton, TableSkeleton } from '../components/ui/SkeletonLoader';
 import StatusBadge from '../components/ui/StatusBadge';
+import Tooltip from '../components/ui/Tooltip';
 
 import { formatBRL } from '../utils/format';
 
@@ -350,17 +351,23 @@ export default function AdminCouponsPage() {
                                             {/* Ações */}
                                             <td data-label="" style={{ textAlign: 'center' }}>
                                                 <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                                                    <button className="admin-icon-btn admin-icon-btn--success"
-                                                    aria-label={`Editar cupom ${c.code}`}
-                                                    onClick={() => setEditCoupon(c)}><Pencil size={16} aria-hidden="true" /></button>
+                                                    <Tooltip content="Editar cupom" describe={false}>
+                                                        <button type="button" className="admin-icon-btn admin-icon-btn--success"
+                                                        aria-label={`Editar cupom ${c.code}`}
+                                                        onClick={() => setEditCoupon(c)}><Pencil size={16} aria-hidden="true" /></button>
+                                                    </Tooltip>
 
-                                                    <button className="admin-icon-btn"
-                                                    aria-label={c.active ? `Desativar cupom ${c.code}` : `Ativar cupom ${c.code}`}
-                                                    onClick={() => handleToggle(c)}>{c.active ? <Pause size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}</button>
+                                                    <Tooltip content={c.active ? 'Desativar cupom' : 'Ativar cupom'} describe={false}>
+                                                        <button type="button" className="admin-icon-btn"
+                                                        aria-label={c.active ? `Desativar cupom ${c.code}` : `Ativar cupom ${c.code}`}
+                                                        onClick={() => handleToggle(c)}>{c.active ? <Pause size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}</button>
+                                                    </Tooltip>
 
-                                                    <button className="admin-icon-btn admin-icon-btn--danger"
-                                                    aria-label={`Excluir cupom ${c.code}`}
-                                                    onClick={() => confirmDelete(c)}><Trash2 size={16} aria-hidden="true" /></button>
+                                                    <Tooltip content="Excluir cupom" describe={false}>
+                                                        <button type="button" className="admin-icon-btn admin-icon-btn--danger"
+                                                        aria-label={`Excluir cupom ${c.code}`}
+                                                        onClick={() => confirmDelete(c)}><Trash2 size={16} aria-hidden="true" /></button>
+                                                    </Tooltip>
                                                 </div>
                                             </td>
                                         </tr>

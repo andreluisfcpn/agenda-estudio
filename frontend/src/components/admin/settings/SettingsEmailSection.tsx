@@ -4,6 +4,7 @@ import { pricingApi } from '../../../api/client';
 import LoadingSpinner from '../../ui/LoadingSpinner';
 import SettingsSaveBar, { SettingsMessages } from './SettingsSaveBar';
 import ToggleField from '../../ui/fields/ToggleField';
+import Tooltip from '../../ui/Tooltip';
 import { Mail, Send, Eye, EyeOff, FileText, Lock } from 'lucide-react';
 
 // All editable keys in the `email` config group.
@@ -167,10 +168,12 @@ export default function SettingsEmailSection() {
                                         autoComplete="new-password"
                                         style={{ paddingRight: 38 }}
                                     />
-                                    <button type="button" onClick={() => setShowSecret(s => !s)} aria-label={showSecret ? 'Ocultar' : 'Mostrar'}
-                                        style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
-                                        {showSecret ? <EyeOff size={16} /> : <Eye size={16} />}
-                                    </button>
+                                    <Tooltip content={showSecret ? 'Ocultar senha' : 'Mostrar senha'} describe={false}>
+                                        <button type="button" onClick={() => setShowSecret(s => !s)} aria-label={showSecret ? 'Ocultar senha' : 'Mostrar senha'}
+                                            style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                                            {showSecret ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+                                        </button>
+                                    </Tooltip>
                                 </div>
                             </div>
                             <div className="sf-config-cell">
@@ -193,10 +196,12 @@ export default function SettingsEmailSection() {
                                         autoComplete="new-password"
                                         style={{ paddingRight: 38 }}
                                     />
-                                    <button type="button" onClick={() => setShowSecret(s => !s)} aria-label={showSecret ? 'Ocultar' : 'Mostrar'}
-                                        style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
-                                        {showSecret ? <EyeOff size={16} /> : <Eye size={16} />}
-                                    </button>
+                                    <Tooltip content={showSecret ? 'Ocultar chave' : 'Mostrar chave'} describe={false}>
+                                        <button type="button" onClick={() => setShowSecret(s => !s)} aria-label={showSecret ? 'Ocultar chave' : 'Mostrar chave'}
+                                            style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                                            {showSecret ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+                                        </button>
+                                    </Tooltip>
                                 </div>
                                 <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 6 }}>
                                     Requer um domínio verificado no Resend e o remetente usando esse domínio.

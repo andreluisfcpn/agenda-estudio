@@ -11,7 +11,8 @@ import { CouponError, validateCoupon, reserveCouponUse, releaseAndPurgeCouponsFo
 import { config } from '../../config/index.js';
 import { purgeAwaitingContract } from '../../jobs/cleanExpiredHolds.js';
 import { acquireMutex, releaseMutex } from '../../lib/redis.js';
-import { buildPixDiscountMeta } from '../../lib/pixGateway.js';
+import { pixDiscountMetaForFullCharge, type PixDiscountMeta } from '../../lib/pixGateway.js';
+import { computeFullContractTotals } from '../../lib/contractPricing.js';
 
 export function registerServiceRoutes(router: Router) {
 
@@ -29,6 +30,13 @@ router.post('/service', authenticate, async (req: Request, res: Response) => {
     try {
         const data = serviceContractSchema.parse(req.body);
         const userId = req.user!.userId;
+
+        // E3: a contratação do serviço tem prazo de 10 minutos para pagar — boleto (compensa em dias)
+        // nunca entra aqui, mesmo com a chave do boleto ligada.
+        if (data.paymentMethod === 'BOLETO') {
+            res.status(400).json({ error: 'A contratação de serviços é paga por PIX ou cartão.', code: 'BOLETO_NOT_ALLOWED_HERE' });
+            return;
+        }
 
         // Global guard: reject disabled payment methods
         try {
@@ -141,23 +149,18 @@ router.post('/service', authenticate, async (req: Request, res: Response) => {
         }
         const chargeAmount = couponQuote ? couponQuote.finalAmount : firstAmount;
 
-        // D1 (pagamentos-3): "À vista" com PIX grava o valor JÁ com o desconto PIX. O desconto vale só no
-        // PIX: guarda o valor do CARTÃO (total sem o desconto PIX, mesmo cupom em R$) para o checkout
-        // cobrar certo se o cliente trocar de aba.
-        let pixDiscountMeta: ReturnType<typeof buildPixDiscountMeta>;
-        if (storedPlan === 'FULL' && data.paymentMethod === 'PIX') {
-            const cardPlan = await resolvePlanAmounts({
-                baseMonthly: monthlyDiscounted,
-                durationMonths: duration,
-                plan: 'FULL',
-                paymentMethod: 'CARTAO',
-                startDate,
-                billingCadence: cadence,
-            });
-            pixDiscountMeta = buildPixDiscountMeta({
-                pixAmount: chargeAmount,
-                cardAmount: Math.max(0, cardPlan.firstAmount - (couponQuote?.discountAmount ?? 0)),
-                pct: Number(await getConfig('pix_extra_discount_pct')) || 0,
+        // E2: TODA cobrança única do serviço (plano gravado FULL — "À vista" e o "mensal parcelado no
+        // cartão") leva a marca `pixDiscount` com os DOIS preços (cartão e PIX, mesmo cupom em R$): criada
+        // no PIX o amount já é o preço PIX; criada no cartão o amount é o de cartão e, se o cliente trocar
+        // para o PIX no checkout, o QR sai com o desconto (issuePixCharge). O cartão nunca cobra a mais.
+        let pixDiscountMeta: PixDiscountMeta | undefined;
+        if (storedPlan === 'FULL') {
+            const totals = await computeFullContractTotals(monthlyDiscounted, duration, data.paymentMethod);
+            pixDiscountMeta = pixDiscountMetaForFullCharge({
+                cardTotal: totals.cardTotal,
+                pixTotal: totals.pixTotal,
+                couponDiscount: couponQuote?.discountAmount,
+                pct: totals.pixPct,
             });
         }
         const paymentMetadata = {

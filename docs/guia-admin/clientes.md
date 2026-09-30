@@ -49,7 +49,7 @@ Em `/admin/clients/:id` você vê tudo do cliente em abas:
 
 - Criar **novo contrato** ou **agendamento** para o cliente.
 - Editar os **dados** do cliente.
-- Ligar/desligar **cobrança automática** no cartão salvo.
+- Ligar/desligar **cobrança automática** no cartão salvo. Só funciona com cartão de **crédito**: se o cartão do cliente for de débito ou pré-pago (ou não puder ser conferido), o sistema recusa, mostra o motivo e a chave continua desligada. Ela cobra só as parcelas do plano — nunca extras de gravação nem a multa de cancelamento.
 - Mudar o **status**. Escolher **Bloqueado** (no perfil ou no assistente **Editar cliente**) abre uma confirmação vermelha, sem o selo "Irreversível" porque tem volta: o cliente não consegue mais entrar no app (senha, código e Google são recusados) e uma sessão já aberta é **encerrada na hora**. Contratos, gravações e cobranças continuam como estão. Para liberar de novo, volte o status para **Ativo** (o cliente entra de novo com login).
 - **Excluir** o cliente, na **Zona de perigo** no fim da página (veja abaixo).
 

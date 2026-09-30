@@ -6,6 +6,7 @@ import {
     type ServiceBreakdownItem, type CouponValidation, type ContractTier,
 } from '../../../api/client';
 import { useBusinessConfig } from '../../../hooks/useBusinessConfig';
+import { isBoletoAvailable, loadPaymentMethods, usePaymentMethodsVersion } from '../../../constants/paymentMethods';
 import { useWizardStep, ignoreMultiClick, wizardStepBodyStyle as stepBodyStyle, wizardStepContentStyle as stepContentStyle } from '../../../hooks/useWizardStep';
 import { useContractSlotGrid } from '../../../hooks/useContractSlotGrid';
 import { useUI } from '../../../context/UIContext';
@@ -15,11 +16,12 @@ import ChargeNowSheet from '../ChargeNowSheet';
 import ContractSlotPicker, { formatSlotRange } from '../../contracts/ContractSlotPicker';
 import {
     FileText, UserRound, NotebookPen, CalendarDays, Link2, Pin, RefreshCw,
-    Wallet, Zap, CreditCard, TicketPercent, AlertTriangle, AlertCircle, CalendarX2, Loader2,
+    Wallet, Zap, CreditCard, TicketPercent, AlertTriangle, AlertCircle, CalendarX2,
     Sparkles,
 } from 'lucide-react';
 import CouponField from '../../CouponField';
 import ServiceLineItem from '../../ui/ServiceLineItem';
+import BrandLoader from '../../ui/BrandLoader';
 import { TIER_META } from '../../../constants/adminMeta';
 import { formatBRL, DAY_NAMES, DAY_NAMES_FULL } from '../../../utils/format';
 import { todayStrSaoPaulo } from '../../../utils/time';
@@ -36,7 +38,7 @@ const FIELD_STEP: Record<string, number> = {
     userId: 1, name: 1, type: 1, tier: 1, durationMonths: 1,
     startDate: 2, fixedDayOfWeek: 2, fixedTime: 2, contractUrl: 2, resolvedConflicts: 2,
     addOns: 3,
-    paymentPlan: 4, paymentMethod: 4, boletoAllowed: 4, couponCode: 4,
+    paymentPlan: 4, paymentMethod: 4, couponCode: 4,
 };
 
 /** Campo exibido na tela para cada campo do payload (dia/horário/trocas = o seletor de horário). */
@@ -97,7 +99,6 @@ interface ContractForm {
     startDate: string;
     contractUrl: string;
     paymentPlan: 'MONTHLY' | 'FULL';
-    boletoAllowed: boolean;
     /** Só FIXO. null = ainda não escolhido (nunca há padrão fixo — D8). */
     fixedDayOfWeek: number | null;
     fixedTime: string | null;
@@ -171,7 +172,7 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
 
     const [createForm, setCreateForm] = useState<ContractForm>(() => ({
         userId: '', name: '', type: 'FIXO', tier: 'COMERCIAL', durationMonths: 3,
-        startDate: todayStrSaoPaulo(), contractUrl: '', paymentPlan: 'MONTHLY', boletoAllowed: false,
+        startDate: todayStrSaoPaulo(), contractUrl: '', paymentPlan: 'MONTHLY',
         fixedDayOfWeek: null, fixedTime: null,
     }));
     const [createError, setCreateError] = useState('');
@@ -183,6 +184,18 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
     const [checking, setChecking] = useState(false);
     const checkingRef = useRef(false); // não dispara 2 check-fixo em paralelo (estado, não tempo)
     const [paymentMethod, setPaymentMethod] = useState<AdminMethod>('CARTAO');
+    // E3 — o Boleto só é opção com a chave-mestra "Aceitar pagamento por boleto" ligada E a Cora ativa
+    // (fonte única: boleto.available de GET /pricing/payment-methods). Não há mais liberação por contrato.
+    usePaymentMethodsVersion();
+    const boletoOn = isBoletoAvailable();
+    useEffect(() => {
+        // Revalida a chave ao abrir o wizard (o cache é carregado uma vez por sessão).
+        if (isOpen) void loadPaymentMethods();
+    }, [isOpen]);
+    useEffect(() => {
+        // Boleto desligado com Boleto escolhido → volta para Cartão (a opção some).
+        if (!boletoOn && paymentMethod === 'BOLETO') setPaymentMethod('CARTAO');
+    }, [boletoOn, paymentMethod]);
 
     const [conflicts, setConflicts] = useState<{ date: string, originalTime: string, suggestedReplacement?: { date: string, time: string } }[]>([]);
     const [resolvedConflicts, setResolvedConflicts] = useState<ResolvedConflict[]>([]);
@@ -322,7 +335,6 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                 durationMonths: createForm.durationMonths,
                 startDate: createForm.startDate,
                 contractUrl: createForm.contractUrl.trim() || undefined,
-                boletoAllowed: createForm.boletoAllowed || undefined,
                 paymentPlan: createForm.paymentPlan,
                 paymentMethod,
                 addOns: selectedAddons.length > 0 ? selectedAddons : undefined,
@@ -349,7 +361,15 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                 showToast(res.message || 'Contrato criado com sucesso!');
             }
         } catch (err: unknown) {
-            if (!applyFieldError(err)) setCreateError(getErrorMessage(err));
+            // E3: o boleto foi desligado (ou a Cora desativada) depois que o wizard abriu — nada foi criado.
+            // Revalida a chave (a opção some e a forma volta para Cartão) e mostra o aviso no Resumo.
+            if (err instanceof ApiError && err.code === 'BOLETO_UNAVAILABLE') {
+                void loadPaymentMethods();
+                setPaymentMethod('CARTAO');
+                setShowConflictModal(false);
+                setCreateError(`${getErrorMessage(err)} Escolha PIX ou cartão e crie o contrato de novo.`);
+                goTo(LAST_STEP);
+            } else if (!applyFieldError(err)) setCreateError(getErrorMessage(err));
         } finally { creatingRef.current = false; setCreating(false); }
     };
 
@@ -471,10 +491,10 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                 amount={chargeAmountApi ?? chargeAmount}
                 description={`${createForm.name.trim() || 'Contrato'} - 1ª cobrança`}
                 title="Cobrar 1ª parcela"
-                subtitle="Cobre agora (PIX ou cartão do cliente presente) ou deixe pendente — o cliente paga depois / cobrança automática."
+                subtitle="Cobre agora no PIX ou no cartão do cliente (crédito ou débito), com ele presente — ou deixe pendente: o cliente paga depois / cobrança automática."
                 contractDuration={planSel === 'FULL' ? createForm.durationMonths : 1}
-                allowedMethods={[paymentMethod]}
-                allowBoleto={createForm.boletoAllowed}
+                // E1: sempre PIX | Cartão (| Boleto quando disponível), abrindo na forma escolhida no Resumo.
+                initialMethod={paymentMethod}
                 context="contract"
                 client={selectedUser ? { id: selectedUser.id, name: selectedUser.name, cpfCnpj: selectedUser.cpfCnpj } : undefined}
                 error={createError || undefined}
@@ -692,8 +712,8 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                                             </button>
                                         </div>
                                     ) : !grid ? (
-                                        <p role="status" style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                                            <Loader2 size={16} className="csp-spin" aria-hidden="true" /> Carregando os horários da faixa…
+                                        <p style={{ margin: 0 }}>
+                                            <BrandLoader size="inline" label="Carregando os horários da faixa…" />
                                         </p>
                                     ) : (
                                         <>
@@ -824,8 +844,8 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                                 Opcional. Acompanham toda gravação do contrato e entram na parcela. Valor com {discount}% de desconto de fidelidade.
                             </p>
                             {addonsLoading ? (
-                                <p role="status" style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <Loader2 size={16} className="csp-spin" aria-hidden="true" /> Carregando serviços…
+                                <p style={{ margin: 0 }}>
+                                    <BrandLoader size="inline" label="Carregando serviços…" />
                                 </p>
                             ) : addons.length === 0 ? (
                                 <div className="admin-empty" style={{ padding: '24px 16px' }}>
@@ -942,14 +962,15 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                                 </div>
                             </div>
 
-                            {/* Payment method selector — unified with the client (PIX / Cartão / Boleto se liberado) */}
-                            <div style={{ marginBottom: '14px' }}>
+                            {/* Payment method selector — unified with the client (PIX / Cartão / Boleto só com a
+                                chave-mestra das Configurações ligada + Cora ativa — E3). */}
+                            <div style={{ marginBottom: '18px' }}>
                                 <span className="admin-field__label" style={blockLabel}>Forma de pagamento</span>
-                                <div style={{ display: 'grid', gridTemplateColumns: `repeat(${createForm.boletoAllowed ? 3 : 2}, 1fr)`, gap: '8px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: `repeat(${boletoOn ? 3 : 2}, 1fr)`, gap: '8px' }}>
                                     {([
                                         { key: 'PIX' as const, icon: Zap, label: 'PIX' },
                                         { key: 'CARTAO' as const, icon: CreditCard, label: 'Cartão' },
-                                        ...(createForm.boletoAllowed ? [{ key: 'BOLETO' as const, icon: FileText, label: 'Boleto' }] : []),
+                                        ...(boletoOn ? [{ key: 'BOLETO' as const, icon: FileText, label: 'Boleto' }] : []),
                                     ]).map(m => {
                                         const active = paymentMethod === m.key;
                                         return (
@@ -962,23 +983,13 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                                         );
                                     })}
                                 </div>
-                            </div>
-
-                            {/* Boleto release toggle */}
-                            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '12px 14px', borderRadius: '10px', marginBottom: '18px', background: createForm.boletoAllowed ? 'rgba(245,158,11,0.06)' : 'var(--bg-elevated)', border: `1px solid ${createForm.boletoAllowed ? 'rgba(245,158,11,0.3)' : 'var(--border-default)'}` }}>
-                                <input type="checkbox" checked={createForm.boletoAllowed}
-                                    onChange={e => {
-                                        const allowed = e.target.checked;
-                                        patchForm({ boletoAllowed: allowed });
-                                        // Boleto desligado com Boleto escolhido → volta para Cartão (a opção some).
-                                        if (!allowed && paymentMethod === 'BOLETO') setPaymentMethod('CARTAO');
-                                    }}
-                                    style={{ width: 18, height: 18, accentColor: 'var(--warning)', cursor: 'pointer' }} />
-                                <div>
-                                    <div style={{ fontSize: '0.8125rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><FileText size={14} aria-hidden="true" /> Permitir boleto neste contrato</div>
-                                    <div style={{ fontSize: '0.625rem', color: 'var(--text-secondary)', marginTop: '2px' }}>O cliente poderá pagar as parcelas via boleto. Desligado por padrão.</div>
+                                <div style={{ fontSize: '0.6875rem', color: 'var(--text-secondary)', marginTop: '6px', lineHeight: 1.45 }}>
+                                    É a forma do contrato e a aba que abre na cobrança — na hora de cobrar dá para trocar entre PIX e cartão{boletoOn ? ' (ou boleto)' : ''}.
+                                    {planSel === 'FULL' && quote && quote.fullPix < quote.fullCard && (
+                                        <> À vista: <strong>{formatBRL(quote.fullPix)} no PIX</strong> (com desconto) · {formatBRL(quote.fullCard)} no cartão{boletoOn ? ' ou boleto' : ''}.</>
+                                    )}
                                 </div>
-                            </label>
+                            </div>
 
                             {/* Price Preview */}
                             {tierPrice && (
@@ -1011,6 +1022,7 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                                                 <>
                                                     <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>À vista {paymentMethod === 'PIX'
                                                         ? '(PIX, com desconto)'
+                                                        : paymentMethod === 'BOLETO' ? '(boleto)'
                                                         // Parcelas só se o gateway parcela (a cotação já filtra: conta Stripe BR → só 1x).
                                                         : (() => {
                                                             const maxCard = (quote?.installmentPlans ?? []).reduce((m, p) => Math.max(m, p.count), 1);
@@ -1112,12 +1124,12 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                         <div className="modal-actions" style={{ flexDirection: 'column', gap: '12px' }}>
                             <button key="conflict-confirm" type="button" className="btn btn-primary" style={{ width: '100%', padding: '14px' }}
                                 disabled={creating}
-                                onClick={() => executeCreate(resolvedConflicts)}>
+                                onClick={ignoreMultiClick(() => executeCreate(resolvedConflicts))}>
                                 {creating ? 'Criando…' : 'Criar (aplicar sugestões · pular dias lotados)'}
                             </button>
                             <button key="conflict-cancel" type="button" className="btn btn-secondary" style={{ width: '100%', padding: '14px' }}
                                 disabled={creating}
-                                onClick={() => setShowConflictModal(false)}>
+                                onClick={ignoreMultiClick(() => setShowConflictModal(false))}>
                                 Cancelar e voltar para escolhas
                             </button>
                         </div>

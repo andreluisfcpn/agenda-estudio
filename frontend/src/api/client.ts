@@ -3,15 +3,29 @@ const API_BASE = '/api';
 export class ApiError extends Error {
     status: number;
     details?: any;
-    /** Código de erro de máquina enviado pelo backend (ex.: 'INVALID_SLOT', 'CPF_CNPJ_REQUIRED', 'ALL_SLOTS_TAKEN'). */
+    /**
+     * Código de erro de máquina enviado pelo backend (ex.: 'INVALID_SLOT', 'CPF_CNPJ_REQUIRED', 'ALL_SLOTS_TAKEN').
+     * Códigos acrescentados na revisão do lote 2:
+     *  - BOOKING_CANCELLED (400, POST /stripe/create-payment): a gravação desta cobrança foi cancelada — não pode mais ser paga;
+     *  - RECORDING_START_FUTURE (400, PUT /bookings/:id/start-recording): só dá para iniciar no dia da sessão (ou depois);
+     *  - RECORDING_STATE_CHANGED (409, PUT /bookings/:id/complete): o início foi desfeito ou o status mudou em outra tela — recarregue;
+     *  - CANCELLATION_NOT_PENDING (409, POST /contracts/:id/resolve-cancellation): o pedido já foi resolvido — recarregue a lista.
+     */
     code?: string;
+    /**
+     * Corpo JSON completo da resposta de erro — campos extras que acompanham alguns códigos:
+     * `payerUserId` (CPF_CNPJ_REQUIRED), `reason` (BOLETO_UNAVAILABLE), `boleto` (BOLETO_PROVIDER_DISABLED),
+     * `status` (SETUP_INTENT_NOT_CONFIRMED). Objeto vazio quando a resposta não era JSON.
+     */
+    body?: Record<string, unknown>;
 
-    constructor(message: string, status: number, details?: any, code?: string) {
+    constructor(message: string, status: number, details?: any, code?: string, body?: Record<string, unknown>) {
         super(message);
         this.name = 'ApiError';
         this.status = status;
         this.details = details;
         this.code = code;
+        this.body = body;
     }
 }
 
@@ -47,6 +61,11 @@ async function tryRefresh(): Promise<boolean> {
     return refreshPromise;
 }
 
+/** Corpo de erro como objeto simples (para ApiError.body); qualquer outra coisa vira undefined. */
+function errorBodyOf(body: unknown): Record<string, unknown> | undefined {
+    return body && typeof body === 'object' && !Array.isArray(body) ? body as Record<string, unknown> : undefined;
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const doFetch = () =>
         fetch(`${API_BASE}${path}`, {
@@ -71,7 +90,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
         // Fallback vazio (não truthy): quando o corpo não é JSON (proxy 502, rate-limit
         // em texto), a mensagem cai no status HTTP real em vez de "Erro desconhecido".
         const body = await res.json().catch(() => ({} as { error?: string; details?: unknown; code?: string }));
-        throw new ApiError(body.error || `Erro ${res.status} do servidor`, res.status, body.details, typeof body.code === 'string' ? body.code : undefined);
+        throw new ApiError(
+            body.error || `Erro ${res.status} do servidor`, res.status, body.details,
+            typeof body.code === 'string' ? body.code : undefined,
+            errorBodyOf(body),
+        );
     }
 
     return res.json();
@@ -130,6 +153,7 @@ export const authApi = {
 
 // ─── Bookings ───────────────────────────────────────────
 export const bookingsApi = {
+    // myBookings: as reservas do cliente no dia, na MESMA forma do GET /my (ClientBooking — E11/E12), por startTime.
     getAvailability: (date: string) => request<{ date: string; dayOfWeek: number; closed: boolean; slots: Slot[]; myBookings: MyBookingSlot[] }>(`/bookings/availability?date=${date}`),
     create: (data: { date: string; startTime: string; contractId?: string; addOns?: string[]; paymentMethod?: 'CARTAO' | 'PIX'; installments?: number; paymentType?: 'CREDIT' | 'DEBIT'; couponCode?: string }) => request<{ booking: Booking & { holdExpiresAt?: string | null }; paymentId?: string | null; paymentAmount?: number; couponDiscount?: number; alreadyPaid?: boolean; clientSecret?: string | null; lockExpiresIn: number; message: string }>('/bookings', { method: 'POST', body: JSON.stringify(data) }),
     completePayment: (id: string, data: { paymentIntentId?: string }) => request<{ booking: Booking; message: string }>(`/bookings/${id}/complete-payment`, { method: 'POST', body: JSON.stringify(data) }),
@@ -138,15 +162,27 @@ export const bookingsApi = {
     // noShowJustified (admin, D4): ao marcar FALTA num contrato AVULSO, true abre a janela de
     // remarcação (makeupStatus OPEN até o fim do dia D+N em SP); false com OPEN desfaz a justificativa.
     update: (id: string, data: { date?: string; startTime?: string; status?: string; statusReason?: string | null; noShowJustified?: boolean; adminNotes?: string; clientNotes?: string; platforms?: string; platformLinks?: string, durationMinutes?: number | null, peakViewers?: number | null, chatMessages?: number | null, audienceOrigin?: string | null, isLivestream?: boolean | null, streamMetrics?: string | null }) => request<{ booking: BookingWithUser; message: string }>(`/bookings/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    // 400 `code: 'RECORDING_START_FUTURE'` = sessão de data FUTURA (só dá para iniciar no dia da sessão ou depois — mostre `message`).
     startRecording: (id: string) => request<{ booking: BookingWithUser; message: string }>(`/bookings/${id}/start-recording`, { method: 'PUT' }),
+    /**
+     * ADMIN: desfaz um "Iniciar Gravação" clicado por engano (zera início/operador) — o "AO VIVO" do cliente some e
+     * a sessão volta a exigir "Iniciar Gravação" antes de finalizar. Idempotente (nada iniciado → 200).
+     * `booking` é a linha da reserva SEM `user` (mescle no item da lista em vez de substituí-lo).
+     * 409 `code: 'RECORDING_UNDO_NOT_ALLOWED'` = não está CONFIRMED (ex.: já finalizada); 404 = não existe.
+     */
+    undoStartRecording: (id: string) => request<{ booking: Booking; message: string }>(`/bookings/${id}/undo-start-recording`, { method: 'PUT' }),
     confirm: (id: string) => request<{ booking: Booking; message: string }>(`/bookings/${id}/confirm`, { method: 'PATCH' }),
     cancel: (id: string) => request<{ message: string }>(`/bookings/${id}`, { method: 'DELETE' }),
     hardDelete: (id: string) => request<{ message: string; creditRestored: boolean }>(`/bookings/${id}/hard-delete`, { method: 'DELETE' }),
     clientCancel: (id: string) => request<{ message: string }>(`/bookings/${id}/client-cancel`, { method: 'PUT' }),
     checkIn: (id: string) => request<{ booking: Booking; message: string }>(`/bookings/${id}/check-in`, { method: 'PUT' }),
+    // 409 `code: 'RECORDING_STATE_CHANGED'` = o início foi desfeito ou o status mudou em outra tela: nada é gravado — recarregue e tente de novo.
     complete: (id: string, data?: { durationMinutes?: number | null; isLivestream?: boolean | null; platforms?: string | null; platformLinks?: string | null; streamMetrics?: string | null; audienceOrigin?: string | null; adminNotes?: string | null; clientNotes?: string | null; peakViewers?: number | null; chatMessages?: number | null }) => request<{ booking: Booking; message: string }>(`/bookings/${id}/complete`, { method: 'PUT', body: JSON.stringify(data || {}) }),
-    getMy: () => request<{ bookings: Booking[] }>('/bookings/my'),
-    getOne: (id: string) => request<{ booking: Booking }>(`/bookings/${id}`),
+    // Rotas do CLIENTE (dono): devolvem ClientBooking — sem adminNotes, com clientNotes, métricas e os
+    // derivados isRecordingNow / recordingFinishedAt / canEditEpisode / editBlockedReason (E11/E12).
+    getMy: () => request<{ bookings: ClientBooking[] }>('/bookings/my'),
+    /** Só o dono da reserva (um admin que não é o dono recebe 404). */
+    getOne: (id: string) => request<{ booking: ClientBooking }>(`/bookings/${id}`),
     getAll: (date?: string, status?: string) => {
         const params = new URLSearchParams();
         if (date) params.set('date', date);
@@ -154,22 +190,41 @@ export const bookingsApi = {
         const qs = params.toString();
         return request<{ bookings: BookingWithUser[] }>(`/bookings${qs ? `?${qs}` : ''}`);
     },
-    clientUpdate: (id: string, data: { clientNotes?: string; episodeTitle?: string; episodeDescription?: string; platforms?: string }) =>
-        request<{ booking: Booking; message: string }>(`/bookings/${id}/client-update`, { method: 'PATCH', body: JSON.stringify(data) }),
-    uploadCover: async (id: string, file: File): Promise<{ coverImageUrl: string; message: string }> => {
+    /**
+     * Informações do episódio (E12) — só o dono e só em RESERVED/HELD/CONFIRMED.
+     * `episodeTitle`/`episodeDescription`: '' ou null limpam o campo; `platforms`: JSON string[] de
+     * YOUTUBE/INSTAGRAM/FACEBOOK/TIKTOK. 400 = `error` já com a mensagem do campo; 404 = não é o dono;
+     * 409 `code: 'BOOKING_NOT_EDITABLE'` = gravação finalizada/cancelada/não realizada (mesmo texto de `editBlockedReason`).
+     * `clientNotes` NÃO é mais gravável pelo cliente (é o recado do estúdio): o campo é aceito só para não
+     * quebrar chamadores antigos e é descartado aqui, sem ir para o servidor.
+     */
+    clientUpdate: (id: string, data: {
+        episodeTitle?: string | null; episodeDescription?: string | null; platforms?: string;
+        /** @deprecated Ignorado — o cliente não escreve mais `clientNotes`. Remova do chamador. */
+        clientNotes?: string;
+    }) => {
+        const { clientNotes: _ignored, ...payload } = data;
+        return request<{ booking: ClientBooking; message: string }>(`/bookings/${id}/client-update`, { method: 'PATCH', body: JSON.stringify(payload) });
+    },
+    /** Capa do episódio (multipart `cover`). Mesmas regras de edição do clientUpdate (409 BOOKING_NOT_EDITABLE); 413 acima de 12 MB. */
+    uploadCover: async (id: string, file: File): Promise<{ coverImageUrl: string; booking: ClientBooking; message: string }> => {
         const formData = new FormData();
         formData.append('cover', file);
         const res = await fetch(`${API_BASE}/bookings/${id}/cover-image`, { method: 'POST', credentials: 'include', body: formData });
-        if (!res.ok) { const body = await res.json().catch(() => ({ error: 'Erro' })); throw new ApiError(body.error || 'Erro ao enviar capa', res.status); }
+        if (!res.ok) {
+            const body = await res.json().catch(() => ({ error: 'Erro' }));
+            throw new ApiError(body.error || 'Erro ao enviar capa', res.status, body.details, typeof body.code === 'string' ? body.code : undefined, errorBodyOf(body));
+        }
         return res.json();
     },
     getMyResults: (days = 90) => request<BookingResults>(`/bookings/my/results?days=${days}`),
     reschedule: (id: string, data: { date: string; startTime: string }) =>
-        request<{ booking: Booking; message: string }>(`/bookings/${id}/reschedule`, { method: 'PATCH', body: JSON.stringify(data) }),
+        request<{ booking: ClientBooking; message: string }>(`/bookings/${id}/reschedule`, { method: 'PATCH', body: JSON.stringify(data) }),
     /**
      * Remarcação ÚNICA de falta justificada / "Não Realizado" do avulso (D4/D5): reabre a MESMA
      * reserva (mesmo Payment, sem nova cobrança) na nova data/horário. Cliente dono ou ADMIN.
      * Exige makeupStatus 'OPEN' e data ≤ D+N (o admin pode remarcar NAO_REALIZADO após o prazo).
+     * Chamado pelo CLIENTE, `booking` vem na forma ClientBooking (com os derivados); pelo admin, a reserva crua.
      */
     makeup: (id: string, data: { date: string; startTime: string }) =>
         request<{ booking: Booking; message: string }>(`/bookings/${id}/makeup`, { method: 'PATCH', body: JSON.stringify(data) }),
@@ -231,16 +286,42 @@ export const contractsApi = {
      */
     slotOptions: (tier: ContractTier) =>
         request<ContractSlotGrid>(`/contracts/slot-options?tier=${encodeURIComponent(tier)}`),
-    getAll: () => request<{ contracts: Contract[] }>('/contracts'),
+    // ADMIN: cada contrato traz os dados de cancelamento/multa (E13) e de renovação (E4: canRenew/daysToEnd/…).
+    getAll: () => request<{ contracts: AdminContract[]; pagination?: { page: number; limit: number; total: number; pages: number } }>('/contracts'),
     getMy: () => request<{ contracts: ContractWithStats[] }>('/contracts/my'),
     getById: (id: string) => request<{ contract: ContractDetail }>(`/contracts/${id}`),
-    update: (id: string, data: { status?: string; endDate?: string; flexCreditsRemaining?: number; contractUrl?: string; paymentMethod?: 'CARTAO' | 'PIX' | 'BOLETO'; boletoAllowed?: boolean; addOns?: string[] }) => request<{ contract: Contract; message: string }>(`/contracts/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-    cancel: (id: string) => request<{ message: string }>(`/contracts/${id}`, { method: 'DELETE' }),
-    requestCancellation: (id: string) => request<{ contract: Contract; message: string }>(`/contracts/${id}/request-cancellation`, { method: 'POST' }),
-    resolveCancellation: (id: string, action: 'CHARGE_FEE' | 'WAIVE_FEE') => request<{ contract: Contract; message: string }>(`/contracts/${id}/resolve-cancellation`, { method: 'POST', body: JSON.stringify({ action }) }),
+    // Com `status: 'CANCELLED'` (Editar → Cancelado) a resposta traz também o resultado da anulação no provedor,
+    // como o DELETE: `voidedCount` (parcelas anuladas), `paidAtProvider` (cobranças que o provedor confirmou como
+    // pagas — ficaram PAID) e `liveAtProvider` (anuladas que não puderam ser canceladas no provedor agora); a
+    // `message` já traz esses avisos em texto. Nos demais PATCH esses campos não vêm.
+    update: (id: string, data: { status?: string; endDate?: string; flexCreditsRemaining?: number; contractUrl?: string; paymentMethod?: 'CARTAO' | 'PIX' | 'BOLETO'; boletoAllowed?: boolean; addOns?: string[] }) => request<{ contract: Contract; message: string; voidedCount?: number; paidAtProvider?: number; liveAtProvider?: number }>(`/contracts/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    /**
+     * ADMIN: cancela o contrato (sem multa). `paidAtProvider` = cobranças que o provedor confirmou como pagas
+     * durante a anulação (ficaram PAID); `liveAtProvider` = anuladas que não puderam ser canceladas no provedor
+     * agora. A `message` já traz esses avisos em texto.
+     */
+    cancel: (id: string) => request<CancelContractResponse>(`/contracts/${id}`, { method: 'DELETE' }),
+    /** CLIENTE (dono, contrato ACTIVE): pede o cancelamento e CONGELA o % e o teto da base da multa (E13; a base efetiva só diminui). 400 = contrato não ativo ou pedido repetido. */
+    requestCancellation: (id: string) => request<RequestCancellationResponse>(`/contracts/${id}/request-cancellation`, { method: 'POST' }),
+    /**
+     * ADMIN: decide o pedido. CHARGE_FEE gera a multa PENDENTE (`fine`; null quando não havia saldo a pagar);
+     * WAIVE_FEE isenta (`fine: null`). 409 = o contrato não está mais aguardando a decisão: pedido já resolvido
+     * (lista defasada, outra aba/admin, corrida ou duplo clique) — vem com `code: 'CANCELLATION_NOT_PENDING'` quando
+     * barrado na checagem de status; recarregue a lista e mostre `message`. 400 = requisição inválida (ex.: `action`).
+     */
+    resolveCancellation: (id: string, action: 'CHARGE_FEE' | 'WAIVE_FEE') => request<ResolveCancellationResponse>(`/contracts/${id}/resolve-cancellation`, { method: 'POST', body: JSON.stringify({ action }) }),
     renew: (id: string, data?: { durationMonths?: number; tier?: string; type?: string; startDate?: string }) => request<{ contract: Contract; message: string }>(`/contracts/${id}/renew`, { method: 'POST', body: JSON.stringify(data || {}) }),
     clientRenew: (id: string, data: { durationMonths: number; paymentMethod?: 'PIX' | 'CARTAO' | 'BOLETO'; installments?: number }) => request<{ contract: Contract; message: string }>(`/contracts/${id}/client-renew`, { method: 'POST', body: JSON.stringify(data) }),
-    subscribe: (id: string, data: { paymentMethodId: string; durationMonths?: number }) => request<{ success: boolean; subscriptionId: string; status: string; message: string }>(`/contracts/${id}/subscribe`, { method: 'POST', body: JSON.stringify(data) }),
+    /**
+     * E9 — "Ativar cobrança automática": NÃO cria assinatura nem cobrança. Liga a cobrança automática do CLIENTE
+     * (vale para todos os contratos dele) e torna o cartão informado o padrão. `paymentMethodId` = id do cartão
+     * salvo (SavedCard.id) ou o `pm_…` do Stripe; só crédito. Idempotente. `durationMonths` é aceito e ignorado.
+     * Erros (ApiError.code): CONTRACT_CANCELLED (400), NOTHING_TO_CHARGE (400, à vista quitado), CARD_NOT_FOUND (404),
+     * CARD_NOT_CREDIT (400, débito/pré-pago); 503 = cartão indisponível; 502 = falha ao conferir/definir o cartão.
+     */
+    subscribe: (id: string, data: { paymentMethodId: string; /** @deprecated ignorado pelo backend */ durationMonths?: number }) =>
+        request<AutoChargeActivation>(`/contracts/${id}/subscribe`, { method: 'POST', body: JSON.stringify(data) })
+            .then(res => { invalidatePmCache(); return res; }),
     // paymentMethod: o validator do backend (contractPaySchema) aceita só CARTAO | PIX (default CARTAO).
     // Envie sempre o método do contrato numa renovação PIX — sem ele o backend cria PaymentIntent de cartão.
     pay: (id: string, data?: { paymentMethod?: 'CARTAO' | 'PIX'; paymentType?: 'CREDIT' | 'DEBIT'; installments?: number; couponCode?: string }) => request<{ provider?: PaymentProvider; clientSecret?: string; paymentId: string; amount: number; alreadyPaid?: boolean; couponDiscount?: number; maxInstallments?: number; pixString?: string; qrCodeBase64?: string; qrCodeDataUrl?: string | null; expiresAt?: string | null; reused?: boolean; message: string }>(`/contracts/${id}/pay`, { method: 'POST', body: JSON.stringify(data || {}) }),
@@ -348,9 +429,18 @@ export const pricingApi = {
         current: Record<string, { pct: number; fixedCents: number }>;
     }>('/pricing/business-config/fee-history'),
     testEmail: (to: string) => request<{ success: boolean; message?: string; error?: string }>('/pricing/business-config/email/test', { method: 'POST', body: JSON.stringify({ to }) }),
-    getPaymentMethods: () => request<{ methods: PaymentMethodConfigItem[] }>('/pricing/payment-methods'),
-    getPaymentMethodsAll: () => request<{ methods: PaymentMethodConfigItem[] }>('/pricing/payment-methods/all'),
-    updatePaymentMethods: (methods: PaymentMethodConfigItem[]) => request<{ methods: PaymentMethodConfigItem[]; message: string }>('/pricing/payment-methods', { method: 'PUT', body: JSON.stringify({ methods }) }),
+    // E3 — `boleto` é a fonte ÚNICA de "o boleto aparece?": chave-mestra das Configurações + Cora habilitada.
+    // Público: BOLETO só vem em `methods` quando `boleto.available`. /all (ADMIN): todos os métodos, inclusive inativos.
+    getPaymentMethods: () => request<{ methods: PaymentMethodConfigItem[]; boleto: BoletoStatus }>('/pricing/payment-methods'),
+    getPaymentMethodsAll: () => request<{ methods: PaymentMethodConfigItem[]; boleto: BoletoStatus }>('/pricing/payment-methods/all'),
+    // Ligar o boleto (false→true) sem a Cora ativa → 400 code 'BOLETO_PROVIDER_DISABLED' e nada do lote é gravado.
+    updatePaymentMethods: (methods: PaymentMethodConfigItem[]) => request<{ methods: PaymentMethodConfigItem[]; boleto: BoletoStatus; message: string }>('/pricing/payment-methods', { method: 'PUT', body: JSON.stringify({ methods }) }),
+    /**
+     * ADMIN — chave-mestra "Aceitar pagamento por boleto" (salva na hora, sem reenviar a lista de métodos).
+     * Ligar sem a Cora ativa → 400 `code: 'BOLETO_PROVIDER_DISABLED'` (ApiError.body.boleto traz o estado atual).
+     * Desligar é sempre permitido.
+     */
+    setBoletoEnabled: (enabled: boolean) => request<{ boleto: BoletoStatus; message: string }>('/pricing/payment-methods/boleto', { method: 'PUT', body: JSON.stringify({ enabled }) }),
     // Authoritative checkout numbers (mirrors the client) — same payment rules everywhere.
     checkoutQuote: (body: { durationMonths: number; contractType?: string; tier?: string; addOns?: string[]; baseMonthlyCents?: number; sessionsPerPeriod?: number; discountPct?: number }) =>
         request<{ durationMonths: number; monthlyAmount: number; monthlyTotal: number; fullPix: number; fullCard: number; maxInstallments: number; freeUpTo: number; installmentPlans: InstallmentPlan[]; services: ServiceBreakdownItem[]; servicesPerRecordingCents: number }>('/pricing/checkout-quote', { method: 'POST', body: JSON.stringify(body) }),
@@ -385,15 +475,25 @@ export interface User {
 export interface Slot {
     time: string; available: boolean; tier: 'COMERCIAL' | 'AUDIENCIA' | 'SABADO' | null; price: number | null;
 }
+/** Status de uma reserva (Prisma enum BookingStatus). */
+export type BookingStatus = 'RESERVED' | 'CONFIRMED' | 'HELD' | 'COMPLETED' | 'FALTA' | 'NAO_REALIZADO' | 'CANCELLED';
+/**
+ * Reserva na forma AMPLA — a das rotas do ADMIN (GET /bookings, PATCH /bookings/:id, start-recording, check-in,
+ * complete…) e dos `bookings[]` de GET /contracts/:id e GET /users/:id. Além do núcleo, tudo é opcional porque
+ * cada rota seleciona um subconjunto. `adminNotes` e `recordingStartedByName` SÓ existem nas rotas do admin.
+ * As rotas do CLIENTE devolvem ClientBooking (forma exata, atribuível a Booking).
+ */
 export interface Booking {
     id: string; date: string; originalDate?: string | null; startTime: string; endTime: string;
-    status: 'RESERVED' | 'CONFIRMED' | 'HELD' | 'COMPLETED' | 'FALTA' | 'NAO_REALIZADO' | 'CANCELLED';
+    status: BookingStatus;
     tierApplied: 'COMERCIAL' | 'AUDIENCIA' | 'SABADO';
     price: number; contractId?: string | null; userId?: string | null;
+    /** Nota INTERNA do admin — só nas rotas do admin (E11: nunca é enviada ao cliente). */
     adminNotes?: string | null;
+    /** Recado do estúdio para o cliente (escrito pelo admin na finalização). */
     clientNotes?: string | null;
-    platforms?: string;
-    platformLinks?: string;
+    platforms?: string | null;       // JSON: string[]
+    platformLinks?: string | null;   // JSON: { REDE: url }; GRAVACAO = link da gravação não transmitida
     durationMinutes?: number | null;
     peakViewers?: number | null;
     chatMessages?: number | null;
@@ -403,7 +503,9 @@ export interface Booking {
     episodeTitle?: string | null;
     episodeDescription?: string | null;
     coverImageUrl?: string | null;
+    /** ISO do "Iniciar Gravação". */
     recordingStartedAt?: string | null;
+    /** Nome do operador que iniciou a gravação — só nas rotas do admin. */
     recordingStartedByName?: string | null;
     statusReason?: string | null;
     // Janela de remarcação do avulso (D4/D5). null = sem janela (FALTA sem justificativa ou não se aplica).
@@ -415,25 +517,88 @@ export interface Booking {
     contract?: {
         id: string;
         name: string;
-        type: 'FIXO' | 'FLEX' | 'AVULSO' | 'SERVICO';
+        type: 'FIXO' | 'FLEX' | 'AVULSO' | 'SERVICO' | 'CUSTOM';
         tier: 'COMERCIAL' | 'AUDIENCIA' | 'SABADO';
         discountPct?: number;
         addOns?: string[];
     } | null;
     paymentIntentId?: string | null;
-    createdAt: string;
-    updatedAt: string;
+    // Derivados da visão do cliente (E11/E12) — sempre presentes em ClientBooking; AUSENTES nas rotas do admin.
+    /** Único critério do selo "AO VIVO": CONFIRMED + gravação iniciada e ainda não finalizada (teto de 6 h). */
+    isRecordingNow?: boolean;
+    /** ISO do fim da gravação (início + duração) — só em COMPLETED; senão null. */
+    recordingFinishedAt?: string | null;
+    /** O cliente ainda pode editar título/descrição/capa/redes (só RESERVED/HELD/CONFIRMED). */
+    canEditEpisode?: boolean;
+    /** Por que não pode editar (mesma mensagem do 409 BOOKING_NOT_EDITABLE); null quando pode. */
+    editBlockedReason?: string | null;
+    /** Só nas rotas que devolvem a linha inteira (admin); as rotas do cliente não enviam. */
+    createdAt?: string;
+    updatedAt?: string;
 }
-export interface MyBookingSlot {
-    id: string; startTime: string; endTime: string;
-    status: 'RESERVED' | 'CONFIRMED' | 'HELD' | 'COMPLETED' | 'FALTA' | 'NAO_REALIZADO';
+/** Contrato de origem embutido na reserva do cliente. */
+export interface ClientBookingContract {
+    id: string; name: string;
+    type: 'FIXO' | 'FLEX' | 'SERVICO' | 'CUSTOM' | 'AVULSO';
+    tier: 'COMERCIAL' | 'AUDIENCIA' | 'SABADO';
+    discountPct: number; addOns: string[];
+}
+/**
+ * Reserva na visão do CLIENTE (E11/E12) — a MESMA forma em GET /bookings/my (`bookings[]`), GET /bookings/:id,
+ * GET /bookings/availability (`myBookings[]`) e nas respostas de client-update, cover-image, reschedule e makeup
+ * (quando chamado pelo cliente). Nunca traz adminNotes, operador da gravação nem userId.
+ */
+export interface ClientBooking {
+    id: string;
+    date: string;                       // ISO
+    startTime: string; endTime: string; // 'HH:MM'
+    status: BookingStatus;
     tierApplied: 'COMERCIAL' | 'AUDIENCIA' | 'SABADO';
-    price: number; contractId?: string | null;
-    adminNotes?: string | null; clientNotes?: string | null;
-    platforms?: string | null; platformLinks?: string | null;
-    addOns?: string[];
-    holdExpiresAt?: string | null;
+    price: number;                      // centavos
+    contractId: string;
+    /** Recado do estúdio para o cliente (escrito pelo admin) — só leitura para o cliente. */
+    clientNotes: string | null;
+    // Episódio — editável pelo cliente enquanto `canEditEpisode`.
+    episodeTitle: string | null;
+    episodeDescription: string | null;
+    coverImageUrl: string | null;
+    platforms: string | null;           // JSON: string[] (YOUTUBE/INSTAGRAM/FACEBOOK/TIKTOK)
+    // Resultado da gravação (preenchido pelo estúdio ao finalizar).
+    platformLinks: string | null;       // JSON: { REDE: url }; GRAVACAO = link da gravação não transmitida
+    durationMinutes: number | null;
+    peakViewers: number | null;
+    chatMessages: number | null;
+    audienceOrigin: string | null;
+    /** "Foi transmitida ao vivo" (atributo permanente) — NÃO é o selo "AO VIVO"; para isso use `isRecordingNow`. */
+    isLivestream: boolean | null;
+    streamMetrics: string | null;       // JSON: { REDE: { views, peak, subscribers, likes, comments } }
+    /** ISO do "Iniciar Gravação" pelo estúdio. */
+    recordingStartedAt: string | null;
+    addOns: string[];
+    holdExpiresAt: string | null;
+    originalDate: string | null;
+    statusReason: string | null;
+    makeupStatus: MakeupStatus | null;
+    makeupDeadline: string | null;
+    missedDate: string | null;
+    contract: ClientBookingContract;
+    // ── Derivados (calculados na resposta — recarregue para atualizar) ──
+    /** ÚNICO critério do selo "AO VIVO": CONFIRMED + gravação iniciada e ainda não finalizada (teto de 6 h). */
+    isRecordingNow: boolean;
+    /** ISO do fim da gravação (início + duração) — só em COMPLETED; senão null. */
+    recordingFinishedAt: string | null;
+    /** true só em RESERVED/HELD/CONFIRMED. false → esconder "Salvar"/upload e mostrar `editBlockedReason`. */
+    canEditEpisode: boolean;
+    /** Motivo do bloqueio (mesma mensagem do 409 BOOKING_NOT_EDITABLE); null quando pode editar. */
+    editBlockedReason: string | null;
+    /**
+     * @deprecated A nota interna do admin NUNCA vem nas rotas do cliente (E11). A chave só existe (como
+     * `never`) para os chamadores antigos que ainda a leem continuarem compilando — use `clientNotes`.
+     */
+    adminNotes?: never;
 }
+/** Reserva do cliente no dia (GET /bookings/availability → myBookings) — hoje a mesma forma do GET /my. */
+export type MyBookingSlot = ClientBooking;
 export interface BookingWithUser extends Booking {
     user: { id: string; name: string; email: string; role: string };
 }
@@ -451,7 +616,72 @@ export interface ContractSlotOption { time: string; end: string; tier: string; }
 export interface ContractSlotDay { dayOfWeek: number; slots: ContractSlotOption[]; }
 /** Resposta de GET /contracts/slot-options?tier= — grade de contrato vinda da BusinessConfig (D8). */
 export interface ContractSlotGrid { tier: string; slotDurationHours: number; days: ContractSlotDay[]; }
-export interface Contract {
+/** Status de uma cobrança (Prisma enum PaymentStatus). */
+export type PaymentStatus = 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED' | 'CANCELLED';
+/** `kind` de uma cobrança especial (derivado de Payment.metadata.kind). null/ausente = parcela ou extra comum. */
+export type PaymentKind = 'CANCELLATION_FINE';
+/** Multa de cancelamento gerada para o contrato (E13) — a mais recente não anulada. Valores em centavos. */
+export interface CancellationFine {
+    /** id do Payment da multa — use como `paymentId` no checkout ("Cobrar agora" / pagar em Meus Pagamentos). */
+    id: string;
+    amount: number;
+    status: PaymentStatus;
+    dueDate: string | null;   // ISO — a multa vence na data da decisão
+    paidAt: string | null;    // ISO
+    /** % e base gravados na cobrança (null em multas geradas antes desta regra). */
+    finePct: number | null;
+    baseAmount: number | null;
+}
+/**
+ * Dados de cancelamento/multa (E13) — presentes em CADA contrato de GET /contracts (admin), GET /contracts/:id
+ * e GET /contracts/my. Valores em centavos; datas em ISO.
+ */
+export interface ContractCancellationInfo {
+    /** Total efetivamente pago no contrato (cartão: valor do PaymentIntent) — parcelas, extras e multa. */
+    paidTotal: number;
+    /** O que falta pagar do PLANO agora (parcelas PENDING/FAILED; sem extras de gravação e sem a multa). */
+    remainingTotal: number;
+    /** % da multa: o congelado no pedido (PENDING_CANCELLATION), o da multa gerada (CANCELLED) ou o vigente. */
+    finePct: number;
+    /**
+     * Base da multa. PENDING_CANCELLATION: a base EFETIVA — só as parcelas que compunham a base do pedido e ainda
+     * NÃO foram pagas (parcela paga durante a análise sai; nunca passa da base congelada no pedido, ou seja, a multa
+     * nunca aumenta). CANCELLED: a gravada na multa gerada. Demais: `remainingTotal` (prévia de hoje).
+     */
+    fineBaseAmount: number;
+    /**
+     * Multa em centavos conforme o status — PENDING_CANCELLATION: % congelado no pedido × base efetiva (o que
+     * "Cobrar multa" vai gerar agora); CANCELLED: a multa gerada (0 se não houve); demais: a prévia de hoje
+     * (remainingTotal × %). 0 = não haverá multa.
+     */
+    fineAmountPreview: number;
+    /** ISO do pedido de cancelamento — só com status PENDING_CANCELLATION ou CANCELLED; senão null. */
+    cancellationRequestedAt: string | null;
+    /** ISO do cancelamento — só com status CANCELLED (é o que o card cancelado mostra); senão null. */
+    cancelledAt: string | null;
+    /** Multa gerada (a mais recente não anulada; só anuladas → a mais recente), ou null. `status === 'PENDING'` → o admin pode "Cobrar agora". */
+    cancellationFine: CancellationFine | null;
+}
+/** Dados de renovação (E4). GET /contracts (admin) e GET /contracts/:id trazem todos; GET /contracts/my só `alreadyRenewed`. */
+export interface ContractRenewalInfo {
+    /** Já existe uma renovação não cancelada deste contrato (o backend permite 1). */
+    alreadyRenewed: boolean;
+    /** id do contrato novo (link "abrir contrato novo"), ou null. */
+    renewedToId: string | null;
+    /** Dias de calendário (SP) até o fim da vigência; negativo = vigência encerrada. */
+    daysToEnd: number;
+    /**
+     * Botão "Renovar contrato" do admin — fonte única (lista e detalhe): tipo ≠ AVULSO/SERVICO, cliente não
+     * excluído, ainda não renovado e (ACTIVE/COMPLETED com daysToEnd ≤ 30, ou EXPIRED).
+     */
+    canRenew: boolean;
+}
+/**
+ * Contrato (forma base). Os campos de cancelamento/multa e de renovação são OPCIONAIS aqui porque as respostas
+ * de criação/edição/renovação devolvem só a linha do contrato; nas leituras eles vêm sempre — use AdminContract
+ * (GET /contracts), ContractDetail (GET /contracts/:id) ou ContractWithStats (GET /contracts/my).
+ */
+export interface Contract extends Partial<ContractCancellationInfo>, Partial<ContractRenewalInfo> {
     id: string; name: string; type: 'FIXO' | 'FLEX' | 'SERVICO' | 'CUSTOM' | 'AVULSO'; tier: 'COMERCIAL' | 'AUDIENCIA' | 'SABADO';
     durationMonths: number; discountPct: number; startDate: string; endDate: string;
     status: ContractStatus;
@@ -462,10 +692,15 @@ export interface Contract {
     flexCycleStart?: string | null;
     paymentPlan?: 'MONTHLY' | 'FULL';
     paymentMethod?: 'CARTAO' | 'PIX' | 'BOLETO' | null;
+    /** @deprecated E3: não é mais autoridade — o boleto segue só a chave-mestra (pricingApi.getPaymentMethods().boleto). */
     boletoAllowed?: boolean;
     paymentDeadline?: string | null;
     addOns?: string[];
-    user?: { id: string; name: string; email: string };
+    /**
+     * `deletedAt` (cliente excluído/anonimizado — D3) vem em GET /contracts e GET /contracts/:id.
+     * `cpfCnpj` SÓ em GET /contracts/:id chamado pelo ADMIN (E1: o PIX usa o CPF do CLIENTE, nunca o do admin).
+     */
+    user?: { id: string; name: string; email: string; deletedAt?: string | null; cpfCnpj?: string | null };
     pausedAt?: string | null;
     pauseReason?: string | null;
     resumeDate?: string | null;
@@ -479,10 +714,32 @@ export interface Contract {
     customCreditsRemaining?: number | null;
     addonUsage?: Record<string, { limit: number, used: number }>;
 }
+/** Payment.metadata (só GET /contracts/:id devolve o objeto inteiro; as telas do cliente recebem apenas `kind`). */
+export interface PaymentMetadata {
+    kind?: PaymentKind | string;
+    /** Multa de cancelamento: % congelado no pedido e a base EFETIVA usada na decisão (centavos; só as parcelas da base ainda não pagas). */
+    finePct?: number;
+    baseAmount?: number;
+    /** E2 — marca do à vista: preço de cartão e preço PIX da MESMA cobrança (centavos). */
+    pixDiscount?: { pct: number; cardAmount: number; pixAmount?: number };
+    [key: string]: unknown;
+}
 export interface PaymentSummary {
-    id: string; amount: number; status: 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED' | 'CANCELLED';
-    dueDate: string; paidAt?: string; provider?: string;
+    id: string; amount: number; status: PaymentStatus;
+    dueDate: string;
+    /** ISO do pagamento (null/ausente = não pago). */
+    paidAt?: string | null;
+    provider?: string;
     pixString?: string | null; boletoUrl?: string | null; paymentUrl?: string | null;
+    /**
+     * 'CANCELLATION_FINE' = multa de cancelamento (E13): rotular "Multa de cancelamento" e tirar da contagem
+     * "Parcela N/Total" (junto com as CANCELLED). null = parcela/extra comum. Vem em GET /contracts/my e /contracts/:id.
+     */
+    kind?: PaymentKind | null;
+    /** Preenchido = extra de uma gravação (não é parcela do plano). */
+    bookingId?: string | null;
+    /** Objeto completo — só em GET /contracts/:id (GET /contracts/my NÃO envia o metadata, só `kind`). */
+    metadata?: PaymentMetadata | null;
     /** Nº de parcelas no cartão (1 = à vista). Presente no detalhe do contrato (GET /contracts/:id). */
     installments?: number | null;
     /** Total efetivamente cobrado no cartão (com juros de parcelamento); null = igual a `amount`. */
@@ -492,33 +749,97 @@ export interface PaymentSummary {
     /** Validade da cobrança PIX viva (D15); null/ausente = sem cobrança ou legado. */
     pixExpiresAt?: string | null;
 }
-export interface ContractWithStats extends Contract {
+/** T com as chaves K obrigatórias (sem `?`). */
+type WithRequired<T, K extends keyof T> = Omit<T, K> & Required<Pick<T, K>>;
+/** Contrato da lista do ADMIN (GET /contracts): dados de cancelamento/multa (E13) e de renovação (E4) sempre presentes. */
+export type AdminContract = WithRequired<Contract, keyof ContractCancellationInfo | keyof ContractRenewalInfo>;
+/**
+ * Contrato do CLIENTE (GET /contracts/my): dados de cancelamento/multa e `alreadyRenewed` sempre presentes
+ * (renewedToId/daysToEnd/canRenew NÃO vêm aqui). `payments[]` traz `kind`, `bookingId`, `paidAt` e `pixExpiresAt`.
+ */
+export interface ContractWithStats extends WithRequired<Contract, keyof ContractCancellationInfo | 'alreadyRenewed'> {
     completedBookings: number;
     totalBookings: number;
     _count: { bookings: number };
     payments: PaymentSummary[];
     bookings: ContractBooking[];
 }
+/**
+ * Gravação dentro de GET /contracts/my (`bookings[]`, sem as CANCELLED). NÃO é o ClientBooking: aqui não vêm
+ * os derivados (isRecordingNow/canEditEpisode/…), `episodeDescription`, `holdExpiresAt` nem `contract` — para
+ * eles use bookingsApi.getOne/getMy. "Gravando agora" aqui = status 'CONFIRMED' + `recordingStartedAt`.
+ */
 export interface ContractBooking {
     id: string; status: string; date: string; originalDate?: string | null;
     startTime: string; endTime: string; tierApplied: string; price: number;
-    clientNotes?: string | null; adminNotes?: string | null;
+    /** Recado do estúdio para o cliente. */
+    clientNotes?: string | null;
+    /** @deprecated A nota interna do admin não vem mais (E11). Chave mantida (`never`) só para os chamadores antigos compilarem. */
+    adminNotes?: never;
     platforms?: string | null; platformLinks?: string | null;
+    /** ISO do "Iniciar Gravação". */
+    recordingStartedAt?: string | null;
+    episodeTitle?: string | null;
+    coverImageUrl?: string | null;
     durationMinutes?: number | null;
     peakViewers?: number | null;
     chatMessages?: number | null;
     audienceOrigin?: string | null;
+    isLivestream?: boolean | null;
+    streamMetrics?: string | null; // JSON: { REDE: { views, peak, subscribers, likes, comments } }
     addOns?: string[];
     statusReason?: string | null;
     makeupStatus?: MakeupStatus | null;
     makeupDeadline?: string | null;
     missedDate?: string | null;
 }
-export interface ContractDetail extends Contract { bookings: Booking[]; payments: PaymentSummary[]; }
+/**
+ * GET /contracts/:id (admin ou dono): mesmos dados de cancelamento/multa e renovação da lista. `payments[]` vem
+ * por `dueDate` com `kind` e o `metadata` completo — a multa pode aparecer entre a parcela paga e as anuladas.
+ * `bookings[].adminNotes`, `bookings[].recordingStartedByName` e `user.cpfCnpj` só quando quem chama é ADMIN.
+ */
+export interface ContractDetail extends AdminContract { bookings: Booking[]; payments: PaymentSummary[]; }
+
+// ─── Cancelamento / multa (E13) — respostas ─────────────
+/** POST /contracts/:id/request-cancellation (cliente). */
+export interface RequestCancellationResponse {
+    /**
+     * Contrato já em PENDING_CANCELLATION. O pedido congela o PERCENTUAL e o teto da base; a multa cobrada na
+     * decisão usa a base efetiva (parcela paga durante a análise sai) — pode diminuir, nunca aumentar.
+     */
+    contract: Contract & { cancellationRequestedAt: string; finePct: number; fineBaseAmount: number; fineAmountPreview: number };
+    /** Gravações futuras liberadas (as já realizadas e a de hoje já iniciada ficam intactas). */
+    cancelledBookings: number;
+    /** Multa prevista (centavos): amount = baseAmount × finePct%. amount 0 = sem multa. */
+    fine: { finePct: number; baseAmount: number; amount: number };
+    message: string;
+}
+/** POST /contracts/:id/resolve-cancellation (admin). */
+export interface ResolveCancellationResponse {
+    contract: Contract;
+    message: string;
+    /** Multa gerada (PENDING) — null em WAIVE_FEE ou quando não havia saldo a pagar do plano. */
+    fine: { id: string; amount: number; status: PaymentStatus; dueDate: string | null; finePct: number; baseAmount: number } | null;
+    /** Parcelas pendentes anuladas. */
+    voidedCount: number;
+    /** Cobranças que o provedor confirmou como pagas durante a anulação (ficaram PAID). */
+    paidAtProvider: number;
+    /** Cobranças anuladas que não puderam ser canceladas no provedor agora. */
+    liveAtProvider: number;
+}
+/** DELETE /contracts/:id (admin). */
+export interface CancelContractResponse {
+    message: string;
+    voidedCount: number;
+    cancelledBookings: number;
+    paidAtProvider: number;
+    liveAtProvider: number;
+}
 export interface CreateContractData {
     userId: string; name: string; type: 'FIXO' | 'FLEX' | 'SERVICO'; tier: 'COMERCIAL' | 'AUDIENCIA' | 'SABADO';
     durationMonths: 3 | 6; startDate: string;
     fixedDayOfWeek?: number; fixedTime?: string; contractUrl?: string;
+    /** @deprecated E3: ignorado pelo backend (o boleto segue só a chave-mestra + Cora). */
     boletoAllowed?: boolean;
     paymentPlan?: 'MONTHLY' | 'FULL';
     paymentMethod?: 'CARTAO' | 'PIX' | 'BOLETO';
@@ -622,6 +943,25 @@ export interface PaymentMethodConfigItem {
     sortOrder: number; accessMode: string;
     /** CSV of checkout contexts: avulso, contract, invoice */
     contexts?: string;
+}
+/** Por que o boleto não está disponível: chave-mestra desligada ou integração Cora inativa. */
+export type BoletoUnavailableReason = 'SWITCH_OFF' | 'PROVIDER_DISABLED';
+/**
+ * E3 — estado do boleto (fonte única para mostrar/esconder o boleto e para o switch das Configurações).
+ * Mostre a opção Boleto SÓ com `available` — e nunca em fluxos com prazo de 10 min (avulso do cliente,
+ * contratação nova, serviço, personalizado do cliente, renovação): o backend recusa com BOLETO_NOT_ALLOWED_HERE.
+ */
+export interface BoletoStatus {
+    /** Chave-mestra "Aceitar pagamento por boleto" (Configurações). */
+    enabled: boolean;
+    /** A integração Cora (provedor do boleto) está habilitada. false → switch bloqueado, com `message` como aviso. */
+    providerEnabled: boolean;
+    /** Boleto EFETIVO: chave ligada E Cora habilitada. */
+    available: boolean;
+    /** null quando disponível. */
+    reason: BoletoUnavailableReason | null;
+    /** Texto pronto para a tela (null quando disponível). */
+    message: string | null;
 }
 
 // Public types (no auth)
@@ -898,6 +1238,88 @@ export interface InstallmentPlan {
     freeOfCharge: boolean;
 }
 
+/**
+ * Resposta de POST /stripe/installment-plans (E2). `cardAmount` = o que o CARTÃO cobra em 1x (antes de juros);
+ * `pixAmount` = o que o PIX cobra (com o desconto do à vista quando a cobrança tem a marca) — mostre cada um
+ * na sua aba ANTES de gerar. Sem `paymentId` (prévia), os dois são o `amount` enviado. Centavos.
+ */
+export interface InstallmentPlansResponse {
+    plans: InstallmentPlan[];
+    cardAmount: number;
+    pixAmount: number;
+}
+
+/**
+ * Códigos (ApiError.code) de POST /stripe/create-payment:
+ *  - CPF_CNPJ_REQUIRED (400, PIX/boleto): o DONO do pagamento não tem CPF/CNPJ válido — `ApiError.body.payerUserId`
+ *    diz de quem (quando o admin cobra, é o cliente);
+ *  - CARD_NOT_FOUND (400): o cartão salvo informado não é do dono do pagamento;
+ *  - BOLETO_UNAVAILABLE (400): chave desligada ou Cora inativa — `ApiError.body.reason` = BoletoUnavailableReason;
+ *  - BOLETO_NOT_ALLOWED_HERE (400): contratação com prazo (AWAITING_PAYMENT, sem contrato ou reserva em espera);
+ *  - INSTALLMENTS_UNAVAILABLE (400): parcelamento pedido onde só há 1x;
+ *  - CARD_PAYMENT_IN_FLIGHT (409): há um pagamento no cartão em processamento para esta cobrança.
+ */
+export type CreatePaymentErrorCode =
+    | 'CPF_CNPJ_REQUIRED' | 'CARD_NOT_FOUND' | 'BOLETO_UNAVAILABLE' | 'BOLETO_NOT_ALLOWED_HERE'
+    | 'INSTALLMENTS_UNAVAILABLE' | 'CARD_PAYMENT_IN_FLIGHT';
+
+/** Pagador de uma cobrança (o CLIENTE dono do pagamento) — GET /stripe/payment-methods/for-payment/:paymentId. */
+export interface PaymentPayer {
+    id: string;
+    name: string;
+    cpfCnpj: string | null;
+    /** false → peça o CPF/CNPJ do CLIENTE antes de gerar PIX/boleto. */
+    hasValidCpfCnpj: boolean;
+    /** Cliente excluído/anonimizado (D3). */
+    deleted: boolean;
+}
+/** Cartões salvos e CPF do CLIENTE dono de um pagamento (E1 — admin cobrando o cliente). */
+export interface PaymentMethodsForPaymentResponse {
+    /** Cartões do CLIENTE (nunca os do admin). `id` = id do banco, ou o `pm_…` quando só existe no Stripe. */
+    paymentMethods: SavedCard[];
+    /** Cobrança automática do CLIENTE. */
+    autoChargeEnabled: boolean;
+    payer: PaymentPayer;
+}
+
+/** Cartão que a cobrança automática usa (o padrão ou, sem padrão, o mais recente) — sem `funding`. */
+export type AutoChargeCard = Omit<SavedCard, 'funding'>;
+/** GET /stripe/auto-charge — estado da cobrança automática de quem está logado (E9). */
+export interface AutoChargeState {
+    autoChargeEnabled: boolean;
+    /** A cobrança automática é por CLIENTE: vale para todos os contratos dele. */
+    scope: 'USER';
+    hasSavedCard: boolean;
+    /** Quantidade de cartões salvos. */
+    savedCards: number;
+    /** Cartão que o job cobraria; null = nenhum cartão salvo. */
+    defaultCard: AutoChargeCard | null;
+}
+/** POST /contracts/:id/subscribe — cobrança automática ligada e cartão tornado padrão (E9). */
+export interface AutoChargeActivation {
+    success: true;
+    autoChargeEnabled: true;
+    /** Já estava ativa neste mesmo cartão (nada mudou). */
+    alreadyEnabled: boolean;
+    scope: 'USER';
+    /** O cartão que passou a ser o padrão (isDefault sempre true). */
+    defaultCard: SavedCard;
+    message: string;
+}
+
+/**
+ * DELETE /stripe/payment-methods/:pmId. Os três campos de cobrança automática só vêm quando o cartão removido
+ * era o que ela cobrava e ela foi DESLIGADA: não sobrou cartão (NO_CARD), o substituto não é de crédito
+ * (CARD_NOT_CREDIT) ou não pôde ser conferido no Stripe (CARD_NOT_FOUND / CARD_NOT_VERIFIED). A `message`
+ * já traz o texto pronto para o cliente.
+ */
+export interface RemovePaymentMethodResponse {
+    message: string;
+    autoChargeEnabled?: false;
+    autoChargeDisabled?: true;
+    autoChargeDisabledReason?: 'NO_CARD' | 'CARD_NOT_CREDIT' | 'CARD_NOT_FOUND' | 'CARD_NOT_VERIFIED';
+}
+
 // Short-lived cache for listPaymentMethods (avoids hitting Stripe on every navigation)
 const _pmCache: {
     data: { paymentMethods: SavedCard[]; autoChargeEnabled: boolean } | null;
@@ -911,6 +1333,15 @@ function invalidatePmCache() { _pmCache.data = null; _pmCache.promise = null; _p
 export const stripeApi = {
     getPublishableKey: () => request<{ publishableKey: string }>('/stripe/publishable-key'),
     createSetupIntent: () => request<{ clientSecret: string; setupIntentId: string }>('/stripe/setup-intent', { method: 'POST' }),
+    /**
+     * E9 — persiste o cartão logo após o `stripe.confirmSetup` (sem esperar o webhook); idempotente.
+     * `makeDefault: true` também o torna o padrão. NÃO liga a cobrança automática (isso é contractsApi.subscribe
+     * com `card.id`). Erros (ApiError.code): SETUP_INTENT_NOT_FOUND (400/404), SETUP_INTENT_NOT_CONFIRMED (409 —
+     * ApiError.body.status), CARD_NOT_FOUND (404); 502 = falha no Stripe.
+     */
+    confirmSetupIntent: (data: { setupIntentId: string; makeDefault?: boolean }) =>
+        request<{ card: SavedCard; message: string }>('/stripe/setup-intent/confirm', { method: 'POST', body: JSON.stringify(data) })
+            .then(res => { invalidatePmCache(); return res; }),
     listPaymentMethods: (): Promise<{ paymentMethods: SavedCard[]; autoChargeEnabled: boolean }> => {
         const now = Date.now();
         // Return cached data if still fresh
@@ -923,15 +1354,30 @@ export const stripeApi = {
         return _pmCache.promise;
     },
     invalidateCache: invalidatePmCache,
-    removePaymentMethod: (pmId: string) => { invalidatePmCache(); return request<{ message: string }>(`/stripe/payment-methods/${pmId}`, { method: 'DELETE' }); },
+    /**
+     * ADMIN (E1): cartões salvos e CPF do CLIENTE dono do pagamento — use no checkout quando o admin cobra o
+     * cliente, no lugar de listPaymentMethods (que devolve os cartões de QUEM ESTÁ LOGADO). Sem cache.
+     * 400 = id inválido; 404 = pagamento inexistente; 403 = não-admin.
+     */
+    paymentMethodsForPayment: (paymentId: string) =>
+        request<PaymentMethodsForPaymentResponse>(`/stripe/payment-methods/for-payment/${encodeURIComponent(paymentId)}`),
+    // Remover o cartão que a cobrança automática cobra pode DESLIGÁ-LA (ver RemovePaymentMethodResponse): mostre `message`.
+    removePaymentMethod: (pmId: string) => { invalidatePmCache(); return request<RemovePaymentMethodResponse>(`/stripe/payment-methods/${pmId}`, { method: 'DELETE' }); },
     setDefaultPaymentMethod: (pmId: string) => { invalidatePmCache(); return request<{ message: string }>(`/stripe/payment-methods/${pmId}/default`, { method: 'PUT' }); },
+    // O pagador é SEMPRE o dono do pagamento (mesmo quando o admin chama): CPF e cartões são os do cliente.
+    // savedPaymentMethodId: SavedCard.id ou o pm_… — tem de ser do dono do pagamento. Erros: CreatePaymentErrorCode.
+    // E2: no PIX, `amount` da resposta é o preço PIX e o Payment.amount MUDA no banco (recarregue a cobrança);
+    // no cartão/boleto, `amount` é o preço de cartão.
     createPayment: (data: { paymentId: string; installments?: number; savedPaymentMethodId?: string; savePaymentMethod?: boolean; paymentMethod?: 'cartao' | 'pix' | 'boleto' }) =>
         request<CreatePaymentResponse>('/stripe/create-payment', { method: 'POST', body: JSON.stringify(data) }),
     verifyPayment: (data: { paymentId: string; paymentIntentId: string }) =>
         request<{ status: string; message: string }>('/stripe/verify-payment', { method: 'POST', body: JSON.stringify(data) }),
     // installmentCap (1..12): só para prévia sem paymentId; com paymentId o teto vem do próprio pagamento.
     getInstallmentPlans: (data: { paymentId?: string; amount?: number; contractDurationMonths?: number; installmentCap?: number }) =>
-        request<{ plans: InstallmentPlan[] }>('/stripe/installment-plans', { method: 'POST', body: JSON.stringify(data) }),
+        request<InstallmentPlansResponse>('/stripe/installment-plans', { method: 'POST', body: JSON.stringify(data) }),
+    /** E9 — estado da cobrança automática de quem está logado + o cartão que será cobrado. Sem cache. */
+    getAutoCharge: () => request<AutoChargeState>('/stripe/auto-charge'),
+    // Desligar (ou religar com cartão já salvo). Para ATIVAR escolhendo/cadastrando o cartão: contractsApi.subscribe.
     setAutoCharge: (enabled: boolean) => { invalidatePmCache(); return request<{ message: string }>('/stripe/auto-charge', { method: 'PUT', body: JSON.stringify({ enabled }) }); },
 };
 

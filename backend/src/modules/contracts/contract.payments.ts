@@ -8,6 +8,7 @@ import { computeAddonsCost, serviceMonthlyBase, computeMonthlyAmount } from '../
 import { validatePaymentMethod, PaymentMethodDisabledError } from '../../lib/paymentGateway.js';
 import { contractPaySchema, subscribeSchema, clientRenewSchema } from './validators.js';
 import { CouponError, validateCoupon, reserveCouponUse, releaseAndPurgeCouponsForPayments, type CouponQuote } from '../../lib/couponService.js';
+import { cancellationPendingBody } from '../../lib/cancellationPending.js';
 
 export function registerPaymentRoutes(router: Router) {
 
@@ -25,6 +26,16 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
         });
 
         if (!contract) {
+            // E13: contrato com cancelamento em análise → resposta própria (409), em vez do 404 genérico:
+            // o cliente não paga parcelas do plano até o estúdio decidir.
+            const pendingCancellation = await prisma.contract.findFirst({
+                where: { id: contractId, userId, status: 'PENDING_CANCELLATION' },
+                select: { id: true },
+            });
+            if (pendingCancellation) {
+                res.status(409).json(cancellationPendingBody());
+                return;
+            }
             res.status(404).json({ error: 'Contrato não encontrado ou não está aguardando pagamento.' });
             return;
         }
@@ -43,21 +54,18 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
         // SERVICO (standalone monthly service) has NO recordings: its per-month base is the
         // service add-on's price after discount, not sessions×tier (which would over-charge).
         let monthlyAmount: number;
-        // D1: valor da mesma cobrança no CARTÃO quando `monthlyAmount` embute o desconto PIX do à vista.
-        let cardFullAmount: number | null = null;
-        let pixDiscountPct = 0;
+        // E2: à vista (FULL) → os DOIS preços da mesma cobrança (cartão e PIX) para a marca `pixDiscount`.
+        let fullTotals: { cardTotal: number; pixTotal: number; pixPct: number } | null = null;
         if (contract.type === 'SERVICO') {
             const svcMonthly = await serviceMonthlyBase(contract);
             // FULL-plan service is paid à-vista (all N months at once); MONTHLY charges one month.
             // Without this, paying a FULL service via /pay would collect only 1/N and no
             // installments 2..N are ever generated (the generator skips FULL).
             if (contract.paymentPlan === 'FULL') {
-                const { computeFullContractTotal } = await import('../../lib/contractPricing.js');
-                monthlyAmount = await computeFullContractTotal(svcMonthly, contract.durationMonths, contract.paymentMethod || undefined);
-                if (contract.paymentMethod === 'PIX') {
-                    cardFullAmount = await computeFullContractTotal(svcMonthly, contract.durationMonths, 'CARTAO');
-                    pixDiscountPct = Number(await getConfig('pix_extra_discount_pct')) || 0;
-                }
+                const { computeFullContractTotals } = await import('../../lib/contractPricing.js');
+                const totals = await computeFullContractTotals(svcMonthly, contract.durationMonths, contract.paymentMethod || undefined);
+                monthlyAmount = totals.total;
+                fullTotals = totals;
             } else {
                 monthlyAmount = svcMonthly;
             }
@@ -78,8 +86,12 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
         // contratos-2: a parcela reaproveitada é a PRIMEIRA a vencer (menor dueDate; desempate estável) —
         // o personalizado do cliente nasce com TODAS as parcelas PENDING (createMany, mesmo createdAt;
         // com cupom a 1ª é criada antes) e "a mais recente por createdAt" cobrava uma parcela futura.
+        // Z1-d (fecha o CLI-2): só cobrança do PLANO (bookingId null) é reaproveitada. Um extra de gravação
+        // (contractId + bookingId — de gravação viva ou cancelada) nunca é "a parcela do contrato": era pego
+        // quando vencia antes e o /pay o cobrava no lugar da parcela (o contrato não ativava). Extras são
+        // pagos pelo próprio Payment (POST /stripe/create-payment), que recusa os de gravação cancelada.
         const existingPending = await prisma.payment.findFirst({
-            where: { contractId, userId, status: 'PENDING' },
+            where: { contractId, userId, status: 'PENDING', bookingId: null },
             orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }, { id: 'asc' }],
             include: { contract: { select: { type: true, paymentPlan: true, paymentMethod: true } } },
         });
@@ -99,14 +111,16 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
             couponCode: payCoupon.coupon.code,
             discountAmount: payCoupon.discountAmount,
         } : {};
-        // D1 (pagamentos-3): linha NOVA com desconto PIX embutido → grava o valor do cartão (sem o
-        // desconto PIX; o mesmo cupom em R$) para o checkout nunca cobrar o desconto PIX no cartão.
-        const { buildPixDiscountMeta } = await import('../../lib/pixGateway.js');
-        const newRowPixDiscount = cardFullAmount !== null
-            ? buildPixDiscountMeta({
-                pixAmount: payChargeAmount,
-                cardAmount: Math.max(0, cardFullAmount - (payCoupon?.discountAmount ?? 0)),
-                pct: pixDiscountPct,
+        // E2: linha NOVA à vista → marca `pixDiscount` com os dois preços (cartão e PIX; o mesmo cupom em
+        // R$), seja qual for a forma do contrato: o PIX cobra o preço PIX (issuePixCharge baixa o amount na
+        // emissão) e o cartão nunca cobra o desconto PIX nem mais que o preço de cartão.
+        const { pixDiscountMetaForFullCharge } = await import('../../lib/pixGateway.js');
+        const newRowPixDiscount = fullTotals
+            ? pixDiscountMetaForFullCharge({
+                cardTotal: fullTotals.cardTotal,
+                pixTotal: fullTotals.pixTotal,
+                couponDiscount: payCoupon?.discountAmount,
+                pct: fullTotals.pixPct,
             })
             : undefined;
         const newRowMetadata = newRowPixDiscount ? { metadata: { pixDiscount: newRowPixDiscount } } : {};
@@ -241,7 +255,7 @@ router.post('/:id/pay', authenticate, async (req: Request, res: Response) => {
         const newRowAmount = payChargeAmount;
         const chargeAmount = existingPending
             ? await cardChargeBaseAmount(existingPending)
-            : (newRowPixDiscount?.cardAmount ?? newRowAmount);
+            : await cardChargeBaseAmount({ amount: newRowAmount, metadata: newRowPixDiscount ? { pixDiscount: newRowPixDiscount } : null });
 
         // PAY-M1: PI já emitido para a linha reaproveitada — reaproveita SÓ se ainda pagável e com o valor do
         // cartão desta cobrança; pagável com OUTRO valor → cancelado e um novo é emitido; aprovado/processando →
@@ -482,7 +496,11 @@ router.post('/:id/confirm-payment', authenticate, async (req: Request, res: Resp
 });
 
 // ─── POST /api/contracts/:id/subscribe ──────────────────
-// Setup recurring Stripe subscription for an existing contract (Client-side)
+// E9 — "Ativar cobrança automática". NÃO cria mais assinatura Stripe nem Payment (a assinatura paralela
+// cobrava em dobro: as parcelas do contrato já existem e são cobradas pelo autoChargeJob). Agora liga a
+// cobrança automática DO CLIENTE (User.autoChargeEnabled — vale para todos os contratos dele) e torna o
+// cartão informado o padrão. `paymentMethodId` = id do SavedPaymentMethod OU pm_… do Stripe (ex.: o cartão
+// recém-cadastrado por SetupIntent); precisa ser do próprio cliente e de CRÉDITO. Idempotente.
 
 router.post('/:id/subscribe', authenticate, async (req: Request, res: Response) => {
     try {
@@ -492,6 +510,7 @@ router.post('/:id/subscribe', authenticate, async (req: Request, res: Response) 
 
         const contract = await prisma.contract.findFirst({
             where: { id: contractId, userId },
+            select: { id: true, status: true, paymentPlan: true },
         });
 
         if (!contract) {
@@ -499,95 +518,90 @@ router.post('/:id/subscribe', authenticate, async (req: Request, res: Response) 
             return;
         }
 
-        if (contract.status !== 'ACTIVE' && contract.status !== 'AWAITING_PAYMENT') {
-            res.status(400).json({ error: 'Só é possível assinar contratos ativos ou aguardando pagamento.' });
+        if (contract.status === 'CANCELLED') {
+            res.status(400).json({ error: 'Este contrato foi cancelado — não há parcelas para cobrar automaticamente.', code: 'CONTRACT_CANCELLED' });
             return;
         }
 
-        const user = await prisma.user.findUnique({ where: { id: userId } });
-        if (!user || !user.stripeCustomerId) {
-            res.status(400).json({ error: 'Customer não configurado no Stripe.' });
+        // À vista já quitado: não há o que cobrar automaticamente neste contrato.
+        // AC-1: só parcelas do PLANO contam (bookingId null) — o autoChargeJob não cobra extras de gravação,
+        // então um à vista quitado com apenas um extra pendente também não tem o que cobrar.
+        if (contract.paymentPlan === 'FULL') {
+            const pending = await prisma.payment.count({ where: { contractId, bookingId: null, status: { in: ['PENDING', 'FAILED'] } } });
+            if (pending === 0) {
+                res.status(400).json({ error: 'Este contrato foi pago à vista e está quitado — não há parcelas para cobrar automaticamente.', code: 'NOTHING_TO_CHARGE' });
+                return;
+            }
+        }
+
+        const user = await prisma.user.findUnique({ where: { id: userId }, select: { autoChargeEnabled: true, stripeCustomerId: true } });
+        if (!user) {
+            res.status(404).json({ error: 'Usuário não encontrado.' });
             return;
         }
 
-        const duration = data.durationMonths || contract.durationMonths;
+        const { checkAutoChargeCard, setDefaultSavedCard } = await import('../../lib/savedCards.js');
+        const { stripeSetDefaultPaymentMethod } = await import('../../lib/stripeService.js');
 
-        // FIX (C3): mesma base mensal do /pay — sessions_per_month × tier-com-desconto + add-ons
-        // (e serviceMonthlyBase para SERVICO). Antes usava basePrice*4 fixo, sem add-ons e sem
-        // tratar SERVICO, subfaturando a assinatura recorrente todo mês.
-        const monthlyAmount = await computeMonthlyAmount(contract);
-
-        const { stripeCreateSubscription } = await import('../../lib/stripeService.js');
-
-        // Create initial payment record
-        const payment = await prisma.payment.create({
-            data: {
-                userId,
-                contractId: contract.id,
-                amount: monthlyAmount,
-                provider: 'STRIPE',
-                status: 'PENDING',
-                dueDate: new Date(),
-                paymentType: 'CREDIT',
-            }
-        });
-
-        const subResult = await stripeCreateSubscription({
-            customerId: user.stripeCustomerId,
-            paymentMethodId: data.paymentMethodId,
-            amount: monthlyAmount,
-            contractId: contract.id,
-            userId: user.id,
-            paymentId: payment.id,
-            description: `Assinatura ${contract.name} (${contract.tier})`,
-            durationMonths: duration,
-        });
-
-        // PAY-M1 FIX: Persist BOTH providerRef and stripeSubscriptionId
-        // The webhook handler (invoice.payment_succeeded) searches by stripeSubscriptionId
-        if (subResult.subscriptionId) {
-            await prisma.payment.update({
-                where: { id: payment.id },
-                data: {
-                    providerRef: subResult.subscriptionId,
-                    stripeSubscriptionId: subResult.subscriptionId,
-                },
-            });
+        // O cartão tem de ser DESTE cliente (linha dele no banco ou anexado ao Customer dele no Stripe) —
+        // conferido no Stripe (posse + crédito/débito); o que só existe no Stripe é gravado agora.
+        // Conferência única (lib/savedCards.checkAutoChargeCard): 503 Stripe desligado · 502 não conferido ·
+        // 404 CARD_NOT_FOUND · 400 CARD_NOT_CREDIT — a mesma do PUT /stripe/auto-charge e do admin.
+        const check = await checkAutoChargeCard(userId, { cardRef: data.paymentMethodId, sync: true, logTag: '[AUTO-CHARGE-ACTIVATE]' });
+        if (!check.ok) {
+            res.status(check.status).json(check.body);
+            return;
+        }
+        const card = check.card;
+        if (!card.id || !user.stripeCustomerId) {
+            res.status(404).json({ error: 'Cartão não encontrado. Cadastre o cartão e tente novamente.', code: 'CARD_NOT_FOUND' });
+            return;
         }
 
-        // PAY-01 FIX: Only activate if subscription is fully active (first payment confirmed)
-        if (contract.status === 'AWAITING_PAYMENT') {
-            if (subResult.status === 'active') {
-                await prisma.contract.updateMany({
-                    where: { id: contract.id, status: 'AWAITING_PAYMENT' },
-                    data: { status: 'ACTIVE', paymentDeadline: null, durationMonths: duration },
-                });
-            } else {
-                // Subscription is 'incomplete' (3DS pending, insufficient funds, etc.)
-                // Keep contract as AWAITING_PAYMENT — webhook will activate when paid
-                console.log(`[SUBSCRIBE] Subscription ${subResult.subscriptionId} status=${subResult.status} — contract stays AWAITING_PAYMENT`);
+        const alreadyEnabled = user.autoChargeEnabled && card.isDefault;
+        if (!alreadyEnabled) {
+            if (!card.isDefault) {
+                try {
+                    await stripeSetDefaultPaymentMethod(user.stripeCustomerId, card.stripePaymentMethodId);
+                } catch (err) {
+                    console.error('[AUTO-CHARGE-ACTIVATE] Falha ao definir o cartão padrão no Stripe:', err instanceof Error ? err.message : err);
+                    res.status(502).json({ error: 'Não foi possível definir este cartão como padrão agora. Tente novamente em instantes.' });
+                    return;
+                }
+                await setDefaultSavedCard(userId, card.id);
             }
-        } else if (data.durationMonths && data.durationMonths !== contract.durationMonths) {
-            await prisma.contract.update({
-                where: { id: contract.id },
-                data: { durationMonths: duration },
-            });
+            await prisma.user.update({ where: { id: userId }, data: { autoChargeEnabled: true } });
+            const { logAudit } = await import('../../lib/audit.js');
+            await logAudit('USER', userId, 'AUTO_CHARGE_ENABLED', userId, { contractId, savedPaymentMethodId: card.id, last4: card.last4 });
         }
 
         res.json({
             success: true,
-            subscriptionId: subResult.subscriptionId,
-            status: subResult.status,
-            message: 'Assinatura configurada com sucesso.',
+            autoChargeEnabled: true,
+            alreadyEnabled,
+            // A cobrança automática é por CLIENTE: vale para todos os contratos dele.
+            scope: 'USER',
+            defaultCard: {
+                id: card.id,
+                stripePaymentMethodId: card.stripePaymentMethodId,
+                brand: card.brand,
+                last4: card.last4,
+                expMonth: card.expMonth,
+                expYear: card.expYear,
+                funding: card.funding ?? 'unknown',
+                isDefault: true,
+            },
+            message: alreadyEnabled
+                ? 'A cobrança automática já está ativa neste cartão.'
+                : `Cobrança automática ativada. As próximas parcelas de todos os seus contratos serão cobradas no cartão final ${card.last4} no vencimento.`,
         });
-
     } catch (err: any) {
-        console.error('[SUBSCRIBE]', err);
+        console.error('[AUTO-CHARGE-ACTIVATE]', err);
         if (err instanceof z.ZodError) {
             res.status(400).json({ error: 'Dados inválidos.', details: err.errors });
             return;
         }
-        res.status(500).json({ error: 'Erro ao configurar assinatura.' });
+        res.status(500).json({ error: 'Erro ao ativar a cobrança automática.' });
     }
 });
 
@@ -642,7 +656,13 @@ router.post('/:id/client-renew', authenticate, async (req: Request, res: Respons
         // gateway would later crash on undefined.toUpperCase()). Falls back to the original's.
         const renewMethod = data.paymentMethod || original.paymentMethod;
         if (!renewMethod) {
-            res.status(400).json({ error: 'Método de pagamento é obrigatório para renovação. Informe PIX, CARTÃO ou BOLETO.' });
+            res.status(400).json({ error: 'Método de pagamento é obrigatório para renovação. Informe PIX ou CARTÃO.' });
+            return;
+        }
+        // E3: a renovação nasce aguardando pagamento (prazo de 3 dias) e o boleto compensa em dias —
+        // o cliente renova por PIX ou cartão (o /pay só aceita os dois).
+        if (renewMethod === 'BOLETO') {
+            res.status(400).json({ error: 'A renovação é paga por PIX ou cartão. Escolha uma das duas formas.', code: 'BOLETO_NOT_ALLOWED_HERE' });
             return;
         }
         try {

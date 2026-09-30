@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import HeroAmbient from '../components/client/HeroAmbient';
-import { bookingsApi, blockedSlotsApi, pricingApi, contractsApi, Slot, BookingWithUser, MyBookingSlot, PricingConfig, AddOnConfig, ContractWithStats } from '../api/client';
+import { bookingsApi, blockedSlotsApi, pricingApi, contractsApi, Slot, BookingWithUser, MyBookingSlot, PricingConfig, AddOnConfig, ContractWithStats, type ClientBooking } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
 import { useNavigate } from 'react-router-dom';
@@ -15,12 +15,14 @@ import AdminPageHeader from '../components/admin/AdminPageHeader';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { studioSlotDate, todayStrSaoPaulo } from '../utils/time';
-import { CalendarDays, Mic, Clock, List } from 'lucide-react';
+import { CalendarDays, Mic, Clock, List, Radio } from 'lucide-react';
 import CalendarMobileView from '../components/calendar/CalendarMobileView';
 import CalendarDesktopView from '../components/calendar/CalendarDesktopView';
 import { TIER_COLORS, getWeekDates, formatDate, BookingLookup } from '../components/calendar/calendarShared';
 import { peekPendingIntent, clearPendingIntent, type PendingIntent } from '../utils/pendingIntent';
 import type { ContractWizardPrefill } from '../components/ContractWizard';
+import { LIVE_BADGE_LABEL, hasOpenSessionToday, isRecordingLive, sessionEndMs, useRecordingWatch } from '../utils/recording';
+import { TIER_META, getMeta } from '../constants/adminMeta';
 
 /**
  * Data/dia iniciais da agenda. No domingo a grade Seg–Sáb da semana corrente
@@ -92,12 +94,15 @@ export default function CalendarPage() {
     const lastSelectedSlot = useRef<{ date: string, time: string, tier: string, price: number } | null>(null);
     if (selectedSlot) lastSelectedSlot.current = selectedSlot;
 
+    // E12: o detalhe DESMONTA ao fechar e tem `key` = id — o texto digitado e não salvo e os dados da
+    // gravação anterior não reaparecem ao reabrir/trocar de agendamento.
     const [detailBooking, setDetailBooking] = useState<{ date: string, booking: MyBookingSlot } | null>(null);
-    const lastDetailBooking = useRef<{ date: string, booking: MyBookingSlot } | null>(null);
-    if (detailBooking) lastDetailBooking.current = detailBooking;
 
     const [activeTab, setActiveTab] = useState<'agendar' | 'agendados'>('agendar');
-    const [allMyBookings, setAllMyBookings] = useState<any[]>([]);
+    // Lista completa do cliente (GET /bookings/my) + o instante da leitura: "Seus Agendamentos" junta
+    // esta lista com a da semana (GET /availability) e vale SEMPRE a leitura mais recente de cada uma.
+    const [allMy, setAllMy] = useState<{ list: ClientBooking[]; at: number }>({ list: [], at: 0 });
+    const [weekFetchedAt, setWeekFetchedAt] = useState<Record<string, number>>({});
 
     const [showWizard, setShowWizard] = useState(false);
     // D16: "Criar Novo Contrato" no BookingModal abre o wizard já com a faixa, a data e a hora do horário.
@@ -133,19 +138,24 @@ export default function CalendarPage() {
     const loadWeekData = useCallback(async (dates: Date[]) => {
         setIsFetchingWeek(true);
         setLoadError(false);
+        // Instante do PEDIDO (comparável ao do GET /my): decide qual leitura vale em "Seus Agendamentos".
+        const fetchedAt = Date.now();
         try {
             const results = await Promise.all(
                 dates.map(d => bookingsApi.getAvailability(formatDate(d)))
             );
             const newSlotsMap: Record<string, Slot[]> = {};
             const newMyBookingsMap: Record<string, MyBookingSlot[]> = {};
+            const newFetchedAt: Record<string, number> = {};
             results.forEach((res, i) => {
                 const dateKey = formatDate(dates[i]);
                 newSlotsMap[dateKey] = res.slots;
                 newMyBookingsMap[dateKey] = res.myBookings || [];
+                newFetchedAt[dateKey] = fetchedAt;
             });
             setSlotsMap(prev => ({ ...prev, ...newSlotsMap }));
             setMyBookingsMap(prev => ({ ...prev, ...newMyBookingsMap }));
+            setWeekFetchedAt(prev => ({ ...prev, ...newFetchedAt }));
 
             if (isAdmin) {
                 const bookingResults = await Promise.all(
@@ -164,6 +174,15 @@ export default function CalendarPage() {
         }
     }, [isAdmin]);
 
+    // Lista completa do cliente — silenciosa (a galeria não pisca); uma falha mantém o que já estava.
+    const loadMyBookings = useCallback(() => {
+        if (isAdmin) return;
+        const startedAt = Date.now();
+        bookingsApi.getMy()
+            .then(res => setAllMy(prev => (startedAt >= prev.at ? { list: res.bookings, at: startedAt } : prev)))
+            .catch(err => console.error('Failed to fetch all bookings', err));
+    }, [isAdmin]);
+
     useEffect(() => {
         const dates = getWeekDates(currentWeek);
         setWeekDates(dates);
@@ -177,16 +196,12 @@ export default function CalendarPage() {
             if (document.visibilityState === 'visible') {
                 const dates = getWeekDates(currentWeek);
                 loadWeekData(dates);
-                if (!isAdmin) {
-                    bookingsApi.getMy()
-                        .then(res => setAllMyBookings(res.bookings))
-                        .catch(() => {});
-                }
+                loadMyBookings();
             }
         };
         document.addEventListener('visibilitychange', handleVisibility);
         return () => document.removeEventListener('visibilitychange', handleVisibility);
-    }, [currentWeek, loadWeekData, isAdmin]);
+    }, [currentWeek, loadWeekData, loadMyBookings]);
 
     useEffect(() => {
         pricingApi.get().then(res => setPricing(res.pricing)).catch(err => console.error(err));
@@ -382,45 +397,46 @@ export default function CalendarPage() {
     }, []);
 
     // Fetch all user bookings on mount so the Agendados carrousel has the complete list
-    useEffect(() => {
-        if (!isAdmin && user?.role !== 'ADMIN') {
-            bookingsApi.getMy()
-                .then(res => setAllMyBookings(res.bookings))
-                .catch(err => console.error("Failed to fetch all bookings", err));
-        }
-    }, [isAdmin, user]);
+    useEffect(() => { loadMyBookings(); }, [loadMyBookings]);
 
-    // ─── Derive upcoming bookings from allMyBookings + myBookingsMap ───
+    // E11: enquanto houver sessão de hoje em aberto (reservada, confirmada ou já em gravação), recarrega a lista de
+    // tempos em tempos — o selo "AO VIVO" liga quando o estúdio inicia e a sessão sai de "Agendados"
+    // quando ele finaliza. (A volta para a aba já é tratada pelo handler de visibilidade acima.)
+    useRecordingWatch(!isAdmin && hasOpenSessionToday(allMy.list), loadMyBookings, { onVisible: false });
+
+    // ─── Derive upcoming bookings from allMy (GET /my) + myBookingsMap (semana) ───
     const DAY_NAMES_FULL = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
     const upcomingBookings = useMemo(() => {
-        const now = new Date();
-        const map = new Map<string, { booking: any; date: string; dateObj: Date }>();
+        const now = Date.now();
+        const map = new Map<string, { booking: ClientBooking; date: string; dateObj: Date }>();
+        // Agendado = reservado/confirmado que ainda não terminou. A sessão continua na lista até o FIM do
+        // horário e enquanto estiver sendo gravada (antes ela sumia no minuto em que começava).
+        const add = (b: ClientBooking, dateStr: string) => {
+            if (b.status === 'RESERVED' && b.holdExpiresAt && new Date(b.holdExpiresAt).getTime() <= now) return;
+            if (b.status !== 'RESERVED' && b.status !== 'CONFIRMED') return;
+            const live = isRecordingLive(b);
+            if (!live && sessionEndMs(dateStr, b.startTime, b.endTime) < now) return;
+            map.set(b.id, { booking: b, date: dateStr, dateObj: studioSlotDate(dateStr, b.startTime) });
+        };
 
-        // 1. Add all globally fetched bookings
-        allMyBookings.forEach(b => {
-            if (b.status === 'RESERVED' && b.holdExpiresAt && new Date(b.holdExpiresAt).getTime() <= Date.now()) return;
-            const dateStr = b.date.split('T')[0];
-            const slotDatetime = studioSlotDate(dateStr, b.startTime);
-            if (slotDatetime >= now && (b.status === 'RESERVED' || b.status === 'CONFIRMED')) {
-                map.set(b.id, { booking: b, date: dateStr, dateObj: slotDatetime });
-            }
-        });
+        // 1. Lista completa (GET /my)
+        allMy.list.forEach(b => add(b, b.date.split('T')[0]));
 
-        // 2. Merge/Overwrite with freshly fetched data from the week view
+        // 2. Semana visível (GET /availability): mesma forma do /my. Só entra por cima quando foi lida
+        //    DEPOIS do /my — senão um dado velho da semana desfaria o que o /my acabou de trazer (título
+        //    salvo, "AO VIVO", gravação finalizada/cancelada).
         for (const [dateStr, bookings] of Object.entries(myBookingsMap)) {
+            if (allMy.at > 0 && (weekFetchedAt[dateStr] ?? 0) <= allMy.at) continue;
             for (const b of bookings) {
-                if (b.status === 'RESERVED' && b.holdExpiresAt && new Date(b.holdExpiresAt).getTime() <= Date.now()) continue;
-                const slotDatetime = studioSlotDate(dateStr, b.startTime);
-                if (slotDatetime >= now && (b.status === 'RESERVED' || b.status === 'CONFIRMED')) {
-                    map.set(b.id, { booking: b, date: dateStr, dateObj: slotDatetime });
-                }
+                map.delete(b.id);
+                add(b, dateStr);
             }
         }
 
         const list = Array.from(map.values());
         list.sort((a, b) => a.dateObj.getTime() - b.dateObj.getTime());
         return list;
-    }, [myBookingsMap, allMyBookings]);
+    }, [myBookingsMap, allMy, weekFetchedAt]);
 
     return (
         <div>
@@ -541,22 +557,27 @@ export default function CalendarPage() {
                                             const dayLabel = DAY_NAMES_FULL[item.dateObj.getUTCDay()];
                                             const dateLabel = item.dateObj.toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit' });
                                             const isToday = item.date === todayStrSaoPaulo();
-                                            const b = item.booking as { coverImageUrl?: string | null; episodeTitle?: string | null; contract?: { name?: string } | null; tierApplied: string; startTime: string; endTime: string };
-                                            const title = b.episodeTitle || b.contract?.name || b.tierApplied;
+                                            const b = item.booking;
+                                            // Sem título nem nome do contrato: rótulo legível da faixa ("Audiência"), nunca a chave.
+                                            const title = b.episodeTitle || b.contract?.name || getMeta(TIER_META, b.tierApplied).label;
+                                            // E11: "AO VIVO" só enquanto o estúdio está gravando (isRecordingNow).
+                                            const live = isRecordingLive(b);
                                             return (
                                                 <PosterCard
-                                                    key={`${item.date}-${item.booking.startTime}`}
+                                                    key={b.id}
                                                     index={i}
                                                     tone="teal"
-                                                    highlight={isToday}
+                                                    highlight={isToday && !live}
+                                                    live={live}
                                                     coverUrl={b.coverImageUrl}
                                                     placeholder={<Mic size={46} strokeWidth={1.25} />}
+                                                    badgeTopLeft={live ? <span className="poster-chip poster-chip--live"><Radio size={10} aria-hidden="true" /> {LIVE_BADGE_LABEL}</span> : undefined}
                                                     badgeTopRight={isToday ? <span className="poster-chip poster-chip--today">Hoje</span> : undefined}
                                                     eyebrow={`${dayLabel}, ${dateLabel}`}
                                                     title={title}
                                                     footer={<span className="poster-card__time">{b.startTime} — {b.endTime}</span>}
-                                                    ariaLabel={`${title}, ${isToday ? 'hoje, ' : ''}${dayLabel} ${dateLabel}, ${b.startTime} às ${b.endTime}`}
-                                                    onClick={() => setDetailBooking({ booking: item.booking, date: item.date })}
+                                                    ariaLabel={`${title}, ${live ? 'ao vivo, gravando agora, ' : ''}${isToday ? 'hoje, ' : ''}${dayLabel} ${dateLabel}, ${b.startTime} às ${b.endTime}. Abrir detalhes e informações da gravação`}
+                                                    onClick={() => setDetailBooking({ booking: b, date: item.date })}
                                                 />
                                             );
                                         })}
@@ -676,51 +697,25 @@ export default function CalendarPage() {
             )}
 
             {/* ─── DETAIL MODAL ─── */}
-            {(detailBooking || lastDetailBooking.current) && (
-                <BookingDetailModal
-                    isOpen={!!detailBooking}
-                    booking={detailBooking ? {
-                        id: detailBooking.booking.id,
-                        date: detailBooking.date,
-                        startTime: detailBooking.booking.startTime,
-                        endTime: detailBooking.booking.endTime,
-                        tierApplied: detailBooking.booking.tierApplied,
-                        status: detailBooking.booking.status,
-                        price: detailBooking.booking.price,
-                        clientNotes: detailBooking.booking.clientNotes,
-                        adminNotes: detailBooking.booking.adminNotes,
-                        platforms: detailBooking.booking.platforms,
-                        platformLinks: detailBooking.booking.platformLinks,
-                        addOns: detailBooking.booking.addOns,
-                        holdExpiresAt: detailBooking.booking.holdExpiresAt,
-                    } : {
-                        id: lastDetailBooking.current!.booking.id,
-                        date: lastDetailBooking.current!.date,
-                        startTime: lastDetailBooking.current!.booking.startTime,
-                        endTime: lastDetailBooking.current!.booking.endTime,
-                        tierApplied: lastDetailBooking.current!.booking.tierApplied,
-                        status: lastDetailBooking.current!.booking.status,
-                        price: lastDetailBooking.current!.booking.price,
-                        clientNotes: lastDetailBooking.current!.booking.clientNotes,
-                        adminNotes: lastDetailBooking.current!.booking.adminNotes,
-                        platforms: lastDetailBooking.current!.booking.platforms,
-                        platformLinks: lastDetailBooking.current!.booking.platformLinks,
-                        addOns: lastDetailBooking.current!.booking.addOns,
-                        holdExpiresAt: lastDetailBooking.current!.booking.holdExpiresAt,
-                    }}
-                    onClose={() => setDetailBooking(null)}
-                    onSaved={() => { setDetailBooking(null); loadWeekData(weekDates); }}
-                    allAddons={allAddons}
-                    contractDiscountPct={(() => {
-                        const parent = contracts.find(c => c.bookings?.some(b => b.id === (detailBooking || lastDetailBooking.current)?.booking.id));
-                        return parent?.discountPct || 0;
-                    })()}
-                    contractAddOns={(() => {
-                        const parent = contracts.find(c => c.bookings?.some(b => b.id === (detailBooking || lastDetailBooking.current)?.booking.id));
-                        return parent?.addOns || [];
-                    })()}
-                />
-            )}
+            {/* E12: montado só enquanto aberto e com key = id (estado não vaza entre aberturas). Recebe a
+                reserva completa do cliente (título/capa/contrato já aparecem na hora); o modal relê por id. */}
+            {detailBooking && (() => {
+                const parent = contracts.find(c => c.bookings?.some(b => b.id === detailBooking.booking.id));
+                const reloadLists = () => { loadWeekData(weekDates); loadMyBookings(); };
+                return (
+                    <BookingDetailModal
+                        key={detailBooking.booking.id}
+                        booking={detailBooking.booking}
+                        onClose={() => setDetailBooking(null)}
+                        // Salvou: fecha e relê a semana E a lista completa — o card passa a mostrar título/capa salvos.
+                        onSaved={() => { setDetailBooking(null); reloadLists(); }}
+                        onChanged={reloadLists}
+                        allAddons={allAddons}
+                        contractDiscountPct={parent?.discountPct || 0}
+                        contractAddOns={parent?.addOns || []}
+                    />
+                );
+            })()}
 
             <BottomSheetModal isOpen={showPastSlotAlert} onClose={() => setShowPastSlotAlert(false)} title="Ação Indisponível">
                 <div style={{ padding: '0 20px 30px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>

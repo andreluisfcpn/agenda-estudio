@@ -191,7 +191,8 @@ export default function LandingPage() {
                 <button
                     className="landing-navbar-hamburger"
                     onClick={() => setMobileMenuOpen(prev => !prev)}
-                    aria-label="Menu"
+                    aria-label={mobileMenuOpen ? 'Fechar menu' : 'Abrir menu'}
+                    aria-expanded={mobileMenuOpen}
                 >
                     {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
                 </button>

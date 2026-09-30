@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { focusProgrammatically } from '../utils/focus';
 
 const FOCUSABLE_SELECTOR = [
     'a[href]',
@@ -39,14 +40,16 @@ export function useFocusTrap<T extends HTMLElement = HTMLDivElement>(active: boo
         const previouslyFocused = document.activeElement as HTMLElement | null;
 
         // Move focus into the dialog after it mounts/animates in.
+        // focusProgrammatically: foco de SCRIPT (não navegação do usuário) — o ui/Tooltip do 1º
+        // focável (ex.: o "Fechar" do sheet) não abre sozinho, mesmo se a última tecla foi Tab/seta.
         const focusInitial = () => {
             const focusables = container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
             const first = focusables[0];
             if (first) {
-                first.focus();
+                focusProgrammatically(first);
             } else {
                 // No focusable child — focus the container itself (needs tabIndex={-1}).
-                container.focus();
+                focusProgrammatically(container);
             }
         };
         // rAF so framer-motion has mounted the content before we query/focus.
@@ -68,6 +71,7 @@ export function useFocusTrap<T extends HTMLElement = HTMLDivElement>(active: boo
             const last = focusables[focusables.length - 1];
             const activeEl = document.activeElement as HTMLElement | null;
 
+            // Wrap do Tab/Shift+Tab: é navegação do USUÁRIO — `.focus()` puro, a dica do alvo abre.
             if (e.shiftKey) {
                 if (activeEl === first || !container.contains(activeEl)) {
                     e.preventDefault();
@@ -88,9 +92,9 @@ export function useFocusTrap<T extends HTMLElement = HTMLDivElement>(active: boo
             if (idx !== -1) focusTrapStack.splice(idx, 1);
             cancelAnimationFrame(raf);
             document.removeEventListener('keydown', handleKeyDown, true);
-            // Restore focus to the trigger if it's still in the document.
+            // Restore focus to the trigger if it's still in the document (foco de script: sem dica).
             if (previouslyFocused && document.contains(previouslyFocused)) {
-                previouslyFocused.focus();
+                focusProgrammatically(previouslyFocused);
             }
         };
     }, [active]);

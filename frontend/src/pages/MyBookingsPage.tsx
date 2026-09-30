@@ -1,7 +1,7 @@
 import HeroAmbient from '../components/client/HeroAmbient';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { bookingsApi, pricingApi, Booking, AddOnConfig } from '../api/client';
+import { bookingsApi, pricingApi, AddOnConfig, type ClientBooking } from '../api/client';
 import { Clapperboard, Radio, BarChart3, Eye, TrendingUp, Heart, Youtube, Instagram, Facebook, Music2, type LucideIcon } from 'lucide-react';
 import StatCard from '../components/ui/StatCard';
 import Skeleton from '../components/ui/SkeletonLoader';
@@ -11,6 +11,10 @@ import { studioSlotDate } from '../utils/time';
 import { PLATFORM_BY_KEY, parseStreamMetrics, parsePlatforms } from '../constants/platforms';
 import { isBookingMakeupOpen } from '../utils/contractStatus';
 import { makeupDeadlineDdmm } from '../utils/avulsoMakeup';
+import {
+    LIVE_BADGE_LABEL, LIVE_STATUS_LABEL, LIVESTREAMED_LABEL,
+    hasOpenSessionToday, isRecordingLive, useRecordingWatch, wasLivestreamed,
+} from '../utils/recording';
 import '../styles/makeup.css';
 
 const PLATFORM_ICON: Record<string, LucideIcon> = {
@@ -18,33 +22,42 @@ const PLATFORM_ICON: Record<string, LucideIcon> = {
 };
 
 /** Falta justificada / não realizada com a remarcação sem novo pagamento ainda em aberto (D4/D5). */
-const hasOpenMakeup = (b: Booking) => (b.status === 'FALTA' || b.status === 'NAO_REALIZADO') && isBookingMakeupOpen(b);
+const hasOpenMakeup = (b: ClientBooking) => (b.status === 'FALTA' || b.status === 'NAO_REALIZADO') && isBookingMakeupOpen(b);
 
 export default function MyBookingsPage() {
     const navigate = useNavigate();
     const location = useLocation();
-    // Vindo do aviso do Início ("Remarcar"): abre direto o detalhe da gravação a remarcar.
+    // Vindo do Início (aviso "Remarcar" ou clique num card de agendamento/gravação): abre direto o detalhe.
     const openBookingId = (location.state as { openBookingId?: string } | null)?.openBookingId ?? null;
-    const [bookings, setBookings] = useState<Booking[]>([]);
+    const [bookings, setBookings] = useState<ClientBooking[]>([]);
     const [addons, setAddons] = useState<AddOnConfig[]>([]);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState(false);
-    const [detail, setDetail] = useState<Booking | null>(null);
+    const [detail, setDetail] = useState<ClientBooking | null>(null);
 
-    useEffect(() => { loadBookings(); }, []);
+    // `silent`: recarrega sem esqueleto (depois de salvar no detalhe e no acompanhamento da gravação em
+    // andamento) — a galeria não pisca nem perde a posição do scroll; uma falha mantém a lista atual.
+    const loadBookings = useCallback(async (silent = false) => {
+        if (!silent) { setLoading(true); setLoadError(false); }
+        try {
+            const { bookings } = await bookingsApi.getMy();
+            setBookings(bookings);
+            setLoadError(false);
+        } catch (err) {
+            console.error('Failed to load bookings:', err);
+            if (!silent) setLoadError(true);
+        } finally { if (!silent) setLoading(false); }
+    }, []);
+
+    useEffect(() => { void loadBookings(); }, [loadBookings]);
     useEffect(() => {
         pricingApi.getAddons().then(r => setAddons(r.addons)).catch(() => {});
     }, []);
 
-    const loadBookings = async () => {
-        setLoading(true);
-        setLoadError(false);
-        try {
-            const { bookings } = await bookingsApi.getMy();
-            setBookings(bookings);
-        } catch (err) { console.error('Failed to load bookings:', err); setLoadError(true); }
-        finally { setLoading(false); }
-    };
+    // E11: `isRecordingNow` é calculado na resposta do servidor. Enquanto houver sessão de hoje em aberto
+    // (reservada, confirmada ou já em gravação) a lista é recarregada de tempos em tempos e ao voltar para a aba —
+    // o "AO VIVO" aparece quando o estúdio inicia e some quando finaliza, sem recarregar a página.
+    useRecordingWatch(hasOpenSessionToday(bookings), () => { void loadBookings(true); });
 
     // Abre (uma vez) a gravação pedida pelo aviso do Início, depois que a lista carrega.
     useEffect(() => {
@@ -55,7 +68,7 @@ export default function MyBookingsPage() {
     }, [loading, openBookingId, bookings, navigate, location.pathname]);
 
     // Nunca exibir o status cru: falta justificada (D4) e não realizada (D5) têm rótulo próprio.
-    const statusLabel = (b: Booking) => {
+    const statusLabel = (b: ClientBooking) => {
         switch (b.status) {
             case 'COMPLETED': return 'Concluída';
             case 'FALTA': return b.makeupStatus === 'OPEN' || b.makeupStatus === 'EXPIRED' ? 'Falta justificada' : 'Falta';
@@ -74,6 +87,13 @@ export default function MyBookingsPage() {
             if (ma && mb) return new Date(a.makeupDeadline!).getTime() - new Date(b.makeupDeadline!).getTime();
             return studioSlotDate(b.date.split('T')[0], b.startTime).getTime() - studioSlotDate(a.date.split('T')[0], a.startTime).getTime();
         });
+
+    // Gravação acontecendo AGORA (estúdio clicou "Iniciar gravação" e ainda não finalizou): entra na
+    // frente da galeria com o selo "AO VIVO". Não conta nos totais (só COMPLETED conta).
+    const liveNow = bookings
+        .filter(isRecordingLive)
+        .sort((a, b) => studioSlotDate(a.date.split('T')[0], a.startTime).getTime() - studioSlotDate(b.date.split('T')[0], b.startTime).getTime());
+    const recordings = [...liveNow, ...finalized];
 
     const completedRecs = finalized.filter(b => b.status === 'COMPLETED');
     const agg = completedRecs.reduce((acc, b) => {
@@ -125,21 +145,21 @@ export default function MyBookingsPage() {
                 <div className="client-empty animate-card-enter">
                     <Clapperboard size={32} className="client-empty__icon" />
                     <div className="client-empty__text">Não foi possível carregar suas gravações.</div>
-                    <button className="btn btn-primary btn-sm" style={{ marginTop: 10 }} onClick={loadBookings}>Tentar novamente</button>
+                    <button type="button" className="btn btn-primary btn-sm" style={{ marginTop: 10 }} onClick={() => { void loadBookings(); }}>Tentar novamente</button>
                 </div>
-            ) : !loading && finalized.length === 0 ? (
+            ) : !loading && recordings.length === 0 ? (
                 <div className="client-empty animate-card-enter">
                     <Clapperboard size={32} className="client-empty__icon" />
                     <div className="client-empty__text">Nenhuma gravação realizada ainda.</div>
                     <p className="booking-section-header__desc" style={{ marginTop: 6 }}>
-                        Suas sessões aparecerão aqui com métricas após serem concluídas pelo estúdio.
+                        Suas sessões aparecem aqui enquanto estão sendo gravadas e, depois de concluídas pelo estúdio, com as métricas.
                     </p>
                 </div>
             ) : (
                 <PosterGallery
-                    revision={loading ? 'loading' : finalized.length}
+                    revision={loading ? 'loading' : recordings.length}
                     busy={loading}
-                    label="Gravações realizadas"
+                    label="Suas gravações"
                 >
                     {loading
                         ? [0, 1, 2].map(i => (
@@ -147,7 +167,9 @@ export default function MyBookingsPage() {
                                 <Skeleton variant="rounded" width="100%" height="100%" />
                             </div>
                         ))
-                        : finalized.map((b, i) => {
+                        : recordings.map((b, i) => {
+                            const live = isRecordingLive(b);
+                            const livestreamed = wasLivestreamed(b);
                             const recPlatforms = parsePlatforms(b.platforms);
                             const title = b.episodeTitle || b.contract?.name || 'Gravação';
                             const dateLabel = new Date(b.date)
@@ -162,8 +184,13 @@ export default function MyBookingsPage() {
                             }
                             const hasStats = views > 0 || likes > 0 || peak > 0 || recPlatforms.length > 0;
                             const makeupOpen = hasOpenMakeup(b) && !!b.makeupDeadline;
-                            const chipText = makeupOpen ? `Remarcar até ${makeupDeadlineDdmm(b.makeupDeadline!)}` : statusLabel(b);
-                            const a11yLabel = `${title}, ${b.isLivestream ? 'ao vivo, ' : ''}${statusLabel(b)}${makeupOpen ? `, ${chipText.toLowerCase()} sem novo pagamento` : ''}, ${dateLabel} às ${b.startTime}`
+                            const chipText = live ? LIVE_STATUS_LABEL
+                                : makeupOpen ? `Remarcar até ${makeupDeadlineDdmm(b.makeupDeadline!)}` : statusLabel(b);
+                            // "ao vivo" só na gravação em andamento; a concluída que foi transmitida diz "transmitida ao vivo".
+                            const a11yLabel = `${title}, ${live ? `ao vivo, ${LIVE_STATUS_LABEL.toLowerCase()}` : statusLabel(b)}`
+                                + (livestreamed ? `, ${LIVESTREAMED_LABEL.toLowerCase()}` : '')
+                                + (makeupOpen ? `, ${chipText.toLowerCase()} sem novo pagamento` : '')
+                                + `, ${dateLabel} às ${b.startTime}`
                                 + (views > 0 ? `, ${fmtNum(views)} visualizações` : '')
                                 + (likes > 0 ? `, ${fmtNum(likes)} curtidas` : peak > 0 ? `, pico de ${fmtNum(peak)} ao vivo` : '')
                                 + (recPlatforms.length > 0 ? `, em ${recPlatforms.map(k => PLATFORM_BY_KEY[k]?.label || k).join(', ')}` : '');
@@ -174,10 +201,15 @@ export default function MyBookingsPage() {
                                     tone="violet"
                                     coverUrl={b.coverImageUrl}
                                     placeholder={<Clapperboard size={46} strokeWidth={1.25} />}
-                                    badgeTopLeft={b.isLivestream ? <span className="poster-chip poster-chip--live"><Radio size={10} /> AO VIVO</span> : undefined}
-                                    badgeTopRight={makeupOpen
-                                        ? <span className="poster-chip poster-chip--makeup">{chipText}</span>
-                                        : <span className={`poster-chip poster-chip--status ${b.status === 'COMPLETED' ? 'poster-chip--ok' : 'poster-chip--miss'}`}>{chipText}</span>}
+                                    live={live}
+                                    // E11: "AO VIVO" SÓ enquanto a gravação está acontecendo (isRecordingNow) — nunca por isLivestream.
+                                    badgeTopLeft={live ? <span className="poster-chip poster-chip--live"><Radio size={10} aria-hidden="true" /> {LIVE_BADGE_LABEL}</span> : undefined}
+                                    badgeTopRight={live
+                                        ? <span className="poster-chip poster-chip--status poster-chip--recording">{chipText}</span>
+                                        : makeupOpen
+                                            ? <span className="poster-chip poster-chip--makeup">{chipText}</span>
+                                            : <span className={`poster-chip poster-chip--status ${b.status === 'COMPLETED' ? 'poster-chip--ok' : 'poster-chip--miss'}`}>{chipText}</span>}
+                                    seal={livestreamed ? <><Radio size={10} aria-hidden="true" /> {LIVESTREAMED_LABEL}</> : undefined}
                                     eyebrow={<><span style={{ textTransform: 'capitalize' }}>{dateLabel}</span> · {b.startTime}</>}
                                     title={title}
                                     ariaLabel={a11yLabel}
@@ -207,9 +239,11 @@ export default function MyBookingsPage() {
             {/* Unified detail modal */}
             {detail && (
                 <BookingDetailModal
+                    key={detail.id}
                     booking={detail}
                     onClose={() => setDetail(null)}
-                    onSaved={() => { setDetail(null); loadBookings(); }}
+                    onSaved={() => { setDetail(null); void loadBookings(true); }}
+                    onChanged={() => { void loadBookings(true); }}
                     allAddons={addons}
                 />
             )}

@@ -1,15 +1,17 @@
 import { getErrorMessage } from '../../../utils/errors';
 import { useState, useEffect } from 'react';
-import { bookingsApi, contractsApi, usersApi, BookingWithUser, Contract, UserSummary } from '../../../api/client';
+import { bookingsApi, contractsApi, usersApi, ApiError, BookingWithUser, Contract, UserSummary } from '../../../api/client';
 import { useUI } from '../../../context/UIContext';
 import { useNavigate } from 'react-router-dom';
 import StatusBadge from '../../ui/StatusBadge';
+import Tooltip from '../../ui/Tooltip';
 import StatusReasonModal, { type ReasonKind, type ReasonConfirmOptions } from '../bookings/StatusReasonModal';
+import { bookingSummary } from '../bookings/bookingDanger';
 import AdminPageHeader from '../AdminPageHeader';
 import { DashboardSkeleton } from '../../ui/SkeletonLoader';
 import {
     CalendarDays, LayoutDashboard, Flag, XCircle, ClipboardCheck, AlertTriangle,
-    AlertCircle, Clock, CheckCircle2, TrendingUp, CalendarClock, Target, Moon, Radio,
+    AlertCircle, Clock, CheckCircle2, TrendingUp, CalendarClock, Target, Moon, Radio, Undo2,
 } from 'lucide-react';
 import { TIER_META, BOOKING_STATUS_META, CONTRACT_TYPE_META, getMeta } from '../../../constants/adminMeta';
 import { isAvulsoContract, isBookingMakeupOpen } from '../../../utils/contractStatus';
@@ -55,7 +57,7 @@ function daysUntil(dateStr: string): number {
 
 export default function AdminDashboard() {
     const navigate = useNavigate();
-    const { showToast } = useUI();
+    const { showToast, showConfirm } = useUI();
     const { get: getRule } = useBusinessConfig();
     const [allBookings, setAllBookings] = useState<BookingWithUser[]>([]);
     const [allContracts, setAllContracts] = useState<Contract[]>([]);
@@ -89,7 +91,44 @@ export default function AdminDashboard() {
             else res = await bookingsApi.complete(id);
             showToast(res.message);
             await loadAll();
-        } catch (err: unknown) { showToast(getErrorMessage(err) || 'Erro ao atualizar.'); }
+        } catch (err: unknown) {
+            showToast({ message: getErrorMessage(err) || 'Erro ao atualizar.', type: 'error' });
+            // "Finalizar" recusado porque a gravação mudou em outra tela (início desfeito / status): o painel está velho.
+            if (err instanceof ApiError && err.code === 'RECORDING_STATE_CHANGED') void loadAll();
+        }
+    };
+
+    // "Iniciar" clicado por engano: desfaz o início (mesmo fluxo e mesmos textos da tela Hoje). O cliente
+    // deixa de ver "AO VIVO" e a sessão volta a pedir "Iniciar" antes de finalizar. Sem try/catch no
+    // onConfirm: o erro da API (ex.: 409 RECORDING_UNDO_NOT_ALLOWED) aparece DENTRO do diálogo.
+    const handleUndoStartRecording = (booking: BookingWithUser) => {
+        showConfirm({
+            tone: 'warning',
+            icon: Undo2,
+            title: 'Desfazer o início da gravação?',
+            message: bookingSummary(booking),
+            consequences: [
+                'O registro de quem iniciou e do horário de início é apagado.',
+                'O cliente deixa de ver o selo "AO VIVO" nesta gravação.',
+                'Para finalizar, será preciso clicar em "Iniciar gravação" de novo.',
+                'O agendamento continua confirmado — nada é cancelado nem cobrado.',
+            ],
+            confirmLabel: 'Desfazer início',
+            loadingLabel: 'Desfazendo…',
+            onConfirm: async () => {
+                // Recusado (ex.: outra aba já finalizou): o painel daqui está velho — recarrega por trás do diálogo.
+                const res = await bookingsApi.undoStartRecording(booking.id).catch((err: unknown) => { void loadAll(); throw err; });
+                // A rota devolve a reserva SEM `user`: mescla só os campos do início no item da lista.
+                const u = res.booking;
+                setAllBookings(prev => prev.map(b => b.id === booking.id ? {
+                    ...b,
+                    status: u?.status ?? b.status,
+                    recordingStartedAt: u?.recordingStartedAt ?? null,
+                    recordingStartedByName: u?.recordingStartedByName ?? null,
+                } : b));
+                showToast(res.message || 'Início da gravação desfeito.');
+            },
+        });
     };
 
     // Falta / Não Realizado passam pelo modal que exige o MOTIVO antes de aplicar o status (igual à tela Hoje).
@@ -222,11 +261,12 @@ export default function AdminDashboard() {
                                     <div className="dash-slot__main">
                                         {b ? (
                                             <>
-                                                <button className="dash-name-btn"
-                                                    title={`Abrir perfil de ${b.user.name}`}
-                                                    onClick={() => navigate(`/admin/clients/${b.user.id}`)}>
-                                                    {b.user.name}
-                                                </button>
+                                                <Tooltip content={`Abrir perfil de ${b.user.name}`}>
+                                                    <button type="button" className="dash-name-btn"
+                                                        onClick={() => navigate(`/admin/clients/${b.user.id}`)}>
+                                                        {b.user.name}
+                                                    </button>
+                                                </Tooltip>
                                                 <StatusBadge meta={getMeta(TIER_META, b.tierApplied)} />
                                                 <StatusBadge meta={getMeta(BOOKING_STATUS_META, b.status)} />
                                                 <span className="dash-slot__price">{formatBRL(b.price)}</span>
@@ -241,36 +281,60 @@ export default function AdminDashboard() {
                                     {/* Quick Actions */}
                                     {b && b.status === 'RESERVED' && !isPast && (
                                         <div className="dash-slot__actions">
-                                            <button className="today-action-btn today-action-btn--info" title="Check-in (Confirmar Presença)"
-                                                onClick={() => handleQuickAction(b.id, 'checkin')}>
-                                                <ClipboardCheck size={14} aria-hidden="true" /> Check-in
-                                            </button>
-                                            <button className="today-action-btn today-action-btn--danger" title="Registrar Falta"
-                                                aria-label="Registrar falta"
-                                                onClick={() => setReasonModal({ booking: b, kind: 'FALTA' })}>
-                                                <XCircle size={15} aria-hidden="true" />
-                                            </button>
+                                            <Tooltip content="Confirmar presença (check-in)">
+                                                <button type="button" className="today-action-btn today-action-btn--info"
+                                                    onClick={() => handleQuickAction(b.id, 'checkin')}>
+                                                    <ClipboardCheck size={14} aria-hidden="true" /> Check-in
+                                                </button>
+                                            </Tooltip>
+                                            <Tooltip content="Registrar falta" describe={false}>
+                                                <button type="button" className="today-action-btn today-action-btn--danger"
+                                                    aria-label={`Registrar falta de ${b.user.name}`}
+                                                    onClick={() => setReasonModal({ booking: b, kind: 'FALTA' })}>
+                                                    <XCircle size={15} aria-hidden="true" />
+                                                </button>
+                                            </Tooltip>
                                         </div>
                                     )}
-                                    {b && b.status === 'CONFIRMED' && !isPast && (
+                                    {/* Sessão já INICIADA continua com Desfazer/Finalizar depois do fim do horário (senão o
+                                        cliente ficaria vendo “AO VIVO” sem o operador ter onde finalizar). */}
+                                    {b && b.status === 'CONFIRMED' && (!isPast || !!b.recordingStartedAt) && (
                                         <div className="dash-slot__actions">
                                             {/* Iniciar Gravação é obrigatório antes de finalizar (registra o operador presente). */}
                                             {!b.recordingStartedAt ? (
-                                                <button className="today-action-btn today-action-btn--danger" title="Iniciar Gravação"
-                                                    onClick={() => handleQuickAction(b.id, 'start')}>
-                                                    <Radio size={14} aria-hidden="true" /> Iniciar
-                                                </button>
+                                                <Tooltip content="Iniciar gravação">
+                                                    <button type="button" className="today-action-btn today-action-btn--danger"
+                                                        onClick={() => handleQuickAction(b.id, 'start')}>
+                                                        <Radio size={14} aria-hidden="true" /> Iniciar
+                                                    </button>
+                                                </Tooltip>
                                             ) : (
-                                                <button className="today-action-btn today-action-btn--success" title="Finalizar Sessão"
-                                                    onClick={() => handleQuickAction(b.id, 'complete')}>
-                                                    <Flag size={14} aria-hidden="true" /> Finalizar
-                                                </button>
+                                                <>
+                                                    {/* Em gravação: "Iniciar" clicado por engano pode ser desfeito (igual à tela Hoje). */}
+                                                    <Tooltip content="Desfazer início da gravação" describe={false}>
+                                                        <button type="button" className="today-action-btn today-action-btn--neutral"
+                                                            aria-label={`Desfazer início da gravação de ${b.user.name}`}
+                                                            onClick={() => handleUndoStartRecording(b)}>
+                                                            <Undo2 size={15} aria-hidden="true" />
+                                                        </button>
+                                                    </Tooltip>
+                                                    <Tooltip content="Finalizar sessão">
+                                                        <button type="button" className="today-action-btn today-action-btn--success"
+                                                            onClick={() => handleQuickAction(b.id, 'complete')}>
+                                                            <Flag size={14} aria-hidden="true" /> Finalizar
+                                                        </button>
+                                                    </Tooltip>
+                                                </>
                                             )}
-                                            <button className="today-action-btn today-action-btn--danger" title="Registrar Falta"
-                                                aria-label="Registrar falta"
-                                                onClick={() => setReasonModal({ booking: b, kind: 'FALTA' })}>
-                                                <XCircle size={15} aria-hidden="true" />
-                                            </button>
+                                            {!isPast && (
+                                                <Tooltip content="Registrar falta" describe={false}>
+                                                    <button type="button" className="today-action-btn today-action-btn--danger"
+                                                        aria-label={`Registrar falta de ${b.user.name}`}
+                                                        onClick={() => setReasonModal({ booking: b, kind: 'FALTA' })}>
+                                                        <XCircle size={15} aria-hidden="true" />
+                                                    </button>
+                                                </Tooltip>
+                                            )}
                                         </div>
                                     )}
 
@@ -423,11 +487,12 @@ export default function AdminDashboard() {
                                     </div>
                                     <div className="dash-row__time">{b.startTime}</div>
                                     <div className="dash-row__body">
-                                        <button className="dash-name-btn dash-name-btn--sm dash-name-btn--ellipsis"
-                                            title={`Abrir perfil de ${b.user.name}`}
-                                            onClick={() => navigate(`/admin/clients/${b.user.id}`)}>
-                                            {b.user.name}
-                                        </button>
+                                        <Tooltip content={`Abrir perfil de ${b.user.name}`}>
+                                            <button type="button" className="dash-name-btn dash-name-btn--sm dash-name-btn--ellipsis"
+                                                onClick={() => navigate(`/admin/clients/${b.user.id}`)}>
+                                                {b.user.name}
+                                            </button>
+                                        </Tooltip>
                                     </div>
                                     <StatusBadge meta={getMeta(TIER_META, b.tierApplied)} size="sm" />
                                 </div>

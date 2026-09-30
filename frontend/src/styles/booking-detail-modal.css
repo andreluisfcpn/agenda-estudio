@@ -58,8 +58,52 @@
   font-size: 0.8125rem; font-weight: 700;
   background: rgba(0, 0, 0, 0.55); color: #fff; backdrop-filter: blur(4px);
 }
-.bdm-cover:not(.bdm-cover--has) .bdm-cover__btn { position: static; margin: 0 auto 12px; background: var(--bg-elevated); color: var(--text-primary); }
+.bdm-cover:not(.bdm-cover--has) .bdm-cover__btn { position: static; display: flex; width: fit-content; margin: 0 auto 12px; background: var(--bg-elevated); color: var(--text-primary); }
 .bdm-cover__btn:disabled { opacity: 0.6; }
+
+/* Gravação em andamento (E11): chip "AO VIVO" no topo + faixa de aviso */
+.bdm-live-chip { flex-shrink: 0; font-size: 0.6875rem; padding: 4px 10px; }
+.bdm-live {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 14px; border-radius: var(--radius-md);
+  background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.28);
+  font-size: 0.8125rem; line-height: 1.45; color: var(--text-secondary);
+}
+.bdm-live svg { flex-shrink: 0; margin-top: 1px; color: var(--danger); }
+.bdm-live strong { color: var(--text-primary); }
+
+/* Selo discreto "Transmitida ao vivo" (atributo permanente — NÃO é o "AO VIVO") */
+.bdm-seal {
+  display: inline-flex; align-items: center; gap: 4px; margin-left: auto;
+  font-size: 0.6875rem; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+  color: var(--text-secondary); background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+.bdm-section__title .bdm-seal svg { color: var(--text-muted); }
+
+/* Recado do estúdio (clientNotes) — somente leitura */
+.bdm-note {
+  padding: 10px 14px; background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle); border-left: 3px solid var(--accent-primary);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem; line-height: 1.5; color: var(--text-secondary);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
+/* Edição encerrada (E12): motivo vindo do backend + campos desabilitados */
+.bdm-readonly {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 10px 12px; border-radius: var(--radius-md);
+  background: var(--bg-secondary); border: 1px dashed var(--border-default);
+  font-size: 0.8125rem; line-height: 1.45; color: var(--text-secondary);
+}
+.bdm-readonly svg { flex-shrink: 0; margin-top: 2px; color: var(--text-muted); }
+.bdm .form-input:disabled { opacity: 0.75; cursor: not-allowed; }
+.bdm-plat:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Erros do backend dentro do modal (salvar / capa / carregar) */
+.bdm-error { margin-bottom: 0; }
+.bdm-error--retry { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 
 /* Plataformas (ícones discretos) */
 .bdm-platforms { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -110,12 +154,24 @@
 }
 .bdm-net__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .bdm-net__name { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 0.8125rem; }
-.bdm-net__link { color: var(--text-muted); display: inline-flex; }
-.bdm-net__link:hover { color: var(--accent-primary); }
+.bdm-net__link {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 0.75rem; font-weight: 700; color: var(--accent-primary); text-decoration: none;
+}
+.bdm-net__link:hover { text-decoration: underline; }
+.bdm-net__empty { font-size: 0.75rem; color: var(--text-muted); }
 .bdm-net__stats { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.75rem; color: var(--text-muted); }
 .bdm-net__stat { display: inline-flex; align-items: baseline; gap: 4px; }
 .bdm-net__stat b { color: var(--text-primary); font-variant-numeric: tabular-nums; font-weight: 800; }
 .bdm-origin { font-size: 0.8125rem; color: var(--text-secondary); margin-top: 10px; }
+/* Totais: 2 colunas no celular, 3 no desktop (9 números em 3×3, sem carta órfã) */
+.bdm-metrics { margin-bottom: 0; gap: 8px; }
+.bdm-metrics .metric-card { padding: 10px 12px; min-width: 0; }
+.bdm-metrics .metric-card__value { font-size: 1.0625rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+@media (min-width: 480px) {
+  .bdm-metrics { grid-template-columns: repeat(3, 1fr); }
+}
+.bdm-results__watch { margin-top: 10px; align-self: flex-start; }
 
 /* Footer */
 .bdm-footer {

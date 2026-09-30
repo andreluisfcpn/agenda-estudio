@@ -4,11 +4,12 @@ import { getErrorMessage } from '../utils/errors';
 // Supports: cards, wallets (Apple Pay, Google Pay), 3D Secure auto
 // Docs: https://docs.stripe.com/payments/payment-element
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { loadStripe, Stripe as StripeType } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { stripeApi } from '../api/client';
 import { Lock, ShieldCheck } from 'lucide-react';
+import BrandLoader from './ui/BrandLoader';
 
 // ─── Stripe Instance Singleton ─────────────────────────
 
@@ -28,21 +29,30 @@ export async function getStripe(): Promise<StripeType | null> {
 interface CardFormInnerProps {
     mode: 'setup' | 'payment';
     clientSecret: string;
-    onSuccess: (paymentIntentId?: string) => void;
+    /**
+     * Confirmado no Stripe. O argumento é o id do intent: no modo `payment`, o PaymentIntent (pi_…); no modo
+     * `setup`, o SetupIntent (seti_…) — use-o em stripeApi.confirmSetupIntent para gravar o cartão na hora.
+     */
+    onSuccess: (intentId?: string) => void;
     onError: (msg: string) => void;
     onCancel?: () => void;
     submitLabel?: string;
     showSaveCard?: boolean;
     onSaveCardChange?: (save: boolean) => void;
+    /** Avisa quando a confirmação no Stripe começa/termina (o modal em volta trava o fechamento enquanto isso). */
+    onProcessingChange?: (processing: boolean) => void;
 }
 
-function CardFormInner({ mode, clientSecret, onSuccess, onError, onCancel, submitLabel, showSaveCard, onSaveCardChange }: CardFormInnerProps) {
+function CardFormInner({ mode, clientSecret, onSuccess, onError, onCancel, submitLabel, showSaveCard, onSaveCardChange, onProcessingChange }: CardFormInnerProps) {
     const stripe = useStripe();
     const elements = useElements();
     const [processing, setProcessing] = useState(false);
     const [formError, setFormError] = useState('');
     const [formReady, setFormReady] = useState(false);
     const [saveCard, setSaveCard] = useState(true);
+    // Trava por requisição em voo (nunca por tempo): um 2º envio (Enter repetido) enquanto o Stripe ainda
+    // confirma não dispara outra confirmação.
+    const inFlightRef = useRef(false);
 
     // Safety net: PaymentElement.onReady can fail to fire on remount/race conditions,
     // which would leave the submit button permanently disabled (the "button disappeared"
@@ -65,13 +75,18 @@ function CardFormInner({ mode, clientSecret, onSuccess, onError, onCancel, submi
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!stripe || !elements) return;
+        if (inFlightRef.current) return;
+        inFlightRef.current = true;
 
         setProcessing(true);
+        onProcessingChange?.(true);
         setFormError('');
 
         try {
             if (mode === 'setup') {
-                const { error } = await stripe.confirmSetup({
+                // redirect 'if_required': cartão não redireciona — a promessa resolve com o SetupIntent (o 3DS,
+                // quando há, abre por cima da página) ou com `error`.
+                const { error, setupIntent } = await stripe.confirmSetup({
                     elements,
                     confirmParams: {
                         return_url: window.location.href,
@@ -82,8 +97,15 @@ function CardFormInner({ mode, clientSecret, onSuccess, onError, onCancel, submi
                     const msg = friendlyStripeError(error.message || 'Erro ao salvar cartão.');
                     setFormError(msg);
                     onError(msg);
+                } else if (setupIntent && setupIntent.status !== 'succeeded' && setupIntent.status !== 'processing') {
+                    // Sem erro mas não concluído (ex.: autenticação do banco abandonada): o cartão NÃO foi salvo.
+                    const msg = setupIntent.status === 'requires_action'
+                        ? 'Autenticação adicional necessária. Siga as instruções do banco e tente de novo.'
+                        : 'O cartão não foi confirmado. Confira os dados e tente de novo.';
+                    setFormError(msg);
+                    onError(msg);
                 } else {
-                    onSuccess();
+                    onSuccess(setupIntent?.id);
                 }
             } else {
                 const { error, paymentIntent } = await stripe.confirmPayment({
@@ -108,7 +130,9 @@ function CardFormInner({ mode, clientSecret, onSuccess, onError, onCancel, submi
             setFormError(msg);
             onError(msg);
         } finally {
+            inFlightRef.current = false;
             setProcessing(false);
+            onProcessingChange?.(false);
         }
     };
 
@@ -197,12 +221,18 @@ function CardFormInner({ mode, clientSecret, onSuccess, onError, onCancel, submi
 interface StripeCardFormProps {
     mode: 'setup' | 'payment';
     clientSecret: string;
-    onSuccess: (paymentIntentId?: string) => void;
+    /**
+     * Confirmado no Stripe. O argumento é o id do intent: no modo `payment`, o PaymentIntent (pi_…); no modo
+     * `setup`, o SetupIntent (seti_…) — use-o em stripeApi.confirmSetupIntent para gravar o cartão na hora.
+     */
+    onSuccess: (intentId?: string) => void;
     onError: (msg: string) => void;
     onCancel?: () => void;
     submitLabel?: string;
     showSaveCard?: boolean;
     onSaveCardChange?: (save: boolean) => void;
+    /** Avisa quando a confirmação no Stripe começa/termina (o modal em volta trava o fechamento enquanto isso). */
+    onProcessingChange?: (processing: boolean) => void;
 }
 
 export default function StripeCardForm(props: StripeCardFormProps) {
@@ -219,8 +249,7 @@ export default function StripeCardForm(props: StripeCardFormProps) {
     if (loading) {
         return (
             <div className="stripe-loading">
-                <div className="spinner" style={{ width: 20, height: 20, margin: '0 auto 8px' }} />
-                Carregando formulário de pagamento...
+                <BrandLoader size="inline" label="Carregando formulário de pagamento…" />
             </div>
         );
     }

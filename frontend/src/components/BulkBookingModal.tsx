@@ -1,9 +1,12 @@
 import { getErrorMessage } from '../utils/errors';
 import React, { useState, useEffect, useId } from 'react';
 import BottomSheetModal from './BottomSheetModal';
+import BrandLoader from './ui/BrandLoader';
 import { bookingsApi, Slot } from '../api/client';
 import { useBusinessConfig } from '../hooks/useBusinessConfig';
 import { studioSlotDate } from '../utils/time';
+import { ignoreMultiClick } from '../hooks/useWizardStep';
+import { TIER_META, getMeta } from '../constants/adminMeta';
 
 const DAY_NAMES_FULL = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
@@ -96,6 +99,8 @@ export default function BulkBookingModal({ contract, onClose, onComplete }: Bulk
     };
 
     const handleConfirm = async () => {
+        // Guarda de etapa + requisição em voo: só envia da etapa de resumo, uma vez.
+        if (step !== 2 || submitting) return;
         if (selectedSlots.length === 0) return;
         setSubmitting(true);
         setError('');
@@ -169,8 +174,7 @@ export default function BulkBookingModal({ contract, onClose, onComplete }: Bulk
                                 <label className="form-label">Faixa de Horário (Duração 2h)</label>
                                 {loadingSlots ? (
                                     <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', padding: '20px', textAlign: 'center', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
-                                        <div className="spinner" style={{ margin: '0 auto 12px' }} />
-                                        Mapeando estúdios...
+                                        <BrandLoader size="inline" label="Carregando horários…" />
                                     </div>
                                 ) : (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -212,7 +216,7 @@ export default function BulkBookingModal({ contract, onClose, onComplete }: Bulk
                                                     </div>
                                                     <div>
                                                         {!isTierAllowed ? (
-                                                            <span style={{ fontSize: '0.875rem' }} title={`Exclusivo para planos ${s.tier}`}>🔒</span>
+                                                            <span style={{ fontSize: '0.875rem' }} title={`Exclusivo para planos ${getMeta(TIER_META, s.tier).label}`}>🔒</span>
                                                         ) : (!s.available && !active) ? (
                                                             <span style={{ fontSize: '0.8125rem', color: 'var(--status-blocked)', fontWeight: 600 }}>Ocupado</span>
                                                         ) : active ? (
@@ -224,7 +228,7 @@ export default function BulkBookingModal({ contract, onClose, onComplete }: Bulk
                                         })}
                                         {availableSlots.length === 0 && (
                                             <div style={{ gridColumn: '1 / -1', fontSize: '0.8125rem', color: 'var(--text-muted)', padding: '16px', textAlign: 'center', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
-                                                Não há agendas livres para o estúdio {contract.tier} nesta data.
+                                                Não há agendas livres para o estúdio {getMeta(TIER_META, contract.tier).label} nesta data.
                                             </div>
                                         )}
                                     </div>
@@ -233,9 +237,11 @@ export default function BulkBookingModal({ contract, onClose, onComplete }: Bulk
                         )}
 
                         <div className="modal-actions" style={{ justifyContent: 'space-between', borderTop: '1px solid var(--border-subtle)', paddingTop: '20px' }}>
-                            <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-                            <button className="btn btn-primary"
-                                onClick={() => setStep(2)}
+                            {/* Rodapé de wizard: type="button", keys distintas, avanço adiado 1 tick e guarda de clique
+                                duplo — o 2º clique em "Revisar" caía no "Guardar" da etapa seguinte (mesma posição). */}
+                            <button key="bulk-cancel" type="button" className="btn btn-secondary" onClick={ignoreMultiClick(onClose)}>Cancelar</button>
+                            <button key="bulk-next" type="button" className="btn btn-primary"
+                                onClick={ignoreMultiClick(() => setTimeout(() => setStep(2), 0))}
                                 disabled={selectedSlots.length === 0}>
                                 Revisar Agendamentos ({selectedSlots.length}) ➔
                             </button>
@@ -261,7 +267,7 @@ export default function BulkBookingModal({ contract, onClose, onComplete }: Bulk
                                             <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{DAY_NAMES_FULL[d.getDay()]}, {day}/{m}/{y}</div>
                                             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Horário: {s.startTime}</div>
                                         </div>
-                                        <button className="btn btn-ghost btn-sm" onClick={() => {
+                                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => {
                                             setSelectedSlots(prev => prev.filter(item => !(item.date === s.date && item.startTime === s.startTime)));
                                             if (selectedSlots.length === 1) setStep(1); // Go back if empty
                                         }}>
@@ -279,10 +285,10 @@ export default function BulkBookingModal({ contract, onClose, onComplete }: Bulk
                         )}
 
                         <div className="modal-actions" style={{ justifyContent: 'space-between' }}>
-                            <button className="btn btn-secondary" onClick={() => setStep(1)} disabled={submitting}>
+                            <button key="bulk-back" type="button" className="btn btn-secondary" onClick={ignoreMultiClick(() => setStep(1))} disabled={submitting}>
                                 ⬅ Adicionar mais
                             </button>
-                            <button className="btn btn-primary" onClick={handleConfirm} disabled={submitting}>
+                            <button key="bulk-submit" type="button" className="btn btn-primary" onClick={ignoreMultiClick(handleConfirm)} disabled={submitting}>
                                 {submitting ? '⏳ Guardando...' : 'Guardar Agendamentos ✅'}
                             </button>
                         </div>

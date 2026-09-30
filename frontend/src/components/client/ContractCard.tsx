@@ -1,6 +1,8 @@
 import { ContractWithStats, ContractBooking, PricingConfig, AddOnConfig, PaymentSummary } from '../../api/client';
-import { Pause, ChevronDown, CalendarClock, CheckCircle2, Info, Sparkles, ChevronRight } from 'lucide-react';
+import { Pause, ChevronDown, CalendarClock, CheckCircle2, Info, Sparkles, ChevronRight, Hourglass, ShieldCheck } from 'lucide-react';
 import { DAY_NAMES, formatBRL } from '../../utils/format';
+import { chargeLabel, fineLabel, formatInstantDate, installmentPositions, isBlockedByPendingCancellation, isCancellationFine, isPlanInstallment } from '../../utils/paymentLabels';
+import { TIER_META, getMeta } from '../../constants/adminMeta';
 import { computeFlexState, flexWeekStatuses } from '../../utils/flexCredits';
 import { useBusinessConfig } from '../../hooks/useBusinessConfig';
 import ServiceLineItem from '../ui/ServiceLineItem';
@@ -33,7 +35,13 @@ export interface ContractCardProps {
     onPayContract?: () => void;
     onPayInstallment?: (payment: PaymentSummary) => void;
     onRenewContract?: () => void;
-    onSubscribeContract?: () => void;
+    /** Abre o modal "Cobrança automática" (ativar, trocar o cartão ou desligar). */
+    onAutoCharge?: () => void;
+    /**
+     * Cobrança automática do CLIENTE (vale para todos os contratos): ligada? em qual cartão?
+     * null/ausente = estado ainda desconhecido (mostra "Ativar…"; o modal consulta o estado real).
+     */
+    autoCharge?: { enabled: boolean; last4?: string | null } | null;
     onExpireContract?: () => void;
 }
 
@@ -41,7 +49,7 @@ export default function ContractCard({
     contract: c, planConfig, allAddons, expanded, onToggle,
     onBookingClick, statusLabel, canModify, onRequestCancel,
     onBulkBooking, isArchived, isCancelled, onPayContract, onPayInstallment,
-    onRenewContract, onSubscribeContract, onExpireContract
+    onRenewContract, onAutoCharge, autoCharge, onExpireContract
 }: ContractCardProps) {
     const bookings: ContractBooking[] = c.bookings || [];
     const { get: getRule } = useBusinessConfig();
@@ -118,8 +126,12 @@ export default function ContractCard({
     const isPlanLive = (c.status === 'ACTIVE' || c.status === 'COMPLETED') && !isAvulso;
     const isExpiring = isPlanLive && daysLeft >= 0 && daysLeft <= 15;
     // Botão "Renovar": janela de 7 dias antes de vencer (alinha com a regra do backend — a
-    // renovação só pode acontecer 1× e só nos últimos 7 dias).
-    const isRenewable = isPlanLive && daysLeft >= 0 && daysLeft <= 7;
+    // renovação só pode acontecer 1× e só nos últimos 7 dias). Já renovado → some (o backend recusa a 2ª).
+    const isRenewable = isPlanLive && !c.alreadyRenewed && daysLeft >= 0 && daysLeft <= 7;
+    // "Renovar Serviço": só perto do fim da vigência (≤ 30 dias, como o "Renovar contrato" do admin — E4).
+    // O serviço tem data de fim (início + fidelidade); a "renovação" dele é uma contratação nova, então quem
+    // sabe se já houve uma é a página (que deixa de passar `onRenewContract`).
+    const isServiceRenewable = isServico && c.status === 'ACTIVE' && !c.alreadyRenewed && daysLeft <= 30;
 
     const accentType = c.type === 'FIXO' ? 'fixo' : isAvulso ? 'avulso' : c.type === 'CUSTOM' ? 'custom' : c.type === 'SERVICO' ? 'servico' : 'flex';
 
@@ -132,6 +144,20 @@ export default function ContractCard({
         : isServico && c.paymentMethod === 'CARTAO'
             ? (cardInstallments > 1 ? `Parcelado no cartão (${cardInstallments}x)` : 'Total no cartão')
             : 'Quitado à vista';
+
+    // ─── Cobranças (E13 / E9) ───
+    // "Parcela N/Total" conta só as parcelas do plano em vigor: a multa de cancelamento, os extras de
+    // gravação e as parcelas anuladas ficam fora (mesma regra de Meus Pagamentos).
+    const payments: PaymentSummary[] = c.payments || [];
+    const positions = installmentPositions(payments);
+    const finePctOf = (p: PaymentSummary) => (c.cancellationFine?.id === p.id ? c.cancellationFine.finePct : null) ?? c.finePct;
+    const cancellationPending = c.status === 'PENDING_CANCELLATION';
+    // Cobrança automática: só onde há o que cobrar — contrato ativo/concluído com PARCELA DO PLANO pendente
+    // (a multa e os extras de gravação nunca são cobrados sozinhos; à vista quitado, cancelado e em análise
+    // não oferecem).
+    const hasAutoChargeable = payments.some(p => p.status === 'PENDING' && isPlanInstallment(p));
+    const showAutoCharge = !!onAutoCharge && !isAvulso && (c.status === 'ACTIVE' || c.status === 'COMPLETED') && hasAutoChargeable;
+    const fine = c.cancellationFine && c.cancellationFine.status !== 'CANCELLED' ? c.cancellationFine : null;
 
     return (
         <div className="card contract-card">
@@ -151,7 +177,8 @@ export default function ContractCard({
                                     {c.type === 'FIXO' ? 'Plano Fixo' : c.type === 'CUSTOM' ? 'Personalizado' : 'Plano Flex'}
                                 </span>
                             )}
-                            <span className={`badge badge-${c.tier.toLowerCase()}`}>{c.tier}</span>
+                            {/* Rótulo legível da faixa ("Audiência"); a classe continua pela CHAVE. */}
+                            <span className={`badge badge-${c.tier.toLowerCase()}`}>{getMeta(TIER_META, c.tier).label}</span>
                             {c.status === 'ACTIVE' ? (
                                 isArchived ? (
                                     <span className="badge badge-muted">FINALIZADO</span>
@@ -292,6 +319,38 @@ export default function ContractCard({
                     </div>
                 )}
 
+                {/* Cancelamento em análise (E13): multa congelada no pedido; parcelas do plano suspensas */}
+                {cancellationPending && (
+                    <div className="hold-banner" style={{ margin: '12px 0 0' }}>
+                        <div className="hold-banner__content">
+                            <Hourglass size={20} className="hold-banner__icon" aria-hidden="true" />
+                            <div style={{ flex: 1 }}>
+                                <div className="hold-banner__title">Cancelamento em análise</div>
+                                <p className="hold-banner__desc">
+                                    {c.cancellationRequestedAt && <>Pedido enviado em <strong>{formatInstantDate(c.cancellationRequestedAt)}</strong>. </>}
+                                    {c.fineAmountPreview > 0
+                                        ? <>Multa prevista: <strong>{formatBRL(c.fineAmountPreview)}</strong> ({c.finePct}% de {formatBRL(c.fineBaseAmount)} que faltam pagar do plano) — o estúdio decide entre cobrar ou isentar.</>
+                                        // Multa zero com base > 0 (percentual em 0%) não é "sem parcelas em aberto".
+                                        : c.fineBaseAmount > 0
+                                            ? <>Não há multa prevista.</>
+                                            : <>Não há multa prevista: não há parcelas do plano em aberto.</>}
+                                </p>
+                                <p className="contract-card__pause-note">
+                                    Até a decisão do estúdio, as parcelas do plano ficam suspensas: não são cobradas nem podem ser pagas.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Serviço cancelado: não tem o quadro de gravações — a data do cancelamento vem aqui */}
+                {isServico && isCancelled && c.cancelledAt && (
+                    <div className="contract-card__archived-note">
+                        Cancelado em {formatInstantDate(c.cancelledAt)}
+                        {fine && <> · {fineLabel(fine.finePct)}: {formatBRL(fine.amount)} ({fine.status === 'PAID' ? 'paga' : 'pendente'})</>}
+                    </div>
+                )}
+
                 {/* Consumption bar or Cancelled Stats — services have no episodes */}
                 {isServico ? null : isCancelled ? (
                     <div className="contract-card__cancelled-stats">
@@ -307,8 +366,21 @@ export default function ContractCard({
                             </span>
                             <span className="contract-card__cancelled-value">{totalBookings - completedBookings.length}</span>
                         </div>
+                        {fine && (
+                            <div className="contract-card__cancelled-row">
+                                <span className="contract-card__cancelled-label">
+                                    <span className="contract-card__dot contract-card__dot--cancelled" /> {fineLabel(fine.finePct)}
+                                </span>
+                                <span className="contract-card__cancelled-value">
+                                    {formatBRL(fine.amount)} · {fine.status === 'PAID' ? 'paga' : fine.status === 'REFUNDED' ? 'estornada' : 'pendente'}
+                                </span>
+                            </div>
+                        )}
                         <div className="contract-card__cancelled-footer">
-                            Encerrado em: <strong>{new Date(c.endDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</strong>
+                            {/* Data do CANCELAMENTO (E13); contrato antigo sem a marca cai no fim da vigência. */}
+                            {c.cancelledAt
+                                ? <>Cancelado em: <strong>{formatInstantDate(c.cancelledAt)}</strong></>
+                                : <>Encerrado em: <strong>{new Date(c.endDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</strong></>}
                         </div>
                     </div>
                 ) : !isArchived ? (
@@ -571,15 +643,33 @@ export default function ContractCard({
                     )}
 
                     {/* Parcelas & Pagamentos — visíveis no contrato (ponto focal do cliente) */}
-                    {!isAvulso && c.payments && c.payments.length > 0 && (
+                    {!isAvulso && payments.length > 0 && (
                         <div className="contract-booking-group">
                             <h4 className="contract-booking-group__title">
-                                Parcelas & Pagamentos <span className="badge badge-reserved">{c.payments.length}</span>
+                                Parcelas & Pagamentos <span className="badge badge-reserved">{payments.length}</span>
                             </h4>
+                            {cancellationPending && (
+                                <div className="contract-bookings__empty">
+                                    Cancelamento em análise: as parcelas do plano ficam suspensas até a decisão do estúdio.
+                                </div>
+                            )}
                             <div>
-                                {c.payments.map(p => {
+                                {payments.map(p => {
                                     const meta = PAYMENT_LABEL[p.status] || { label: p.status, cls: 'badge-muted' };
-                                    const payable = (p.status === 'PENDING' || p.status === 'FAILED') && !!onPayInstallment;
+                                    const open = p.status === 'PENDING' || p.status === 'FAILED';
+                                    // E13: com o cancelamento em análise o cliente não paga parcela do plano (o backend
+                                    // responde 409 CANCELLATION_PENDING); extras de gravação e a multa seguem pagáveis.
+                                    const blocked = open && isBlockedByPendingCancellation(c.status, p);
+                                    const payable = open && !blocked && !!onPayInstallment;
+                                    const what = chargeLabel(p, { isAvulso, finePct: finePctOf(p), position: positions.get(p.id) });
+                                    const dueText = p.dueDate
+                                        ? (isCancellationFine(p) ? formatInstantDate(p.dueDate) : new Date(p.dueDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' }))
+                                        : '—';
+                                    const when = p.status === 'PAID' && p.paidAt
+                                        ? `Pago em ${new Date(p.paidAt).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}`
+                                        : p.status === 'CANCELLED'
+                                            ? `Vencia em ${dueText}`
+                                            : `Vence ${dueText}`;
                                     return (
                                         <div key={p.id}
                                             className="contract-booking-item"
@@ -587,19 +677,22 @@ export default function ContractCard({
                                             role={payable ? 'button' : undefined}
                                             tabIndex={payable ? 0 : undefined}
                                             onClick={payable ? () => onPayInstallment!(p) : undefined}
-                                            aria-label={payable ? `Pagar parcela de ${formatBRL(p.amount)}` : undefined}
+                                            onKeyDown={payable ? (e) => {
+                                                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPayInstallment!(p); }
+                                            } : undefined}
+                                            aria-label={payable ? `Pagar ${what ?? 'cobrança'} de ${formatBRL(p.amount)}` : undefined}
                                         >
                                             <div>
                                                 <div className="contract-booking-item__date">{formatBRL(p.amount)}</div>
                                                 <div className="contract-booking-item__time">
-                                                    {p.status === 'PAID' && p.paidAt
-                                                        ? `Pago em ${new Date(p.paidAt).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}`
-                                                        : `Vence ${p.dueDate ? new Date(p.dueDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '—'}`}
+                                                    {/* No celular a coluna é estreita: a quebra fica ENTRE o rótulo e a data. */}
+                                                    {what && <>{what} · </>}
+                                                    <span style={{ whiteSpace: 'nowrap' }}>{when}</span>
                                                 </div>
                                             </div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                                 {payable && <span className="contract-booking-item__manage">Pagar</span>}
-                                                <span className={`badge ${meta.cls}`}>{meta.label}</span>
+                                                <span className={`badge ${blocked ? 'badge-muted' : meta.cls}`}>{blocked ? 'Em análise' : meta.label}</span>
                                                 {payable && <ChevronRight size={15} style={{ color: 'var(--accent-primary)' }} />}
                                             </div>
                                         </div>
@@ -610,18 +703,26 @@ export default function ContractCard({
                     )}
 
                     {/* Concluído (D6) só mostra a ação de renovar; as demais exigem contrato ACTIVE. */}
-                    {(c.status === 'ACTIVE' || (c.status === 'COMPLETED' && isRenewable)) && (
+                    {(c.status === 'ACTIVE' || (c.status === 'COMPLETED' && (isRenewable || showAutoCharge))) && (
                         <div className="contract-actions">
-                            {(isRenewable || isServico) && onRenewContract && (
+                            {(isRenewable || isServiceRenewable) && onRenewContract && (
                                 <button className="btn btn-primary btn-sm contract-actions__renew"
                                     onClick={(e) => { e.stopPropagation(); onRenewContract(); }}>
                                     {isServico ? 'Renovar Serviço' : 'Renovar Contrato'}
                                 </button>
                             )}
-                            {!isAvulso && !isServico && c.status === 'ACTIVE' && onSubscribeContract && (
-                                <button className="btn btn-secondary btn-sm"
-                                    onClick={(e) => { e.stopPropagation(); onSubscribeContract(); }}>
-                                    Ativar Recorrência (Stripe)
+                            {showAutoCharge && (
+                                <button type="button" className="btn btn-secondary btn-sm"
+                                    aria-label={autoCharge?.enabled
+                                        ? `Cobrança automática ativa${autoCharge.last4 ? ` no cartão final ${autoCharge.last4}` : ''} — trocar o cartão ou desligar`
+                                        : undefined}
+                                    onClick={(e) => { e.stopPropagation(); onAutoCharge!(); }}>
+                                    {autoCharge?.enabled ? (
+                                        <>
+                                            <ShieldCheck size={15} aria-hidden="true" style={{ color: 'var(--success)' }} />
+                                            Cobrança automática ativa{autoCharge.last4 ? ` · •••• ${autoCharge.last4}` : ''}
+                                        </>
+                                    ) : 'Ativar cobrança automática'}
                                 </button>
                             )}
                             {c.type === 'FLEX' && (c.flexCreditsRemaining || 0) > 0 && onBulkBooking && (

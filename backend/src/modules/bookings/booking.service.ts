@@ -92,6 +92,39 @@ export async function deductCredit(contractId: string): Promise<boolean> {
     return false;
 }
 
+// ─── Extras de uma gravação cancelada ──────────────────
+
+/**
+ * A gravação de um CONTRATO (plano) foi cancelada ou excluída: as cobranças em aberto (PENDING/FAILED)
+ * dos EXTRAS dela (Payment com contractId + bookingId) deixam de ser devidas. Mesma sequência do
+ * cancelamento do contrato (voidContractPendingPaymentsDetailed com `bookingIds`): a cobrança viva é
+ * aposentada no provedor antes — PIX/cartão já pago vira PAID, não é anulado — e o resto vira CANCELLED.
+ *  - AVULSO fica de fora: a cobrança ligada à gravação é o pagamento da própria reserva, que tem fluxo
+ *    próprio (hold, conciliação, remarcação) — nada muda nele.
+ *  - Remarcação NÃO é cancelamento: nunca chamar ao remarcar.
+ *  - Best-effort: nunca lança (a gravação já foi cancelada). Retorna quantas cobranças foram anuladas.
+ */
+export async function voidExtrasOfCancelledBooking(bookingId: string, contractId: string | null | undefined): Promise<number> {
+    if (!contractId) return 0;
+    try {
+        const contract = await prisma.contract.findUnique({ where: { id: contractId }, select: { type: true } });
+        if (!contract || contract.type === 'AVULSO') return 0;
+        const { voidContractPendingPaymentsDetailed } = await import('../../lib/paymentEffects.js');
+        return (await voidContractPendingPaymentsDetailed(contractId, { bookingIds: [bookingId] })).voided;
+    } catch (err) {
+        console.error(`[BOOKING] Falha ao anular as cobranças de extras da gravação cancelada ${bookingId} (contrato ${contractId}):`, err);
+        return 0;
+    }
+}
+
+/** Frase da resposta quando o cancelamento anulou cobranças de extras da gravação ('' se nenhuma). */
+export function voidedExtrasNote(count: number): string {
+    if (count <= 0) return '';
+    return count === 1
+        ? ' 1 cobrança de serviços extras desta gravação foi cancelada.'
+        : ` ${count} cobranças de serviços extras desta gravação foram canceladas.`;
+}
+
 // ─── Conflict Detection ─────────────────────────────────
 
 /** Check if a time slot conflicts with existing bookings on a date. */

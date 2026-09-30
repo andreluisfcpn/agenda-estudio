@@ -82,7 +82,7 @@ async function copyToClipboard(text: string): Promise<boolean> {
 type QrView = { status: 'loading' } | { status: 'ready'; src: string } | { status: 'error' };
 
 /**
- * Bloco PIX presentacional: valor, QR Code, contagem de validade, copia-e-cola e
+ * Bloco PIX presentacional, em coluna centralizada (E10): valor, QR Code, contagem de validade, copia-e-cola e
  * "QR expirado → Gerar novo QR" (D15). Não chama API — quem usa decide como
  * emitir/renovar a cobrança (`onRegenerate`) e continua responsável pelo polling.
  *
@@ -212,18 +212,6 @@ export default function PixQrCode({
                 </div>
             )}
 
-            {remaining != null && !expired && (
-                <div
-                    className="pix-qr__timer"
-                    data-level={timerLevel}
-                    role="timer"
-                    aria-label={`O QR Code expira em ${formatRemaining(remaining)}`}
-                >
-                    <Clock size={14} aria-hidden="true" />
-                    <span>Expira em <strong>{formatRemaining(remaining)}</strong></span>
-                </div>
-            )}
-
             {expired ? (
                 <div className="checkout-qr-loading pix-qr__state pix-qr__state--expired">
                     <TimerOff size={30} aria-hidden="true" className="pix-qr__state-icon" />
@@ -274,6 +262,19 @@ export default function PixQrCode({
                             ? 'Use o PIX copia e cola: copie o código abaixo e cole no app do seu banco.'
                             : 'O código PIX não foi recebido. Gere a cobrança novamente.'}
                     </span>
+                </div>
+            )}
+
+            {/* E10: ordem e alinhamento — valor → QR → "Expira em" → código → copiar, tudo centralizado. */}
+            {remaining != null && !expired && (
+                <div
+                    className="pix-qr__timer"
+                    data-level={timerLevel}
+                    role="timer"
+                    aria-label={`O QR Code expira em ${formatRemaining(remaining)}`}
+                >
+                    <Clock size={14} aria-hidden="true" />
+                    <span>Expira em <strong>{formatRemaining(remaining)}</strong></span>
                 </div>
             )}
 

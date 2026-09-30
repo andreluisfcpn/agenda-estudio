@@ -8,6 +8,7 @@ import {
   FileUploadZone, EnvSelector, envConfigured,
   type IntegrationSummary,
 } from './IntegrationHelpers';
+import BrandLoader from './ui/BrandLoader';
 import '../styles/integration-settings.css';
 
 const emptyCoraCreds = { clientId: '', certificatePem: '', privateKeyPem: '', pixKey: '' };
@@ -259,7 +260,7 @@ export default function IntegrationSettings() {
   const sicoob = integrations.find(i => i.provider === 'SICOOB');
   const stripe = integrations.find(i => i.provider === 'STRIPE');
 
-  if (loading) return <div className="loading-spinner"><div className="spinner" /></div>;
+  if (loading) return <BrandLoader size="section" label="Carregando integrações…" />;
 
   // Cora saved state checks — indexados pela aba de EDIÇÃO (não pelo ambiente ativo)
   const savedCoraCfg = cora?.config || {};

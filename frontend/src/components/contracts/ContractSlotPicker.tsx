@@ -1,8 +1,9 @@
 import type { CSSProperties } from 'react';
-import { AlertCircle, CalendarX2, Loader2, RefreshCw } from 'lucide-react';
+import { AlertCircle, CalendarX2, RefreshCw } from 'lucide-react';
 import type { ContractSlotOption, ContractTier } from '../../api/client';
 import { useContractSlotGrid } from '../../hooks/useContractSlotGrid';
 import { TIER_META } from '../../constants/adminMeta';
+import BrandLoader from '../ui/BrandLoader';
 
 // ─── Seletor de horário de CONTRATO (D8) ────────────────────────────────────
 // Mostra só os horários válidos da faixa no dia da semana escolhido, vindos da grade do backend
@@ -72,9 +73,8 @@ export default function ContractSlotPicker({
     if (loading) {
         return (
             <div className={rootClass} aria-busy="true">
-                <p className="csp-state" role="status">
-                    <Loader2 size={16} className="csp-spin" aria-hidden="true" />
-                    Carregando horários…
+                <p className="csp-state">
+                    <BrandLoader size="inline" label="Carregando horários…" />
                 </p>
             </div>
         );

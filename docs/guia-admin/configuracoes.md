@@ -34,6 +34,8 @@ Multa de cancelamento (%), janela de remarcação e demais regras de agendamento
 ## 5. Serviços (`?sec=servicos`)
 Serviços extras (add-ons): nome, preço e se são **mensais** ou **por gravação** (ex.: Cortes com IA, Cortes por Editor, Roteiro & Pautas, YouTube SEO, Gestão de Redes Sociais). O preço (mensal ou por episódio) usa o mesmo campo em R$ das faixas.
 
+O selo do card mostra o **nome** do serviço (ex.: "GESTÃO DE REDES SOCIAIS") e acompanha o que você digita. O **código interno** (ex.: `GESTAO_SOCIAL`) nasce do nome na criação e **não muda depois**, mesmo que você renomeie o serviço; ele aparece discreto no rodapé do card.
+
 **Remover** abre uma confirmação vermelha. O sistema confere na hora se o serviço já foi usado: se nenhum contrato ou gravação tem o serviço, ele é **apagado**; se algum tem, ele só fica **Inativo** (o histórico é preservado). Nos dois casos ele some da landing e das contratações, e os contratos/gravações existentes não mudam. Num card novo, ainda não salvo, o botão é **Descartar** e só apaga o rascunho.
 
 ![Serviços](../images/admin/config-05-servicos.png)
@@ -41,6 +43,26 @@ Serviços extras (add-ons): nome, preço e se são **mensais** ou **por gravaç�
 
 ## 6. Pagamentos (`?sec=pagamentos`)
 Habilita/desabilita métodos (PIX, Cartão, Boleto), define rótulos, ordem e em quais **contextos** cada método aparece (`avulso,contract,invoice`).
+
+**Aceitar pagamento por boleto** — é a chave única do boleto:
+
+- **Começa desligada.** Para oferecer boleto: primeiro ative a integração **Cora** (seção 7) e depois ligue a chave aqui. Num sistema que já estava em uso antes desta chave existir, a atualização que trouxe a chave a **desliga** quando a Cora não está ativa; quem já usava boleto com a Cora ativa continua com ela ligada.
+- **Ligada**: o boleto aparece como 3ª opção, ao lado de PIX e Cartão, nas cobranças feitas por você ("Cobrar 1ª parcela", "Cobrar" no contrato e a cobrança da gravação avulsa criada pelo painel) e nas parcelas/faturas de contratos já ativos (Meus Pagamentos do cliente).
+- **Desligada**: o boleto não aparece em lugar nenhum, para você nem para o cliente, e o sistema recusa qualquer tentativa de gerar um.
+- O boleto é emitido pela **Cora**. A chave só pode ser ligada com a integração Cora ativa (seção 7). Se a Cora for desligada depois, o boleto deixa de aparecer mesmo com a chave ligada.
+- O boleto compensa em até 3 dias úteis. Por isso ele **não aparece** onde o horário fica reservado por 10 minutos esperando o pagamento: gravação avulsa do cliente, contratação de plano ou de serviço pelo cliente e renovação.
+- A antiga liberação "Permitir boleto neste contrato" não existe mais: vale só esta chave.
+- Desligar a chave não cancela boletos já emitidos: eles continuam válidos no banco e são confirmados enquanto a Cora estiver ativa.
+- O boleto cobra o mesmo valor do cartão. O desconto do pagamento à vista vale só no PIX.
+
+Na tela, a chave fica no **topo da seção**, num card próprio:
+
+- Ela **salva na hora** (não usa o botão "Salvar Alterações" dos cards de método).
+- Enquanto a Cora não estiver ativa, a chave fica **bloqueada**, com o selo "Bloqueado" e o aviso para ativar a Cora em Integrações.
+- **Desligar** pede confirmação (âmbar), lembrando que boletos já emitidos continuam válidos.
+- O card **Boleto Bancário** da lista serve só para nome, emoji, descrição e contextos; o liga/desliga dele é esta chave.
+
+**Cobrança pelo painel** ("Cobrar 1ª parcela" ao criar um contrato, "Cobrar" no contrato e a cobrança da avulsa): o checkout sempre traz as abas **PIX** e **Cartão** (e **Boleto**, quando a chave está ligada e a Cora ativa — inclusive na avulsa cobrada por você), abrindo na forma escolhida no resumo. Na avulsa, lembre que o boleto compensa em dias: a gravação fica **Reservada** até o pagamento entrar. Dentro de Cartão há **Crédito | Débito**. O CPF pedido no PIX e os cartões salvos listados são os **do cliente** — nunca os seus; nenhum cartão salvo vem pré-selecionado. Num pagamento à vista, cada aba mostra o seu valor antes de gerar (o PIX com o desconto).
 
 ![Pagamentos](../images/admin/config-06-pagamentos.png)
 <!-- TODO screenshot: seção Métodos de pagamento -->

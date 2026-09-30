@@ -6,11 +6,12 @@ import BottomSheetModal from '../../BottomSheetModal';
 import CouponField from '../../CouponField';
 import ServiceLineItem from '../../ui/ServiceLineItem';
 import CurrencyInput from '../../ui/fields/CurrencyInput';
+import BrandLoader from '../../ui/BrandLoader';
 import { formatBRL, DAY_NAMES } from '../../../utils/format';
 import { todayStrSaoPaulo, studioSlotDate } from '../../../utils/time';
 import { isAvulsoContract } from '../../../utils/contractStatus';
 import { ignoreMultiClick, wizardStepBodyStyle as stepBodyStyle, wizardStepContentStyle as stepContentStyle } from '../../../hooks/useWizardStep';
-import { TIER_META } from '../../../constants/adminMeta';
+import { TIER_META, getMeta } from '../../../constants/adminMeta';
 import WizardSteps from '../WizardSteps';
 import ChargeNowSheet from '../ChargeNowSheet';
 import {
@@ -186,8 +187,13 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                 amount={chargeAmountApi ?? ((customPrice || 0) + servicesValue)}
                 description="Agendamento avulso"
                 title="Cobrar agendamento"
-                subtitle={`${chargeMethod === 'PIX' ? 'Mostre o QR Code PIX ao cliente.' : 'Use o cartão do cliente (presente).'} A reserva confirma ao pagar.`}
-                allowedMethods={[chargeMethod]}
+                subtitle="Cobre no PIX (mostre o QR Code ao cliente) ou no cartão dele (crédito ou débito), com o cliente presente. A reserva confirma ao pagar."
+                // E1: sempre PIX | Cartão, abrindo na forma escolhida na etapa Confirmar. O sheet também oferece
+                // a aba Boleto quando ele está disponível (E3: chave-mestra + Cora) — a avulsa do admin nasce num
+                // contrato AVULSO já ativo, sem prazo de 10 minutos, e o backend aceita. A pré-escolha da etapa
+                // Confirmar fica só em PIX | Cartão de propósito: mandar BOLETO ao POST /bookings/admin já emitiria
+                // o boleto na criação e o sheet pediria outro.
+                initialMethod={chargeMethod}
                 context="avulso"
                 client={selectedUser ? { id: selectedUser.id, name: selectedUser.name, cpfCnpj: selectedUser.cpfCnpj } : undefined}
                 error={createError || undefined}
@@ -497,7 +503,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                         )}
                                     </label>
                                     {slotsLoading ? (
-                                        <div style={{ padding: '24px', textAlign: 'center' }}><div className="spinner" style={{ width: 24, height: 24, margin: '0 auto' }} /></div>
+                                        <div style={{ padding: '24px', textAlign: 'center' }}><BrandLoader size="inline" label="Carregando horários…" /></div>
                                     ) : isPastDate ? (
                                         <div style={{ padding: '24px', textAlign: 'center', color: 'var(--warning)', fontSize: '0.8125rem', background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: 10, fontWeight: 600 }}>
                                             Data no passado — escolha uma data a partir de hoje.
@@ -538,7 +544,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                                             background: slot.available ? slotTc.bg : 'rgba(255,255,255,0.05)',
                                                             color: slot.available ? slotTc.color : 'var(--text-muted)',
                                                         }}>
-                                                            {slot.available ? slot.tier : 'Ocupado'}
+                                                            {slot.available ? (slot.tier ? getMeta(TIER_META, slot.tier).label : '') : 'Ocupado'}
                                                         </span>
                                                     </button>
                                                 );
@@ -605,7 +611,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                                 padding: '2px 10px', borderRadius: '6px', fontSize: '0.6875rem', fontWeight: 700,
                                                 background: tc(selectedSlot.tier).bg, color: tc(selectedSlot.tier).color,
                                             }}>
-                                                {(() => { const TI = tc(selectedSlot.tier).icon; return <TI size={12} aria-hidden="true" />; })()} {selectedSlot.tier}
+                                                {(() => { const TI = tc(selectedSlot.tier).icon; return <TI size={12} aria-hidden="true" />; })()} {getMeta(TIER_META, selectedSlot.tier).label}
                                             </span>
                                         ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                                     </div>
@@ -710,7 +716,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
                                         <input type="checkbox" checked={chargeNow} onChange={e => setChargeNow(e.target.checked)} style={{ width: 18, height: 18, accentColor: 'var(--accent-primary)', cursor: 'pointer' }} />
                                         <div>
                                             <div style={{ fontSize: '0.8125rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><CreditCard size={14} aria-hidden="true" /> Cobrar o cliente agora</div>
-                                            <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', marginTop: '2px' }}>Gera PIX ou cobra o cartão do cliente (presente). Sem marcar, segue o status escolhido.</div>
+                                            <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', marginTop: '2px' }}>Gera PIX ou cobra o cartão do cliente (presente) — a forma pode ser trocada na hora de cobrar. Sem marcar, segue o status escolhido.</div>
                                         </div>
                                     </label>
                                     {chargeNow && (

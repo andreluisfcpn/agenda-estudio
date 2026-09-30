@@ -4,13 +4,17 @@ import {
     TierBreakdownItem, AudienceMetrics, ClientRankItem,
 } from '../api/client';
 import { useNavigate } from 'react-router-dom';
-import { BarChart3, Download, Eye, Trophy, MessageCircle, Timer } from 'lucide-react';
+import { BarChart3, Download, Eye, Trophy, MessageCircle, Timer, Loader2 } from 'lucide-react';
 import AdminPageHeader from '../components/admin/AdminPageHeader';
 import { HeroSkeleton, TableSkeleton } from '../components/ui/SkeletonLoader';
 import { TIER_META, getMeta } from '../constants/adminMeta';
 
 import { formatBRL } from '../utils/format';
 import { todayStrSaoPaulo } from '../utils/time';
+import { getErrorMessage } from '../utils/errors';
+import { buildReportCsv, reportCsvFileName } from '../utils/reportCsv';
+import { useUI } from '../context/UIContext';
+import Tooltip from '../components/ui/Tooltip';
 
 function formatBRLCompact(cents: number): string {
     const v = cents / 100;
@@ -19,6 +23,29 @@ function formatBRLCompact(cents: number): string {
 }
 
 type Period = '7d' | '30d' | '90d' | '365d';
+
+const PERIOD_LABELS: Record<Period, string> = {
+    '7d': 'Últimos 7 dias',
+    '30d': 'Últimos 30 dias',
+    '90d': 'Últimos 90 dias',
+    '365d': 'Último ano',
+};
+
+/** O backend corta o ranking em 10 quando não recebe `limit`; o CSV pede o ranking inteiro. */
+const FULL_RANKING_LIMIT = 100000;
+
+/** Entrega o arquivo ao navegador (âncora no DOM; o URL só é liberado depois do clique processado). */
+function downloadTextFile(fileName: string, content: string, mime: string) {
+    const url = URL.createObjectURL(new Blob([content], { type: mime }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 function getDateRange(period: Period): { from: string; to: string } {
     // B29: derivar da data-calendário de São Paulo. Antes usava new Date().toISOString() (UTC), que
@@ -33,6 +60,8 @@ function getDateRange(period: Period): { from: string; to: string } {
 
 export default function AdminReportsPage() {
     const navigate = useNavigate();
+    const { showToast } = useUI();
+    const [exporting, setExporting] = useState(false);
     const [summary, setSummary] = useState<ReportSummary | null>(null);
     const [slotOccupancy, setSlotOccupancy] = useState<SlotOccupancy[]>([]);
     const [dayOccupancy, setDayOccupancy] = useState<DayOccupancy[]>([]);
@@ -67,28 +96,38 @@ export default function AdminReportsPage() {
 
     useEffect(() => { loadData(); }, [loadData]);
 
-    const handleExportCSV = () => {
-        if (!summary) return;
-        const headers = ['Cliente', 'Sessões', 'Concluídas', 'Faltas', 'Receita (R$)', 'Média Viewers'];
-        const rows = clientRanking.map(c => [
-            c.name, c.sessions, c.completed, c.falta,
-            (c.revenue / 100).toFixed(2).replace('.', ','),
-            c.avgViewers || 0,
-        ]);
-        const csvContent = [
-            `Relatório Búzios Digital — ${period}`,
-            `Sessões: ${summary.totalBookings}; Concluídas: ${summary.completedBookings}; Faltas: ${summary.faltaBookings}; Receita: R$ ${(summary.totalRevenue / 100).toFixed(2).replace('.', ',')}`,
-            '',
-            headers.join(';'),
-            ...rows.map(r => r.join(';')),
-        ].join('\n');
-        const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `relatorio_buzios_${period}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
+    // E6: exporta a página COMPLETA do período filtrado — todas as seções + o ranking INTEIRO (a tela
+    // mostra só o top 10). Busca tudo de novo na hora, para o arquivo sair coerente com o "Gerado em".
+    const handleExportCSV = async () => {
+        if (exporting) return;
+        setExporting(true);
+        try {
+            const range = getDateRange(period);
+            const [sumRes, occRes, tierRes, audRes, rankRes] = await Promise.all([
+                reportsApi.getSummary(range),
+                reportsApi.getOccupancy(range),
+                reportsApi.getTiers(range),
+                reportsApi.getAudience(range),
+                reportsApi.getRanking({ ...range, limit: FULL_RANKING_LIMIT }),
+            ]);
+            const csv = buildReportCsv({
+                from: range.from,
+                to: range.to,
+                periodLabel: PERIOD_LABELS[period],
+                generatedAt: new Date(),
+                summary: sumRes.summary,
+                slotOccupancy: occRes.slotOccupancy,
+                dayOccupancy: occRes.dayOccupancy,
+                tierBreakdown: tierRes.tierBreakdown,
+                audience: audRes.audience,
+                ranking: rankRes.ranking,
+                tierLabels: Object.fromEntries(Object.entries(TIER_META).map(([key, meta]) => [key, meta.label])),
+            });
+            downloadTextFile(reportCsvFileName(range.from, range.to), csv, 'text/csv;charset=utf-8;');
+            showToast('Relatório exportado em CSV.');
+        } catch (err: unknown) {
+            showToast({ message: getErrorMessage(err) || 'Não foi possível exportar o relatório. Tente novamente.', type: 'error' });
+        } finally { setExporting(false); }
     };
 
     if (loading) return <div><HeroSkeleton /><TableSkeleton rows={6} cols={7} /></div>;
@@ -126,9 +165,13 @@ export default function AdminReportsPage() {
                                 </button>
                             ))}
                         </div>
-                        <button onClick={handleExportCSV} className="btn-admin-ghost" style={{ fontSize: '0.6875rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                            <Download size={13} aria-hidden="true" /> Exportar CSV
-                        </button>
+                        <Tooltip content="Baixa a página inteira do período em CSV (abre no Excel): resumo, ocupação, faixas, audiência e o ranking completo.">
+                            <button type="button" onClick={handleExportCSV} disabled={exporting} aria-busy={exporting} className="btn-admin-ghost" style={{ fontSize: '0.6875rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                {exporting
+                                    ? <><Loader2 size={13} className="danger-dialog__spinner" aria-hidden="true" /> Exportando…</>
+                                    : <><Download size={13} aria-hidden="true" /> Exportar CSV</>}
+                            </button>
+                        </Tooltip>
                     </div>
                 }
             />
@@ -291,6 +334,9 @@ export default function AdminReportsPage() {
                         <span style={{ width: 16, height: 2, background: 'var(--warning)', borderRadius: 1 }} />
                         <Trophy size={15} aria-hidden="true" /> Ranking de Clientes — Top 10 por Receita
                     </h3>
+                    <p style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', margin: '6px 0 0' }}>
+                        A tela mostra os 10 primeiros; o arquivo de “Exportar CSV” traz o ranking completo do período.
+                    </p>
                 </div>
                 {clientRanking.length === 0 ? (
                     <div className="admin-empty">
@@ -337,11 +383,12 @@ export default function AdminReportsPage() {
                                                 }}>
                                                     {c.name.charAt(0).toUpperCase()}
                                                 </div>
-                                                <button style={{ fontWeight: 600, cursor: 'pointer', color: 'var(--accent-text)', fontSize: '0.875rem', background: 'none', border: 'none', padding: 0, fontFamily: 'inherit', textAlign: 'left' }}
-                                                    title={`Abrir perfil de ${c.name}`}
-                                                    onClick={() => navigate(`/admin/clients/${c.id}`)}>
-                                                    {c.name}
-                                                </button>
+                                                <Tooltip content={`Abrir perfil de ${c.name}`}>
+                                                    <button type="button" style={{ fontWeight: 600, cursor: 'pointer', color: 'var(--accent-text)', fontSize: '0.875rem', background: 'none', border: 'none', padding: 0, fontFamily: 'inherit', textAlign: 'left' }}
+                                                        onClick={() => navigate(`/admin/clients/${c.id}`)}>
+                                                        {c.name}
+                                                    </button>
+                                                </Tooltip>
                                             </div>
                                         </td>
                                         <td data-label="Sessões" style={{ textAlign: 'center', fontSize: '0.875rem', fontWeight: 600 }}>{c.sessions}</td>
