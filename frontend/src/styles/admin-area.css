@@ -402,6 +402,27 @@
     min-width: 140px;
 }
 
+/* Selos lado a lado num card estreito (tipo · faixa à esquerda, status à direita). A linha quebra em
+   vez de vazar do card: o status fica à direita quando cabe e desce para a linha de baixo, alinhado à
+   esquerda com os demais, quando não cabe. Selo sozinho mais largo que o card: reticências no próprio
+   StatusBadge (max-width: 100%). */
+.admin-badge-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    min-width: 0;
+}
+.admin-badge-row__group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
+}
+
 /* Grid de 3 colunas que colapsa no mobile (totais/KPIs em detalhe). */
 .admin-grid-3 {
     display: grid;

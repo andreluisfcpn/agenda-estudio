@@ -302,7 +302,7 @@ export default function AdminBookingsPage() {
                                                 {/* Contract */}
                                                 <td data-label="Contrato">
                                                     {b.contract ? (
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
                                                             <StatusBadge meta={getMeta(TIER_META, b.contract.tier)} label={b.contract.name} />
                                                         </div>
                                                     ) : (

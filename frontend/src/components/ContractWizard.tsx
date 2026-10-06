@@ -434,7 +434,7 @@ export default function ContractWizard({ pricing, onClose, onComplete, onOpenCus
     ) : null;
 
     return (
-        <BottomSheetModal isOpen={true} onClose={onClose} title="✨ Nova Contratação" preventClose={submitting} maxWidth="540px">
+        <BottomSheetModal isOpen={true} onClose={onClose} title="✨ Nova Contratação" preventClose={submitting} maxWidth="540px" desktopAnchor="top">
             <div className="wizard-modal-inner">
                 {showCpfPrompt && (
                     <div className="wizard-cancel-overlay" onClick={() => setShowCpfPrompt(false)}>

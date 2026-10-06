@@ -84,8 +84,9 @@ function fmtTime(iso: string | null): string {
  *
  * Anti-submit espúrio: sem <form>, todo botão type="button" com key própria no rodapé, avanço com
  * `next()` (setTimeout 0), guarda de etapa + trava por requisição em voo (estado, nunca tempo) na
- * criação; etapa com altura mínima estável e rodapé fixo na mesma posição (o 2º clique de um clique
- * duplo cai no botão da etapa seguinte — nunca no fundo, que fecharia o modal).
+ * criação; a etapa abraça o conteúdo e o dialog fica ancorado no topo no desktop (desktopAnchor="top":
+ * o cabeçalho não pula entre as etapas); o 2º clique de um clique duplo que cair no fundo é ignorado
+ * pelo overlay do BottomSheetModal (e.detail > 1), nunca fecha o modal.
  */
 export default function ServiceContractWizard({ isOpen, addon, onClose, onSuccess, onPending, mode = 'hire' }: ServiceContractWizardProps) {
     const { get: getRule } = useBusinessConfig();
@@ -355,7 +356,7 @@ export default function ServiceContractWizard({ isOpen, addon, onClose, onSucces
     const timerTone = remaining == null ? '' : secsLeft <= 60 ? ' scw-timer--danger' : secsLeft <= 180 ? ' scw-timer--warning' : '';
 
     return (
-        <BottomSheetModal isOpen={isOpen} onClose={handleClose} title={title} preventClose={creating || exitOpen} size="sm" className="scw-sheet">
+        <BottomSheetModal isOpen={isOpen} onClose={handleClose} title={title} preventClose={creating || exitOpen} size="sm" desktopAnchor="top" className="scw-sheet">
             {/* ══ Passo 1 — Visão geral ══ */}
             {step === STEP.OVERVIEW && (
                 <div className="scw-step">

@@ -21,9 +21,9 @@ import {
 } from 'lucide-react';
 
 
-// Altura mínima estável das etapas (stepBodyStyle/stepContentStyle, compartilhados em useWizardStep):
-// o sheet não encolhe ao avançar e o rodapé fica no mesmo lugar. Os botões do rodapé usam
-// ignoreMultiClick: o 2º clique de um duplo clique no "Próximo" da etapa 2 não agenda sem o admin ver
+// Casca das etapas (stepBodyStyle/stepContentStyle, compartilhados em useWizardStep): a etapa abraça o
+// conteúdo e o dialog fica ancorado no topo no desktop (desktopAnchor="top"), sem o cabeçalho pular.
+// Os botões do rodapé usam ignoreMultiClick: o 2º clique de um duplo clique no "Próximo" da etapa 2 não agenda sem o admin ver
 // a confirmação, e o de um duplo "Voltar" (etapa 2) não cai no "Cancelar" da etapa 1.
 
 /**
@@ -206,7 +206,7 @@ export default function CreateBookingModal({ isOpen, onClose, users, onCreated }
     }
 
     return (
-        <BottomSheetModal isOpen onClose={resetCreateModal} preventClose={creating} hideHeader size="lg" className="admin-sheet" title="Novo Agendamento">
+        <BottomSheetModal isOpen onClose={resetCreateModal} preventClose={creating} hideHeader size="lg" desktopAnchor="top" floatingClose className="admin-sheet" title="Novo Agendamento">
                 {/* --- HEADER --- */}
                 <div className="admin-modal-head" ref={headRef}>
                     <h2 className="admin-modal-title">

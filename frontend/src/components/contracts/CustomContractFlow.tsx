@@ -749,10 +749,11 @@ export default function CustomContractFlow({ mode, pricing, users = [], onClose,
         );
     })();
 
-    // Rodapé preso ao fim da etapa (.ccf-step tem altura mínima no desktop): o botão principal fica
-    // na MESMA posição entre as etapas — clique duplo rápido em "Próximo" cai no próximo "Próximo",
-    // nunca no fundo do modal (que fecharia o wizard). Como o envio (etapa 4) e o "Aceitar sugestões"
-    // ocupam essa mesma posição, os dois ignoram o 2º clique de um clique duplo (e.detail > 1).
+    // Rodapé logo depois do conteúdo da etapa (a etapa abraça o conteúdo; no desktop o dialog fica
+    // ancorado no topo — desktopAnchor="top" — e o cabeçalho não pula). Sticky no fim da área rolável
+    // quando a etapa é maior que a tela. O 2º clique de um clique duplo em "Próximo" que cair fora do
+    // sheet é ignorado pelo overlay (e.detail > 1); o envio (etapa 4) e o "Aceitar sugestões" também
+    // ignoram o 2º clique (e.detail > 1).
     const actions = (left: ReactNode, right: ReactNode, hint?: string) => (
         <div className="ccf-footer">
             <p className="ccf-hint" aria-live="polite">{hint ?? ''}</p>
@@ -1078,12 +1079,13 @@ export default function CustomContractFlow({ mode, pricing, users = [], onClose,
                     {selectedDays.length > 0 && (
                         <div className="ccf-section">
                             <span className="admin-field__label ccf-section__label">Horário de cada dia</span>
-                            <div className="ccf-slot-rows">
+                            {/* Um grupo por dia com as pílulas de horário (mesmo visual de "Dias da semana"). */}
+                            <div className="ccf-day-slots">
                                 {selectedDays.map(day => (
-                                    <div key={`slot-${day}`} className="ccf-slot-row">
-                                        <span className="ccf-slot-row__day" id={`${uid}-slot-${day}`}>{DAY_NAMES_FULL[day]}</span>
+                                    <div key={`slot-${day}`} className="ccf-day-slots__group">
+                                        <span className="ccf-day-slots__day" id={`${uid}-slot-${day}`}>{DAY_NAMES_FULL[day]}</span>
                                         <ContractSlotPicker
-                                            variant="select"
+                                            variant="pills"
                                             tier={tier}
                                             dayOfWeek={day}
                                             value={dayTimes[day] ?? ''}
@@ -1609,6 +1611,8 @@ export default function CustomContractFlow({ mode, pricing, users = [], onClose,
                 onClose={requestClose}
                 hideHeader
                 size="xl"
+                desktopAnchor="top"
+                floatingClose
                 className="admin-sheet"
                 title={headTitle}
                 preventClose={busy || !!cpfPrompt || exitOpen}

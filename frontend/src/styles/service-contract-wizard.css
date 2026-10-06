@@ -3,25 +3,21 @@
    Contratação de serviço mensal pelo cliente (D1/D2). Classes .scw-*.
    ═══════════════════════════════════════════════════════════ */
 
-/* Etapa: coluna com o rodapé empurrado para baixo. No desktop (dialog centralizado) a altura
-   mínima é a mesma em todas as etapas — o dialog não encolhe/recentraliza entre elas e o 2º clique
-   de um clique duplo cai no botão da etapa seguinte, nunca no fundo (que fecharia o modal). */
+/* Etapa: coluna com o rodapé logo depois do conteúdo. SEM altura mínima: o dialog abraça o
+   conteúdo de cada etapa e, no desktop, fica ancorado no topo (BottomSheetModal desktopAnchor="top"),
+   então o cabeçalho não pula entre as etapas. O 2º clique de um clique duplo que cair fora de um
+   dialog que encolheu é ignorado pelo overlay do BottomSheetModal (e.detail > 1). */
 .scw-step {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
-/* Desktop: o dialog tem SEMPRE a mesma altura (min(100svh − 40px, 780px)); a etapa ocupa a área útil
-   (− cabeçalho 57px − padding 48px − bordas) e o conteúdo mais alto rola por dentro, com o rodapé
-   sticky no mesmo lugar. */
+/* Desktop: altura MÁXIMA de min(100svh − 40px, 780px); o conteúdo mais alto rola por dentro, com o
+   rodapé sticky (sempre visível). */
 @media (min-width: 640px) {
   .bottom-sheet-card.scw-sheet {
     max-height: min(calc(100svh - 40px), 780px);
-  }
-
-  .scw-step {
-    min-height: min(calc(100svh - 148px), 672px);
   }
 }
 
@@ -29,7 +25,7 @@
   text-align: center;
 }
 
-/* ── Rodapé fixo (mesma posição em todas as etapas) ── */
+/* ── Rodapé (logo depois do conteúdo; sticky no fim da área rolável) ── */
 .scw-footer {
   position: sticky;
   /* O sticky para na borda do CONTEÚDO do .bottom-sheet-body; o inset negativo (= padding inferior

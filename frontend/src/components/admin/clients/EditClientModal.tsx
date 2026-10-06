@@ -25,7 +25,8 @@ interface EditClientModalProps {
  * stepper permite pular para qualquer etapa (allowJump); o salvar fica na última etapa e valida
  * TODAS as etapas. Anti-submit espúrio: sem <form>, type="button", keys distintas, avanço adiado,
  * guard de etapa, botões do rodapé ignoram o 2º clique de um clique duplo (ignoreMultiClick) e
- * nenhuma trava por tempo. Altura mínima estável por etapa (rodapé no mesmo lugar).
+ * nenhuma trava por tempo. A etapa abraça o conteúdo; no desktop o dialog fica ancorado no topo
+ * (desktopAnchor="top") e o cabeçalho não pula entre as etapas.
  */
 export default function EditClientModal({ user, onClose, onSaved }: EditClientModalProps) {
     const { showToast } = useUI();
@@ -171,7 +172,7 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
     const legacySocialText = socialRaw && !isSocialLinksJson(socialRaw) ? socialRaw : null;
 
     return (
-        <BottomSheetModal isOpen onClose={onClose} hideHeader size="md" className="admin-sheet" title="Editar Cliente" preventClose={confirmBlock}>
+        <BottomSheetModal isOpen onClose={onClose} hideHeader size="md" desktopAnchor="top" floatingClose className="admin-sheet" title="Editar Cliente" preventClose={confirmBlock || editLoading}>
             <div className="admin-modal-head">
                 <h2 className="admin-modal-title">
                     <span className="admin-modal-title__icon"><Pencil size={18} aria-hidden="true" /></span>
@@ -187,9 +188,9 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                 {showError && <div className="admin-alert admin-alert--danger" role="alert">{editError}</div>}
 
                 {editFetching ? (
-                    // Mesma altura mínima das etapas: o sheet não "pula" quando os dados chegam.
-                    // (role="status"/aria-live ficam no próprio BrandLoader.)
-                    <div style={{ ...wizardStepBodyStyle, justifyContent: 'center', alignItems: 'center' }}>
+                    // Bloco de carregamento com respiro; o dialog (ancorado no topo) cresce para baixo quando
+                    // os dados chegam. (role="status"/aria-live ficam no próprio BrandLoader.)
+                    <div style={{ ...wizardStepBodyStyle, justifyContent: 'center', alignItems: 'center', padding: 'var(--space-10) 0' }}>
                         <BrandLoader size="inline" label="Carregando dados do cliente…" />
                     </div>
                 ) : loadFailed ? (
@@ -243,8 +244,8 @@ export default function EditClientModal({ user, onClose, onSaved }: EditClientMo
                                 <button key="back" type="button" className="btn-admin-ghost" onClick={back} disabled={editLoading}>
                                     ← Voltar
                                 </button>
-                                {/* ignoreMultiClick: o 2º clique de um duplo clique no "Próximo" da etapa 2 cai aqui
-                                    (mesma posição) e NÃO pode salvar sem o admin ver Segurança e notas. */}
+                                {/* ignoreMultiClick: o 2º clique de um duplo clique no "Próximo" da etapa 2 pode cair
+                                    aqui e NÃO pode salvar sem o admin ver Segurança e notas. */}
                                 <button key="submit" type="button" className="btn-admin-go" disabled={!stepValid || editLoading} aria-busy={editLoading || undefined} onClick={ignoreMultiClick(() => handleEdit())}>
                                     {editLoading ? 'Salvando…' : <><Save size={16} aria-hidden="true" /> Salvar alterações</>}
                                 </button>

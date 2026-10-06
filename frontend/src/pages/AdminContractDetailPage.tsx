@@ -252,7 +252,7 @@ export default function AdminContractDetailPage() {
                             )}
                             {contract.contractUrl && (
                                 <a href={contract.contractUrl} target="_blank" rel="noopener noreferrer" className="status-badge status-badge--sm" style={{ color: 'var(--accent-primary)', background: 'var(--tier-audiencia-bg)', textDecoration: 'none' }}>
-                                    <ExternalLink size={12} /> Contrato digital
+                                    <ExternalLink size={12} /> <span className="status-badge__text">Contrato digital</span>
                                 </a>
                             )}
                         </div>

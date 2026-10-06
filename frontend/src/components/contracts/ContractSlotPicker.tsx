@@ -10,7 +10,9 @@ import BrandLoader from '../ui/BrandLoader';
 // (useContractSlotGrid → GET /contracts/slot-options). Cada horário aparece como
 // "HH:MM – HH:MM" com a cor da faixa DO HORÁRIO (AUDIÊNCIA também oferece os comerciais).
 //  - variant 'buttons' (padrão): grade de botões (todos type="button", aria-pressed);
-//  - variant 'select': select compacto para linhas por dia (ex.: personalizado com vários dias).
+//  - variant 'pills': pílulas no MESMO visual de "Dias da semana" do Plano Personalizado (.ccf-pill /
+//    .ccf-pill--active, aria-pressed) com o rótulo/cor da faixa do horário — "Horário de cada dia";
+//  - variant 'select': select compacto para linhas por data (ex.: datas livres do personalizado).
 // Estados: sem dia escolhido, carregando, erro (com "Tentar novamente") e dia sem horários.
 
 const WEEKDAY_PLURAL = ['aos domingos', 'às segundas', 'às terças', 'às quartas', 'às quintas', 'às sextas', 'aos sábados'];
@@ -23,7 +25,7 @@ export interface ContractSlotPickerProps {
     /** Horário selecionado ("HH:MM"). */
     value: string | null | undefined;
     onChange: (time: string, slot: ContractSlotOption) => void;
-    variant?: 'buttons' | 'select';
+    variant?: 'buttons' | 'pills' | 'select';
     /** Horários válidos mas indisponíveis agora (ex.: ocupados no dia) — aparecem desabilitados. */
     disabledTimes?: string[];
     disabled?: boolean;
@@ -134,6 +136,33 @@ export default function ContractSlotPicker({
                         </option>
                     ))}
                 </select>
+            </div>
+        );
+    }
+
+    if (variant === 'pills') {
+        return (
+            <div className={rootClass} role="group" aria-label={label} id={id}>
+                {slots.map(s => {
+                    const isSelected = s.time === selected?.time;
+                    const isBlocked = blocked.has(s.time);
+                    const tierLabel = TIER_META[s.tier]?.label ?? s.tier;
+                    return (
+                        <button
+                            key={`pill-${s.time}`}
+                            type="button"
+                            className={`ccf-pill csp-pill${isSelected ? ' ccf-pill--active' : ''}`}
+                            style={tierStyle(s.tier)}
+                            aria-pressed={isSelected}
+                            aria-label={`${formatSlotRange(s)}, faixa ${tierLabel}${isBlocked ? ', ocupado' : ''}`}
+                            disabled={disabled || isBlocked}
+                            onClick={() => onChange(s.time, s)}
+                        >
+                            <span className="ccf-pill__main">{formatSlotRange(s)}</span>
+                            <span className="csp-pill__tier">{isBlocked ? 'Ocupado' : tierLabel}</span>
+                        </button>
+                    );
+                })}
             </div>
         );
     }

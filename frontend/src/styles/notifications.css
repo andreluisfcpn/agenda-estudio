@@ -18,18 +18,31 @@
     0%, 100% { transform: scale(1); }
     50% { transform: scale(1.15); }
 }
+/* Selo de não lidas COLADO no sino: sobreposto ao canto superior direito do ícone (o span do
+   ícone é o contexto de posição, então vale para qualquer padding do botão). Ancorado pela
+   esquerda: "12"/"99+" crescem para fora do sino em vez de cobri-lo. O anel na cor do fundo
+   separa o selo do traço do ícone. Posição só com top/left — o transform fica livre para o
+   pulso do crítico. */
+.notif-bell__icon { position: relative; }
 .notif-badge {
-    min-width: 20px;
-    height: 20px;
-    border-radius: 10px;
+    position: absolute;
+    top: -8px;
+    left: 13px;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 9px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.65rem;
+    font-size: 0.625rem;
     font-weight: 800;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
     color: #fff;
-    padding: 0 5px;
+    padding: 0 4px;
     background: var(--warning-strong);
+    box-shadow: 0 0 0 2px var(--bg-primary);
 }
 .notif-badge--critical { background: var(--danger); animation: notifBadgePulse 2s infinite; }
 
@@ -105,6 +118,7 @@
     gap: 12px;
     align-items: flex-start;
     padding: 12px 16px;
+    border: 0; /* zera a borda nativa do <button> (2px outset no topo/direita) */
     border-bottom: 1px solid var(--border-subtle);
     border-left: 3px solid transparent;
     cursor: pointer;

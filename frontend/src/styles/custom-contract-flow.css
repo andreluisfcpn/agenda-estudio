@@ -301,25 +301,27 @@
     flex-shrink: 0;
 }
 
-/* ── Horário por dia (linhas com o ContractSlotPicker compacto) ── */
-.ccf-slot-rows {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-    gap: var(--space-2);
+/* ── Horário de cada dia: um grupo por dia escolhido, com as pílulas de horário do
+      ContractSlotPicker variant="pills" (mesmo visual de "Dias da semana") ── */
+.ccf-day-slots {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
 }
 
-.ccf-slot-row {
+.ccf-day-slots__group {
     display: flex;
     flex-direction: column;
     gap: 6px;
-    padding: 10px 12px;
-    border-radius: 10px;
-    background: var(--bg-card);
-    border: 1px solid var(--border-default);
     min-width: 0;
 }
 
-.ccf-slot-row__day {
+.ccf-day-slots__group + .ccf-day-slots__group {
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--border-subtle);
+}
+
+.ccf-day-slots__day {
     font-size: 0.6875rem;
     font-weight: 700;
     letter-spacing: 0.08em;
@@ -1090,14 +1092,20 @@
     padding: var(--space-6) var(--space-6) var(--space-5);
 }
 
-/* ── Etapa com rodapé fixo (posição estável dos botões entre etapas) ──
-   O rodapé é sticky no fim da área rolável do sheet: o botão principal fica sempre no mesmo
-   lugar (canto inferior direito), em todas as etapas. Clique duplo rápido em "Próximo" cai no
-   "Próximo" da etapa seguinte — nunca no fundo do modal (fecharia o wizard) nem no conteúdo. */
+/* ── Etapa + rodapé ──
+   A etapa ABRAÇA o conteúdo (sem altura mínima): o rodapé vem logo depois do último bloco, sem
+   espaço vazio. No desktop o dialog fica ancorado no topo (BottomSheetModal desktopAnchor="top"),
+   então o cabeçalho não pula entre as etapas — só o rodapé sobe/desce. Conteúdo maior que a tela
+   rola no corpo do sheet com o rodapé sticky (sempre visível). */
 .ccf-step {
     display: flex;
     flex-direction: column;
     min-width: 0;
+}
+
+/* Bloco solto (fora de .ccf-section) logo antes do rodapé: a mesma distância até ele que as seções. */
+.ccf-step > :is(.ccf-addons, .ccf-summary, .ccf-grid-state, .ccf-conflicts):nth-last-child(2) {
+    margin-bottom: var(--space-5);
 }
 
 .ccf-footer {
@@ -1130,14 +1138,5 @@
     .ccf-footer {
         margin-bottom: -24px;
         padding-bottom: 24px;
-    }
-}
-
-/* Desktop (dialog centralizado): a etapa ocupa a altura útil do dialog (100svh − 40px de respiro
-   − cabeçalho ≈136px − padding do corpo 48px − bordas), então o dialog não muda de tamanho nem se
-   recentraliza entre as etapas. No mobile o sheet já nasce ancorado embaixo. */
-@media (min-width: 640px) {
-    .ccf-step {
-        min-height: calc(100svh - 228px);
     }
 }

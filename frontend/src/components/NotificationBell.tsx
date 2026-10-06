@@ -52,6 +52,8 @@ export default function NotificationBell() {
     const bellTip = unreadCount > 0
         ? `${unreadCount} notifica${unreadCount !== 1 ? 'ções' : 'ção'} não lida${unreadCount !== 1 ? 's' : ''}`
         : 'Nenhuma notificação não lida';
+    // O selo é pequeno (colado no sino): acima de 99 mostra "99+"; o número exato fica no aria-label e na dica.
+    const badgeText = unreadCount > 99 ? '99+' : String(unreadCount);
 
     // ── Shared body (dropdown + sheet) ──
     const body = (
@@ -135,7 +137,7 @@ export default function NotificationBell() {
                 aria-label={`Notificações${unreadCount > 0 ? `, ${unreadCount} não lida${unreadCount !== 1 ? 's' : ''}` : ''}`}
                 aria-haspopup="true"
                 aria-expanded={open}
-                className={shake ? 'notif-bell-shake' : ''}
+                className={`notif-bell${shake ? ' notif-bell-shake' : ''}`}
                 style={{
                     background: open ? 'rgba(17,129,155,0.12)' : 'transparent',
                     border: '1px solid transparent',
@@ -150,15 +152,19 @@ export default function NotificationBell() {
                     fontFamily: 'inherit',
                 }}
             >
-                <span className="sidebar-link-icon"><Bell size={20} strokeWidth={1.8} /></span>
+                {/* Selo DENTRO do span do ícone: fica colado no canto superior direito do sino
+                    (posição em notifications.css), seja qual for o padding do botão. */}
+                <span className="sidebar-link-icon notif-bell__icon">
+                    <Bell size={20} strokeWidth={1.8} />
+                    {unreadCount > 0 && (
+                        <span className={`notif-badge ${criticalCount > 0 ? 'notif-badge--critical' : ''}`} aria-hidden="true">
+                            {badgeText}
+                        </span>
+                    )}
+                </span>
                 <span className="sidebar-link-label" style={{ fontSize: '0.8125rem', fontWeight: 600, flex: 1, textAlign: 'left' }}>
                     Notificações
                 </span>
-                {unreadCount > 0 && (
-                    <span className={`notif-badge ${criticalCount > 0 ? 'notif-badge--critical' : ''}`}>
-                        {unreadCount}
-                    </span>
-                )}
             </button>
             </Tooltip>
 

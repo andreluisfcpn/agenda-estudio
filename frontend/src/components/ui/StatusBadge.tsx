@@ -40,6 +40,18 @@ interface StatusBadgeProps {
     meta?: { label: string; color: string; bg: string; icon: LucideIcon };
 }
 
+/**
+ * Selo mais largo que o espaço disponível (`max-width: 100%` no CSS) corta o texto com reticências DENTRO
+ * da pílula; no hover, o texto inteiro aparece no `title` nativo (o selo é só informativo — design-system
+ * §4b). Só quando há corte de fato: selo inteiro não ganha dica redundante.
+ */
+function revealFullTextIfTruncated(e: React.PointerEvent<HTMLSpanElement>) {
+    const text = e.currentTarget.querySelector<HTMLElement>('.status-badge__text');
+    if (!text) return;
+    if (text.scrollWidth > text.clientWidth) text.title = text.textContent ?? '';
+    else text.removeAttribute('title');
+}
+
 export default function StatusBadge({ status = '', label, size = 'sm', meta }: StatusBadgeProps) {
     if (meta) {
         const Icon = meta.icon;
@@ -47,9 +59,10 @@ export default function StatusBadge({ status = '', label, size = 'sm', meta }: S
             <span
                 className={`status-badge status-badge--${size}`}
                 style={{ color: meta.color, background: meta.bg }}
+                onPointerEnter={revealFullTextIfTruncated}
             >
                 <Icon size={13} />
-                {label || meta.label}
+                <span className="status-badge__text">{label || meta.label}</span>
             </span>
         );
     }
@@ -77,9 +90,10 @@ export default function StatusBadge({ status = '', label, size = 'sm', meta }: S
             className={`status-badge status-badge--${size}`}
             style={{ color: config.color, background: config.bg }}
             title={unknownKey && !label ? status : undefined}
+            onPointerEnter={revealFullTextIfTruncated}
         >
             {config.icon}
-            {displayLabel}
+            <span className="status-badge__text">{displayLabel}</span>
         </span>
     );
 }

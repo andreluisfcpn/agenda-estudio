@@ -22,7 +22,8 @@ export default function ClientContractsCard({ contracts, bookings }: {
             {contracts.length === 0 ? (
                 <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Nenhum contrato</div>
             ) : (
-                <div style={{ display: 'grid', gap: '12px', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
+                // min(300px, 100%): abaixo de ~375px de tela a coluna mínima de 300px passaria da largura do card.
+                <div style={{ display: 'grid', gap: '12px', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))' }}>
                     {contracts.map((c: Contract) => {
                         const terms = describeContractTerms(c, bookings?.filter(b => b.contractId === c.id), null, { dateFormat: 'short' });
                         // L6: derivar por TIPO — AVULSO = 1 (era 24 pelo ramo "≠3m → episodes_6months"),
@@ -35,8 +36,10 @@ export default function ClientContractsCard({ contracts, bookings }: {
                             padding: '12px', borderRadius: 'var(--radius-sm)',
                             background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
                         }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                            {/* Os selos quebram de linha em vez de vazar do card (ex.: "Personalizado" + "Audiência" +
+                                "Aguard. pagamento" num card de 300px): o status desce para baixo quando não cabe. */}
+                            <div className="admin-badge-row" style={{ marginBottom: '8px' }}>
+                                <div className="admin-badge-row__group">
                                     <StatusBadge meta={getMeta(CONTRACT_TYPE_META, c.type)} />
                                     <StatusBadge meta={getMeta(TIER_META, c.tier)} />
                                 </div>

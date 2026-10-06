@@ -34,6 +34,18 @@ interface BottomSheetModalProps {
     className?: string;
     /** Override z-index for stacking (default: 1000 from CSS) */
     zIndex?: number;
+    /**
+     * Desktop (≥640px) vertical position of the dialog. 'center' (default) = centered, as always.
+     * 'top' = anchored 20px from the top (wizards): the dialog hugs each step's content and grows or
+     * shrinks DOWNWARD between steps, so the header never jumps. Mobile is always the bottom sheet.
+     */
+    desktopAnchor?: 'center' | 'top';
+    /**
+     * Com `hideHeader`: mostra um X flutuante no canto superior direito no DESKTOP. Para os wizards cujo
+     * cabeçalho próprio não tem X — com `desktopAnchor="top"` o fundo não fecha, e o "Cancelar" só
+     * existe na 1ª etapa. No mobile o sheet fecha arrastando/pelo fundo, como sempre.
+     */
+    floatingClose?: boolean;
 }
 
 export default function BottomSheetModal({
@@ -47,6 +59,8 @@ export default function BottomSheetModal({
     hideHeader = false,
     className,
     zIndex,
+    desktopAnchor = 'center',
+    floatingClose = false,
 }: BottomSheetModalProps) {
     const [isDesktop, setIsDesktop] = useState(false);
     // Height of the mobile bottom-tab bar when it is on screen — the sheet rises from
@@ -133,9 +147,11 @@ export default function BottomSheetModal({
         // Shorten the overlay so it ends at the top of the bottom-tab bar (mobile only).
         ...(bottomNavInset > 0 ? { height: `calc(100svh - ${bottomNavInset}px)` } : {}),
     };
+    const anchoredTop = desktopAnchor === 'top' && isDesktop;
     const cardStyle: React.CSSProperties = {
         ...(maxWidth ? { maxWidth } : {}),
-        ...(bottomNavInset > 0 ? { maxHeight: `calc(100svh - ${bottomNavInset}px - 16px)` } : {}),
+        // Ancorado no topo (20px): reserva também 20px embaixo, acima da barra inferior (tablet 640–768px).
+        ...(bottomNavInset > 0 ? { maxHeight: `calc(100svh - ${bottomNavInset}px - ${anchoredTop ? 40 : 16}px)` } : {}),
     };
     // The <h2 id={titleId}> only renders when the header is shown AND a title is set.
     const hasRenderedTitle = !hideHeader && !!title;
@@ -153,6 +169,10 @@ export default function BottomSheetModal({
                     onMouseDown={(e: React.MouseEvent<HTMLDivElement>) => {
                         // e.detail > 1 = 2º mousedown de um clique duplo no botão que ABRIU este sheet:
                         // ele cai no overlay recém-montado e fecharia o sheet na hora. Ignora (sem trava por tempo).
+                        // Wizard ancorado no topo (desktop): o diálogo ENCOLHE entre as etapas, então um 2º clique
+                        // no lugar do "Próximo" cairia no fundo e fecharia o wizard com tudo preenchido. Ali o
+                        // fundo não fecha — fecha por X, Cancelar ou Esc.
+                        if (anchoredTop) return;
                         if (e.target === e.currentTarget && e.detail <= 1) {
                             safeClose();
                         }
@@ -160,7 +180,7 @@ export default function BottomSheetModal({
                 >
                     <motion.div
                         ref={trapRef}
-                        className={`bottom-sheet-card bottom-sheet-card--${size} ${className || ''}`}
+                        className={`bottom-sheet-card bottom-sheet-card--${size}${desktopAnchor === 'top' ? ' bottom-sheet-card--top' : ''} ${className || ''}`}
                         style={cardStyle}
                         initial={{ y: "100%" }}
                         animate={{ y: 0 }}
@@ -211,6 +231,21 @@ export default function BottomSheetModal({
                         >
                             {children}
                         </div>
+                        {/* Depois do corpo no DOM (a posição é absoluta no card): o foco inicial do trap continua
+                            indo para o 1º campo (autoFocus) e o X fica por último no Tab. */}
+                        {hideHeader && floatingClose && isDesktop && (
+                            <Tooltip content="Fechar" describe={false}>
+                                <button
+                                    key="floating-close"
+                                    type="button"
+                                    onClick={safeClose}
+                                    aria-label="Fechar"
+                                    className="bottom-sheet-close-btn bottom-sheet-close-btn--floating"
+                                >
+                                    <X size={20} aria-hidden="true" />
+                                </button>
+                            </Tooltip>
+                        )}
                     </motion.div>
                 </motion.div>
             )}

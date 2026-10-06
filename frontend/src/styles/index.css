@@ -1298,8 +1298,29 @@ tr:hover td {
   white-space: nowrap;
   line-height: 1;
   /* O selo tem a largura do conteúdo: não estica quando é item de flex/grid (coluna, célula em card).
-     Sem max-width: com white-space: nowrap, limitar a caixa faria o texto vazar para fora do fundo. */
+     E nunca passa do espaço disponível: o texto fica em .status-badge__text, que encolhe e corta com
+     reticências DENTRO da pílula (o StatusBadge mostra o texto inteiro no hover). Sem min-width: 0 e com
+     overflow: clip (não vira scroll container): ao lado de um texto que encolhe (nome com reticências), o
+     selo continua inteiro — só encolhe quando ELE sozinho não cabe. O clip é a rede de segurança para quem
+     usa a classe sem o span do texto. */
   width: fit-content;
+  max-width: 100%;
+  overflow: clip;
+}
+
+.status-badge > svg {
+  flex-shrink: 0;
+}
+
+.status-badge__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Com line-height: 1 a caixa do texto é mais baixa que os glifos: o overflow cortaria as descendentes
+     (g, p, ç) e o acento de maiúscula (Ê). O padding dá a folga dentro do recorte e a margem negativa
+     devolve a altura original da pílula. */
+  padding-block: 0.25em;
+  margin-block: -0.25em;
 }
 
 .status-badge--sm {

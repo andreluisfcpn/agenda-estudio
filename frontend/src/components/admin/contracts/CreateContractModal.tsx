@@ -148,11 +148,13 @@ function choiceStyle(active: boolean, tone: ChoiceTone = ACCENT_TONE, extra?: CS
 }
 
 const blockLabel: CSSProperties = { display: 'block', marginBottom: 6 };
-// Altura mínima estável das etapas (stepBodyStyle/stepContentStyle, compartilhados em useWizardStep):
-// o sheet não encolhe ao avançar e o rodapé fica praticamente no mesmo lugar. Os botões do rodapé e
-// as escolhas de cobrança da etapa 4 usam ignoreMultiClick: o 2º clique de um duplo clique no
-// "Próximo" não cria o contrato nem troca o plano/forma de cobrança sem o admin ver a etapa 4.
-const stepHintStyle: CSSProperties = { margin: '16px 0 0', fontSize: '0.75rem', color: 'var(--text-secondary)', textAlign: 'right' };
+// Casca das etapas (stepBodyStyle/stepContentStyle, compartilhados em useWizardStep): a etapa abraça o
+// conteúdo e o dialog fica ancorado no topo no desktop (desktopAnchor="top"), sem o cabeçalho pular.
+// Os botões do rodapé e as escolhas de cobrança da etapa 4 usam ignoreMultiClick: o 2º clique de um
+// duplo clique no "Próximo" não cria o contrato nem troca o plano/forma de cobrança sem o admin ver a etapa 4.
+// A linha da dica fica SEMPRE reservada (vazia quando a etapa está válida): sem altura mínima na casca, ela
+// sumir no meio da etapa faria o "Próximo" subir ~35px logo antes do clique.
+const stepHintStyle: CSSProperties = { margin: '16px 0 0', fontSize: '0.75rem', lineHeight: 1.5, minHeight: '1.5em', color: 'var(--text-secondary)', textAlign: 'right' };
 
 export default function CreateContractModal({ isOpen, onClose, onCreated, users, pricing }: CreateContractModalProps) {
     const uid = useId();
@@ -507,7 +509,7 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
 
     return (
         <>
-            <BottomSheetModal isOpen onClose={onClose} preventClose={creating || checking} hideHeader size="lg" className="admin-sheet" title="Novo Contrato">
+            <BottomSheetModal isOpen onClose={onClose} preventClose={creating || checking} hideHeader size="lg" desktopAnchor="top" floatingClose className="admin-sheet" title="Novo Contrato">
                 {/* --- HEADER --- */}
                 <div className="admin-modal-head" ref={headRef}>
                     <h2 className="admin-modal-title">
@@ -647,7 +649,7 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                             </div>
 
                             </div>
-                            {!canStep1 && step1Hint && <p style={stepHintStyle}>{step1Hint}</p>}
+                            <p style={stepHintStyle} aria-live="polite">{!canStep1 && step1Hint ? step1Hint : ''}</p>
                             <div className="admin-actions-row">
                                 <button key="cancel" type="button" onClick={ignoreMultiClick(onClose)} className="btn-admin-ghost">
                                     Cancelar
@@ -822,7 +824,7 @@ export default function CreateContractModal({ isOpen, onClose, onCreated, users,
                             )}
 
                             </div>
-                            {!canStep2 && step2Hint && <p style={stepHintStyle}>{step2Hint}</p>}
+                            <p style={stepHintStyle} aria-live="polite">{!canStep2 && step2Hint ? step2Hint : ''}</p>
                             <div className="admin-actions-row admin-actions-row--between">
                                 <button key="back" type="button" onClick={back} className="btn-admin-ghost">
                                     ← Voltar

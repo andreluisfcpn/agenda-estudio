@@ -79,8 +79,9 @@ const hintStyle: React.CSSProperties = { fontSize: '0.6875rem', color: 'var(--te
  * Valores em R$ com CurrencyInput (D10, centavos; `allowEmpty` = campo opcional).
  * Anti-submit espúrio: sem <form>, botões type="button" com keys distintas, avanço adiado
  * 1 tick (setTimeout 0), guard de etapa no salvar, botões do rodapé ignoram o 2º clique de um
- * clique duplo (ignoreMultiClick) e nenhuma trava por tempo. Altura mínima estável por etapa
- * (rodapé no mesmo lugar). Na edição o stepper permite pular etapas (allowJump) e o salvar valida TODAS.
+ * clique duplo (ignoreMultiClick) e nenhuma trava por tempo. A etapa abraça o conteúdo; no desktop o
+ * dialog fica ancorado no topo (desktopAnchor="top") e o cabeçalho não pula entre as etapas.
+ * Na edição o stepper permite pular etapas (allowJump) e o salvar valida TODAS.
  */
 export default function CouponModal({ coupon, onClose, onSaved }: CouponModalProps) {
     const uid = useId();
@@ -130,9 +131,12 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
 
     // Troca de etapa: sheet rola para o topo e o foco vai para o contêiner da etapa.
     const stepRef = useRef<HTMLDivElement>(null);
-    const mountedRef = useRef(false);
+    // Compara com a etapa anterior (StrictMode roda o efeito 2x na montagem; uma flag de montagem tratava a
+    // 2ª como troca de etapa e tirava o foco do 1º campo, mostrando erro de validação ao abrir).
+    const prevStepRef = useRef(step);
     useEffect(() => {
-        if (!mountedRef.current) { mountedRef.current = true; return; }
+        if (prevStepRef.current === step) return;
+        prevStepRef.current = step;
         const el = stepRef.current;
         if (!el) return;
         const body = el.closest('.bottom-sheet-body');
@@ -308,7 +312,7 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
     ].filter(Boolean);
 
     return (
-        <BottomSheetModal isOpen onClose={onClose} hideHeader size="lg" className="admin-sheet" title={isEdit ? 'Editar Cupom' : 'Novo Cupom'}>
+        <BottomSheetModal isOpen onClose={onClose} hideHeader size="lg" desktopAnchor="top" floatingClose className="admin-sheet" title={isEdit ? 'Editar Cupom' : 'Novo Cupom'} preventClose={saving}>
             <div className="admin-modal-head">
                 <h2 className="admin-modal-title">
                     <span className="admin-modal-title__icon"><TicketPercent size={18} aria-hidden="true" /></span>
@@ -676,8 +680,8 @@ export default function CouponModal({ coupon, onClose, onSaved }: CouponModalPro
                             <button key="back" type="button" className="btn-admin-ghost" onClick={back} disabled={saving}>
                                 ← Voltar
                             </button>
-                            {/* ignoreMultiClick: o 2º clique de um duplo clique no "Próximo" da etapa 2 cai aqui
-                                (mesma posição) e NÃO pode criar/salvar sem o admin ver a Elegibilidade. */}
+                            {/* ignoreMultiClick: o 2º clique de um duplo clique no "Próximo" da etapa 2 pode cair
+                                aqui e NÃO pode criar/salvar sem o admin ver a Elegibilidade. */}
                             <button key="submit" type="button" className="btn-admin-go" disabled={!stepValid || saving} aria-busy={saving || undefined} onClick={ignoreMultiClick(handleSave)}>
                                 {saving ? 'Salvando…' : isEdit ? <><Save size={16} aria-hidden="true" /> Salvar alterações</> : <><TicketPercent size={16} aria-hidden="true" /> Criar cupom</>}
                             </button>

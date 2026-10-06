@@ -160,9 +160,12 @@ export function useClientForm(initial: ClientFormValues, mode: ClientWizardMode)
  */
 export function useStepViewReset(step: number) {
     const ref = useRef<HTMLDivElement>(null);
-    const mounted = useRef(false);
+    // Compara com a etapa anterior (não com uma flag de montagem): no StrictMode (dev) o efeito roda 2x na
+    // montagem e a flag tratava a 2ª como troca de etapa — o foco saía do 1º campo e o blur já mostrava erro.
+    const prevStep = useRef(step);
     useEffect(() => {
-        if (!mounted.current) { mounted.current = true; return; }
+        if (prevStep.current === step) return;
+        prevStep.current = step;
         const el = ref.current;
         if (!el) return;
         const body = el.closest('.bottom-sheet-body');

@@ -87,6 +87,42 @@
     transform: scale(0.98);
 }
 
+/* ── Variante pílulas ─────────────────────────────────────
+   O botão é a própria pílula .ccf-pill do Plano Personalizado (custom-contract-flow.css): mesmo
+   tamanho, fundo, borda e estado ativo de "Dias da semana". Aqui só a grade e o rótulo da faixa. */
+.csp--pills {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+    gap: 6px;
+}
+
+.csp-pill .ccf-pill__main {
+    white-space: nowrap;
+}
+
+.csp-pill__tier {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--csp-tier-color);
+}
+
+.csp-pill__tier::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.csp-pill:disabled .csp-pill__tier {
+    color: var(--text-secondary);
+}
+
 /* ── Variante select (compacta) ──────────────────────────── */
 .csp--select {
     display: flex;

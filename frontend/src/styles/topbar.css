@@ -72,7 +72,8 @@
 .topbar-right {
   display: flex;
   align-items: center;
-  gap: 6px;
+  /* 10px (era 6px): o selo "99+" do sino passa ~7px da borda do botão — sem isto ele encostava no avatar. */
+  gap: 10px;
 }
 
 /* ─── Notification area in topbar ─── */
@@ -80,7 +81,10 @@
   position: relative;
 }
 
-.topbar-notif button {
+/* Só o gatilho do sino (.notif-bell). Um `.topbar-notif button` genérico também pegava os
+   botões do dropdown (itens, "Ler todas", "Ver todas") e, com !important, apagava a borda de
+   severidade, o fundo de não lida, o padding e a largura do "Ver todas". */
+.topbar-notif .notif-bell {
   background: transparent !important;
   border: 1px solid transparent !important;
   border-radius: 10px !important;
@@ -88,7 +92,7 @@
   width: auto !important;
 }
 
-.topbar-notif button:hover {
+.topbar-notif .notif-bell:hover {
   background: rgba(17, 129, 155, 0.08) !important;
   border-color: rgba(17, 129, 155, 0.12) !important;
 }

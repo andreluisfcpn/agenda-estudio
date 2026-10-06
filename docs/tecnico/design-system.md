@@ -80,6 +80,16 @@ Prop `size` (desktop; mobile é sempre sheet full-width):
 - Estrutura interna admin: `hideHeader` + `.admin-modal-head` → `.admin-modal-body`
   → ações em `.admin-actions-row`; título `.admin-modal-title` com `__icon`.
 - Piloto de referência: `components/admin/bookings/EditBookingModal.tsx`.
+- `desktopAnchor` (`'center'` padrão | `'top'`): no desktop (≥640px) `'top'` ancora o dialog a 20px do
+  topo (mesma respiração do `max-height`) em vez de centralizá-lo — classe `.bottom-sheet-card--top`
+  (`align-self: flex-start`). Uso: **wizards** (o dialog muda de altura entre as etapas e só cresce/encolhe
+  para baixo; o cabeçalho não pula). Com a barra inferior visível (640–768px) reserva 20px acima dela.
+  No mobile não tem efeito (sempre sheet embaixo). Os demais modais continuam centralizados.
+  Com `'top'` no desktop **o fundo não fecha** (o dialog encolhe entre as etapas e um 2º clique no lugar do
+  "Próximo" cairia no fundo, perdendo o preenchido): fecha por X, "Cancelar" ou Esc.
+- `floatingClose` (com `hideHeader`): X flutuante no canto superior direito do card, só no desktop
+  (`.bottom-sheet-close-btn--floating`, com Tooltip "Fechar"). Obrigatório nos wizards ancorados no topo
+  cujo cabeçalho próprio não tem X (o "Cancelar" costuma existir só na 1ª etapa).
 - `preventClose` (requisição em andamento) trava fundo, arrastar, X e **Esc** — o Esc lê o valor
   ATUAL na hora da tecla (ref), então vale desde o clique em "Salvar". O X do cabeçalho embutido
   é `type="button"` e já vem com `aria-label="Fechar"` + `<Tooltip>`.
@@ -113,10 +123,20 @@ Prop `size` (desktop; mobile é sempre sheet full-width):
 
 ### 3b. Padrão de wizard admin
 
-Casca canônica do `CreateBookingModal`: `BottomSheetModal hideHeader` →
+Casca canônica do `CreateBookingModal`: `BottomSheetModal hideHeader desktopAnchor="top" floatingClose` →
 `.admin-modal-head` (título + `<WizardSteps>`) → `.admin-modal-body` (erro em
 `.admin-alert--danger` no topo, **sempre visível**) → blocos `{step === N && (…)}` com o
 rodapé `.admin-actions-row` DENTRO de cada bloco (`btn-admin-ghost`/`btn-admin-go`).
+
+**Altura (regra nova, out/2026)**: a etapa **abraça o conteúdo** — nada de altura mínima pela tela
+(`wizardStepBodyStyle` não tem mais `minHeight`; `.ccf-step`/`.scw-step` também não), então não sobra
+espaço vazio entre o conteúdo e o rodapé. Todo wizard usa `desktopAnchor="top"` no `BottomSheetModal`:
+no desktop o dialog fica no topo e só o rodapé sobe/desce entre as etapas (o cabeçalho não pula). Etapa
+maior que a tela rola no corpo do sheet (no Plano Personalizado e na contratação de serviço o rodapé é
+sticky). O 2º clique de um clique duplo em "Próximo" que cair FORA de um sheet que encolheu é ignorado
+pelo overlay (`e.detail > 1`); o que cair num botão do rodapé, por `ignoreMultiClick`. Wizards que seguem
+a regra: CreateBooking, CreateClient, EditClient, CreateContract, Coupon, CustomContractFlow (admin e
+cliente), ContractWizard e ServiceContractWizard.
 
 Estado com `hooks/useWizardStep(total)` → `{ step, next, back, goTo, reset, isFirst, isLast }`.
 **Regras anti-submit espúrio (obrigatórias)**:
@@ -131,6 +151,16 @@ Estado com `hooks/useWizardStep(total)` → `{ step, next, back, goTo, reset, is
 `<WizardSteps steps current onStepClick={goTo} allowJump={isEdit} />`: sem `allowJump`,
 só passos concluídos são clicáveis (voltar); com `allowJump` (modo edição), qualquer
 passo diferente do atual ("Ir ao passo N: …").
+
+**Horário de contrato — `components/contracts/ContractSlotPicker`** (grade do backend via
+`useContractSlotGrid`; estados carregando com `BrandLoader`, erro com "Tentar novamente", dia sem
+horários; `disabledTimes` = ocupado/desabilitado). Variantes:
+- `buttons` (padrão) — grade `.csp-slot` (CreateContractModal);
+- `pills` — pílulas `.ccf-pill`/`.ccf-pill--active` (o MESMO visual de "Dias da semana" do Plano
+  Personalizado) com o rótulo e a cor da faixa do horário (`.csp-pill__tier`); "Horário de cada dia"
+  do `CustomContractFlow`, um grupo por dia (`.ccf-day-slots__group`);
+- `select` — select compacto; só nas linhas das datas livres (`.ccf-date-row`).
+Todos os botões `type="button"` com `aria-pressed` e `aria-label` "HH:MM – HH:MM, faixa X[, ocupado]".
 
 ## 4. Utilities admin (`admin-area.css`)
 
@@ -230,7 +260,15 @@ adminMeta, width %). Estrutura repetida = classe.
   `DangerConfirmDialog` (tem spinner próprio) nem como overlay dentro de modal.
 - **`DangerConfirmDialog`**: ver §3a.
 - **`StatusBadge`** (`.status-badge`, `index.css`): o selo tem a largura do conteúdo
-  (`width: fit-content`) — não estica quando é item de flex em coluna ou de grid.
+  (`width: fit-content`) — não estica quando é item de flex em coluna ou de grid — e nunca passa do espaço
+  disponível (`max-width: 100%`, `overflow: clip`): o texto fica em `.status-badge__text` e ganha reticências
+  dentro da pílula, com o texto inteiro num `title` no hover só quando foi cortado. Quem usa a classe
+  `.status-badge` direto põe o texto em `.status-badge__text`. Pai flex de um selo precisa de `min-width: 0`
+  (senão cresce até o texto inteiro). Selos lado a lado em card estreito: `.admin-badge-row` /
+  `.admin-badge-row__group` (`admin-area.css`) — quebram linha e o status desce para a linha de baixo.
+- **Sino de notificações** (`NotificationBell`, só no `Topbar`): o selo de não lidas (`.notif-badge`) fica
+  sobreposto ao canto superior direito do ícone (`.notif-bell__icon`, anel na cor `--bg-primary`), mostra
+  `99+` acima de 99 e é `aria-hidden` (a contagem exata está no `aria-label` e no Tooltip).
 - **`fields/CurrencyInput`**: ver §2.
 - **`PixQrCode`** (`components/PixQrCode.tsx`, CSS `pix-qrcode.css` + classes
   `.checkout-*` de `checkout.css`): bloco PIX presentacional — valor, QR (usa

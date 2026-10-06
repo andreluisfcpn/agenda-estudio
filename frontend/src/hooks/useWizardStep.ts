@@ -27,13 +27,15 @@ export function ignoreMultiClick(fn: () => unknown): (e: { detail: number }) => 
 }
 
 /**
- * Altura mínima estável das etapas dos wizards admin (casca canônica): o sheet não encolhe nem
- * recentraliza ao trocar de etapa, então o rodapé fica no mesmo lugar. Sem isso, o 2º clique de um
- * clique duplo em "Próximo" podia cair FORA do sheet (que diminuiu) e o clique no fundo fechava o
- * wizard, perdendo o que foi preenchido. Uso: contêiner da etapa = `wizardStepBodyStyle`, conteúdo =
- * `wizardStepContentStyle`, e o `.admin-actions-row` como irmão DEPOIS do conteúdo (fica no fim).
+ * Casca das etapas dos wizards (contêiner da etapa = `wizardStepBodyStyle`, conteúdo =
+ * `wizardStepContentStyle`, e o `.admin-actions-row` como irmão DEPOIS do conteúdo).
+ * SEM altura mínima: o corpo abraça o conteúdo de cada etapa (nada de espaço vazio antes do rodapé).
+ * Para o cabeçalho não pular entre etapas, o `BottomSheetModal` do wizard usa `desktopAnchor="top"`
+ * (ancorado no topo no desktop; cresce/encolhe só para baixo). O 2º clique de um clique duplo em
+ * "Próximo" que cair fora de um sheet que encolheu é ignorado pelo overlay (`e.detail > 1`), e o que
+ * cair num botão do rodapé, por `ignoreMultiClick`.
  */
-export const wizardStepBodyStyle: CSSProperties = { display: 'flex', flexDirection: 'column', minHeight: 'min(540px, calc(100dvh - 280px))' };
+export const wizardStepBodyStyle: CSSProperties = { display: 'flex', flexDirection: 'column' };
 export const wizardStepContentStyle: CSSProperties = { flex: '1 0 auto' };
 
 export interface UseWizardStepOptions {

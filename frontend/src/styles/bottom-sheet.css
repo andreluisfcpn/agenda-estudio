@@ -149,6 +149,14 @@
     .bottom-sheet-card--lg { max-width: min(var(--modal-w-lg), calc(100vw - 48px)); }
     .bottom-sheet-card--xl { max-width: min(var(--modal-w-xl), calc(100vw - 64px)); }
 
+    /* desktopAnchor="top" (wizards): ancorado no topo com a mesma respiração do max-height (20px) em
+       vez de centralizado — o dialog abraça o conteúdo de cada etapa e só cresce/encolhe para BAIXO,
+       então o cabeçalho não pula entre as etapas. align-self vence o align-items do overlay. */
+    .bottom-sheet-card--top {
+        align-self: flex-start;
+        margin-top: 20px;
+    }
+
     /* No drag handle / grabber on desktop */
     .bottom-sheet-handle {
         display: none;
@@ -160,5 +168,20 @@
 
     .bottom-sheet-close-btn {
         display: flex; /* Show natively on desktop */
+    }
+
+    /* floatingClose (wizards com cabeçalho próprio sem X): X no canto do card, acima do conteúdo. */
+    .bottom-sheet-close-btn--floating {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        z-index: 2;
+        /* Fundo opaco: com o corpo rolado, o conteúdo passa por baixo do X sem aparecer através dele. */
+        background: var(--sheet-bg);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    }
+    .bottom-sheet-close-btn--floating:hover {
+        background: var(--sheet-bg);
+        border-color: rgba(255, 255, 255, 0.14);
     }
 }

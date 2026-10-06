@@ -21,7 +21,8 @@ interface CreateClientModalProps {
  * "Novo cliente" — wizard de 3 etapas (D11): Dados pessoais → Contato e endereço → Segurança e notas.
  * Anti-submit espúrio: sem <form>, botões type="button" com keys distintas, avanço adiado
  * 1 tick (setTimeout 0), guard de etapa no cadastrar, botões do rodapé ignoram o 2º clique de um
- * clique duplo (ignoreMultiClick) e nenhuma trava por tempo. Altura mínima estável por etapa.
+ * clique duplo (ignoreMultiClick) e nenhuma trava por tempo. A etapa abraça o conteúdo; no desktop o
+ * dialog fica ancorado no topo (desktopAnchor="top") e o cabeçalho não pula entre as etapas.
  */
 export default function CreateClientModal({ isOpen, onClose, onCreated }: CreateClientModalProps) {
     const { showToast } = useUI();
@@ -96,7 +97,7 @@ export default function CreateClientModal({ isOpen, onClose, onCreated }: Create
     const showError = !!createError && (errorFields.length === 0 || errorFields.some(f => f in form.fieldErrors));
 
     return (
-        <BottomSheetModal isOpen onClose={onClose} hideHeader size="md" className="admin-sheet" title="Novo Cliente">
+        <BottomSheetModal isOpen onClose={onClose} hideHeader size="md" desktopAnchor="top" floatingClose className="admin-sheet" title="Novo Cliente" preventClose={creating}>
             <div className="admin-modal-head">
                 <h2 className="admin-modal-title">
                     <span className="admin-modal-title__icon"><UserPlus size={18} aria-hidden="true" /></span>
